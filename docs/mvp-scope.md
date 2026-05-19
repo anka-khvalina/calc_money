@@ -24,7 +24,7 @@
 
 | ID | Функция |
 |----|---------|
-| DATA-1 | Импорт CSV: matches, team_strength, venue_factors, flip_rules |
+| DATA-1 | Импорт CSV: matches, team_strength, venue_types, flip_rules |
 | DATA-2 | Валидация по [data-model.md](data-model.md) |
 | DATA-3 | Локальное хранение (SQLite или эквивалент) |
 

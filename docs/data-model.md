@@ -14,11 +14,11 @@ erDiagram
   Team ||--o{ Match : plays
   Team ||--o{ TeamStrength : has
   League ||--o{ Team : has
-  VenueFactor }o--|| League : optional
+  VenueType ||--o{ Match : classifies
   FlipRule ||--o{ Match : applies_to_S2
   Match {
     date date
-    string venue
+    string venue_type_id
     bool closing_odds
     bool is_derby
   }
@@ -64,14 +64,38 @@ erDiagram
 | `season_id` | string | ✓ | Сезон |
 | `home_team_id` | string | ✓ | Хозяин |
 | `away_team_id` | string | ✓ | Гость |
-| `venue` | enum | ✓ | `home` \| `away` \| `neutral` — контекст **хозяина** в целевой паре; для нейтрального поля обе стороны используют `neutral` |
+| `venue_type_id` | string | ✓ | Код из справочника **VenueType** (см. ниже) |
 | `odds_p1` | decimal | ✓ | Коэффициент P1 |
 | `odds_px` | decimal | ✓ | Коэффициент X |
 | `odds_p2` | decimal | ✓ | Коэффициент P2 |
 | `closing_odds` | bool | ✓ | Закрывающая линия (для цепочки S2) |
 | `is_derby` | bool | ✓ | Триггер правила `derby` в S2 |
 
-**Примечание по venue:** для матча в CSV поле `venue` описывает поправку для **home_team** (home/away/neutral). Сила away получает множитель по роли away в этом матче.
+**Venue Type** — не свободный текст, а значение из справочника (как в Excel с выпадающим списком). Одна запись на матч задаёт множители для **хозяина и гостя** этой строки.
+
+### VenueType (справочник)
+
+Справочник типов площадки / контекста матча. Импорт: [examples/venue_types.csv](examples/venue_types.csv).
+
+| Поле | Тип | Обяз. | Описание |
+|------|-----|:-----:|----------|
+| `venue_type_id` | string | ✓ | Код (ключ справочника) |
+| `label_ru` | string | | Подпись в UI |
+| `h_home_team` | decimal | ✓ | Множитель к силе **хозяина** строки |
+| `h_away_team` | decimal | ✓ | Множитель к силе **гостя** строки |
+| `notes` | string | | Комментарий |
+
+**Допустимые коды (MVP, как в таблице пользователя):**
+
+| venue_type_id | Назначение |
+|---------------|------------|
+| `regular_home` | Обычный домашний матч хозяина |
+| `city_derby_home` | Городское дерби, хозяин дома |
+| `regional_derby_home` | Региональное дерби, хозяин дома |
+| `neutral` | Нейтральное поле |
+| `special` | Особый матч (финал кубка и т.д.) |
+
+При импорте матча значение `venue_type` в пользовательском CSV должно **точно совпадать** с `venue_type_id` из справочника.
 
 ### TeamStrength
 
@@ -82,15 +106,6 @@ erDiagram
 | `market_weight` | decimal | ✓ | Рыночный удельный вес (> 0) |
 
 **Команда C:** при нескольких кандидатах пересечения вес C не обязателен для S1; для отладки может храниться в `TeamStrength` той же лиги.
-
-### VenueFactor
-
-| Поле | Тип | Обяз. | Описание |
-|------|-----|:-----:|----------|
-| `context` | string | ✓ | `global` или `league_id` |
-| `h_home` | decimal | ✓ | Множитель дома |
-| `h_away` | decimal | ✓ | Множитель в гостях |
-| `h_neutral` | decimal | ✓ | Нейтральное поле |
 
 ### FlipRule
 
@@ -153,7 +168,7 @@ erDiagram
 | `away_goals` | | Голы гостей |
 | `result` | | `H` / `D` / `A` — фактический исход |
 | `derby` | ✓ | `true` / `false` — триггер правила `derby` в **сценарии 2** |
-| `venue_type` | ✓ | `home` \| `away` \| `neutral` — место для **хозяина** строки |
+| `venue_type` | ✓ | Код из справочника **VenueType** (выпадающий список в Excel) |
 
 **Маппинг при импорте во внутренний `Match`:**
 
@@ -163,13 +178,11 @@ erDiagram
 | `away_team` | `away_team_id` |
 | `p1`, `x`, `p2` | `odds_p1`, `odds_px`, `odds_p2` |
 | `derby` | `is_derby` |
-| `venue_type` | `venue` |
+| `venue_type` | `venue_type_id` (валидация по справочнику) |
 | — | `season_id` = из настроек импорта (напр. `laliga_2024_25`) |
 | — | `closing_odds` = `false` по умолчанию; для цепочки S2 пользователь помечает closing отдельно или вторым импортом |
 
-**Derby (черновик для примера):** `true` для пар Real Madrid – Atletico, Real Madrid – Barcelona, Vallecano – Atletico и т.п.; остальное `false`. Уточняется вместе со справочником дерби.
-
-**Venue Type:** для обычных матчей лиги — `home`; `neutral` — только при нейтральном поле; `away` — если в таблице явно зафиксирован «домашний» контекст не у home_team (редко).
+**Derby:** колонка `derby` — флаг; коэффициент перевертыша — в `flip_rules.csv`. **Venue Type** — отдельный справочник поправок площадки (`city_derby_home` ≠ флаг derby).
 
 ### 3.1. matches.csv (внутренний формат)
 
@@ -180,7 +193,7 @@ erDiagram
 | `season_id` | ✓ | s2024 |
 | `home_team_id` | ✓ | team_a |
 | `away_team_id` | ✓ | team_c |
-| `venue` | ✓ | home |
+| `venue_type_id` | ✓ | regular_home |
 | `odds_p1` | ✓ | 2.10 |
 | `odds_px` | ✓ | 3.40 |
 | `odds_p2` | ✓ | 3.60 |
@@ -197,14 +210,19 @@ erDiagram
 | `season_id` | ✓ |
 | `market_weight` | ✓ |
 
-### 3.3. venue_factors.csv
+### 3.3. venue_types.csv (справочник Venue Type)
 
-| Колонка | Обяз. |
-|---------|:-----:|
-| `context` | ✓ |
-| `h_home` | ✓ |
-| `h_away` | ✓ |
-| `h_neutral` | ✓ |
+| Колонка | Обяз. | Описание |
+|---------|:-----:|----------|
+| `venue_type_id` | ✓ | Код для выпадающего списка |
+| `label_ru` | | Подпись |
+| `h_home_team` | ✓ | Множитель хозяина |
+| `h_away_team` | ✓ | Множитель гостя |
+| `notes` | | Комментарий |
+
+Пример: [examples/venue_types.csv](examples/venue_types.csv).
+
+> **Устаревшее:** [venue_factors.csv](examples/venue_factors.csv) — упрощённые три множителя `h_home`/`h_away`/`h_neutral`; для новых импортов использовать **venue_types**.
 
 ### 3.4. flip_rules.csv
 
@@ -222,7 +240,7 @@ erDiagram
 |---------|--------|
 | Уникальность `match_id`, `team_id` | DUPLICATE_ID |
 | `odds_*` > 1 | INVALID_ODDS |
-| `venue` ∈ {home, away, neutral} | INVALID_VENUE |
+| `venue_type_id` ∉ справочник VenueType | INVALID_VENUE_TYPE |
 | `market_weight` > 0 | INVALID_WEIGHT |
 | Дата в формате ISO | INVALID_DATE |
 | Для S2-расчёта: наличие FlipRule `derby` при использовании is_derby | WARN_MISSING_DERBY_RULE |

@@ -40,7 +40,7 @@ flowchart LR
 |---------|-----|----------|
 | Файл матчей | File picker | `matches.csv` |
 | Файл сил | File picker | `team_strength.csv` |
-| Файл venue | File picker | `venue_factors.csv` |
+| Справочник Venue Type | File picker | `venue_types.csv` |
 | Файл перевертышей | File picker | `flip_rules.csv` |
 | Кнопка «Импортировать» | Button | Запуск валидации и сохранения |
 | Таблица ошибок | Table | Строка, колонка, код ошибки |
@@ -58,7 +58,7 @@ flowchart LR
 |  Импорт данных                                    |
 |  [ matches.csv      ] [ Обзор... ]               |
 |  [ team_strength.csv ] [ Обзор... ]              |
-|  [ venue_factors.csv ] [ Обзор... ]              |
+|  [ venue_types.csv   ] [ Обзор... ]              |
 |  [ flip_rules.csv    ] [ Обзор... ]              |
 |                    [ Импортировать ]              |
 |  Ошибки:                                          |
@@ -77,7 +77,7 @@ flowchart LR
 |---------|-----|----------|
 | Команда A (хозяин) | ComboBox | Список из `Team` |
 | Команда B (гость) | ComboBox | |
-| Venue | RadioGroup | ● Дом A  ○ Нейтраль  ○ Гость A (B дома) |
+| Venue Type | ComboBox | Код из справочника: `regular_home`, `city_derby_home`, … |
 | Дата матча | DatePicker | Для окна поиска C |
 | Окно поиска C (дней) | SpinBox | Default: 90 |
 | Флаг дерби | Checkbox | Информативен; при S1 — tooltip |
@@ -95,7 +95,7 @@ flowchart LR
 |  Расчёт матча                                     |
 |  Команда A: [ Arsenal        v]                   |
 |  Команда B: [ Chelsea        v]                   |
-|  Место: (•) Дом A  ( ) Нейтраль  ( ) Гость A      |
+|  Venue Type: [ regular_home        v]            |
 |  Дата: [ 2025-05-20 ]  Окно C: [ 90 ] дней        |
 |  [ ] Дерби (сценарий 2)                           |
 |                    [ Рассчитать ]                 |

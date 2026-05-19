@@ -138,32 +138,45 @@
 
 ---
 
-## §4. Поправка на место (venue)
+## §4. Поправка Venue Type (справочник)
 
 **Сценарии:** 1 (целевой матч), 2 (целевой + матчи A–C, B–C).
 
 ### Входы
 
-- Базовая сила `s_T`
-- Роль команды T в матче: home / away / neutral
-- `VenueFactor`: `h_home`, `h_away`, `h_neutral`
+- Базовые силы `s_home`, `s_away` (хозяин и гость **в строке матча**)
+- `venue_type_id` — код из справочника **VenueType** ([venue_types.csv](examples/venue_types.csv))
 
 ### Шаги
 
+По коду матча из справочника берутся два множителя:
+
 ```
-h(venue_T) = { h_home  если T дома
-             { h_away  если T в гостях
-             { h_neutral если нейтраль
+(h_H, h_A) = VenueType[venue_type_id]   // h_home_team, h_away_team
 
-s_T' = s_T * h(venue_T)
+s_home' = s_home * h_H
+s_away' = s_away * h_A
 ```
 
-### Пример (MVP-константы)
+### Коды справочника (MVP)
 
-`h_home=1.08`, `h_away=0.92`, `h_neutral=1.00`.
+| venue_type_id | h_H | h_A (пример) |
+|---------------|-----|----------------|
+| `regular_home` | 1.08 | 0.92 |
+| `city_derby_home` | 1.10 | 0.90 |
+| `regional_derby_home` | 1.09 | 0.91 |
+| `neutral` | 1.00 | 1.00 |
+| `special` | 1.00 | 1.00 |
 
-A дома: `s_A' = 1.20 * 1.08 = 1.296`.  
-B в гостях: `s_B' = 0.95 * 0.92 = 0.874`.
+Коэффициенты в справочнике настраиваются; в таблице Excel пользователь выбирает только **код** из выпадающего списка.
+
+### Пример
+
+Матч: A дома vs B, `venue_type_id = regular_home`.
+
+`s_A' = 1.20 * 1.08 = 1.296`, `s_B' = 0.95 * 0.92 = 0.874`.
+
+**Не путать:** `city_derby_home` в Venue Type — поправка площадки; флаг `is_derby` + `FlipRule` `derby` — перевертыш в **сценарии 2**.
 
 ---
 
@@ -245,9 +258,10 @@ s_A = λ_s * s_season(A) + λ_m * s_market(A)
 s_B = λ_s * s_season(B) + λ_m * s_market(B)
 ```
 
-#### 5.3. Venue целевого матча
+#### 5.3. Venue Type целевого матча
 
-`s_A' = s_A * h(venue_A)`, `s_B' = s_B * h(venue_B)`.
+По `venue_type_id` из справочника (§4):  
+`s_A' = s_A * h_H`, `s_B' = s_B * h_A`.
 
 #### 5.4. Вероятности 1X2 (упрощённая модель)
 
