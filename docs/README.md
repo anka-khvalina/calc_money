@@ -40,7 +40,8 @@ flowchart TB
 
 | Файл | Назначение |
 |------|------------|
-| [matches.csv](examples/matches.csv) | Матчи, коэффициенты, closing, derby |
+| [season_odds_la_liga_2024_25.csv](examples/season_odds_la_liga_2024_25.csv) | **Таблица сезона** (как в Excel): P1/X/P2, счёт, Derby, Venue Type |
+| [matches.csv](examples/matches.csv) | Матчи, коэффициенты, closing, derby (внутренний id) |
 | [team_strength.csv](examples/team_strength.csv) | Рыночный удельный вес |
 | [venue_factors.csv](examples/venue_factors.csv) | Поправки дом / выезд / нейтраль |
 | [flip_rules.csv](examples/flip_rules.csv) | Правила перевертышей (сценарий 2) |
