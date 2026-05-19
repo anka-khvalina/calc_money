@@ -1,0 +1,11 @@
+match_id,date,season_id,home_team_id,away_team_id,venue,odds_p1,odds_px,odds_p2,closing_odds,is_derby
+m001,2025-01-12,s2024,team_a,team_x,home,1.85,3.60,4.20,false,false
+m002,2025-02-08,s2024,team_b,team_y,home,2.05,3.30,3.70,false,false
+m003,2025-03-01,s2024,team_a,team_c,home,1.90,3.50,4.20,true,false
+m004,2025-03-15,s2024,team_c,team_a,home,2.30,3.40,3.00,true,false
+m005,2025-03-20,s2024,team_b,team_c,home,2.40,3.30,2.90,true,false
+m006,2025-04-02,s2024,team_c,team_b,home,2.10,3.35,3.40,true,false
+m007,2025-04-10,s2024,team_a,team_b,home,2.10,3.40,3.60,false,true
+m008,2024-11-05,s2023,team_a,team_z,home,1.95,3.45,4.00,false,false
+m009,2025-02-20,s2024,team_b,team_x,away,2.20,3.25,3.35,false,false
+m010,2025-04-18,s2024,team_a,team_b,neutral,2.00,3.30,3.80,false,false
