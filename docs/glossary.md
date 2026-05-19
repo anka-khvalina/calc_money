@@ -66,7 +66,7 @@
 
 Каждый код задаёт множители `h_home_team` и `h_away_team` для хозяина и гостя строки. Импорт: [venue_types.csv](examples/venue_types.csv).
 
-**Не путать** Venue Type `city_derby_home` (поправка площадки, S1+S2) с флагом **Derby** и `FlipRule` (перевертыш, только S2).
+**Не путать** Venue Type `city_derby_home` (площадка) с Derby `city_derby` (перевертыш в S2).
 
 ---
 
@@ -84,9 +84,13 @@
 
 Правило с полями `rule_id`, `condition`, `coefficient`, корректирующее оценку при пересчёте через C. Применяется **только в сценарии 2**.
 
-### Дерби
+### Derby (справочник)
 
-**Не** отдельная подсистема. Дерби — матч с флагом `is_derby=true`, при котором в сценарии 2 срабатывает правило перевертыша `rule_id=derby` с коэффициентом `k_derby` из таблицы `FlipRule`.
+Тип дерби / соперничества — **справочник** (выпадающий список в Excel): `no`, `city_derby`, `regional_derby`, `rivalry`, `other`.
+
+В матче хранится `derby_id`. Коэффициент перевертыша `flip_coefficient` — в [derby_types.csv](examples/derby_types.csv). Применяется **только в сценарии 2**; при `no` перевертыш по derby не вызывается.
+
+**Не путать** с Venue Type `city_derby_home` (поправка площадки, S1+S2).
 
 ---
 

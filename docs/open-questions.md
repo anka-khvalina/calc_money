@@ -27,7 +27,8 @@
 | OQ-5 | Семантика **двух строк** таблицы UI | Одинаковая линия 1X2 (вариант A) | **review** | [ui-spec.md](ui-spec.md) §5 |
 | OQ-6 | `k_draw` и пороги надёжности (CV, score) | k_draw=0.26, CV≤0.25, score≥0.5 | **review** | [scenarios.md](scenarios.md), [calculation.md](calculation.md) |
 | OQ-7 | Вес прошлого сезона `< 1` | β=0 в MVP (только текущий) | **ok** | [calculation.md](calculation.md) §5 |
-| OQ-8 | Дерби в S1 | Не применяется (только FlipRule в S2) | **ok** | [requirements.md](requirements.md), [glossary.md](glossary.md) |
+| OQ-8 | Derby в S1 | `derby_id` не применяется (только DerbyType flip в S2) | **ok** | [requirements.md](requirements.md), [glossary.md](glossary.md) |
+| OQ-12 | Коэфф. flip по типам derby | Заглушки в derby_types.csv | **review** | [derby_types.csv](examples/derby_types.csv) |
 | OQ-9 | Рыночный вес в S2 | Через полный S1, не заменяется C | **ok** | [requirements.md](requirements.md) |
 | OQ-10 | Venue в S1 | Обязательно для целевого матча | **ok** | [requirements.md](requirements.md) |
 | OQ-11 | Непрерывный множитель маржи вместо 1–5 | Не используется в MVP | **review** alt | [calculation.md](calculation.md) §2 |
@@ -77,7 +78,7 @@
 
 | Дата | Решение |
 |------|---------|
-| 2026-05-19 | Дерби = коэффициент `FlipRule` `derby`, только S2 |
+| 2026-05-19 | Derby = справочник derby_types.csv, flip только S2 |
 | 2026-05-19 | Перевертыши не вызываются в S1 |
 | 2026-05-19 | Нейтраль = `h_neutral`, отдельно от дерби |
 | 2026-05-19 | S2 включает полный прогон S1 |
@@ -106,3 +107,4 @@
 | 2026-05-19 | Первая версия журнала |
 | 2026-05-19 | Пример season_odds_la_liga_2024_25.csv; Derby/Venue Type в примере — ориентировочно |
 | 2026-05-19 | Venue Type — справочник venue_types.csv (5 кодов из Excel) |
+| 2026-05-19 | Derby — справочник derby_types.csv (No, City derby, …) |

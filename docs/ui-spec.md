@@ -41,6 +41,7 @@ flowchart LR
 | Файл матчей | File picker | `matches.csv` |
 | Файл сил | File picker | `team_strength.csv` |
 | Справочник Venue Type | File picker | `venue_types.csv` |
+| Справочник Derby | File picker | `derby_types.csv` |
 | Файл перевертышей | File picker | `flip_rules.csv` |
 | Кнопка «Импортировать» | Button | Запуск валидации и сохранения |
 | Таблица ошибок | Table | Строка, колонка, код ошибки |
@@ -59,6 +60,7 @@ flowchart LR
 |  [ matches.csv      ] [ Обзор... ]               |
 |  [ team_strength.csv ] [ Обзор... ]              |
 |  [ venue_types.csv   ] [ Обзор... ]              |
+|  [ derby_types.csv   ] [ Обзор... ]              |
 |  [ flip_rules.csv    ] [ Обзор... ]              |
 |                    [ Импортировать ]              |
 |  Ошибки:                                          |
@@ -80,7 +82,7 @@ flowchart LR
 | Venue Type | ComboBox | Код из справочника: `regular_home`, `city_derby_home`, … |
 | Дата матча | DatePicker | Для окна поиска C |
 | Окно поиска C (дней) | SpinBox | Default: 90 |
-| Флаг дерби | Checkbox | Информативен; при S1 — tooltip |
+| Derby | ComboBox | Код из справочника: `no`, `city_derby`, …; в S1 не влияет на расчёт |
 | Кнопка «Рассчитать» | Button | Запуск `calculate_match` |
 
 ### Подсказки
@@ -97,7 +99,7 @@ flowchart LR
 |  Команда B: [ Chelsea        v]                   |
 |  Venue Type: [ regular_home        v]            |
 |  Дата: [ 2025-05-20 ]  Окно C: [ 90 ] дней        |
-|  [ ] Дерби (сценарий 2)                           |
+|  Derby: [ no                    v]               |
 |                    [ Рассчитать ]                 |
 +--------------------------------------------------+
 ```

@@ -43,6 +43,7 @@ flowchart TB
 | [season_odds_la_liga_2024_25.csv](examples/season_odds_la_liga_2024_25.csv) | **Таблица сезона** (как в Excel): P1/X/P2, счёт, Derby, Venue Type |
 | [matches.csv](examples/matches.csv) | Матчи, коэффициенты, closing, derby (внутренний id) |
 | [team_strength.csv](examples/team_strength.csv) | Рыночный удельный вес |
+| [derby_types.csv](examples/derby_types.csv) | **Справочник Derby** (No, City derby, …) |
 | [venue_types.csv](examples/venue_types.csv) | **Справочник Venue Type** (выпадающий список) |
 | [venue_factors.csv](examples/venue_factors.csv) | Устаревшее: три множителя home/away/neutral |
 | [flip_rules.csv](examples/flip_rules.csv) | Правила перевертышей (сценарий 2) |

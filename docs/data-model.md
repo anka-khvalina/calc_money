@@ -15,12 +15,13 @@ erDiagram
   Team ||--o{ TeamStrength : has
   League ||--o{ Team : has
   VenueType ||--o{ Match : classifies
+  DerbyType ||--o{ Match : classifies
   FlipRule ||--o{ Match : applies_to_S2
   Match {
     date date
     string venue_type_id
+    string derby_id
     bool closing_odds
-    bool is_derby
   }
   CalculationResult {
     int scenario
@@ -69,9 +70,33 @@ erDiagram
 | `odds_px` | decimal | ✓ | Коэффициент X |
 | `odds_p2` | decimal | ✓ | Коэффициент P2 |
 | `closing_odds` | bool | ✓ | Закрывающая линия (для цепочки S2) |
-| `is_derby` | bool | ✓ | Триггер правила `derby` в S2 |
+| `derby_id` | string | ✓ | Код из справочника **DerbyType** (по умолчанию `no`) |
 
-**Venue Type** — не свободный текст, а значение из справочника (как в Excel с выпадающим списком). Одна запись на матч задаёт множители для **хозяина и гостя** этой строки.
+**Venue Type** и **Derby** — не свободный текст, а коды из справочников (выпадающие списки в Excel). Venue задаёт множители площадки; Derby — тип матча и коэффициент перевертыша в S2.
+
+### DerbyType (справочник)
+
+Справочник типа дерби / соперничества. Импорт: [examples/derby_types.csv](examples/derby_types.csv).
+
+| Поле | Тип | Обяз. | Описание |
+|------|-----|:-----:|----------|
+| `derby_id` | string | ✓ | Код (ключ справочника) |
+| `label_ru` | string | | Подпись в UI (как в Excel) |
+| `flip_coefficient` | decimal | ✓ | Множитель перевертыша в **сценарии 2** |
+| `applies_flip_s2` | bool | ✓ | Применять ли перевертыш (`false` для `no`) |
+| `notes` | string | | Комментарий |
+
+**Допустимые коды (MVP, как в таблице пользователя):**
+
+| derby_id | label_ru (Excel) |
+|----------|------------------|
+| `no` | No |
+| `city_derby` | City derby |
+| `regional_derby` | Regional derby |
+| `rivalry` | Rivalry |
+| `other` | Other |
+
+При `derby_id = no` перевертыш по derby **не** применяется. Коэффициенты `flip_coefficient` настраиваются в справочнике (не в строке матча).
 
 ### VenueType (справочник)
 
@@ -111,11 +136,11 @@ erDiagram
 
 | Поле | Тип | Обяз. | Описание |
 |------|-----|:-----:|----------|
-| `rule_id` | string | ✓ | `derby`, `team_win`, … |
+| `rule_id` | string | ✓ | `team_win`, `team_loss`, … |
 | `condition` | string | ✓ | Код условия (см. [calculation.md](calculation.md) §4b) |
 | `coefficient` | decimal | ✓ | k_rule (> 0) |
 
-**Только сценарий 2.**
+**Только сценарий 2.** Коэффициенты по типу дерби — в справочнике **DerbyType**, не в FlipRule.
 
 ### TimeWindowConfig
 
@@ -167,7 +192,7 @@ erDiagram
 | `home_goals` | | Голы хозяев (для сверки / бэктеста, на расчёт fair odds в MVP не влияют) |
 | `away_goals` | | Голы гостей |
 | `result` | | `H` / `D` / `A` — фактический исход |
-| `derby` | ✓ | `true` / `false` — триггер правила `derby` в **сценарии 2** |
+| `derby` | ✓ | Код из справочника **DerbyType** (`no`, `city_derby`, …) |
 | `venue_type` | ✓ | Код из справочника **VenueType** (выпадающий список в Excel) |
 
 **Маппинг при импорте во внутренний `Match`:**
@@ -177,12 +202,12 @@ erDiagram
 | `home_team` | `home_team_id` (нормализация имени → id) |
 | `away_team` | `away_team_id` |
 | `p1`, `x`, `p2` | `odds_p1`, `odds_px`, `odds_p2` |
-| `derby` | `is_derby` |
+| `derby` | `derby_id` (валидация по справочнику) |
 | `venue_type` | `venue_type_id` (валидация по справочнику) |
 | — | `season_id` = из настроек импорта (напр. `laliga_2024_25`) |
 | — | `closing_odds` = `false` по умолчанию; для цепочки S2 пользователь помечает closing отдельно или вторым импортом |
 
-**Derby:** колонка `derby` — флаг; коэффициент перевертыша — в `flip_rules.csv`. **Venue Type** — отдельный справочник поправок площадки (`city_derby_home` ≠ флаг derby).
+**Два справочника:** `city_derby` (Derby) и `city_derby_home` (Venue Type) — разные сущности; могут стоять в одной строке матча независимо.
 
 ### 3.1. matches.csv (внутренний формат)
 
@@ -198,7 +223,7 @@ erDiagram
 | `odds_px` | ✓ | 3.40 |
 | `odds_p2` | ✓ | 3.60 |
 | `closing_odds` | ✓ | true |
-| `is_derby` | ✓ | false |
+| `derby_id` | ✓ | no |
 
 Пример: [examples/matches.csv](examples/matches.csv).
 
@@ -210,7 +235,19 @@ erDiagram
 | `season_id` | ✓ |
 | `market_weight` | ✓ |
 
-### 3.3. venue_types.csv (справочник Venue Type)
+### 3.3. derby_types.csv (справочник Derby)
+
+| Колонка | Обяз. | Описание |
+|---------|:-----:|----------|
+| `derby_id` | ✓ | Код для выпадающего списка |
+| `label_ru` | | Подпись (No, City derby, …) |
+| `flip_coefficient` | ✓ | Множитель в сценарии 2 |
+| `applies_flip_s2` | ✓ | true/false |
+| `notes` | | Комментарий |
+
+Пример: [examples/derby_types.csv](examples/derby_types.csv).
+
+### 3.4. venue_types.csv (справочник Venue Type)
 
 | Колонка | Обяз. | Описание |
 |---------|:-----:|----------|
@@ -224,7 +261,7 @@ erDiagram
 
 > **Устаревшее:** [venue_factors.csv](examples/venue_factors.csv) — упрощённые три множителя `h_home`/`h_away`/`h_neutral`; для новых импортов использовать **venue_types**.
 
-### 3.4. flip_rules.csv
+### 3.5. flip_rules.csv
 
 | Колонка | Обяз. |
 |---------|:-----:|
@@ -243,7 +280,7 @@ erDiagram
 | `venue_type_id` ∉ справочник VenueType | INVALID_VENUE_TYPE |
 | `market_weight` > 0 | INVALID_WEIGHT |
 | Дата в формате ISO | INVALID_DATE |
-| Для S2-расчёта: наличие FlipRule `derby` при использовании is_derby | WARN_MISSING_DERBY_RULE |
+| `derby_id` ∉ справочник DerbyType | INVALID_DERBY_TYPE |
 
 ---
 

@@ -176,7 +176,7 @@ s_away' = s_away * h_A
 
 `s_A' = 1.20 * 1.08 = 1.296`, `s_B' = 0.95 * 0.92 = 0.874`.
 
-**Не путать:** `city_derby_home` в Venue Type — поправка площадки; флаг `is_derby` + `FlipRule` `derby` — перевертыш в **сценарии 2**.
+**Не путать:** `city_derby_home` (Venue Type) — поправка площадки; `city_derby` (Derby) — тип соперничества и перевертыш в S2.
 
 ---
 
@@ -184,33 +184,44 @@ s_away' = s_away * h_A
 
 > **scenario: 2 only** — в сценарии 1 блок **не вызывается**.
 
-### Модель FlipRule
+### 4b.1. Derby (справочник)
 
-| Поле | Описание |
-|------|----------|
-| `rule_id` | Например `derby`, `home_favorite_win` |
-| `condition` | Условие срабатывания (см. таблицу ниже) |
-| `coefficient` | Множитель `k_rule` |
+По `derby_id` матча из [derby_types.csv](examples/derby_types.csv):
 
-### Условия (MVP)
+```
+если DerbyType[derby_id].applies_flip_s2:
+    k_flip = DerbyType[derby_id].flip_coefficient
+    s_side := s_side * k_flip
+```
 
-| rule_id | condition | Эффект на силу A в контексте матча |
-|---------|-----------|-------------------------------------|
-| `derby` | `match.is_derby = true` | `s_A := s_A * k_derby` |
-| `team_win` | A победила в матче A–C | `s_A := s_A * k_rule` |
-| `team_loss` | A проиграла в матче A–C | `s_A := s_A / k_rule` |
+| derby_id | flip (MVP) | S2 |
+|----------|------------|-----|
+| `no` | — | не применяется |
+| `city_derby` | 0.95 | да |
+| `regional_derby` | 0.96 | да |
+| `rivalry` | 0.97 | да |
+| `other` | 1.00 | да (настраивается) |
 
-**Дерби:** при `is_derby=true` применяется только коэффициент правила `derby`, не отдельная формула.
+### 4b.2. Прочие FlipRule
+
+| rule_id | condition | Эффект |
+|---------|-----------|--------|
+| `team_win` | сторона победила в матче A–C / B–C | `s := s * k_rule` |
+| `team_loss` | сторона проиграла | `s := s / k_rule` |
+
+Справочник: [flip_rules.csv](examples/flip_rules.csv) (без строки derby — коэфф. derby в **DerbyType**).
 
 ### Порядок применения
 
 1. Рассчитать базовую `r_AC`, `r_BC` из de-vig odds (§6).
-2. Для каждого матча цепочки применить сработавшие правила к силе **стороны A или B** в этом матче.
-3. При **двух несовместимых** правилах на один матч → пересечение ненадёжно ([scenarios.md](scenarios.md)).
+2. Venue Type матча (§4).
+3. Derby по `derby_id` (§4b.1), если `applies_flip_s2`.
+4. Остальные FlipRule по исходу матча (§4b.2).
+5. Конфликт правил на один матч → ненадёжно ([scenarios.md](scenarios.md)).
 
 ### Пример
 
-Матч A–C, derby, `k_derby=0.95`. Базовая `s_A=1.10` → после дерби `s_A=1.045`.
+Матч A–C, `derby_id=city_derby`, `flip_coefficient=0.95`. `s_A=1.10` → `s_A=1.045`.
 
 ---
 
@@ -281,7 +292,7 @@ px = k_draw
 
 #### 5.6. Запрет
 
-Не вызывать `FlipRule`, `k_derby`, пересчёт через C.
+Не вызывать DerbyType / FlipRule, пересчёт через C (`derby_id` в S1 игнорируется).
 
 ### Выход
 

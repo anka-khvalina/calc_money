@@ -1,4 +1,3 @@
 rule_id,condition,coefficient
-derby,is_derby,0.95
 team_win,team_win,1.03
 team_loss,team_loss,1.03

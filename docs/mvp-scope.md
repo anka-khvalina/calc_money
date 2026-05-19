@@ -17,14 +17,14 @@
 | CALC-3 | Выбор сценария: окно 90 дней, подходящий C, откат при ненадёжности |
 | CALC-4 | De-vig пропорциональный |
 | CALC-5 | Наложение маржи на вывод (уровни 1–5) |
-| CALC-6 | Перевертыши и `k_derby` только в S2 |
+| CALC-6 | Перевертыши DerbyType + FlipRule только в S2 |
 | CALC-7 | Слияние S1 и оценки пересечения (γ по умолчанию 0.6) |
 
 ### Данные
 
 | ID | Функция |
 |----|---------|
-| DATA-1 | Импорт CSV: matches, team_strength, venue_types, flip_rules |
+| DATA-1 | Импорт CSV: matches, team_strength, derby_types, venue_types, flip_rules |
 | DATA-2 | Валидация по [data-model.md](data-model.md) |
 | DATA-3 | Локальное хранение (SQLite или эквивалент) |
 

@@ -1,30 +1,30 @@
 date,home_team,p1,x,p2,away_team,home_goals,away_goals,result,derby,venue_type
-2024-08-15,Girona,2.50,3.19,3.18,Vallecano,1,1,D,false,regular_home
-2024-08-16,Mallorca,9.11,5.61,1.34,Real Madrid,0,3,A,false,regular_home
-2024-08-17,Sevilla,2.15,3.40,3.45,Getafe,1,0,H,false,regular_home
-2024-08-17,Villarreal,1.95,3.55,4.10,Las Palmas,2,2,D,false,regular_home
-2024-08-18,Barcelona,1.42,5.20,7.50,Athletic,2,1,H,false,regular_home
-2024-08-18,Real Sociedad,2.05,3.30,3.80,Alaves,1,2,A,false,regular_home
-2024-08-19,Real Madrid,1.25,7.00,11.50,Espanyol,1,0,H,false,regular_home
-2024-08-23,Vallecano,1.27,6.28,11.27,Elche,1,1,D,false,regular_home
-2024-08-24,Atletico Madrid,1.55,4.10,6.20,Betis,3,0,H,false,regular_home
-2024-08-24,Osasuna,2.40,3.25,3.10,Leganes,1,1,D,false,regular_home
-2024-08-25,Celta,2.20,3.35,3.30,Valencia,3,1,H,false,regular_home
-2024-08-25,Real Madrid,1.18,8.50,13.00,Valladolid,3,0,H,false,regular_home
-2024-09-01,Barcelona,1.35,5.50,8.00,Valladolid,2,0,H,false,regular_home
-2024-09-01,Sevilla,2.80,3.30,2.55,Girona,0,2,A,false,regular_home
-2024-09-14,Real Madrid,1.45,5.00,6.50,Real Sociedad,2,0,H,false,regular_home
-2024-09-15,Atletico Madrid,1.70,3.80,5.00,Valencia,3,0,H,false,regular_home
-2024-09-21,Barcelona,1.55,4.50,5.80,Getafe,1,0,H,false,regular_home
-2024-09-22,Real Madrid,2.10,3.50,3.40,Atletico Madrid,0,0,D,true,city_derby_home
-2024-10-05,Atletico Madrid,2.30,3.40,3.10,Real Madrid,1,2,A,true,city_derby_home
-2024-10-26,Barcelona,1.65,4.20,5.00,Real Madrid,1,2,A,true,city_derby_home
-2024-11-10,Real Madrid,1.50,4.80,6.00,Osasuna,4,0,H,false,regular_home
-2024-12-07,Vallecano,3.20,3.30,2.30,Atletico Madrid,1,1,D,true,city_derby_home
-2025-01-12,Athletic,2.05,3.35,3.70,Barcelona,0,2,A,false,regional_derby_home
-2025-02-01,Real Madrid,1.30,6.00,9.50,Las Palmas,4,1,H,false,regular_home
-2025-03-15,Barcelona,1.48,4.90,6.50,Sevilla,4,1,H,false,regular_home
-2025-04-12,Real Madrid,1.22,7.50,12.00,Elche,3,0,H,false,regular_home
-2025-05-11,Barcelona,1.72,4.00,4.80,Real Madrid,4,3,H,true,city_derby_home
-2025-05-15,Athletic,2.10,3.40,3.50,Atletico Madrid,0,0,D,false,neutral
-2025-05-18,Atletico Madrid,1.85,3.60,4.40,Villarreal,2,1,H,false,special
+2024-08-15,Girona,2.50,3.19,3.18,Vallecano,1,1,D,no,regular_home
+2024-08-16,Mallorca,9.11,5.61,1.34,Real Madrid,0,3,A,no,regular_home
+2024-08-17,Sevilla,2.15,3.40,3.45,Getafe,1,0,H,no,regular_home
+2024-08-17,Villarreal,1.95,3.55,4.10,Las Palmas,2,2,D,no,regular_home
+2024-08-18,Barcelona,1.42,5.20,7.50,Athletic,2,1,H,no,regular_home
+2024-08-18,Real Sociedad,2.05,3.30,3.80,Alaves,1,2,A,no,regular_home
+2024-08-19,Real Madrid,1.25,7.00,11.50,Espanyol,1,0,H,no,regular_home
+2024-08-23,Vallecano,1.27,6.28,11.27,Elche,1,1,D,no,regular_home
+2024-08-24,Atletico Madrid,1.55,4.10,6.20,Betis,3,0,H,no,regular_home
+2024-08-24,Osasuna,2.40,3.25,3.10,Leganes,1,1,D,no,regular_home
+2024-08-25,Celta,2.20,3.35,3.30,Valencia,3,1,H,no,regular_home
+2024-08-25,Real Madrid,1.18,8.50,13.00,Valladolid,3,0,H,no,regular_home
+2024-09-01,Barcelona,1.35,5.50,8.00,Valladolid,2,0,H,no,regular_home
+2024-09-01,Sevilla,2.80,3.30,2.55,Girona,0,2,A,no,regular_home
+2024-09-14,Real Madrid,1.45,5.00,6.50,Real Sociedad,2,0,H,no,regular_home
+2024-09-15,Atletico Madrid,1.70,3.80,5.00,Valencia,3,0,H,no,regular_home
+2024-09-21,Barcelona,1.55,4.50,5.80,Getafe,1,0,H,no,regular_home
+2024-09-22,Real Madrid,2.10,3.50,3.40,Atletico Madrid,0,0,D,city_derby,city_derby_home
+2024-10-05,Atletico Madrid,2.30,3.40,3.10,Real Madrid,1,2,A,city_derby,city_derby_home
+2024-10-26,Barcelona,1.65,4.20,5.00,Real Madrid,1,2,A,city_derby,city_derby_home
+2024-11-10,Real Madrid,1.50,4.80,6.00,Osasuna,4,0,H,no,regular_home
+2024-12-07,Vallecano,3.20,3.30,2.30,Atletico Madrid,1,1,D,city_derby,city_derby_home
+2025-01-12,Athletic,2.05,3.35,3.70,Barcelona,0,2,A,regional_derby,regional_derby_home
+2025-02-01,Real Madrid,1.30,6.00,9.50,Las Palmas,4,1,H,no,regular_home
+2025-03-15,Barcelona,1.48,4.90,6.50,Sevilla,4,1,H,no,regular_home
+2025-04-12,Real Madrid,1.22,7.50,12.00,Elche,3,0,H,no,regular_home
+2025-05-11,Barcelona,1.72,4.00,4.80,Real Madrid,4,3,H,city_derby,city_derby_home
+2025-05-15,Athletic,2.10,3.40,3.50,Atletico Madrid,0,0,D,rivalry,neutral
+2025-05-18,Atletico Madrid,1.85,3.60,4.40,Villarreal,2,1,H,no,special
