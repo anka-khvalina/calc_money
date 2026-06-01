@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - "**"
-    paths:
-      - "app/**"
-      - ".github/workflows/build-windows.yml"
+    tags:
+      - "v*"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -33,3 +35,17 @@ jobs:
           name: FairOddsCalc-windows
           path: dist/FairOddsCalc.exe
           if-no-files-found: error
+
+      - name: Publish Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/FairOddsCalc.exe
+          name: FairOddsCalc ${{ github.ref_name }}
+          body: |
+            Десктоп-калькулятор средней A.
+
+            Скачайте `FairOddsCalc.exe` ниже и запустите двойным кликом (Python не требуется).
+
+            Если Windows покажет SmartScreen ("Windows защитила ваш компьютер"):
+            нажмите "Подробнее" -> "Выполнить в любом случае" (файл не подписан сертификатом).
