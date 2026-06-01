@@ -6,13 +6,15 @@
   поля "Результат", "A:", "X :", "Средняя А",
   кнопки "Считаем А лиги" и "Считать".
 
-Добавлено поле выбора метода усреднения "Средней A":
-  - Среднеарифметическое (как в исходной версии)
-  - Геометрическое
-  - Линейное усечённое 5%
-  - Усечённо-геометрическое 5%
+Добавлено:
+  - поле выбора метода усреднения "Средней A";
+  - фильтр аномальных выбросов по IQR (метод Тьюки x1.5) ПЕРЕД усреднением.
 
-Мера строки: A = (Коэф гости - 1) / (Коэф дома - 1).
+Мера строки:           A = (Коэф гости - 1) / (Коэф дома - 1)
+Фильтр аномалий:       значение A считается аномальным, если выходит за
+                       интервал [Q1 - 1.5*IQR ; Q3 + 1.5*IQR].
+Итоговый коэффициент:  среднее (по умолчанию геометрическое) по значениям,
+                       НЕ признанным аномальными.
 """
 
 import math
@@ -30,6 +32,7 @@ TRIMMED_GEOMETRIC = "Усечённо-геометрическое 5%"
 METHODS = [ARITHMETIC, GEOMETRIC, TRIMMED_LINEAR, TRIMMED_GEOMETRIC]
 
 TRIM_FRACTION = 0.05
+IQR_K = 1.5
 
 
 def row_a(k_home: float, k_away: float) -> float:
@@ -51,11 +54,56 @@ def compute_a(home, away):
     return [row_a(h, a) for h, a in zip(home, away)]
 
 
+def percentile(sorted_values, p):
+    """Перцентиль с линейной интерполяцией (как в C#-реализации).
+
+    position = (n - 1) * p; интерполяция между соседними отсортированными
+    значениями.
+    """
+    n = len(sorted_values)
+    if n == 0:
+        raise ValueError("Список значений пуст")
+    position = (n - 1) * p
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return sorted_values[int(lower)]
+    weight = position - lower
+    return sorted_values[int(lower)] * (1 - weight) + sorted_values[int(upper)] * weight
+
+
+def iqr_bounds(values, k=IQR_K):
+    """Границы Тьюки [Q1 - k*IQR ; Q3 + k*IQR] и сами Q1, Q3, IQR."""
+    s = sorted(values)
+    q1 = percentile(s, 0.25)
+    q3 = percentile(s, 0.75)
+    iqr = q3 - q1
+    lower = q1 - k * iqr
+    upper = q3 + k * iqr
+    return {"q1": q1, "q3": q3, "iqr": iqr, "lower": lower, "upper": upper}
+
+
+def detect_outliers(values, k=IQR_K):
+    """Список флагов is_outlier для каждого значения A.
+
+    Аномалия: A < lower или A > upper.
+    """
+    b = iqr_bounds(values, k)
+    flags = [(v < b["lower"]) or (v > b["upper"]) for v in values]
+    return flags, b
+
+
+def filter_valid(values, k=IQR_K):
+    """Значения без аномалий (по IQR)."""
+    flags, _ = detect_outliers(values, k)
+    return [v for v, out in zip(values, flags) if not out]
+
+
 def _trim(sorted_values, fraction):
-    k = int(len(sorted_values) * fraction)
-    if k == 0:
+    n = int(len(sorted_values) * fraction)
+    if n == 0:
         return list(sorted_values)
-    return sorted_values[k:len(sorted_values) - k]
+    return sorted_values[n:len(sorted_values) - n]
 
 
 def average(values, method=ARITHMETIC):
@@ -80,6 +128,17 @@ def average(values, method=ARITHMETIC):
         return math.exp(sum(core) / len(core))
 
     raise ValueError(f"Неизвестный метод: {method}")
+
+
+def median(values):
+    s = sorted(values)
+    n = len(s)
+    if n == 0:
+        raise ValueError("Нет данных для расчёта")
+    mid = n // 2
+    if n % 2:
+        return s[mid]
+    return (s[mid - 1] + s[mid]) / 2
 
 
 # ---------------------------------------------------------------------------
@@ -115,8 +174,8 @@ def build_app():
 
     root = tk.Tk()
     root.title("Калькулятор средней A")
-    root.geometry("900x520")
-    root.minsize(820, 480)
+    root.geometry("960x560")
+    root.minsize(880, 520)
 
     main = ttk.Frame(root, padding=10)
     main.pack(fill="both", expand=True)
@@ -131,8 +190,9 @@ def build_app():
 
     text_home = tk.Text(left, width=14, height=22, relief="solid", borderwidth=1)
     text_away = tk.Text(left, width=14, height=22, relief="solid", borderwidth=1)
-    text_a = tk.Text(left, width=14, height=22, relief="solid", borderwidth=1,
+    text_a = tk.Text(left, width=16, height=22, relief="solid", borderwidth=1,
                      background="#f4f4f4")
+    text_a.tag_configure("outlier", foreground="#c0392b")
     text_a.configure(state="disabled")
 
     text_home.grid(row=1, column=0, padx=6, pady=4, sticky="nsew")
@@ -153,8 +213,7 @@ def build_app():
     def labeled_entry(parent, label):
         ttk.Label(parent, text=label).pack(anchor="w", pady=(8, 0))
         var = tk.StringVar()
-        entry = ttk.Entry(parent, textvariable=var, width=30)
-        entry.pack(anchor="w")
+        ttk.Entry(parent, textvariable=var, width=32).pack(anchor="w")
         return var
 
     var_result = labeled_entry(right, "Результат:")
@@ -163,10 +222,18 @@ def build_app():
     var_mean = labeled_entry(right, "Средняя А")
 
     ttk.Label(right, text="Метод расчёта").pack(anchor="w", pady=(12, 0))
-    method_var = tk.StringVar(value=ARITHMETIC)
-    method_box = ttk.Combobox(right, textvariable=method_var, values=METHODS,
-                              state="readonly", width=28)
-    method_box.pack(anchor="w")
+    method_var = tk.StringVar(value=GEOMETRIC)
+    ttk.Combobox(right, textvariable=method_var, values=METHODS,
+                 state="readonly", width=30).pack(anchor="w")
+
+    drop_outliers = tk.BooleanVar(value=True)
+    ttk.Checkbutton(right, text="Исключать аномалии (IQR x1.5)",
+                    variable=drop_outliers).pack(anchor="w", pady=(8, 0))
+
+    info_var = tk.StringVar(value="")
+    info = ttk.Label(right, textvariable=info_var, justify="left",
+                     foreground="#555")
+    info.pack(anchor="w", pady=(8, 0))
 
     # ---- Логика ----
     def read_columns():
@@ -174,42 +241,71 @@ def build_app():
         away = parse_column(text_away.get("1.0", "end"))
         return home, away
 
-    def fill_a_column(a_values):
+    def fill_a_column(a_values, flags):
         text_a.configure(state="normal")
         text_a.delete("1.0", "end")
-        text_a.insert("1.0", "\n".join(fmt(round(v, 2), 3) for v in a_values) + "\n")
+        for v, out in zip(a_values, flags):
+            line = fmt(round(v, 2), 3)
+            if out:
+                line += "  ✕"
+                text_a.insert("end", line + "\n", "outlier")
+            else:
+                text_a.insert("end", line + "\n")
         text_a.configure(state="disabled")
+
+    def analyze():
+        """Считает A, выбросы и итоговые средние по валидным значениям."""
+        home, away = read_columns()
+        a_values = compute_a(home, away)
+
+        if drop_outliers.get() and len(a_values) >= 4:
+            flags, b = detect_outliers(a_values)
+        else:
+            flags = [False] * len(a_values)
+            b = None
+
+        fill_a_column(a_values, flags)
+        valid = [v for v, out in zip(a_values, flags) if not out]
+        if not valid:
+            raise ValueError("Все значения помечены как аномалии — нет данных")
+        return a_values, valid, flags, b
+
+    def show_results(valid, flags, b, league=False):
+        n_out = sum(flags)
+        mean_sel = average(valid, method_var.get())
+        var_mean.set(fmt(mean_sel))
+        var_result.set(fmt(average(valid, GEOMETRIC), 3) if not league
+                       else fmt(average(valid, GEOMETRIC)))
+        var_a.set(fmt(average(valid, ARITHMETIC)))
+        var_x.set(fmt(median(valid)))
+        lines = [f"строк: {len(flags)}   валидных: {len(valid)}   аномалий: {n_out}"]
+        if b is not None:
+            lines.append(f"Q1={fmt(b['q1'], 3)}  Q3={fmt(b['q3'], 3)}  "
+                         f"IQR={fmt(b['iqr'], 3)}")
+            lines.append(f"границы: [{fmt(b['lower'], 3)} ; {fmt(b['upper'], 3)}]")
+        lines.append(f"геом={fmt(average(valid, GEOMETRIC), 4)}  "
+                     f"ариф={fmt(average(valid, ARITHMETIC), 4)}  "
+                     f"медиана={fmt(median(valid), 4)}")
+        info_var.set("\n".join(lines))
 
     def calc():
         try:
-            home, away = read_columns()
-            a_values = compute_a(home, away)
-            fill_a_column(a_values)
-            mean = average(a_values, method_var.get())
-            var_mean.set(fmt(mean))
-            var_a.set(fmt(mean))
-            var_result.set(fmt(mean, 3))
-            var_x.set(str(len(a_values)))
+            _, valid, flags, b = analyze()
+            show_results(valid, flags, b, league=False)
         except (ValueError, ZeroDivisionError) as exc:
             messagebox.showerror("Ошибка", str(exc))
 
     def calc_league():
-        """Среднее A по всему введённому пулу (А лиги) выбранным методом."""
         try:
-            home, away = read_columns()
-            a_values = compute_a(home, away)
-            fill_a_column(a_values)
-            league = average(a_values, method_var.get())
-            var_result.set(fmt(league))
-            var_a.set(fmt(league))
+            _, valid, flags, b = analyze()
+            show_results(valid, flags, b, league=True)
         except (ValueError, ZeroDivisionError) as exc:
             messagebox.showerror("Ошибка", str(exc))
 
-    btn_league = ttk.Button(right, text="Считаем А лиги", command=calc_league)
-    btn_league.pack(anchor="w", pady=(16, 4), ipadx=20, ipady=4)
-
-    btn_calc = ttk.Button(right, text="Считать", command=calc)
-    btn_calc.pack(anchor="w", pady=4, ipadx=20, ipady=4)
+    ttk.Button(right, text="Считаем А лиги", command=calc_league).pack(
+        anchor="w", pady=(16, 4), ipadx=20, ipady=4)
+    ttk.Button(right, text="Считать", command=calc).pack(
+        anchor="w", pady=4, ipadx=20, ipady=4)
 
     return root
 
