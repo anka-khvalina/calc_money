@@ -12,6 +12,10 @@
 - Формулы и сценарии расчёта: [docs/calculation.md](docs/calculation.md), [docs/scenarios.md](docs/scenarios.md)
 - Модель данных и примеры CSV: [docs/data-model.md](docs/data-model.md), [docs/examples/](docs/examples/)
 
+## Приложение
+
+В каталоге [app/](app/) — десктоп-калькулятор средней `A` (Python + Tkinter), повторяющий исходный интерфейс с добавленным выбором метода усреднения. Запуск: `python3 app/fair_odds_calc.py` (см. [app/README.md](app/README.md)).
+
 ## Кратко о продукте
 
 - **Сценарий 1:** расчёт без пересечения через общего соперника (сезоны, рыночный вес, venue; без перевертышей).
