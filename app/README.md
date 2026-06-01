@@ -45,6 +45,27 @@ python3 app/fair_odds_calc.py
 
 Внешних зависимостей нет — только стандартная библиотека.
 
+## Сборка в .exe (Windows)
+
+Готовый `.exe` собирается через PyInstaller (один файл, без консоли).
+
+### Вариант 1: автоматически через GitHub Actions (рекомендуется)
+
+В репозитории есть workflow [.github/workflows/build-windows.yml](../.github/workflows/build-windows.yml). При пуше изменений в `app/` он собирает `.exe` на Windows-раннере.
+
+Скачать готовый файл: вкладка **Actions** → последний запуск **Build Windows EXE** → раздел **Artifacts** → `FairOddsCalc-windows` (внутри `FairOddsCalc.exe`). Запуск можно инициировать вручную кнопкой **Run workflow** (триггер `workflow_dispatch`).
+
+### Вариант 2: локально на Windows
+
+```bat
+pip install pyinstaller
+pyinstaller --onefile --windowed --name FairOddsCalc app\fair_odds_calc.py
+```
+
+Результат: `dist\FairOddsCalc.exe` — самодостаточный файл, Python на машине пользователя не нужен.
+
+> Примечание: настоящий Windows `.exe` собирается **только на Windows** (или в CI на `windows-latest`). На Linux/macOS PyInstaller создаёт бинарник под текущую ОС, а не `.exe`.
+
 ## Формат ввода
 
 - По одному коэффициенту в строке в колонках «Коэф дома» и «Коэф гости».
