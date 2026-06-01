@@ -25,10 +25,14 @@
 | OQ-3 | Веса слияния S1+S2: `γ`, `λ_m` | γ=0.6, λ_m=0.4 | **review** | [calculation.md](calculation.md) §5–6 |
 | OQ-4 | Смысл «коэффициент маржи 1–5» | Дискретные 1%…5% overround | **review** | [calculation.md](calculation.md) §2 |
 | OQ-5 | Семантика **двух строк** таблицы UI | Одинаковая линия 1X2 (вариант A) | **review** | [ui-spec.md](ui-spec.md) §5 |
-| OQ-6 | `k_draw` и пороги надёжности (CV, score) | k_draw=0.26, CV≤0.25, score≥0.5 | **review** | [scenarios.md](scenarios.md), [calculation.md](calculation.md) |
+| OQ-6 | `k_draw` и пороги надёжности | k_draw=0.26, σ(ln r)≤0.25, score≥0.5 | **review** | [scenarios.md](scenarios.md), [calculation.md](calculation.md) |
 | OQ-7 | Вес прошлого сезона `< 1` | β=0 в MVP (только текущий) | **ok** | [calculation.md](calculation.md) §5 |
 | OQ-8 | Derby в S1 | `derby_id` не применяется (только DerbyType flip в S2) | **ok** | [requirements.md](requirements.md), [glossary.md](glossary.md) |
 | OQ-12 | Коэфф. flip по типам derby | Заглушки в derby_types.csv | **review** | [derby_types.csv](examples/derby_types.csv) |
+| OQ-13 | `A_i` по сырым `K` или после de-vig | Сырые (как в Excel) | **review** | [calculation.md](calculation.md) §5.1 |
+| OQ-14 | Метод среднего для `A_i` | Геометрическое + медиана-контроль | **ok** | [calculation.md](calculation.md) §5.1 |
+| OQ-15 | Дисперсия для надёжности | σ(ln r) / MAD вместо CV | **ok** | [scenarios.md](scenarios.md) §4 |
+| OQ-16 | Калибровка venue по geom(A) пула | Ориентир для h_home/h_away | **review** | [calculation.md](calculation.md) §5.1 |
 | OQ-9 | Рыночный вес в S2 | Через полный S1, не заменяется C | **ok** | [requirements.md](requirements.md) |
 | OQ-10 | Venue в S1 | Обязательно для целевого матча | **ok** | [requirements.md](requirements.md) |
 | OQ-11 | Непрерывный множитель маржи вместо 1–5 | Не используется в MVP | **review** alt | [calculation.md](calculation.md) §2 |
@@ -68,7 +72,7 @@
 
 | Параметр | MVP | Комментарий |
 |----------|-----|-------------|
-| CV max | 0.25 | Откат S2→S1 |
+| σ(ln r) max | 0.25 | Откат S2→S1 (вместо CV — устойчивее) |
 | reliability min | 0.5 | Откат |
 | k_draw | 0.26 | Или среднее по лиге |
 
@@ -108,3 +112,4 @@
 | 2026-05-19 | Пример season_odds_la_liga_2024_25.csv; Derby/Venue Type в примере — ориентировочно |
 | 2026-05-19 | Venue Type — справочник venue_types.csv (5 кодов из Excel) |
 | 2026-05-19 | Derby — справочник derby_types.csv (No, City derby, …) |
+| 2026-05-19 | A_i = (K_гости−1)/(K_дома−1); среднее — геометрическое + медиана; надёжность по σ(ln r)/MAD |
