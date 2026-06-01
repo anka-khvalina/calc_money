@@ -49,11 +49,23 @@ python3 app/fair_odds_calc.py
 
 Готовый `.exe` собирается через PyInstaller (один файл, без консоли).
 
-### Вариант 1: автоматически через GitHub Actions (рекомендуется)
+### Вариант 0: готовый .exe из Releases (для передачи другу)
 
-В репозитории есть workflow [.github/workflows/build-windows.yml](../.github/workflows/build-windows.yml). При пуше изменений в `app/` он собирает `.exe` на Windows-раннере.
+Самый простой способ поделиться: вкладка **Releases** репозитория → последний релиз → скачать `FairOddsCalc.exe` и запустить двойным кликом. Прямая ссылка вида:
 
-Скачать готовый файл: вкладка **Actions** → последний запуск **Build Windows EXE** → раздел **Artifacts** → `FairOddsCalc-windows` (внутри `FairOddsCalc.exe`). Запуск можно инициировать вручную кнопкой **Run workflow** (триггер `workflow_dispatch`).
+```
+https://github.com/<owner>/<repo>/releases/latest/download/FairOddsCalc.exe
+```
+
+Релиз с `.exe` публикуется автоматически при пуше тега `vX.Y.Z` (workflow ниже).
+
+При первом запуске Windows может показать SmartScreen («Windows защитила ваш компьютер») — это потому, что файл не подписан сертификатом. Нажмите **Подробнее → Выполнить в любом случае**.
+
+### Вариант 1: артефакт сборки GitHub Actions
+
+В репозитории есть workflow [.github/workflows/build-windows.yml](../.github/workflows/build-windows.yml). При пуше в `app/` он собирает `.exe` на Windows-раннере.
+
+Скачать: вкладка **Actions** → последний запуск **Build Windows EXE** → **Artifacts** → `FairOddsCalc-windows`. Можно запустить вручную кнопкой **Run workflow**.
 
 ### Вариант 2: локально на Windows
 
