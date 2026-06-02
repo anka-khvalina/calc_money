@@ -127,6 +127,23 @@ python3 app/team_ranking.py --input <matches.csv> [--top 10] [--output rating.cs
 python3 app/team_ranking.py --input docs/examples/season_odds_la_liga_2024_25.csv --top 8
 ```
 
+## Формат для iOS (Safari)
+
+Добавлен самодостаточный файл:
+
+- [web/FairOddsCalc_iOS.html](../web/FairOddsCalc_iOS.html)
+
+Как открыть на iPhone/iPad:
+
+1. Скачайте `FairOddsCalc_iOS.html` из релиза или из репозитория.
+2. Откройте файл в **Safari**.
+3. (Опционально) нажмите **Поделиться → На экран «Домой»** для запуска «как приложение».
+
+Это mobile-web версия с теми же двумя вкладками:
+
+- Калькулятор A
+- Рейтинг команд
+
 ## Сборка в .exe (Windows)
 
 Готовый `.exe` собирается через PyInstaller (один файл, без консоли).

@@ -36,16 +36,27 @@ jobs:
           path: dist/FairOddsCalc.exe
           if-no-files-found: error
 
+      - name: Upload iOS HTML artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FairOddsCalc-ios-html
+          path: web/FairOddsCalc_iOS.html
+          if-no-files-found: error
+
       - name: Publish Release (on tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/FairOddsCalc.exe
+          files: |
+            dist/FairOddsCalc.exe
+            web/FairOddsCalc_iOS.html
           name: FairOddsCalc ${{ github.ref_name }}
           body: |
-            Десктоп-калькулятор средней A.
+            Калькулятор средней A + рейтинг команд.
 
-            Скачайте `FairOddsCalc.exe` ниже и запустите двойным кликом (Python не требуется).
+            Вложения:
+            - `FairOddsCalc.exe` — Windows desktop
+            - `FairOddsCalc_iOS.html` — iOS Safari / Mobile Web (один файл)
 
             Если Windows покажет SmartScreen ("Windows защитила ваш компьютер"):
             нажмите "Подробнее" -> "Выполнить в любом случае" (файл не подписан сертификатом).

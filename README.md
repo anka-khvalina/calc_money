@@ -20,6 +20,9 @@
 
 Запуск: `python3 app/fair_odds_calc.py` (см. [app/README.md](app/README.md)).
 
+Для iOS/Safari есть отдельный формат mobile-web:
+- [web/FairOddsCalc_iOS.html](web/FairOddsCalc_iOS.html)
+
 Также добавлен CLI для рейтинга команд по коэффициентам 1/X/2:
 
 `python3 app/team_ranking.py --input <matches.csv>`
