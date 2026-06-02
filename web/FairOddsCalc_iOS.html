@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>FairOddsCalc iOS</title>
+  <style>
+    :root{
+      --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
+      --accent:#255ad6; --danger:#b42318;
+    }
+    * { box-sizing:border-box; }
+    body{
+      margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      background:var(--bg); color:var(--text);
+    }
+    .wrap{ max-width:980px; margin:0 auto; padding:14px 12px 24px; }
+    h1{ font-size:20px; margin:8px 0 12px; }
+    .tabs{ display:flex; gap:8px; margin-bottom:10px; }
+    .tab-btn{
+      border:1px solid var(--line); background:#eef2ff; color:#1f3ea6;
+      border-radius:10px; padding:8px 12px; font-size:14px; font-weight:600;
+    }
+    .tab-btn.active{ background:var(--accent); color:#fff; border-color:var(--accent); }
+    .panel{
+      background:var(--card); border:1px solid var(--line); border-radius:14px;
+      padding:12px; display:none;
+    }
+    .panel.active{ display:block; }
+    .grid{
+      display:grid; gap:10px;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+    }
+    .field label{ display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+    textarea,input,select{
+      width:100%; border:1px solid var(--line); border-radius:10px;
+      padding:8px 10px; font-size:14px; background:#fff;
+    }
+    textarea{ min-height:210px; resize:vertical; }
+    .out{ background:#f8fafc; }
+    .row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .btn{
+      border:1px solid var(--line); background:#fff; border-radius:10px;
+      padding:9px 12px; font-size:14px; font-weight:600;
+    }
+    .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+    .btn:active{ transform:translateY(1px); }
+    .meta{ font-size:12px; color:var(--muted); line-height:1.45; margin-top:8px; white-space:pre-line; }
+    .small{ font-size:12px; color:var(--muted); }
+    .table-wrap{ overflow:auto; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
+    table{ width:100%; border-collapse:collapse; min-width:560px; background:#fff; }
+    th,td{ border-bottom:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; }
+    th{ background:#f8fafc; }
+    .right{ text-align:right; }
+    .danger{ color:var(--danger); }
+    .split{ display:grid; grid-template-columns:1.2fr 1fr; gap:10px; }
+    @media (max-width:860px){
+      .grid{ grid-template-columns:1fr; }
+      .split{ grid-template-columns:1fr; }
+      table{ min-width:0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>FairOddsCalc (iOS / Safari)</h1>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="a">Калькулятор A</button>
+      <button class="tab-btn" data-tab="rank">Рейтинг команд</button>
+    </div>
+
+    <!-- TAB A -->
+    <section id="tab-a" class="panel active">
+      <div class="grid">
+        <div class="field">
+          <label>Коэф дома (по одному в строке)</label>
+          <textarea id="homeOdds">2.02
+1.88
+2.42
+2.07</textarea>
+        </div>
+        <div class="field">
+          <label>Коэф гости (по одному в строке)</label>
+          <textarea id="awayOdds">2.21
+2.11
+2.79
+2.36</textarea>
+        </div>
+        <div class="field">
+          <label>A (вывод)</label>
+          <textarea id="aOutput" class="out" readonly></textarea>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="field" style="min-width:210px">
+          <label>Метод расчёта средней A</label>
+          <select id="avgMethod">
+            <option value="arith">Среднеарифметическое</option>
+            <option value="geom" selected>Геометрическое</option>
+            <option value="trim5">Линейное усечённое 5%</option>
+            <option value="trimGeom5">Усечённо-геометрическое 5%</option>
+          </select>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:22px;">
+          <input id="dropOutliers" type="checkbox" checked style="width:auto" />
+          <span class="small">Исключать аномалии (IQR ×1.5)</span>
+        </label>
+      </div>
+
+      <div class="row">
+        <button id="calcA" class="btn primary">Считать</button>
+        <button id="calcLeagueA" class="btn">Считаем A лиги</button>
+      </div>
+
+      <div class="split" style="margin-top:10px">
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
+          <div class="field"><label>Результат</label><input id="resultA" class="out" readonly /></div>
+          <div class="field"><label>A:</label><input id="arithA" class="out" readonly /></div>
+          <div class="field"><label>X :</label><input id="medianA" class="out" readonly /></div>
+          <div class="field"><label>Средняя A</label><input id="meanA" class="out" readonly /></div>
+        </div>
+        <div class="meta" id="metaA"></div>
+      </div>
+    </section>
+
+    <!-- TAB RANK -->
+    <section id="tab-rank" class="panel">
+      <div class="small">Формат строк: <code>home_team,away_team,odds_1,odds_x,odds_2</code>. CSV с заголовком и без заголовка поддерживаются.</div>
+      <div class="split" style="margin-top:8px;">
+        <div class="field">
+          <label>Матчи (вставка / файл)</label>
+          <textarea id="matchesText">Girona,Vallecano,2.50,3.19,3.18
+Mallorca,Real Madrid,9.11,5.61,1.34
+Sevilla,Getafe,2.15,3.40,3.45
+Villarreal,Las Palmas,1.95,3.55,4.10
+Barcelona,Athletic,1.42,5.20,7.50
+Real Sociedad,Alaves,2.05,3.30,3.80
+Real Madrid,Espanyol,1.25,7.00,11.50
+Vallecano,Elche,1.27,6.28,11.27
+Atletico Madrid,Betis,1.55,4.10,6.20
+Osasuna,Leganes,2.40,3.25,3.10</textarea>
+          <div class="row">
+            <input id="csvFile" type="file" accept=".csv,text/csv" />
+          </div>
+        </div>
+        <div>
+          <div class="field" style="max-width:140px">
+            <label>TOP N (0 = все)</label>
+            <input id="topN" value="0" />
+          </div>
+          <div class="row">
+            <button id="calcRank" class="btn primary">Рассчитать рейтинг</button>
+            <button id="exportRank" class="btn">Сохранить рейтинг CSV</button>
+          </div>
+          <div id="metaRank" class="meta">Результат пока не рассчитан</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="rankTable">
+          <thead>
+            <tr>
+              <th style="width:55px">№</th>
+              <th>Команда</th>
+              <th class="right">Рейтинг</th>
+              <th class="right">Коэф. силы</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // ---------------- Helpers ----------------
+    const fmt = (x, d=6) => Number(x).toFixed(d).replace('.', ',').replace(/,?0+$/, '').replace(/,$/, '');
+    const parseNum = (s) => {
+      const v = parseFloat(String(s).trim().replace(',', '.'));
+      if (Number.isNaN(v)) throw new Error(`Не число: ${s}`);
+      return v;
+    };
+    const parseColumn = (text) => text.split(/\r?\n/).map(v => v.trim()).filter(Boolean).map(parseNum);
+    const percentile = (sorted, p) => {
+      if (!sorted.length) throw new Error('Пустой список');
+      const pos = (sorted.length - 1) * p;
+      const lo = Math.floor(pos), hi = Math.ceil(pos);
+      if (lo === hi) return sorted[lo];
+      const w = pos - lo;
+      return sorted[lo] * (1 - w) + sorted[hi] * w;
+    };
+    const trimmed = (arr, frac=0.05) => {
+      const s = [...arr].sort((a,b)=>a-b);
+      const k = Math.floor(s.length * frac);
+      return k === 0 ? s : s.slice(k, s.length - k);
+    };
+
+    // ---------------- Tabs ----------------
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const id = btn.dataset.tab;
+        document.getElementById('tab-a').classList.toggle('active', id === 'a');
+        document.getElementById('tab-rank').classList.toggle('active', id === 'rank');
+      });
+    });
+
+    // ---------------- A Calculator ----------------
+    function avg(values, method){
+      if (!values.length) throw new Error('Нет данных');
+      if (method === 'arith') return values.reduce((a,b)=>a+b,0)/values.length;
+      if (method === 'geom') return Math.exp(values.map(Math.log).reduce((a,b)=>a+b,0)/values.length);
+      if (method === 'trim5') {
+        const c = trimmed(values,0.05); return c.reduce((a,b)=>a+b,0)/c.length;
+      }
+      if (method === 'trimGeom5') {
+        const c = trimmed(values.map(Math.log),0.05); return Math.exp(c.reduce((a,b)=>a+b,0)/c.length);
+      }
+      throw new Error('Неизвестный метод');
+    }
+    const median = (vals) => {
+      const s=[...vals].sort((a,b)=>a-b), n=s.length, m=Math.floor(n/2);
+      return n%2 ? s[m] : (s[m-1]+s[m])/2;
+    };
+
+    function runA(leagueMode=false){
+      const home = parseColumn(document.getElementById('homeOdds').value);
+      const away = parseColumn(document.getElementById('awayOdds').value);
+      if (home.length !== away.length) throw new Error('Число коэффициентов дома/гости не совпадает');
+      const vals = home.map((h,i)=>{
+        if (h<=1 || away[i]<=1) throw new Error('Коэффициенты должны быть > 1');
+        return (away[i]-1)/(h-1);
+      });
+
+      let flags = vals.map(()=>false), bounds=null;
+      const useOut = document.getElementById('dropOutliers').checked;
+      if (useOut && vals.length>=4){
+        const s=[...vals].sort((a,b)=>a-b);
+        const q1=percentile(s,0.25), q3=percentile(s,0.75), iqr=q3-q1;
+        const lo=q1-1.5*iqr, up=q3+1.5*iqr;
+        flags = vals.map(v => v<lo || v>up);
+        bounds = {q1,q3,iqr,lo,up};
+      }
+      const valid = vals.filter((v,i)=>!flags[i]);
+      if (!valid.length) throw new Error('Все значения помечены как аномалии');
+
+      document.getElementById('aOutput').value = vals.map((v,i)=>
+        `${fmt(Math.round(v*100)/100,3)}${flags[i]?'  ✕':''}`
+      ).join('\n');
+
+      const method = document.getElementById('avgMethod').value;
+      const meanSel = avg(valid, method), geom = avg(valid,'geom'), ar = avg(valid,'arith'), med=median(valid);
+
+      document.getElementById('meanA').value = fmt(meanSel, 12);
+      document.getElementById('arithA').value = fmt(ar, 12);
+      document.getElementById('medianA').value = fmt(med, 12);
+      document.getElementById('resultA').value = leagueMode ? fmt(geom, 12) : fmt(geom, 3);
+
+      const lines = [`строк: ${vals.length}   валидных: ${valid.length}   аномалий: ${flags.filter(Boolean).length}`];
+      if(bounds){
+        lines.push(`Q1=${fmt(bounds.q1,3)}  Q3=${fmt(bounds.q3,3)}  IQR=${fmt(bounds.iqr,3)}`);
+        lines.push(`границы: [${fmt(bounds.lo,3)} ; ${fmt(bounds.up,3)}]`);
+      }
+      lines.push(`геом=${fmt(geom,4)}  ариф=${fmt(ar,4)}  медиана=${fmt(med,4)}`);
+      document.getElementById('metaA').textContent = lines.join('\n');
+    }
+
+    document.getElementById('calcA').addEventListener('click', ()=> {
+      try { runA(false); } catch(e){ alert(e.message); }
+    });
+    document.getElementById('calcLeagueA').addEventListener('click', ()=> {
+      try { runA(true); } catch(e){ alert(e.message); }
+    });
+
+    // ---------------- Team Ranking ----------------
+    function parseMatches(text){
+      const raw = text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
+      if (!raw.length) throw new Error('Пустой список матчей');
+      const rows = raw.map(r => r.includes(';') ? r.split(';') : r.split(','));
+      let start = 0;
+      if (rows[0].length>=5){
+        try { parseNum(rows[0][2]); parseNum(rows[0][3]); parseNum(rows[0][4]); }
+        catch { start = 1; }
+      }
+      const matches=[];
+      for(let i=start;i<rows.length;i++){
+        const row = rows[i];
+        if (row.length<5) throw new Error(`Строка ${i+1}: нужно 5 колонок`);
+        const home = row[0].trim(), away = row[1].trim();
+        const o1=parseNum(row[2]), ox=parseNum(row[3]), o2=parseNum(row[4]);
+        if (!home || !away) throw new Error(`Строка ${i+1}: пустое имя команды`);
+        if (home===away) throw new Error(`Строка ${i+1}: команды не могут совпадать`);
+        if (o1<=1 || ox<=1 || o2<=1) throw new Error(`Строка ${i+1}: коэффициенты должны быть >1`);
+        matches.push({home,away,o1,ox,o2});
+      }
+      if (!matches.length) throw new Error('Нет валидных матчей');
+      return matches;
+    }
+
+    function marketDiff(m){
+      const p1r=1/m.o1, pxr=1/m.ox, p2r=1/m.o2, over=p1r+pxr+p2r;
+      const p1=p1r/over, px=pxr/over, p2=p2r/over;
+      const eh=p1+0.5*px, ea=p2+0.5*px;
+      return 400*Math.log10(eh/ea);
+    }
+
+    function solve(A,b){
+      const n=A.length;
+      for(let c=0;c<n;c++){
+        let piv=c;
+        for(let r=c+1;r<n;r++) if(Math.abs(A[r][c])>Math.abs(A[piv][c])) piv=r;
+        if (Math.abs(A[piv][c])<1e-12) throw new Error('Система вырождена (недостаточно связности матчей)');
+        [A[c],A[piv]]=[A[piv],A[c]]; [b[c],b[piv]]=[b[piv],b[c]];
+        const pv=A[c][c];
+        for(let j=c;j<n;j++) A[c][j]/=pv; b[c]/=pv;
+        for(let r=c+1;r<n;r++){
+          const f=A[r][c]; if(!f) continue;
+          for(let j=c;j<n;j++) A[r][j]-=f*A[c][j];
+          b[r]-=f*b[c];
+        }
+      }
+      const x=Array(n).fill(0);
+      for(let i=n-1;i>=0;i--){
+        let s=b[i];
+        for(let j=i+1;j<n;j++) s-=A[i][j]*x[j];
+        x[i]=s;
+      }
+      return x;
+    }
+
+    function buildRanking(matches){
+      const teamSet = new Set();
+      matches.forEach(m => { teamSet.add(m.home); teamSet.add(m.away); });
+      const teams = [...teamSet].sort();
+      const idx = new Map(teams.map((t,i)=>[t,i]));
+      const p = teams.length + 1; // + H
+
+      const rows=[], targets=[], diffs=[];
+      matches.forEach(m => {
+        const d=marketDiff(m); diffs.push({home:m.home, away:m.away, d});
+        const c=Array(p).fill(0);
+        c[idx.get(m.home)] = 1;
+        c[idx.get(m.away)] = -1;
+        c[p-1] = 1;
+        rows.push(c); targets.push(d);
+      });
+      // gauge sum(R)=0
+      rows.push([...Array(teams.length).fill(1), 0]);
+      targets.push(0);
+
+      const ATA = Array.from({length:p},()=>Array(p).fill(0));
+      const ATb = Array(p).fill(0);
+      rows.forEach((c,ridx)=>{
+        const y=targets[ridx];
+        for(let i=0;i<p;i++){
+          if(!c[i]) continue;
+          ATb[i]+=c[i]*y;
+          for(let j=0;j<p;j++){
+            if(!c[j]) continue;
+            ATA[i][j]+=c[i]*c[j];
+          }
+        }
+      });
+      const x = solve(ATA, ATb);
+      const H = x[p-1];
+      const ratings = teams.map(t => ({team:t, rating:x[idx.get(t)]}));
+      const withCoef = ratings.map(r => ({...r, coef:Math.pow(10,r.rating/400)}))
+                              .sort((a,b)=>b.rating-a.rating);
+
+      let mse=0;
+      diffs.forEach(d=>{
+        const rh = ratings[idx.get(d.home)].rating;
+        const ra = ratings[idx.get(d.away)].rating;
+        const pred = rh-ra+H;
+        mse += (pred-d.d)*(pred-d.d);
+      });
+      const rmse = Math.sqrt(mse/diffs.length);
+
+      return {
+        teams: withCoef,
+        H,
+        Hcoef: Math.pow(10,H/400),
+        rmse,
+        matches: matches.length,
+      };
+    }
+
+    let latestRanking = null;
+
+    function renderRanking(result){
+      const tbody = document.querySelector('#rankTable tbody');
+      tbody.innerHTML = '';
+      const topN = parseInt(document.getElementById('topN').value || '0', 10);
+      const rows = (topN>0 ? result.teams.slice(0,topN) : result.teams);
+      rows.forEach((r,i)=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${i+1}</td><td>${r.team}</td><td class="right">${fmt(r.rating,3)}</td><td class="right">${fmt(r.coef,4)}</td>`;
+        tbody.appendChild(tr);
+      });
+      document.getElementById('metaRank').textContent =
+        `Матчей: ${result.matches}\n`+
+        `Команд: ${result.teams.length}\n`+
+        `H: ${fmt(result.H,3)}  (x${fmt(result.Hcoef,4)})\n`+
+        `RMSE: ${fmt(result.rmse,3)}`;
+    }
+
+    document.getElementById('calcRank').addEventListener('click', ()=>{
+      try{
+        const matches = parseMatches(document.getElementById('matchesText').value);
+        latestRanking = buildRanking(matches);
+        renderRanking(latestRanking);
+      }catch(e){ alert(e.message); }
+    });
+
+    document.getElementById('csvFile').addEventListener('change', async (e)=>{
+      const file = e.target.files && e.target.files[0];
+      if(!file) return;
+      const text = await file.text();
+      document.getElementById('matchesText').value = text;
+    });
+
+    document.getElementById('exportRank').addEventListener('click', ()=>{
+      if(!latestRanking){ alert('Сначала рассчитайте рейтинг'); return; }
+      const head = 'rank,team,rating,strength_coef\n';
+      const body = latestRanking.teams.map((r,i)=>`${i+1},"${r.team.replaceAll('"','""')}",${r.rating.toFixed(6)},${r.coef.toFixed(8)}`).join('\n');
+      const blob = new Blob([head+body], {type:'text/csv;charset=utf-8'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'rating.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  </script>
+</body>
+</html>
