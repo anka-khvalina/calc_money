@@ -189,7 +189,21 @@ def _parse_matches_text(text: str):
     reader = csv.reader(io.StringIO(sample), delimiter=delim)
 
     matches = []
-    for row_idx, row in enumerate(reader, start=1):
+    rows = [r for r in reader if r and any(cell.strip() for cell in r)]
+    if not rows:
+        raise ValueError("Не найдено валидных матчей")
+
+    # Если первая строка похожа на заголовок (odds_* не числа) — пропускаем.
+    start_idx = 0
+    if len(rows[0]) >= 5:
+        try:
+            float(rows[0][2].strip().replace(",", "."))
+            float(rows[0][3].strip().replace(",", "."))
+            float(rows[0][4].strip().replace(",", "."))
+        except Exception:
+            start_idx = 1
+
+    for row_idx, row in enumerate(rows[start_idx:], start=1 + start_idx):
         if not row or not any(cell.strip() for cell in row):
             continue
         if len(row) < 5:

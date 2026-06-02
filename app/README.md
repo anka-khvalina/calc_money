@@ -117,6 +117,10 @@ python3 app/team_ranking.py --input <matches.csv> [--top 10] [--output rating.cs
 - команды: `home_team`, `away_team` (алиасы: `home`, `away`, `team1`, `team2`);
 - коэффициенты: `odds_1`, `odds_x`, `odds_2` (алиасы: `p1`, `x`, `p2`, `1odds`, `xodds`, `2odds`).
 
+Также поддерживается CSV **без заголовка**: первая строка может быть сразу данными в порядке:
+
+`home_team,away_team,odds_1,odds_x,odds_2`
+
 Пример работает с файлом:
 
 ```bash

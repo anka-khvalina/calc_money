@@ -158,41 +158,70 @@ def load_matches_csv(path: Path, encoding: str = "utf-8-sig") -> List[MatchOdds]
             dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
         except csv.Error:
             dialect = csv.excel
-        reader = csv.DictReader(f, dialect=dialect)
-        cols = _detect_columns(reader.fieldnames or [])
+        raw_rows = [row for row in csv.reader(f, dialect=dialect) if any(c.strip() for c in row)]
 
-        matches: List[MatchOdds] = []
-        for row_idx, row in enumerate(reader, start=2):
-            if not any((v or "").strip() for v in row.values()):
-                continue
-            try:
-                home = (row[cols["home"]] or "").strip()
-                away = (row[cols["away"]] or "").strip()
-                odds_1 = _parse_float(row[cols["odds1"]])
-                odds_x = _parse_float(row[cols["oddsx"]])
-                odds_2 = _parse_float(row[cols["odds2"]])
-            except Exception as exc:
-                raise ValueError(f"Ошибка в строке {row_idx}: {exc}") from exc
+    if not raw_rows:
+        raise ValueError("Файл не содержит матчей")
 
-            if not home or not away:
-                raise ValueError(f"Пустое имя команды в строке {row_idx}")
-            if home == away:
-                raise ValueError(f"Одинаковые команды в строке {row_idx}: {home}")
-            if odds_1 <= 1 or odds_x <= 1 or odds_2 <= 1:
-                raise ValueError(
-                    f"Коэффициенты должны быть > 1 (строка {row_idx}: "
-                    f"{odds_1}, {odds_x}, {odds_2})"
-                )
-
-            matches.append(
-                MatchOdds(
-                    home_team=home,
-                    away_team=away,
-                    odds_1=odds_1,
-                    odds_x=odds_x,
-                    odds_2=odds_2,
-                )
+    def parse_positional(row: Sequence[str], row_idx: int) -> MatchOdds:
+        if len(row) < 5:
+            raise ValueError(
+                f"Строка {row_idx}: нужно минимум 5 колонок (home, away, odds1, oddsX, odds2)"
             )
+        home = row[0].strip()
+        away = row[1].strip()
+        odds_1 = _parse_float(row[2])
+        odds_x = _parse_float(row[3])
+        odds_2 = _parse_float(row[4])
+        if not home or not away:
+            raise ValueError(f"Пустое имя команды в строке {row_idx}")
+        if home == away:
+            raise ValueError(f"Одинаковые команды в строке {row_idx}: {home}")
+        if odds_1 <= 1 or odds_x <= 1 or odds_2 <= 1:
+            raise ValueError(
+                f"Коэффициенты должны быть > 1 (строка {row_idx}: "
+                f"{odds_1}, {odds_x}, {odds_2})"
+            )
+        return MatchOdds(home_team=home, away_team=away, odds_1=odds_1, odds_x=odds_x, odds_2=odds_2)
+
+    # Режим 1: CSV без заголовка (первая строка уже данные home,away,odds1,oddsX,odds2).
+    try:
+        _parse_float(raw_rows[0][2])
+        _parse_float(raw_rows[0][3])
+        _parse_float(raw_rows[0][4])
+        first_is_data = True
+    except Exception:
+        first_is_data = False
+
+    if first_is_data:
+        matches = []
+        for i, row in enumerate(raw_rows, start=1):
+            try:
+                matches.append(parse_positional(row, i))
+            except Exception as exc:
+                raise ValueError(f"Ошибка в строке {i}: {exc}") from exc
+        return matches
+
+    # Режим 2: CSV с заголовком (канонические или алиасы колонок).
+    header = raw_rows[0]
+    cols = _detect_columns(header)
+    index = {name: idx for idx, name in enumerate(header)}
+
+    def get_cell(row: Sequence[str], col_name: str) -> str:
+        idx = index[col_name]
+        return row[idx] if idx < len(row) else ""
+
+    matches: List[MatchOdds] = []
+    for row_idx, row in enumerate(raw_rows[1:], start=2):
+        try:
+            home = get_cell(row, cols["home"]).strip()
+            away = get_cell(row, cols["away"]).strip()
+            odds_1 = _parse_float(get_cell(row, cols["odds1"]))
+            odds_x = _parse_float(get_cell(row, cols["oddsx"]))
+            odds_2 = _parse_float(get_cell(row, cols["odds2"]))
+            matches.append(parse_positional([home, away, str(odds_1), str(odds_x), str(odds_2)], row_idx))
+        except Exception as exc:
+            raise ValueError(f"Ошибка в строке {row_idx}: {exc}") from exc
 
     if not matches:
         raise ValueError("Файл не содержит матчей")
