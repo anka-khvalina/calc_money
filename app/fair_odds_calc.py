@@ -233,6 +233,102 @@ def build_app():
     root.geometry("1180x680")
     root.minsize(1020, 620)
 
+    # ---- Clipboard UX: Ctrl+V / Shift+Insert + контекстное меню ----
+    editable_widget = {"w": None}
+
+    def _widget_state(widget):
+        try:
+            return str(widget.cget("state")).lower()
+        except Exception:
+            return "normal"
+
+    def _is_editable(widget):
+        # Text / Entry / ttk.Entry / ttk.Combobox (если не readonly/disabled)
+        cls = widget.winfo_class().lower()
+        if "text" in cls or "entry" in cls or "combobox" in cls:
+            return _widget_state(widget) not in {"disabled", "readonly"}
+        return False
+
+    def _do_virtual(event_name):
+        w = editable_widget["w"]
+        if w is None:
+            return
+        try:
+            w.event_generate(event_name)
+        except Exception:
+            pass
+
+    def _remember_focus(event):
+        editable_widget["w"] = event.widget
+
+    def _paste_shortcut(event):
+        editable_widget["w"] = event.widget
+        if _is_editable(event.widget):
+            event.widget.event_generate("<<Paste>>")
+            return "break"
+        return None
+
+    def _copy_shortcut(event):
+        editable_widget["w"] = event.widget
+        try:
+            event.widget.event_generate("<<Copy>>")
+            return "break"
+        except Exception:
+            return None
+
+    def _cut_shortcut(event):
+        editable_widget["w"] = event.widget
+        if _is_editable(event.widget):
+            event.widget.event_generate("<<Cut>>")
+            return "break"
+        return None
+
+    def _select_all_shortcut(event):
+        editable_widget["w"] = event.widget
+        w = event.widget
+        try:
+            cls = w.winfo_class().lower()
+            if "text" in cls:
+                w.tag_add("sel", "1.0", "end-1c")
+            elif "entry" in cls or "combobox" in cls:
+                w.selection_range(0, "end")
+            return "break"
+        except Exception:
+            return None
+
+    menu = tk.Menu(root, tearoff=0)
+    menu.add_command(label="Вырезать", command=lambda: _do_virtual("<<Cut>>"))
+    menu.add_command(label="Копировать", command=lambda: _do_virtual("<<Copy>>"))
+    menu.add_command(label="Вставить", command=lambda: _do_virtual("<<Paste>>"))
+    menu.add_separator()
+    menu.add_command(label="Выделить всё", command=lambda: _do_virtual("<<SelectAll>>"))
+
+    def _show_context_menu(event):
+        editable_widget["w"] = event.widget
+        if not _is_editable(event.widget) and "entry" not in event.widget.winfo_class().lower():
+            # Для не редактируемых полей оставляем только копирование.
+            menu.entryconfig("Вырезать", state="disabled")
+            menu.entryconfig("Вставить", state="disabled")
+        else:
+            menu.entryconfig("Вырезать", state="normal")
+            menu.entryconfig("Вставить", state="normal")
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    root.bind_all("<FocusIn>", _remember_focus, add="+")
+    root.bind_all("<Control-v>", _paste_shortcut, add="+")
+    root.bind_all("<Control-V>", _paste_shortcut, add="+")
+    root.bind_all("<Shift-Insert>", _paste_shortcut, add="+")
+    root.bind_all("<Control-c>", _copy_shortcut, add="+")
+    root.bind_all("<Control-C>", _copy_shortcut, add="+")
+    root.bind_all("<Control-x>", _cut_shortcut, add="+")
+    root.bind_all("<Control-X>", _cut_shortcut, add="+")
+    root.bind_all("<Control-a>", _select_all_shortcut, add="+")
+    root.bind_all("<Control-A>", _select_all_shortcut, add="+")
+    root.bind_all("<Button-3>", _show_context_menu, add="+")
+
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True, padx=8, pady=8)
 
