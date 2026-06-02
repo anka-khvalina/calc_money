@@ -532,6 +532,13 @@ def build_app():
     ttk.Label(controls, text="TOP N (0 = все):").pack(anchor="w", pady=(8, 0))
     ttk.Entry(controls, textvariable=top_var, width=10).pack(anchor="w")
 
+    robust_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(
+        controls,
+        text="Робастная оценка (Huber + вес)",
+        variable=robust_var,
+    ).pack(anchor="w", pady=(8, 0))
+
     stats_var = tk.StringVar(value="Результат пока не рассчитан")
     ttk.Label(controls, textvariable=stats_var, justify="left").pack(anchor="w", pady=(10, 6))
 
@@ -566,16 +573,24 @@ def build_app():
             )
 
     def run_ranking(matches, top_n):
-        result = tr.build_ranking(matches)
+        result = tr.build_ranking(matches, robust=robust_var.get())
         latest_result["value"] = result
         fill_tree(result, top_n)
-        stats_var.set(
-            f"Матчей: {result.matches_count}\n"
-            f"Команд: {len(result.teams)}\n"
+        lines = [
+            f"Матчей: {result.matches_count}",
+            f"Команд: {len(result.teams)}",
             f"H: {str(round(result.home_advantage, 3)).replace('.', ',')}  "
-            f"(x{str(round(result.home_advantage_coef, 4)).replace('.', ',')})\n"
-            f"RMSE: {str(round(result.rmse, 3)).replace('.', ',')}"
-        )
+            f"(x{str(round(result.home_advantage_coef, 4)).replace('.', ',')})",
+        ]
+        if result.method == "robust":
+            shift = result.home_advantage - result.home_advantage_ols
+            lines.append(
+                f"H (OLS): {str(round(result.home_advantage_ols, 3)).replace('.', ',')}  "
+                f"(сдвиг {('%+.1f' % shift).replace('.', ',')})"
+            )
+            lines.append(f"Задавлено матчей: {len(result.downweighted)}")
+        lines.append(f"RMSE: {str(round(result.rmse, 3)).replace('.', ',')}")
+        stats_var.set("\n".join(lines))
 
     def parse_top():
         raw = top_var.get().strip()

@@ -46,12 +46,24 @@ class TeamRating:
 
 
 @dataclass(frozen=True)
+class DownweightedMatch:
+    home_team: str
+    away_team: str
+    d_market: float
+    residual: float
+    weight: float
+
+
+@dataclass(frozen=True)
 class RankingResult:
     teams: List[TeamRating]
     home_advantage: float
     home_advantage_coef: float
     rmse: float
     matches_count: int
+    method: str = "ols"
+    home_advantage_ols: float = 0.0
+    downweighted: Tuple[DownweightedMatch, ...] = ()
 
 
 def _norm_header(name: str) -> str:
@@ -229,6 +241,12 @@ def load_matches_csv(path: Path, encoding: str = "utf-8-sig") -> List[MatchOdds]
 
 
 def _market_rating_diff(match: MatchOdds) -> float:
+    d, _e_home, _e_away = _market_diff_with_scores(match)
+    return d
+
+
+def _market_diff_with_scores(match: MatchOdds) -> Tuple[float, float, float]:
+    """D_market + ожидаемые очки (для веса по информативности)."""
     p1_raw = 1.0 / match.odds_1
     px_raw = 1.0 / match.odds_x
     p2_raw = 1.0 / match.odds_2
@@ -243,7 +261,32 @@ def _market_rating_diff(match: MatchOdds) -> float:
     e_away = p2 + 0.5 * px
     if e_home <= 0 or e_away <= 0:
         raise ValueError("Ожидаемые очки должны быть > 0")
-    return 400.0 * math.log10(e_home / e_away)
+    return 400.0 * math.log10(e_home / e_away), e_home, e_away
+
+
+def _info_weight(e_home: float, e_away: float) -> float:
+    """Вес по информативности: 1.0 для ровного матча, ->0 для разгромного.
+
+    Наклон D по ожидаемому счёту растёт как 1/(E_h*E_a), поэтому экстремальные
+    матчи (E_h->0/1) шумные. Берём w = 4*E_h*E_a (макс 1 при E_h=E_a=0.5).
+    """
+    return max(1e-6, 4.0 * e_home * e_away)
+
+
+def _median(values: Sequence[float]) -> float:
+    s = sorted(values)
+    n = len(s)
+    mid = n // 2
+    if n % 2:
+        return s[mid]
+    return 0.5 * (s[mid - 1] + s[mid])
+
+
+def _mad(values: Sequence[float]) -> float:
+    if not values:
+        return 0.0
+    med = _median(values)
+    return _median([abs(v - med) for v in values])
 
 
 def _gaussian_solve(a: List[List[float]], b: List[float]) -> List[float]:
@@ -279,24 +322,42 @@ def _gaussian_solve(a: List[List[float]], b: List[float]) -> List[float]:
     return x
 
 
-def _solve_least_squares(rows: Sequence[Tuple[List[float], float]], p: int) -> List[float]:
+def _solve_weighted(
+    rows: Sequence[Tuple[List[float], float, float]], p: int
+) -> List[float]:
+    """Взвешенный МНК. rows = список (coeff, target, weight)."""
     ata = [[0.0] * p for _ in range(p)]
     atb = [0.0] * p
-    for coeff, target in rows:
+    for coeff, target, weight in rows:
         for i in range(p):
             ci = coeff[i]
             if ci == 0:
                 continue
-            atb[i] += ci * target
+            wci = weight * ci
+            atb[i] += wci * target
             for j in range(p):
                 cj = coeff[j]
                 if cj == 0:
                     continue
-                ata[i][j] += ci * cj
+                ata[i][j] += wci * cj
     return _gaussian_solve(ata, atb)
 
 
-def build_ranking(matches: Sequence[MatchOdds]) -> RankingResult:
+HUBER_C = 1.345
+GAUGE_WEIGHT = 1e6
+
+
+def build_ranking(
+    matches: Sequence[MatchOdds],
+    robust: bool = False,
+    use_info_weight: bool = None,
+    huber_c: float = HUBER_C,
+    max_iter: int = 25,
+) -> RankingResult:
+    # По умолчанию информационный вес включаем только в робастном режиме,
+    # чтобы обычный режим оставался чистым OLS (равные веса).
+    if use_info_weight is None:
+        use_info_weight = robust
     teams = sorted({m.home_team for m in matches} | {m.away_team for m in matches})
     n_teams = len(teams)
     if n_teams < 2:
@@ -304,33 +365,74 @@ def build_ranking(matches: Sequence[MatchOdds]) -> RankingResult:
 
     idx = {team: i for i, team in enumerate(teams)}
     p = n_teams + 1  # +1 для H (home advantage)
-    rows: List[Tuple[List[float], float]] = []
-    diffs: List[Tuple[str, str, float]] = []
 
+    coeffs: List[List[float]] = []
+    targets: List[float] = []
+    info_w: List[float] = []
     for m in matches:
-        d_market = _market_rating_diff(m)
-        diffs.append((m.home_team, m.away_team, d_market))
-
+        d_market, e_home, e_away = _market_diff_with_scores(m)
         coeff = [0.0] * p
         coeff[idx[m.home_team]] = 1.0
         coeff[idx[m.away_team]] = -1.0
         coeff[-1] = 1.0
-        rows.append((coeff, d_market))
+        coeffs.append(coeff)
+        targets.append(d_market)
+        info_w.append(_info_weight(e_home, e_away) if use_info_weight else 1.0)
 
-    # Нормировка шкалы: средний рейтинг = 0.
-    gauge = [1.0] * n_teams + [0.0]
-    rows.append((gauge, 0.0))
+    gauge = [1.0] * n_teams + [0.0]  # нормировка: средний рейтинг = 0
 
-    solution = _solve_least_squares(rows, p)
-    h = solution[-1]
-    ratings = {team: solution[idx[team]] for team in teams}
+    def solve_with(weights: Sequence[float]) -> Tuple[Dict[str, float], float, List[float]]:
+        rows = [(coeffs[i], targets[i], weights[i]) for i in range(len(matches))]
+        rows.append((gauge, 0.0, GAUGE_WEIGHT))
+        sol = _solve_least_squares_or_weighted(rows, p)
+        ratings_local = {t: sol[idx[t]] for t in teams}
+        h_local = sol[-1]
+        resid = [
+            (ratings_local[m.home_team] - ratings_local[m.away_team] + h_local) - targets[i]
+            for i, m in enumerate(matches)
+        ]
+        return ratings_local, h_local, resid
 
-    rmse_acc = 0.0
-    for home, away, target in diffs:
-        pred = ratings[home] - ratings[away] + h
-        err = pred - target
-        rmse_acc += err * err
-    rmse = math.sqrt(rmse_acc / len(diffs))
+    # Базовая OLS-оценка (все веса = 1) для сравнения.
+    _, h_ols, _ = solve_with([1.0] * len(matches))
+
+    weights = list(info_w)
+    ratings, h, resid = solve_with(weights)
+
+    method = "ols"
+    if robust:
+        method = "robust"
+        for _ in range(max_iter):
+            scale = 1.4826 * _mad([abs(r) for r in resid])
+            if scale < 1e-9:
+                break
+            huber = []
+            for r in resid:
+                z = abs(r) / scale
+                huber.append(1.0 if z <= huber_c else huber_c / z)
+            new_weights = [info_w[i] * huber[i] for i in range(len(matches))]
+            delta = max(abs(new_weights[i] - weights[i]) for i in range(len(matches)))
+            weights = new_weights
+            ratings, h, resid = solve_with(weights)
+            if delta < 1e-4:
+                break
+
+    rmse = math.sqrt(sum(r * r for r in resid) / len(resid))
+
+    downweighted: List[DownweightedMatch] = []
+    for i, m in enumerate(matches):
+        w = weights[i]
+        if w < 0.5:
+            downweighted.append(
+                DownweightedMatch(
+                    home_team=m.home_team,
+                    away_team=m.away_team,
+                    d_market=targets[i],
+                    residual=resid[i],
+                    weight=w,
+                )
+            )
+    downweighted.sort(key=lambda d: d.weight)
 
     ranking = [
         TeamRating(team=t, rating=r, strength_coef=(10.0 ** (r / 400.0)))
@@ -344,7 +446,16 @@ def build_ranking(matches: Sequence[MatchOdds]) -> RankingResult:
         home_advantage_coef=(10.0 ** (h / 400.0)),
         rmse=rmse,
         matches_count=len(matches),
+        method=method,
+        home_advantage_ols=h_ols,
+        downweighted=tuple(downweighted),
     )
+
+
+def _solve_least_squares_or_weighted(
+    rows: Sequence[Tuple[List[float], float, float]], p: int
+) -> List[float]:
+    return _solve_weighted(rows, p)
 
 
 def _print_result(result: RankingResult, top: int = 0) -> None:
@@ -355,7 +466,18 @@ def _print_result(result: RankingResult, top: int = 0) -> None:
         "Домашнее преимущество H: "
         f"{result.home_advantage:.3f}  (мультипликатор {result.home_advantage_coef:.4f})"
     )
-    print(f"RMSE системы: {result.rmse:.3f}\n")
+    if result.method == "robust":
+        print(f"  H (OLS, без робастности): {result.home_advantage_ols:.3f}")
+        print(f"  сдвиг H за счёт робастности: {result.home_advantage - result.home_advantage_ols:+.3f}")
+    print(f"RMSE системы: {result.rmse:.3f}")
+    if result.method == "robust" and result.downweighted:
+        print(f"\nЗадавлено матчей (вес < 0.5): {len(result.downweighted)}")
+        for d in result.downweighted[:10]:
+            print(
+                f"  {d.home_team} vs {d.away_team}: D={d.d_market:.1f} "
+                f"residual={d.residual:+.1f} вес={d.weight:.3f}"
+            )
+    print()
 
     w_rank = 4
     w_team = max(12, max(len(r.team) for r in rows))
@@ -388,13 +510,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output", help="Куда сохранить рейтинг CSV (опционально).")
     parser.add_argument("--top", type=int, default=0, help="Показать только TOP-N команд.")
+    parser.add_argument(
+        "--robust",
+        action="store_true",
+        help="Робастная оценка (IRLS-Huber + вес по информативности).",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     matches = load_matches_csv(Path(args.input))
-    result = build_ranking(matches)
+    result = build_ranking(matches, robust=args.robust)
     _print_result(result, top=args.top)
     if args.output:
         save_ranking_csv(Path(args.output), result)
