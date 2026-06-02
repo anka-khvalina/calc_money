@@ -339,7 +339,7 @@ def _print_result(result: RankingResult, top: int = 0) -> None:
         print(f"{i:>{w_rank}}  {r.team:<{w_team}}  {r.rating:>10.3f}  {r.strength_coef:>12.4f}")
 
 
-def _save_csv(path: Path, result: RankingResult) -> None:
+def save_ranking_csv(path: Path, result: RankingResult) -> None:
     with path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["rank", "team", "rating", "strength_coef"])
@@ -368,7 +368,7 @@ def main() -> None:
     result = build_ranking(matches)
     _print_result(result, top=args.top)
     if args.output:
-        _save_csv(Path(args.output), result)
+        save_ranking_csv(Path(args.output), result)
         print(f"\nCSV сохранён: {args.output}")
 
 
