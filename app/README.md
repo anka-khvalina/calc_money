@@ -65,6 +65,46 @@ python3 app/fair_odds_calc.py
 
 Внешних зависимостей нет — только стандартная библиотека.
 
+## CLI для рейтинга команд по 1/X/2
+
+Помимо GUI-калькулятора `A`, добавлен скрипт:
+
+```bash
+python3 app/team_ranking.py --input <matches.csv> [--top 10] [--output rating.csv]
+```
+
+### Логика расчёта рейтинга
+
+Для каждого матча:
+
+1. `p1_raw = 1/odds_1`, `px_raw = 1/odds_x`, `p2_raw = 1/odds_2`
+2. `overround = p1_raw + px_raw + p2_raw`
+3. `p1 = p1_raw/overround`, `px = px_raw/overround`, `p2 = p2_raw/overround`
+4. `E_home = p1 + 0.5*px`, `E_away = p2 + 0.5*px`
+5. `D_market = 400 * log10(E_home / E_away)`
+6. Уравнение: `R_home - R_away + H = D_market`
+
+После всех матчей система решается в МНК с нормировкой `sum(R_team)=0`.
+
+На выходе:
+
+- рейтинг команд `R_team` (по убыванию);
+- коэффициент силы `StrengthCoef = 10^(R_team/400)`;
+- оценка домашнего преимущества `H` и его мультипликатор `10^(H/400)`.
+
+### Формат входного CSV
+
+Нужны команды и коэффициенты 1/X/2. Поддерживаются заголовки:
+
+- команды: `home_team`, `away_team` (алиасы: `home`, `away`, `team1`, `team2`);
+- коэффициенты: `odds_1`, `odds_x`, `odds_2` (алиасы: `p1`, `x`, `p2`, `1odds`, `xodds`, `2odds`).
+
+Пример работает с файлом:
+
+```bash
+python3 app/team_ranking.py --input docs/examples/season_odds_la_liga_2024_25.csv --top 8
+```
+
 ## Сборка в .exe (Windows)
 
 Готовый `.exe` собирается через PyInstaller (один файл, без консоли).
