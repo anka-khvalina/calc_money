@@ -1,9 +1,10 @@
 # Калькулятор A + Рейтинг команд (десктоп)
 
-Десктоп-приложение на Python + Tkinter с двумя вкладками:
+Десктоп-приложение на Python + Tkinter с тремя вкладками:
 
 1. **Калькулятор A** — исходный экран расчёта `A` по коэффициентам дома/гости.
 2. **Рейтинг команд** — расчёт рейтинга команд и коэффициента силы по коэффициентам `1/X/2`.
+3. **История сезонов** — импорт и хранение CSV прошлых сезонов по пяти основным лигам.
 
 ## Что считает
 
@@ -141,6 +142,102 @@ python3 app/team_ranking.py --input <matches.csv> [--top 10] [--output rating.cs
 python3 app/team_ranking.py --input docs/examples/season_odds_la_liga_2024_25.csv --top 8
 ```
 
+## Хранилище истории прошлых сезонов
+
+Модуль `app/history_store.py` хранит историю матчей по пяти основным лигам и
+использует её в дальнейших расчётах (приор `H`, калибровка draw-модели).
+
+### Лиги (ключи хранилища)
+
+| Ключ | Лига |
+|------|------|
+| `epl` | English Premier League |
+| `la_liga` | La Liga |
+| `bundesliga` | Bundesliga |
+| `serie_a` | Serie A |
+| `ligue_1` | Ligue 1 |
+
+Имена лиг при импорте принимаются гибко (`EPL`, `Premier League`, `Англия`,
+`La Liga`, `Испания`, `Bundesliga`, `Serie A`, `Ligue 1`, и т.п.).
+
+### Структура каталогов
+
+```
+data/history/
+  index.json              # реестр: какие лиги/сезоны загружены
+  epl/2025-26.csv         # канонический CSV сезона
+  la_liga/2024-25.csv
+  ...
+```
+
+Корень хранилища — `<repo>/data/history`. Можно переопределить переменной
+окружения `FAIR_ODDS_DATA` (удобно для `.exe`: указать папку рядом с программой).
+
+### Формат импорта (как в Excel-таблице)
+
+Импорт принимает «человеческий» заголовок:
+
+```
+Match Date, Team Home, 1 Odds, X Odds, 2 Odds, Away Team,
+Derby, Venue Type, Home Goals, Away Goals, Result, Comment
+```
+
+Обязательны только команды и коэффициенты `1/X/2`; остальные колонки
+опциональны. Поддерживаются алиасы (`Team Home`/`home_team`/`Хозяева`,
+`1 Odds`/`p1`/`odds_1` и т.д.). Результат `H/D/A` при отсутствии выводится из
+голов. Пример файла: [docs/examples/history_epl_2025_26.csv](../docs/examples/history_epl_2025_26.csv).
+
+Канонический CSV (что хранится):
+
+```
+date,home_team,away_team,odds_1,odds_x,odds_2,home_goals,away_goals,result,derby,venue_type,comment
+```
+
+### CLI
+
+```bash
+# импорт сезона (перезаписывает существующий)
+python3 app/history_store.py import --league EPL --season 2025-26 \
+    --input docs/examples/history_epl_2025_26.csv
+
+# что загружено
+python3 app/history_store.py list
+python3 app/history_store.py list --league EPL
+
+# приор домашнего преимущества H по истории
+python3 app/history_store.py prior --league EPL
+#   + усадка к текущему сезону: H = w*H_current + (1-w)*H_prior, w = m/(m+kappa)
+python3 app/history_store.py prior --league EPL --current current.csv --kappa 30
+
+# калибровка draw-модели px(d) по фактическим результатам
+python3 app/history_store.py draw-model --league EPL
+```
+
+### Вкладка «История сезонов» (GUI / `.exe`)
+
+1. Выберите **лигу** и **сезон** (`2024-25`).
+2. **Загрузить CSV…** — файл в формате Excel-таблицы (сразу сохраняется в хранилище).
+3. Или **вставьте** таблицу из буфера → **Сохранить в хранилище**.
+4. Справа — список загруженных сезонов; клик показывает сводку и `H`/draw-модель.
+5. **H / draw по лиге** — метрики по всей истории выбранной лиги.
+
+Файлы: `data/history/<лига>/<сезон>.csv` (или папка из `FAIR_ODDS_DATA`).
+
+### Логика расчётов на истории
+
+- **Приор `H`**: по каждому хранимому сезону считается `H` (робастный МНК из
+  `team_ranking`), затем берётся экспоненциально-взвешенное среднее (свежие
+  сезоны весомее, вес `exp(-xi*k)`). Если есть матчи текущего сезона — усадка
+  `H = w·H_current + (1−w)·H_prior`, `w = m/(m+κ)`; при `m ≤ 2` или несвязном
+  графе берётся только приор. Нет истории → константа лиги (`LEAGUE_DEFAULT_H`).
+- **draw-модель** `px(d) = clamp(a + b·|d|, 0.06, 0.34)`: линейная регрессия
+  доли ничьих по `|D_market|` (по фактическим результатам; при их отсутствии —
+  по de-vig вероятности ничьей). Используется для разбиения `E_home` на `p1`/`px`
+  в прогнозах через общих соперников.
+
+Это даёт корректный league-specific `H` для цепочек/переворота площадки и
+откалиброванную ничью вместо «магической» константы `k_draw`.
+
 ## Формат для iOS (Safari)
 
 Добавлен самодостаточный файл:
@@ -149,14 +246,24 @@ python3 app/team_ranking.py --input docs/examples/season_odds_la_liga_2024_25.cs
 
 Как открыть на iPhone/iPad:
 
-1. Скачайте `FairOddsCalc_iOS.html` из релиза или из репозитория.
-2. Откройте файл в **Safari**.
-3. (Опционально) нажмите **Поделиться → На экран «Домой»** для запуска «как приложение».
+> **Не используйте** `raw.githubusercontent.com` — Safari покажет **исходный код**, а не приложение.
 
-Это mobile-web версия с теми же двумя вкладками:
+**Ссылки с вкладкой «История»:**
+
+| Способ | URL |
+|--------|-----|
+| HTML Preview (сразу) | https://htmlpreview.github.io/?https://raw.githubusercontent.com/anka-khvalina/calc_money/cursor/history-store-17b5/web/FairOddsCalc_iOS.html |
+| GitHub Pages | https://anka-khvalina.github.io/calc_money/FairOddsCalc_iOS.html |
+| Файл из Releases | скачать → **Файлы** → открыть в Safari |
+
+1. Откройте одну из ссылок в **Safari** (не Telegram/WhatsApp).
+2. (Опционально) **Поделиться → На экран «Домой»**.
+
+Это mobile-web версия с тремя вкладками:
 
 - Калькулятор A
 - Рейтинг команд
+- **История сезонов** (localStorage на устройстве: импорт CSV, H и draw-модель)
 
 ## Сборка в .exe (Windows)
 

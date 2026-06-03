@@ -243,8 +243,8 @@ def build_app():
     import team_ranking as tr
 
     root = tk.Tk()
-    root.title("Калькулятор A + Рейтинг команд")
-    root.geometry("1180x680")
+    root.title("Калькулятор A + Рейтинг + История")
+    root.geometry("1220x720")
     root.minsize(1020, 620)
 
     # ---- Clipboard UX: Ctrl+V / Shift+Insert + контекстное меню ----
@@ -657,6 +657,345 @@ def build_app():
     )
     ttk.Button(btns, text="Загрузить CSV", command=load_csv).grid(row=0, column=1, padx=(0, 6))
     ttk.Button(btns, text="Сохранить рейтинг CSV", command=save_rating_csv).grid(row=0, column=2)
+
+    # ======================================================================
+    # TAB 3: история сезонов
+    # ======================================================================
+    import history_store as hs
+
+    tab_hist = ttk.Frame(notebook, padding=10)
+    notebook.add(tab_hist, text="История сезонов")
+
+    hist_left = ttk.Frame(tab_hist)
+    hist_left.pack(side="left", fill="both", expand=True)
+    hist_right = ttk.Frame(tab_hist, padding=(12, 0, 0, 0))
+    hist_right.pack(side="left", fill="both", expand=True)
+
+    ttk.Label(
+        hist_left,
+        text=(
+            "Импорт истории прошлого сезона (формат Excel-таблицы):\n"
+            "Match Date, Team Home, 1 Odds, X Odds, 2 Odds, Away Team, …\n"
+            "Можно вставить из буфера или загрузить CSV-файл."
+        ),
+        justify="left",
+    ).pack(anchor="w")
+
+    import_bar = ttk.Frame(hist_left)
+    import_bar.pack(fill="x", pady=(8, 4))
+
+    league_labels = [title for title, _key in hs.format_league_options()]
+    league_keys = {title: key for title, key in hs.format_league_options()}
+
+    ttk.Label(import_bar, text="Лига:").grid(row=0, column=0, sticky="w", padx=(0, 6))
+    hist_league_var = tk.StringVar(value=league_labels[0])
+    ttk.Combobox(
+        import_bar,
+        textvariable=hist_league_var,
+        values=league_labels,
+        state="readonly",
+        width=28,
+    ).grid(row=0, column=1, sticky="w", padx=(0, 12))
+
+    ttk.Label(import_bar, text="Сезон:").grid(row=0, column=2, sticky="w", padx=(0, 6))
+    hist_season_var = tk.StringVar(value="2024-25")
+    ttk.Entry(import_bar, textvariable=hist_season_var, width=12).grid(row=0, column=3, sticky="w")
+
+    text_history = tk.Text(hist_left, width=90, height=22, relief="solid", borderwidth=1)
+    text_history.pack(fill="both", expand=True, pady=(6, 0))
+
+    sample_hist = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "examples"
+        / "history_epl_2025_26.csv"
+    )
+    if sample_hist.exists():
+        try:
+            text_history.insert("1.0", sample_hist.read_text(encoding="utf-8-sig"))
+        except Exception:
+            pass
+
+    hist_path_var = tk.StringVar(value=f"Хранилище: {hs.data_root()}")
+    ttk.Label(hist_left, textvariable=hist_path_var, foreground="#555").pack(anchor="w", pady=(6, 0))
+
+    ttk.Label(hist_right, text="Сохранённые сезоны").pack(anchor="w")
+    hist_tree = ttk.Treeview(
+        hist_right,
+        columns=("league", "season", "matches", "imported"),
+        show="headings",
+        height=12,
+    )
+    hist_tree.heading("league", text="Лига")
+    hist_tree.heading("season", text="Сезон")
+    hist_tree.heading("matches", text="Матчей")
+    hist_tree.heading("imported", text="Импорт")
+    hist_tree.column("league", width=160, anchor="w")
+    hist_tree.column("season", width=72, anchor="w")
+    hist_tree.column("matches", width=64, anchor="e")
+    hist_tree.column("imported", width=150, anchor="w")
+    hist_tree.pack(fill="both", expand=True, pady=(6, 0))
+
+    ttk.Label(hist_right, text="Матчи сезона").pack(anchor="w", pady=(8, 0))
+    hist_matches_tree = ttk.Treeview(
+        hist_right,
+        columns=("date", "home", "o1", "ox", "o2", "away", "score", "res"),
+        show="headings",
+        height=10,
+    )
+    for col, title, w, anchor in [
+        ("date", "Дата", 88, "w"),
+        ("home", "Дома", 120, "w"),
+        ("o1", "1", 44, "e"),
+        ("ox", "X", 44, "e"),
+        ("o2", "2", 44, "e"),
+        ("away", "Гости", 120, "w"),
+        ("score", "Счёт", 52, "e"),
+        ("res", "Исх.", 36, "center"),
+    ]:
+        hist_matches_tree.heading(col, text=title)
+        hist_matches_tree.column(col, width=w, anchor=anchor)
+    hist_matches_tree.pack(fill="both", expand=True, pady=(4, 0))
+
+    hist_stats_var = tk.StringVar(value="Выберите сезон или нажмите «Просмотр истории».")
+    ttk.Label(hist_right, textvariable=hist_stats_var, justify="left").pack(
+        anchor="w", pady=(10, 0)
+    )
+
+    def refresh_history_tree():
+        for item in hist_tree.get_children():
+            hist_tree.delete(item)
+        for info in hs.list_all_seasons():
+            imported = info.imported_at.replace("T", " ")[:19] if info.imported_at else ""
+            hist_tree.insert(
+                "",
+                "end",
+                iid=f"{info.league}|{info.season}",
+                values=(info.league_title, info.season, info.matches, imported),
+            )
+        hist_path_var.set(f"Хранилище: {hs.data_root()}")
+
+    def selected_season_info():
+        sel = hist_tree.selection()
+        if not sel:
+            return None
+        league_key, season = sel[0].split("|", 1)
+        return league_key, season
+
+    def show_league_metrics(league_key: str):
+        try:
+            est = hs.home_advantage_prior(league_key)
+            dm = hs.calibrate_draw_model(league_key)
+        except Exception as exc:
+            hist_stats_var.set(f"Ошибка расчёта: {exc}")
+            return
+        lines = [
+            f"Лига: {hs.league_title(league_key)} ({league_key})",
+            f"Сезонов в хранилище: {len(hs.list_seasons(league_key))}",
+        ]
+        if est.from_default:
+            lines.append(f"H_prior (default): {est.h_prior:.2f}")
+        else:
+            lines.append(f"H_prior (история): {est.h_prior:.2f}")
+            for season, h, w in est.seasons_used[:5]:
+                lines.append(f"  {season}: H={h:.1f}, вес={w:.3f}")
+            if len(est.seasons_used) > 5:
+                lines.append(f"  … ещё {len(est.seasons_used) - 5} сезон(ов)")
+        lines.append(f"H итог: {est.h_final:.2f}  (x{10 ** (est.h_final / 400):.4f}); {est.confidence}")
+        lines.append(
+            f"draw px(d) = clamp({dm.a:.4f} + ({dm.b:.6f})·|d|); "
+            f"n={dm.n}, источник={dm.source}"
+        )
+        hist_stats_var.set("\n".join(lines))
+
+    def show_league_metrics_for_combo():
+        title = hist_league_var.get().strip()
+        key = league_keys.get(title)
+        if not key:
+            try:
+                key = hs.normalize_league(title)
+            except ValueError as exc:
+                messagebox.showerror("Лига", str(exc))
+                return
+        show_league_metrics(key)
+
+    def _league_key_from_combo():
+        title = hist_league_var.get().strip()
+        key = league_keys.get(title)
+        if not key:
+            key = hs.normalize_league(title)
+        return key
+
+    def fill_hist_matches_tree(matches):
+        for item in hist_matches_tree.get_children():
+            hist_matches_tree.delete(item)
+        for m in matches:
+            score = ""
+            if m.home_goals is not None and m.away_goals is not None:
+                score = f"{m.home_goals}:{m.away_goals}"
+            hist_matches_tree.insert(
+                "",
+                "end",
+                values=(
+                    m.date,
+                    m.home_team,
+                    f"{m.odds_1:g}",
+                    f"{m.odds_x:g}",
+                    f"{m.odds_2:g}",
+                    m.away_team,
+                    score,
+                    m.derived_result(),
+                ),
+            )
+
+    def view_history_season(league_key=None, season=None, select_tree=True):
+        if league_key is None:
+            league_key = _league_key_from_combo()
+        if season is None:
+            season = hist_season_var.get().strip()
+        if not season:
+            raise ValueError("Укажите сезон, напр. 2024-25")
+        matches = hs.load_season(league_key, season)
+        text_history.delete("1.0", "end")
+        text_history.insert("1.0", hs.view_season_text(league_key, season))
+        fill_hist_matches_tree(matches)
+        est = hs.home_advantage_prior(league_key)
+        dm = hs.calibrate_draw_model(league_key)
+        lines = [
+            f"{hs.league_title(league_key)} / {season}",
+            f"Матчей: {len(matches)}",
+            f"Файл: {hs.season_path(league_key, season)}",
+            "",
+            f"H_prior: {est.h_prior:.2f}  →  H={est.h_final:.2f} ({est.confidence})",
+            f"draw: px(d)=clamp({dm.a:.4f}+({dm.b:.6f})·|d|), n={dm.n}",
+        ]
+        hist_stats_var.set("\n".join(lines))
+        if select_tree:
+            iid = f"{league_key}|{hs._safe_season(season)}"
+            if hist_tree.exists(iid):
+                hist_tree.selection_set(iid)
+                hist_tree.see(iid)
+
+    def on_hist_select(_event=None):
+        info = selected_season_info()
+        if not info:
+            return
+        league_key, season = info
+        try:
+            view_history_season(league_key, season, select_tree=False)
+        except Exception as exc:
+            hist_stats_var.set(str(exc))
+
+    hist_tree.bind("<<TreeviewSelect>>", on_hist_select)
+
+    def do_import_history(from_file=None):
+        league_title_sel = hist_league_var.get().strip()
+        season = hist_season_var.get().strip()
+        if not league_title_sel:
+            messagebox.showwarning("Импорт", "Выберите лигу.")
+            return
+        if not season:
+            messagebox.showwarning("Импорт", "Укажите сезон, напр. 2024-25.")
+            return
+        league_key = league_keys.get(league_title_sel)
+        if not league_key:
+            try:
+                league_key = hs.normalize_league(league_title_sel)
+            except ValueError as exc:
+                messagebox.showerror("Импорт", str(exc))
+                return
+        try:
+            raw = (
+                Path(from_file).read_text(encoding="utf-8-sig")
+                if from_file is not None
+                else text_history.get("1.0", "end")
+            )
+            cleaned, blank_removed = hs.clean_history_text(raw)
+            if not cleaned.strip():
+                raise ValueError("Нет данных: файл/текст пуст или только пустые строки")
+            text_history.delete("1.0", "end")
+            text_history.insert("1.0", cleaned)
+            matches, blank_removed = hs.parse_history_text_with_stats(cleaned)
+            if hs.season_exists(league_key, season):
+                prev = len(hs.load_season(league_key, season))
+                ok = messagebox.askyesno(
+                    "Сезон уже есть",
+                    f"{hs.league_title(league_key)} / {season} уже сохранён "
+                    f"({prev} матчей).\n\nПерезаписать новыми данными ({len(matches)} матчей)?",
+                    icon="warning",
+                )
+                if not ok:
+                    return
+            res = hs.import_season_matches(league_key, season, matches)
+        except Exception as exc:
+            messagebox.showerror("Ошибка импорта", str(exc))
+            return
+        refresh_history_tree()
+        iid = f"{res.league}|{res.season}"
+        if hist_tree.exists(iid):
+            hist_tree.selection_set(iid)
+            hist_tree.see(iid)
+        try:
+            view_history_season(res.league, res.season, select_tree=False)
+        except Exception:
+            on_hist_select()
+        messagebox.showinfo(
+            "Импорт выполнен",
+            f"{hs.league_title(res.league)} / {res.season}\n"
+            f"Матчей: {res.matches}\n"
+            + (
+                f"(перезаписано, было {res.previous_matches})\n"
+                if res.replaced
+                else "(новый сезон)\n"
+            )
+            + (f"Удалено пустых строк: {blank_removed}\n" if blank_removed else "")
+            + f"{res.path}",
+        )
+
+    def load_history_csv():
+        path = filedialog.askopenfilename(
+            title="Выберите CSV истории сезона",
+            filetypes=[("CSV", "*.csv"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            content = Path(path).read_text(encoding="utf-8-sig")
+            text_history.delete("1.0", "end")
+            text_history.insert("1.0", content)
+            do_import_history(from_file=None)
+        except Exception as exc:
+            messagebox.showerror("Ошибка загрузки CSV", str(exc))
+
+    def view_history_clicked():
+        try:
+            view_history_season()
+        except Exception as exc:
+            messagebox.showerror("Просмотр истории", str(exc))
+
+    hist_btns = ttk.Frame(hist_left)
+    hist_btns.pack(anchor="w", pady=(8, 0))
+    ttk.Button(hist_btns, text="Загрузить CSV…", command=load_history_csv).grid(
+        row=0, column=0, padx=(0, 6)
+    )
+    ttk.Button(
+        hist_btns,
+        text="Сохранить в хранилище",
+        command=lambda: do_import_history(None),
+    ).grid(row=0, column=1, padx=(0, 6))
+    ttk.Button(hist_btns, text="Просмотр истории", command=view_history_clicked).grid(
+        row=0, column=2, padx=(0, 6)
+    )
+    ttk.Button(hist_btns, text="Обновить список", command=refresh_history_tree).grid(
+        row=0, column=3, padx=(0, 6)
+    )
+    ttk.Button(
+        hist_btns,
+        text="H / draw по лиге",
+        command=show_league_metrics_for_combo,
+    ).grid(row=0, column=4)
+
+    refresh_history_tree()
 
     return root
 
