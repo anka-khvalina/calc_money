@@ -905,10 +905,17 @@ def build_app():
                 messagebox.showerror("Импорт", str(exc))
                 return
         try:
-            if from_file is not None:
-                matches = hs.parse_history_csv(from_file)
-            else:
-                matches = hs.parse_history_text(text_history.get("1.0", "end"))
+            raw = (
+                Path(from_file).read_text(encoding="utf-8-sig")
+                if from_file is not None
+                else text_history.get("1.0", "end")
+            )
+            cleaned, blank_removed = hs.clean_history_text(raw)
+            if not cleaned.strip():
+                raise ValueError("Нет данных: файл/текст пуст или только пустые строки")
+            text_history.delete("1.0", "end")
+            text_history.insert("1.0", cleaned)
+            matches, blank_removed = hs.parse_history_text_with_stats(cleaned)
             if hs.season_exists(league_key, season):
                 prev = len(hs.load_season(league_key, season))
                 ok = messagebox.askyesno(
@@ -941,6 +948,7 @@ def build_app():
                 if res.replaced
                 else "(новый сезон)\n"
             )
+            + (f"Удалено пустых строк: {blank_removed}\n" if blank_removed else "")
             + f"{res.path}",
         )
 
@@ -955,8 +963,7 @@ def build_app():
             content = Path(path).read_text(encoding="utf-8-sig")
             text_history.delete("1.0", "end")
             text_history.insert("1.0", content)
-            # авто-импорт после загрузки файла в превью
-            do_import_history(from_file=Path(path))
+            do_import_history(from_file=None)
         except Exception as exc:
             messagebox.showerror("Ошибка загрузки CSV", str(exc))
 

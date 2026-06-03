@@ -262,6 +262,48 @@ def _map_header(header: Sequence[str]) -> Dict[str, int]:
     return mapping
 
 
+def _is_blank_row(row: Sequence[str]) -> bool:
+    """Строка CSV без данных (только пустые ячейки, кавычки, запятые)."""
+    for c in row:
+        s = str(c).strip()
+        if not s:
+            continue
+        if s in ('-', '—', '–', '""', "''"):
+            continue
+        if len(s) >= 2 and s[0] == s[-1] and s[0] in ('"', "'"):
+            s = s[1:-1].strip()
+        if s:
+            return False
+    return True
+
+
+def _filter_blank_rows(rows: Sequence[Sequence[str]]) -> Tuple[List[List[str]], int]:
+    """Убрать пустые строки данных (заголовок сохраняется)."""
+    if not rows:
+        return [], 0
+    header = list(rows[0])
+    data = [list(r) for r in rows[1:] if not _is_blank_row(r)]
+    skipped = len(rows) - 1 - len(data)
+    return [header] + data, skipped
+
+
+def clean_history_text(text: str) -> Tuple[str, int]:
+    """Удалить пустые строки из текста CSV; вернуть очищенный текст и число удалённых."""
+    sample = text.strip()
+    if not sample:
+        return "", 0
+    delim = ";" if sample.count(";") >= sample.count(",") else ","
+    rows = list(csv.reader(io.StringIO(sample), delimiter=delim))
+    cleaned_rows, skipped = _filter_blank_rows(rows)
+    if not cleaned_rows:
+        return "", skipped
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=delim, lineterminator="\n")
+    for row in cleaned_rows:
+        writer.writerow(row)
+    return buf.getvalue(), skipped
+
+
 def parse_history_csv(path: Path) -> List[HistoricalMatch]:
     """Разобрать CSV истории сезона в «человеческом» или каноническом формате.
 
@@ -275,23 +317,32 @@ def parse_history_csv(path: Path) -> List[HistoricalMatch]:
             dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
         except csv.Error:
             dialect = csv.excel
-        rows = [r for r in csv.reader(f, dialect=dialect) if any(c.strip() for c in r)]
+        rows = [r for r in csv.reader(f, dialect=dialect)]
 
+    rows, _skipped = _filter_blank_rows(rows)
     return _parse_history_rows(rows, source=str(path))
 
 
 def parse_history_text(text: str) -> List[HistoricalMatch]:
     """Разобрать историю из текста (вставка из Excel / буфера)."""
-    sample = text.strip()
-    if not sample:
+    cleaned, _skipped = clean_history_text(text)
+    if not cleaned.strip():
         raise ValueError("Текст пуст")
+    sample = cleaned.strip()
     delim = ";" if sample.count(";") >= sample.count(",") else ","
-    rows = [
-        r
-        for r in csv.reader(io.StringIO(sample), delimiter=delim)
-        if any(c.strip() for c in r)
-    ]
+    rows = list(csv.reader(io.StringIO(sample), delimiter=delim))
     return _parse_history_rows(rows, source="текст")
+
+
+def parse_history_text_with_stats(text: str) -> Tuple[List[HistoricalMatch], int]:
+    """Как parse_history_text, плюс число удалённых пустых строк."""
+    cleaned, skipped = clean_history_text(text)
+    if not cleaned.strip():
+        raise ValueError("Текст пуст")
+    sample = cleaned.strip()
+    delim = ";" if sample.count(";") >= sample.count(",") else ","
+    rows = list(csv.reader(io.StringIO(sample), delimiter=delim))
+    return _parse_history_rows(rows, source="текст"), skipped
 
 
 def _parse_history_rows(rows: Sequence[Sequence[str]], source: str = "") -> List[HistoricalMatch]:
@@ -595,6 +646,7 @@ class ImportResult:
     path: Path
     replaced: bool = False
     previous_matches: int = 0
+    blank_rows_removed: int = 0
 
 
 def season_exists(league: str, season: str) -> bool:
@@ -606,8 +658,24 @@ def season_exists(league: str, season: str) -> bool:
 
 def import_season(league: str, season: str, csv_path: Path) -> ImportResult:
     """Импортировать CSV сезона в хранилище (перезаписывает существующий)."""
-    matches = parse_history_csv(Path(csv_path))
-    return import_season_matches(league, season, matches)
+    raw = Path(csv_path).read_text(encoding="utf-8-sig")
+    cleaned, blank_removed = clean_history_text(raw)
+    if not cleaned.strip():
+        raise ValueError("Файл пуст или содержит только пустые строки")
+    sample = cleaned.strip()
+    delim = ";" if sample.count(";") >= sample.count(",") else ","
+    rows = list(csv.reader(io.StringIO(sample), delimiter=delim))
+    matches = _parse_history_rows(rows, source=str(csv_path))
+    res = import_season_matches(league, season, matches)
+    return ImportResult(
+        league=res.league,
+        season=res.season,
+        matches=res.matches,
+        path=res.path,
+        replaced=res.replaced,
+        previous_matches=res.previous_matches,
+        blank_rows_removed=blank_removed,
+    )
 
 
 def import_season_matches(

@@ -636,11 +636,55 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       return '';
     }
 
+    function isBlankCell(s){
+      const t = String(s ?? '').trim();
+      if (!t || t === '-' || t === '—') return true;
+      if (t.length >= 2 && t[0] === t[t.length-1] && (t[0] === '"' || t[0] === "'"))
+        return !t.slice(1,-1).trim();
+      return false;
+    }
+
+    function isBlankRow(row){
+      return row.every(isBlankCell);
+    }
+
+    function isBlankLine(line){
+      const t = String(line ?? '').trim();
+      if (!t) return true;
+      return !t.replace(/["',;\s]/g, '');
+    }
+
+    function parseCsvLine(line, delim){
+      const out = [];
+      let cur = '', inQ = false;
+      for (let i = 0; i < line.length; i++){
+        const ch = line[i];
+        if (ch === '"'){
+          if (inQ && line[i+1] === '"'){ cur += '"'; i++; continue; }
+          inQ = !inQ; continue;
+        }
+        if ((ch === delim) && !inQ){ out.push(cur); cur = ''; continue; }
+        cur += ch;
+      }
+      out.push(cur);
+      return out.map(s => s.trim());
+    }
+
+    function cleanHistoryText(text){
+      const lines = text.split(/\r?\n/);
+      const kept = lines.filter(l => !isBlankLine(l));
+      const skipped = lines.length - kept.length;
+      return { text: kept.join('\n'), skipped };
+    }
+
     function parseHistoryText(text){
-      const raw = text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
-      if (!raw.length) throw new Error('Текст пуст');
-      const delim = raw.join('\n').includes(';') && !raw[0].includes(',') ? ';' : ',';
-      const rows = raw.map(r => r.split(delim).map(c => c.trim()));
+      const { text: cleaned, skipped } = cleanHistoryText(text);
+      if (!cleaned.trim()) throw new Error('Текст пуст');
+      const rawLines = cleaned.split(/\r?\n/).filter(l => !isBlankLine(l));
+      if (!rawLines.length) throw new Error('Текст пуст');
+      const delim = rawLines.join('\n').includes(';') && !rawLines[0].includes(',') ? ';' : ',';
+      const rows = rawLines.map(l => parseCsvLine(l, delim)).filter(r => !isBlankRow(r));
+      if (rows.length < 2) throw new Error('Нужны заголовок и хотя бы одна строка данных');
       const header = rows[0];
       const mapping = {};
       header.forEach((h,i) => {
@@ -676,7 +720,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         });
       }
       if (!matches.length) throw new Error('Нет валидных матчей');
-      return matches;
+      return { matches, skipped };
+    }
+
+    function parseHistoryMatches(text){
+      return parseHistoryText(text).matches;
     }
 
     function histToRankMatches(matches){
@@ -890,7 +938,12 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         const league = document.getElementById('histLeague').value;
         const season = document.getElementById('histSeason').value.trim().replace('/','-');
         if (!season) throw new Error('Укажите сезон');
-        const matches = parseHistoryText(document.getElementById('histText').value);
+        const raw = document.getElementById('histText').value;
+        const { text: cleaned, skipped } = cleanHistoryText(raw);
+        if (!cleaned.trim()) throw new Error('Нет данных: только пустые строки');
+        document.getElementById('histText').value = cleaned;
+        const { matches, skipped: skipped2 } = parseHistoryText(cleaned);
+        const blankRemoved = Math.max(skipped, skipped2);
         if (seasonExists(league, season)){
           const prev = (loadHistStore().leagues[league][season].matches || []).length;
           const ok = confirm(
@@ -905,7 +958,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         alert(
           `Сохранено: ${LEAGUE_TITLES[league]} / ${res.season}\n` +
           `Матчей: ${res.count}\n` +
-          (res.replaced ? `(перезаписано, было ${res.previous})` : '(новый сезон)')
+          (res.replaced ? `(перезаписано, было ${res.previous})\n` : '(новый сезон)\n') +
+          (blankRemoved ? `Удалено пустых строк: ${blankRemoved}` : '')
         );
       } catch(e){ alert(e.message); }
     });
@@ -926,7 +980,12 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     document.getElementById('histFile').addEventListener('change', async (e)=>{
       const file = e.target.files && e.target.files[0];
       if (!file) return;
-      document.getElementById('histText').value = await file.text();
+      const raw = await file.text();
+      const { text: cleaned, skipped } = cleanHistoryText(raw);
+      document.getElementById('histText').value = cleaned;
+      if (skipped > 0){
+        alert(`Проверка файла: удалено пустых строк — ${skipped}`);
+      }
     });
 
     if (!document.getElementById('histText').value.trim() && !listHistSeasons().length){
