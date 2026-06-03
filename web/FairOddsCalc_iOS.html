@@ -205,9 +205,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
       <div class="row">
         <button id="histSave" class="btn primary">Сохранить в хранилище</button>
+        <button id="histView" class="btn">Просмотр истории</button>
         <button id="histLoadSample" class="btn">Пример EPL</button>
         <button id="histMetrics" class="btn">H / draw по лиге</button>
       </div>
+      <div class="small" style="margin-top:6px;">Сохранённые сезоны (тап — быстрый просмотр):</div>
       <div class="table-wrap">
         <table id="histTable">
           <thead>
@@ -221,7 +223,25 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <tbody></tbody>
         </table>
       </div>
-      <div id="metaHist" class="meta">Загрузите сезон или выберите строку в таблице.</div>
+      <div class="small" style="margin-top:10px;">Матчи выбранного сезона:</div>
+      <div class="table-wrap">
+        <table id="histViewTable">
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Дома</th>
+              <th class="right">1</th>
+              <th class="right">X</th>
+              <th class="right">2</th>
+              <th>Гости</th>
+              <th class="right">Счёт</th>
+              <th>Исх.</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="metaHist" class="meta">Загрузите сезон или нажмите «Просмотр истории».</div>
     </section>
   </div>
 
@@ -784,6 +804,49 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       return lines.join('\n');
     }
 
+    function matchesToCsvText(matches){
+      const esc = (s) => {
+        const t = String(s ?? '');
+        return t.includes(',') || t.includes('"') ? `"${t.replace(/"/g,'""')}"` : t;
+      };
+      const header = 'Match Date,Team Home,1 Odds,X Odds,2 Odds,Away Team,Derby,Venue Type,Home Goals,Away Goals,Result,Comment';
+      const rows = matches.map(m => [
+        m.date, m.home, m.o1, m.ox, m.o2, m.away, m.derby||'', m.venue||'',
+        m.hg ?? '', m.ag ?? '', derivedResult(m)||'', m.comment||''
+      ].map(esc).join(','));
+      return header + '\n' + rows.join('\n') + '\n';
+    }
+
+    function renderHistViewTable(matches){
+      const tbody = document.querySelector('#histViewTable tbody');
+      tbody.innerHTML = '';
+      matches.forEach(m => {
+        const tr = document.createElement('tr');
+        const score = (m.hg != null && m.ag != null) ? `${m.hg}:${m.ag}` : '';
+        const res = derivedResult(m);
+        tr.innerHTML =
+          `<td>${m.date||''}</td><td>${m.home}</td>`+
+          `<td class="right">${fmt(m.o1,2)}</td><td class="right">${fmt(m.ox,2)}</td><td class="right">${fmt(m.o2,2)}</td>`+
+          `<td>${m.away}</td><td class="right">${score}</td><td>${res}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function viewHistSeason(league, season){
+      const safe = season.trim().replace('/','-');
+      const raw = getHistSeason(league, safe);
+      if (!raw || !raw.length){
+        throw new Error(`${LEAGUE_TITLES[league]} / ${safe}: сезон не найден в хранилище`);
+      }
+      document.getElementById('histLeague').value = league;
+      document.getElementById('histSeason').value = safe;
+      document.getElementById('histText').value = matchesToCsvText(raw);
+      renderHistViewTable(raw);
+      document.getElementById('metaHist').textContent =
+        `${LEAGUE_TITLES[league]} / ${safe}\nМатчей: ${raw.length}\n\n` + formatHistMetrics(league, safe);
+      return safe;
+    }
+
     function refreshHistTable(){
       const tbody = document.querySelector('#histTable tbody');
       tbody.innerHTML = '';
@@ -796,13 +859,22 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         tr.addEventListener('click', () => {
           document.querySelectorAll('#histTable tbody tr').forEach(r => r.style.background='');
           tr.style.background = '#eef2ff';
-          document.getElementById('histLeague').value = info.league;
-          document.getElementById('histSeason').value = info.season;
-          document.getElementById('metaHist').textContent = formatHistMetrics(info.league, info.season);
+          try {
+            viewHistSeason(info.league, info.season);
+          } catch(e){ alert(e.message); }
         });
         tbody.appendChild(tr);
       });
     }
+
+    document.getElementById('histView').addEventListener('click', ()=>{
+      try {
+        const league = document.getElementById('histLeague').value;
+        const season = document.getElementById('histSeason').value.trim().replace('/','-');
+        if (!season) throw new Error('Укажите сезон');
+        viewHistSeason(league, season);
+      } catch(e){ alert(e.message); }
+    });
 
     document.getElementById('histSave').addEventListener('click', ()=>{
       try {

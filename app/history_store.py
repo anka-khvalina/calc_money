@@ -143,6 +143,22 @@ CANONICAL_HEADER = [
     "comment",
 ]
 
+# Заголовок для просмотра/экспорта (как в Excel-таблице пользователя)
+DISPLAY_HEADER = [
+    "Match Date",
+    "Team Home",
+    "1 Odds",
+    "X Odds",
+    "2 Odds",
+    "Away Team",
+    "Derby",
+    "Venue Type",
+    "Home Goals",
+    "Away Goals",
+    "Result",
+    "Comment",
+]
+
 
 @dataclass(frozen=True)
 class HistoricalMatch:
@@ -411,6 +427,62 @@ def load_season(league: str, season: str) -> List[HistoricalMatch]:
             f"Сезон не найден в хранилище: {league_title(key)} / {season} ({path})"
         )
     return parse_history_csv(path)
+
+
+def matches_to_csv_text(
+    matches: Sequence[HistoricalMatch], display_format: bool = True
+) -> str:
+    """Сериализовать матчи в CSV-текст для просмотра/редактирования."""
+    import io as _io
+
+    buf = _io.StringIO()
+    if display_format:
+        writer = csv.writer(buf)
+        writer.writerow(DISPLAY_HEADER)
+        for m in matches:
+            writer.writerow(
+                [
+                    m.date,
+                    m.home_team,
+                    f"{m.odds_1:g}",
+                    f"{m.odds_x:g}",
+                    f"{m.odds_2:g}",
+                    m.away_team,
+                    m.derby,
+                    m.venue_type,
+                    "" if m.home_goals is None else m.home_goals,
+                    "" if m.away_goals is None else m.away_goals,
+                    m.derived_result(),
+                    m.comment,
+                ]
+            )
+    else:
+        writer = csv.writer(buf)
+        writer.writerow(CANONICAL_HEADER)
+        for m in matches:
+            writer.writerow(
+                [
+                    m.date,
+                    m.home_team,
+                    m.away_team,
+                    f"{m.odds_1:g}",
+                    f"{m.odds_x:g}",
+                    f"{m.odds_2:g}",
+                    "" if m.home_goals is None else m.home_goals,
+                    "" if m.away_goals is None else m.away_goals,
+                    m.derived_result(),
+                    m.derby,
+                    m.venue_type,
+                    m.comment,
+                ]
+            )
+    return buf.getvalue().rstrip("\n") + "\n"
+
+
+def view_season_text(league: str, season: str) -> str:
+    """Текст CSV сохранённого сезона для просмотра."""
+    matches = load_season(league, season)
+    return matches_to_csv_text(matches, display_format=True)
 
 
 def list_leagues() -> List[str]:
