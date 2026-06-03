@@ -246,9 +246,18 @@ python3 app/history_store.py draw-model --league EPL
 
 Как открыть на iPhone/iPad:
 
-1. Скачайте `FairOddsCalc_iOS.html` из релиза или из репозитория.
-2. Откройте файл в **Safari**.
-3. (Опционально) нажмите **Поделиться → На экран «Домой»** для запуска «как приложение».
+> **Не используйте** `raw.githubusercontent.com` — Safari покажет **исходный код**, а не приложение.
+
+**Ссылки с вкладкой «История»:**
+
+| Способ | URL |
+|--------|-----|
+| HTML Preview (сразу) | https://htmlpreview.github.io/?https://raw.githubusercontent.com/anka-khvalina/calc_money/cursor/history-store-17b5/web/FairOddsCalc_iOS.html |
+| GitHub Pages | https://anka-khvalina.github.io/calc_money/FairOddsCalc_iOS.html |
+| Файл из Releases | скачать → **Файлы** → открыть в Safari |
+
+1. Откройте одну из ссылок в **Safari** (не Telegram/WhatsApp).
+2. (Опционально) **Поделиться → На экран «Домой»**.
 
 Это mobile-web версия с тремя вкладками:
 
