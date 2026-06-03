@@ -593,6 +593,15 @@ class ImportResult:
     season: str
     matches: int
     path: Path
+    replaced: bool = False
+    previous_matches: int = 0
+
+
+def season_exists(league: str, season: str) -> bool:
+    """Есть ли уже сохранённый сезон в хранилище."""
+    key = normalize_league(league)
+    safe = _safe_season(season)
+    return season_path(key, safe).exists()
 
 
 def import_season(league: str, season: str, csv_path: Path) -> ImportResult:
@@ -610,9 +619,23 @@ def import_season_matches(
     key = normalize_league(league)
     safe = _safe_season(season)
     dest = season_path(key, safe)
+    replaced = dest.exists()
+    previous_matches = 0
+    if replaced:
+        try:
+            previous_matches = len(load_season(key, safe))
+        except (ValueError, FileNotFoundError):
+            previous_matches = 0
     write_canonical_csv(dest, matches)
     _update_index(key, safe, len(matches))
-    return ImportResult(league=key, season=safe, matches=len(matches), path=dest)
+    return ImportResult(
+        league=key,
+        season=safe,
+        matches=len(matches),
+        path=dest,
+        replaced=replaced,
+        previous_matches=previous_matches,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -789,9 +812,10 @@ def calibrate_draw_model(league: str) -> DrawModel:
 
 def _cmd_import(args: argparse.Namespace) -> None:
     res = import_season(args.league, args.season, Path(args.input))
+    note = f" (перезаписано, было {res.previous_matches})" if res.replaced else " (новый)"
     print(
         f"Импортировано: {league_title(res.league)} / {res.season} — "
-        f"{res.matches} матчей -> {res.path}"
+        f"{res.matches} матчей{note} -> {res.path}"
     )
 
 

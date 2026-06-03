@@ -683,15 +683,24 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       return matches.map(m => ({ home: m.home, away: m.away, o1: m.o1, ox: m.ox, o2: m.o2 }));
     }
 
+    function seasonExists(league, season){
+      const store = loadHistStore();
+      const safe = season.trim().replace('/','-');
+      return !!(store.leagues[league] && store.leagues[league][safe]);
+    }
+
     function importHistSeason(league, season, matches){
       const store = loadHistStore();
+      const safe = season.trim().replace('/','-');
       if (!store.leagues[league]) store.leagues[league] = {};
-      store.leagues[league][season] = {
+      const replaced = !!store.leagues[league][safe];
+      const previous = replaced ? (store.leagues[league][safe].matches || []).length : 0;
+      store.leagues[league][safe] = {
         matches,
         imported_at: new Date().toISOString(),
       };
       saveHistStore(store);
-      return matches.length;
+      return { count: matches.length, replaced, previous, season: safe };
     }
 
     function listHistSeasons(){
@@ -882,10 +891,22 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         const season = document.getElementById('histSeason').value.trim().replace('/','-');
         if (!season) throw new Error('Укажите сезон');
         const matches = parseHistoryText(document.getElementById('histText').value);
-        const n = importHistSeason(league, season, matches);
+        if (seasonExists(league, season)){
+          const prev = (loadHistStore().leagues[league][season].matches || []).length;
+          const ok = confirm(
+            `${LEAGUE_TITLES[league]} / ${season} уже сохранён (${prev} матчей).\n\n` +
+            `Перезаписать новыми данными (${matches.length} матчей)?`
+          );
+          if (!ok) return;
+        }
+        const res = importHistSeason(league, season, matches);
         refreshHistTable();
-        document.getElementById('metaHist').textContent = formatHistMetrics(league, season);
-        alert(`Сохранено: ${LEAGUE_TITLES[league]} / ${season}\nМатчей: ${n}`);
+        viewHistSeason(league, res.season);
+        alert(
+          `Сохранено: ${LEAGUE_TITLES[league]} / ${res.season}\n` +
+          `Матчей: ${res.count}\n` +
+          (res.replaced ? `(перезаписано, было ${res.previous})` : '(новый сезон)')
+        );
       } catch(e){ alert(e.message); }
     });
 

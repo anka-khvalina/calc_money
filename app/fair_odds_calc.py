@@ -906,10 +906,20 @@ def build_app():
                 return
         try:
             if from_file is not None:
-                res = hs.import_season(league_key, season, from_file)
+                matches = hs.parse_history_csv(from_file)
             else:
                 matches = hs.parse_history_text(text_history.get("1.0", "end"))
-                res = hs.import_season_matches(league_key, season, matches)
+            if hs.season_exists(league_key, season):
+                prev = len(hs.load_season(league_key, season))
+                ok = messagebox.askyesno(
+                    "Сезон уже есть",
+                    f"{hs.league_title(league_key)} / {season} уже сохранён "
+                    f"({prev} матчей).\n\nПерезаписать новыми данными ({len(matches)} матчей)?",
+                    icon="warning",
+                )
+                if not ok:
+                    return
+            res = hs.import_season_matches(league_key, season, matches)
         except Exception as exc:
             messagebox.showerror("Ошибка импорта", str(exc))
             return
@@ -925,7 +935,13 @@ def build_app():
         messagebox.showinfo(
             "Импорт выполнен",
             f"{hs.league_title(res.league)} / {res.season}\n"
-            f"Матчей: {res.matches}\n{res.path}",
+            f"Матчей: {res.matches}\n"
+            + (
+                f"(перезаписано, было {res.previous_matches})\n"
+                if res.replaced
+                else "(новый сезон)\n"
+            )
+            + f"{res.path}",
         )
 
     def load_history_csv():
