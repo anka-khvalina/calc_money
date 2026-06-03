@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import math
 import os
@@ -260,8 +261,26 @@ def parse_history_csv(path: Path) -> List[HistoricalMatch]:
             dialect = csv.excel
         rows = [r for r in csv.reader(f, dialect=dialect) if any(c.strip() for c in r)]
 
+    return _parse_history_rows(rows, source=str(path))
+
+
+def parse_history_text(text: str) -> List[HistoricalMatch]:
+    """Разобрать историю из текста (вставка из Excel / буфера)."""
+    sample = text.strip()
+    if not sample:
+        raise ValueError("Текст пуст")
+    delim = ";" if sample.count(";") >= sample.count(",") else ","
+    rows = [
+        r
+        for r in csv.reader(io.StringIO(sample), delimiter=delim)
+        if any(c.strip() for c in r)
+    ]
+    return _parse_history_rows(rows, source="текст")
+
+
+def _parse_history_rows(rows: Sequence[Sequence[str]], source: str = "") -> List[HistoricalMatch]:
     if not rows:
-        raise ValueError("Файл пуст")
+        raise ValueError("Нет данных для разбора")
 
     header = rows[0]
     mapping = _map_header(header)
@@ -269,10 +288,10 @@ def parse_history_csv(path: Path) -> List[HistoricalMatch]:
     missing = [r for r in required if r not in mapping]
     if missing:
         raise ValueError(
-            "В заголовке CSV не найдены обязательные колонки: "
-            f"{missing}. Заголовок: {header}. "
-            "Нужны хотя бы home/away команды и коэффициенты 1/X/2 "
-            "(поддерживаются алиасы, напр. 'Team Home', '1 Odds', 'X Odds', '2 Odds')."
+            "В заголовке не найдены обязательные колонки: "
+            f"{missing}. Заголовок: {list(header)}. "
+            "Нужны команды и коэффициенты 1/X/2 "
+            "(алиасы: 'Team Home', '1 Odds', 'X Odds', '2 Odds', …)."
         )
 
     def cell(row: Sequence[str], field_name: str) -> str:
@@ -286,7 +305,7 @@ def parse_history_csv(path: Path) -> List[HistoricalMatch]:
         home = cell(row, "home_team")
         away = cell(row, "away_team")
         if not home or not away:
-            continue  # пропускаем неполные строки
+            continue
         try:
             odds_1 = tr._parse_float(cell(row, "odds_1"))
             odds_x = tr._parse_float(cell(row, "odds_x"))
@@ -298,24 +317,25 @@ def parse_history_csv(path: Path) -> List[HistoricalMatch]:
                 f"Строка {line_no}: коэффициенты должны быть > 1 "
                 f"({odds_1}, {odds_x}, {odds_2})"
             )
-        match = HistoricalMatch(
-            home_team=home,
-            away_team=away,
-            odds_1=odds_1,
-            odds_x=odds_x,
-            odds_2=odds_2,
-            date=cell(row, "date"),
-            home_goals=_parse_int(cell(row, "home_goals")),
-            away_goals=_parse_int(cell(row, "away_goals")),
-            result=cell(row, "result"),
-            derby=cell(row, "derby"),
-            venue_type=cell(row, "venue_type"),
-            comment=cell(row, "comment"),
+        matches.append(
+            HistoricalMatch(
+                home_team=home,
+                away_team=away,
+                odds_1=odds_1,
+                odds_x=odds_x,
+                odds_2=odds_2,
+                date=cell(row, "date"),
+                home_goals=_parse_int(cell(row, "home_goals")),
+                away_goals=_parse_int(cell(row, "away_goals")),
+                result=cell(row, "result"),
+                derby=cell(row, "derby"),
+                venue_type=cell(row, "venue_type"),
+                comment=cell(row, "comment"),
+            )
         )
-        matches.append(match)
 
     if not matches:
-        raise ValueError("Не найдено ни одного валидного матча")
+        raise ValueError(f"Не найдено ни одного валидного матча ({source})")
     return matches
 
 
@@ -414,6 +434,47 @@ def list_seasons(league: str) -> List[str]:
     return seasons
 
 
+@dataclass(frozen=True)
+class SeasonInfo:
+    league: str
+    league_title: str
+    season: str
+    matches: int
+    imported_at: str
+    path: Path
+
+
+def list_all_seasons() -> List[SeasonInfo]:
+    """Все сохранённые сезоны всех лиг (для GUI/отчётов)."""
+    index = _load_index()
+    out: List[SeasonInfo] = []
+    leagues_meta = index.get("leagues", {})
+    for key in LEAGUES:
+        for season in list_seasons(key):
+            meta = leagues_meta.get(key, {}).get("seasons", {}).get(season, {})
+            try:
+                cnt = len(load_season(key, season))
+            except (ValueError, FileNotFoundError):
+                cnt = int(meta.get("matches", 0))
+            out.append(
+                SeasonInfo(
+                    league=key,
+                    league_title=league_title(key),
+                    season=season,
+                    matches=cnt,
+                    imported_at=str(meta.get("imported_at", "")),
+                    path=season_path(key, season),
+                )
+            )
+    out.sort(key=lambda s: (s.league, s.season))
+    return out
+
+
+def format_league_options() -> List[Tuple[str, str]]:
+    """Пары (отображаемое имя, ключ) для combobox."""
+    return [(LEAGUES[k], k) for k in LEAGUES]
+
+
 # --------------------------------------------------------------------------- #
 # Реестр (index.json)
 # --------------------------------------------------------------------------- #
@@ -464,12 +525,22 @@ class ImportResult:
 
 def import_season(league: str, season: str, csv_path: Path) -> ImportResult:
     """Импортировать CSV сезона в хранилище (перезаписывает существующий)."""
-    key = normalize_league(league)
     matches = parse_history_csv(Path(csv_path))
-    dest = season_path(key, season)
+    return import_season_matches(league, season, matches)
+
+
+def import_season_matches(
+    league: str, season: str, matches: Sequence[HistoricalMatch]
+) -> ImportResult:
+    """Сохранить уже разобранные матчи сезона в хранилище."""
+    if not matches:
+        raise ValueError("Нет матчей для импорта")
+    key = normalize_league(league)
+    safe = _safe_season(season)
+    dest = season_path(key, safe)
     write_canonical_csv(dest, matches)
-    _update_index(key, season, len(matches))
-    return ImportResult(league=key, season=_safe_season(season), matches=len(matches), path=dest)
+    _update_index(key, safe, len(matches))
+    return ImportResult(league=key, season=safe, matches=len(matches), path=dest)
 
 
 # --------------------------------------------------------------------------- #
