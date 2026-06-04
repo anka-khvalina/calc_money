@@ -764,13 +764,15 @@ def build_app():
             values=(f"P2 ({res.team2})", fmt(res.k2, 2), fmt(res.p2 * 100, 2) + " %"),
         )
         meta_rows = [
-            ("D (разница сил)", fmt(res.d_market, 1)),
+            ("D (целевой матч, для X)", fmt(res.d_market, 1)),
             ("H (домашнее преимущество)", fmt(res.h_used, 1) if res.h_used is not None else "—"),
             ("Источник данных", res.source_label_ru),
             ("Сезон расчёта", res.season_used),
             ("Матчей в расчёте", str(res.matches_used)),
             ("Метод", res.method),
         ]
+        if res.d_chain is not None:
+            meta_rows.insert(1, ("D (цепь через соперника)", fmt(res.d_chain, 1)))
         if res.common_opponent:
             meta_rows.insert(3, ("Общий соперник", res.common_opponent))
         for param, value in meta_rows:

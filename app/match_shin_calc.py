@@ -63,6 +63,7 @@ class ShinMatchResult:
     team2: str = ""
     d_market: float = 0.0
     h_used: Optional[float] = None
+    d_chain: Optional[float] = None
 
     @property
     def source_label_ru(self) -> str:
@@ -230,6 +231,23 @@ def _shin_market_diff(match: tr.MatchOdds) -> Tuple[float, float, float]:
     return 400.0 * math.log10(e_home / e_away), e_home, e_away
 
 
+def _target_match_d(
+    team1: str,
+    team2: str,
+    matches: Sequence[hs.HistoricalMatch],
+) -> Tuple[Optional[float], Optional[float]]:
+    """D целевого матча team1 (дома) vs team2: R1 − R2 + H по Shin-рейтингу сезона."""
+    try:
+        odds_matches = [m.to_match_odds() for m in matches]
+        ranking = build_ranking_shin(odds_matches)
+        ratings = {t.team: t.rating for t in ranking.teams}
+        if team1 not in ratings or team2 not in ratings:
+            return None, None
+        return ratings[team1] - ratings[team2] + ranking.home_advantage, ranking.home_advantage
+    except (ValueError, ZeroDivisionError):
+        return None, None
+
+
 def build_ranking_shin(matches: Sequence[tr.MatchOdds]) -> tr.RankingResult:
     """Рейтинг команд с Shin de-vig (копия build_ranking с другим de-vig)."""
     teams = sorted({m.home_team for m in matches} | {m.away_team for m in matches})
@@ -303,15 +321,21 @@ def _calc_common_opponent(
     s1 = math.sqrt(r_ab)
     s2 = 1.0 / math.sqrt(r_ab) if r_ab > 0 else 1.0
 
+    chain_d = 400.0 * math.log10(s1 / s2) if s2 > 0 else 0.0
+    d_draw, h_rank = _target_match_d(team1, team2, matches)
+    if d_draw is None:
+        d_draw = chain_d
+        try:
+            h_est = hs.home_advantage_prior(league_key).h_final
+        except ValueError:
+            h_est = hs.LEAGUE_DEFAULT_H.get(league_key, 58.0)
+    else:
+        h_est = h_rank if h_rank is not None else hs.LEAGUE_DEFAULT_H.get(league_key, 58.0)
+
     draw = hs.calibrate_draw_model(league_key)
-    d = 400.0 * math.log10(s1 / s2) if s2 > 0 else 0.0
-    px = draw.px(d)
+    px = draw.px(d_draw)
     p1, px, p2 = _probs_from_strengths(s1, s2, px)
     used = len(m1) + len(m2)
-    try:
-        h_est = hs.home_advantage_prior(league_key).h_final
-    except ValueError:
-        h_est = hs.LEAGUE_DEFAULT_H.get(league_key, 58.0)
     return ShinMatchResult(
         p1=p1,
         px=px,
@@ -322,8 +346,9 @@ def _calc_common_opponent(
         common_opponent=opponent,
         team1=team1,
         team2=team2,
-        d_market=d,
+        d_market=d_draw,
         h_used=h_est,
+        d_chain=chain_d,
     )
 
 
@@ -347,7 +372,7 @@ def _calc_league_ranking(
     d_rating = ratings[team1] - ratings[team2]
     d_target = d_rating + ranking.home_advantage
     draw = hs.calibrate_draw_model(league_key)
-    px = draw.px(d_rating)
+    px = draw.px(d_target)
     p1, px, p2 = _probs_from_strengths(s1, s2, px)
     used = len(matches)
     return ShinMatchResult(

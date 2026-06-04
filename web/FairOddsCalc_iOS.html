@@ -60,7 +60,9 @@
       border-bottom:1px solid var(--line); padding:9px 12px; font-size:13px;
     }
     .shin-table th{ background:#f8fafc; color:var(--muted); font-weight:600; text-align:left; }
-    .shin-table th.right,.shin-table td.num{ text-align:right; }    .shin-table td.num{ font-variant-numeric:tabular-nums; font-weight:600; }
+    .shin-table th.right,.shin-table td.num{ text-align:right; }
+    .shin-table td.num{ font-variant-numeric:tabular-nums; font-weight:600; }
+    .shin-table tr:last-child td{ border-bottom:none; }
     .shin-table.meta td:first-child{ color:var(--muted); width:42%; }
     .shin-empty{
       margin-top:12px; padding:12px; border:1px dashed var(--line);
@@ -957,6 +959,14 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const k = p => (1/p).toFixed(digits).replace('.', ',');
       return `${k(p1)} / ${k(px)} / ${k(p2)}`;
     }
+    function targetMatchD(t1, t2, matches){
+      try {
+        const rank = buildRanking(histToRankMatches(matches), true);
+        const ratings = new Map(rank.teams.map(t => [t.team, t.rating]));
+        if (!ratings.has(t1) || !ratings.has(t2)) return null;
+        return { d: ratings.get(t1) - ratings.get(t2) + rank.H, h: rank.H };
+      } catch { return null; }
+    }
     function calcShinCommon(t1, t2, opp, matches, league, seasonUsed){
       const m1 = matches.filter(m => (m.home===t1||m.away===t1)&&(m.home===opp||m.away===opp));
       const m2 = matches.filter(m => (m.home===t2||m.away===t2)&&(m.home===opp||m.away===opp));
@@ -965,14 +975,17 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const r2 = geomMean(m2.map(m => strengthRatioShin(m,t2)));
       const rAb = r1/r2;
       const s1 = Math.sqrt(rAb), s2 = 1/Math.sqrt(rAb||1);
-      const dm = calibrateDrawModel(league);
-      const dMarket = 400*Math.log10(s1/(s2||1));
+      const dChain = 400*Math.log10(s1/(s2||1));
+      const target = targetMatchD(t1, t2, matches);
       const prior = homeAdvantagePrior(league);
-      const [p1,px,p2] = probsFromStrengths(s1, s2, dm.px(dMarket));
+      const dDraw = target ? target.d : dChain;
+      const hUsed = target ? target.h : prior.hFinal;
+      const dm = calibrateDrawModel(league);
+      const [p1,px,p2] = probsFromStrengths(s1, s2, dm.px(dDraw));
       return {
         p1, px, p2, source:'Common opponent', seasonUsed,
         matchesUsed: m1.length+m2.length, opp,
-        dMarket, hUsed: prior.hFinal,
+        dMarket: dDraw, dChain, hUsed,
         team1: t1, team2: t2,
       };
     }
@@ -986,10 +999,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const dm = calibrateDrawModel(league);
       const dRating = ratings.get(t1) - ratings.get(t2);
       const dMarket = dRating + rank.H;
-      const [p1,px,p2] = probsFromStrengths(s1, s2, dm.px(dRating));
+      const [p1,px,p2] = probsFromStrengths(s1, s2, dm.px(dMarket));
       return {
         p1, px, p2, source, seasonUsed, matchesUsed: matches.length, opp: null,
-        dMarket, hUsed: rank.H,
+        dMarket, dChain: null, hUsed: rank.H,
         team1: t1, team2: t2,
       };
     }
@@ -1054,13 +1067,14 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         `<tr><td>${escapeHtml(r.label)}</td><td class="num">${r.kv}</td><td class="num">${r.pv}</td></tr>`
       ).join('');
       const meta = [
-        ['D (разница сил)', fmt(res.dMarket, 1)],
+        ['D (целевой матч, для X)', fmt(res.dMarket, 1)],
         ['H (домашнее преимущество)', res.hUsed != null ? fmt(res.hUsed, 1) : '—'],
         ['Источник данных', SHIN_SOURCE_RU[res.source] || res.source],
         ['Сезон расчёта', res.seasonUsed],
         ['Матчей в расчёте', String(res.matchesUsed)],
         ['Метод', 'Shin'],
       ];
+      if (res.dChain != null) meta.splice(1, 0, ['D (цепь через соперника)', fmt(res.dChain, 1)]);
       if (res.opp) meta.splice(3, 0, ['Общий соперник', res.opp]);
       document.querySelector('#shinMetaTable tbody').innerHTML = meta.map(
         ([p,v]) => `<tr><td>${escapeHtml(p)}</td><td>${escapeHtml(v)}</td></tr>`
