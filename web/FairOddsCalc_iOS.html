@@ -4,13 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/shin-match-17b5 draw-fix-v2 -->
+  <!-- build: cursor/shin-match-17b5 fix-tabs-v2 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
       --accent:#255ad6; --danger:#b42318;
     }
     * { box-sizing:border-box; }
+    html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
     body{
       margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
       background:var(--bg); color:var(--text);
@@ -22,6 +23,8 @@
       border:1px solid var(--line); background:#eef2ff; color:#1f3ea6;
       border-radius:10px; padding:8px 10px; font-size:13px; font-weight:600;
       flex:1 1 auto; min-width:0;
+      cursor:pointer; touch-action:manipulation;
+      -webkit-tap-highlight-color:rgba(37,90,214,0.15);
     }
     .tab-btn.active{ background:var(--accent); color:#fff; border-color:var(--accent); }
     .panel{
@@ -44,7 +47,15 @@
     .btn{
       border:1px solid var(--line); background:#fff; border-radius:10px;
       padding:9px 12px; font-size:14px; font-weight:600;
+      cursor:pointer; touch-action:manipulation;
+      -webkit-tap-highlight-color:rgba(37,90,214,0.15);
     }
+    .js-status{
+      font-size:11px; color:var(--muted); margin:-4px 0 10px;
+      padding:6px 10px; background:#fff; border:1px solid var(--line);
+      border-radius:8px;
+    }
+    .js-status.err{ color:var(--danger); border-color:#f5c2c0; background:#fff5f5; }
     .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
     .btn:active{ transform:translateY(1px); }
     .shin-result{ margin-top:14px; display:none; }
@@ -90,15 +101,69 @@
       table{ min-width:0; }
     }
   </style>
+  <script>
+    /* Minimal bootstrap: tabs work even if the main script fails (iOS iframe / cache). */
+    (function () {
+      function ready(fn) {
+        if (document.readyState !== 'loading') fn();
+        else document.addEventListener('DOMContentLoaded', fn);
+      }
+      function setStatus(msg, err) {
+        var el = document.getElementById('jsStatus');
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.toggle('err', !!err);
+      }
+      function closestTabBtn(node, root) {
+        while (node && node !== root) {
+          if (node.classList && node.classList.contains('tab-btn')) return node;
+          node = node.parentNode;
+        }
+        return null;
+      }
+      ready(function () {
+        try {
+          document.documentElement.addEventListener('touchstart', function () {}, { passive: true });
+          document.body.addEventListener('touchstart', function () {}, { passive: true });
+          var TAB = { a: 'tab-a', rank: 'tab-rank', shin: 'tab-shin', hist: 'tab-hist' };
+          function switchTab(id) {
+            var btns = document.querySelectorAll('.tab-btn');
+            for (var i = 0; i < btns.length; i++) {
+              btns[i].classList.toggle('active', btns[i].getAttribute('data-tab') === id);
+            }
+            for (var k in TAB) {
+              if (!Object.prototype.hasOwnProperty.call(TAB, k)) continue;
+              var panel = document.getElementById(TAB[k]);
+              if (panel) panel.classList.toggle('active', k === id);
+            }
+            if (id === 'hist' && window.refreshHistTable) window.refreshHistTable();
+          }
+          var tabsEl = document.querySelector('.tabs');
+          if (tabsEl) {
+            tabsEl.addEventListener('click', function (e) {
+              var btn = (e.target.closest && e.target.closest('.tab-btn')) || closestTabBtn(e.target, tabsEl);
+              if (!btn) return;
+              e.preventDefault();
+              switchTab(btn.getAttribute('data-tab'));
+            });
+          }
+          window.__switchTab = switchTab;
+        } catch (err) {
+          setStatus('Ошибка вкладок: ' + err.message, true);
+        }
+      });
+    })();
+  </script>
 </head>
 <body>
   <div class="wrap">
     <h1>FairOddsCalc (iOS / Safari)</h1>
+    <div id="jsStatus" class="js-status">Инициализация…</div>
     <div class="tabs">
-      <button class="tab-btn active" data-tab="a">Кальк. A</button>
-      <button class="tab-btn" data-tab="rank">Рейтинг</button>
-      <button class="tab-btn" data-tab="shin">Счет кэф</button>
-      <button class="tab-btn" data-tab="hist">История</button>
+      <button type="button" class="tab-btn active" data-tab="a">Кальк. A</button>
+      <button type="button" class="tab-btn" data-tab="rank">Рейтинг</button>
+      <button type="button" class="tab-btn" data-tab="shin">Счет кэф</button>
+      <button type="button" class="tab-btn" data-tab="hist">История</button>
     </div>
 
     <!-- TAB A -->
@@ -141,8 +206,8 @@
       </div>
 
       <div class="row">
-        <button id="calcA" class="btn primary">Считать</button>
-        <button id="calcLeagueA" class="btn">Считаем A лиги</button>
+        <button type="button" id="calcA" class="btn primary">Считать</button>
+        <button type="button" id="calcLeagueA" class="btn">Считаем A лиги</button>
       </div>
 
       <div class="split" style="margin-top:10px">
@@ -182,8 +247,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <input id="topN" value="0" />
           </div>
           <div class="row">
-            <button id="calcRank" class="btn primary">Рассчитать рейтинг</button>
-            <button id="exportRank" class="btn">Сохранить рейтинг CSV</button>
+            <button type="button" id="calcRank" class="btn primary">Рассчитать рейтинг</button>
+            <button type="button" id="exportRank" class="btn">Сохранить рейтинг CSV</button>
           </div>
           <div id="metaRank" class="meta">Результат пока не рассчитан</div>
         </div>
@@ -235,12 +300,12 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </div>
       </div>
       <div class="row" style="margin-top:10px">
-        <button id="calcShin" class="btn primary">Рассчитать</button>
+        <button type="button" id="calcShin" class="btn primary">Рассчитать</button>
       </div>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: fix-tabs-v1</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: fix-tabs-v2</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -295,10 +360,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </div>
       </div>
       <div class="row">
-        <button id="histSave" class="btn primary">Сохранить в хранилище</button>
-        <button id="histView" class="btn">Просмотр истории</button>
-        <button id="histLoadSample" class="btn">Пример EPL</button>
-        <button id="histMetrics" class="btn">H / draw по лиге</button>
+        <button type="button" id="histSave" class="btn primary">Сохранить в хранилище</button>
+        <button type="button" id="histView" class="btn">Просмотр истории</button>
+        <button type="button" id="histLoadSample" class="btn">Пример EPL</button>
+        <button type="button" id="histMetrics" class="btn">H / draw по лиге</button>
       </div>
       <div class="small" style="margin-top:6px;">Сохранённые сезоны (тап — быстрый просмотр):</div>
       <div class="table-wrap">
@@ -337,7 +402,20 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
   </div>
 
   <script>
+    (function appMain() {
+    try {
     // ---------------- Helpers ----------------
+    const setJsStatus = (msg, err) => {
+      const el = document.getElementById('jsStatus');
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.toggle('err', !!err);
+    };
+    const bindClick = (id, fn) => {
+      const el = document.getElementById(id);
+      if (!el) throw new Error('Нет элемента #' + id);
+      el.addEventListener('click', fn);
+    };
     const fmt = (x, d=6) => Number(x).toFixed(d).replace('.', ',').replace(/,?0+$/, '').replace(/,$/, '');
     const parseNum = (s) => {
       const v = parseFloat(String(s).trim().replace(',', '.'));
@@ -359,19 +437,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       return k === 0 ? s : s.slice(k, s.length - k);
     };
 
-    // ---------------- Tabs ----------------
-    const TAB_IDS = { a: 'tab-a', rank: 'tab-rank', shin: 'tab-shin', hist: 'tab-hist' };
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const id = btn.dataset.tab;
-        Object.entries(TAB_IDS).forEach(([key, elId]) => {
-          document.getElementById(elId).classList.toggle('active', key === id);
-        });
-        if (id === 'hist') refreshHistTable();
-      });
-    });
+    // Tabs: handled by bootstrap script in <head> (window.__switchTab)
 
     // ---------------- A Calculator ----------------
     function avg(values, method){
@@ -433,10 +499,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       document.getElementById('metaA').textContent = lines.join('\n');
     }
 
-    document.getElementById('calcA').addEventListener('click', ()=> {
+    bindClick('calcA', ()=> {
       try { runA(false); } catch(e){ alert(e.message); }
     });
-    document.getElementById('calcLeagueA').addEventListener('click', ()=> {
+    bindClick('calcLeagueA', ()=> {
       try { runA(true); } catch(e){ alert(e.message); }
     });
 
@@ -448,7 +514,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       let start = 0;
       if (rows[0].length>=5){
         try { parseNum(rows[0][2]); parseNum(rows[0][3]); parseNum(rows[0][4]); }
-        catch { start = 1; }
+        catch (e) { start = 1; }
       }
       const matches=[];
       for(let i=start;i<rows.length;i++){
@@ -608,7 +674,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         `RMSE: ${fmt(result.rmse,3)}`;
     }
 
-    document.getElementById('calcRank').addEventListener('click', ()=>{
+    bindClick('calcRank', ()=>{
       try{
         const matches = parseMatches(document.getElementById('matchesText').value);
         latestRanking = buildRanking(matches);
@@ -623,10 +689,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       document.getElementById('matchesText').value = text;
     });
 
-    document.getElementById('exportRank').addEventListener('click', ()=>{
+    bindClick('exportRank', ()=>{
       if(!latestRanking){ alert('Сначала рассчитайте рейтинг'); return; }
       const head = 'rank,team,rating,strength_coef\n';
-      const body = latestRanking.teams.map((r,i)=>`${i+1},"${r.team.replaceAll('"','""')}",${r.rating.toFixed(6)},${r.coef.toFixed(8)}`).join('\n');
+      const body = latestRanking.teams.map((r,i)=>`${i+1},"${r.team.replace(/"/g,'""')}",${r.rating.toFixed(6)},${r.coef.toFixed(8)}`).join('\n');
       const blob = new Blob([head+body], {type:'text/csv;charset=utf-8'});
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -729,7 +795,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         const raw = localStorage.getItem(HIST_KEY);
         if (!raw) return { leagues: {} };
         return JSON.parse(raw);
-      } catch { return { leagues: {} }; }
+      } catch (e) { return { leagues: {} }; }
     }
     function saveHistStore(store){
       localStorage.setItem(HIST_KEY, JSON.stringify(store));
@@ -757,7 +823,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     }
 
     function isBlankCell(s){
-      const t = String(s ?? '').trim();
+      const t = String(s != null ? s : '').trim();
       if (!t || t === '-' || t === '—') return true;
       if (t.length >= 2 && t[0] === t[t.length-1] && (t[0] === '"' || t[0] === "'"))
         return !t.slice(1,-1).trim();
@@ -769,7 +835,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     }
 
     function isBlankLine(line){
-      const t = String(line ?? '').trim();
+      const t = String(line != null ? line : '').trim();
       if (!t) return true;
       return !t.replace(/["',;\s]/g, '');
     }
@@ -891,7 +957,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 
     function getHistSeason(league, season){
       const store = loadHistStore();
-      return store.leagues[league]?.[season]?.matches || null;
+      const leagueData = store.leagues[league];
+      if (!leagueData) return null;
+      const seasonData = leagueData[season];
+      if (!seasonData) return null;
+      return seasonData.matches || null;
     }
 
     const SHIN_ERR = {
@@ -976,7 +1046,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         const ratings = new Map(rank.teams.map(t => [t.team, t.rating]));
         if (!ratings.has(t1) || !ratings.has(t2)) return null;
         return { d: ratings.get(t1) - ratings.get(t2) + rank.H, h: rank.H };
-      } catch { return null; }
+      } catch (e) { return null; }
     }
     function calcShinCommon(t1, t2, opp, matches, league, seasonUsed){
       const m1 = matches.filter(m => (m.home===t1||m.away===t1)&&(m.home===opp||m.away===opp));
@@ -1161,7 +1231,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
-    document.getElementById('calcShin').addEventListener('click', () => {
+    bindClick('calcShin', () => {
       const emptyEl = document.getElementById('shinEmpty');
       emptyEl.classList.remove('danger');
       try {
@@ -1187,7 +1257,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         try {
           const res = buildRanking(histToRankMatches(raw));
           estimates.push({ season, h: res.H });
-        } catch { /* skip */ }
+        } catch (e) { /* skip */ }
       });
       let hPrior, fromDefault = false, used = [];
       if (estimates.length){
@@ -1300,13 +1370,13 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 
     function matchesToCsvText(matches){
       const esc = (s) => {
-        const t = String(s ?? '');
+        const t = String(s != null ? s : '');
         return t.includes(',') || t.includes('"') ? `"${t.replace(/"/g,'""')}"` : t;
       };
       const header = 'Match Date,Team Home,1 Odds,X Odds,2 Odds,Away Team,Derby,Venue Type,Home Goals,Away Goals,Result,Comment';
       const rows = matches.map(m => [
         m.date, m.home, m.o1, m.ox, m.o2, m.away, m.derby||'', m.venue||'',
-        m.hg ?? '', m.ag ?? '', derivedResult(m)||'', m.comment||''
+        m.hg != null ? m.hg : '', m.ag != null ? m.ag : '', derivedResult(m)||'', m.comment||''
       ].map(esc).join(','));
       return header + '\n' + rows.join('\n') + '\n';
     }
@@ -1361,7 +1431,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       });
     }
 
-    document.getElementById('histView').addEventListener('click', ()=>{
+    bindClick('histView', ()=>{
       try {
         const league = document.getElementById('histLeague').value;
         const season = document.getElementById('histSeason').value.trim().replace('/','-');
@@ -1370,7 +1440,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       } catch(e){ alert(e.message); }
     });
 
-    document.getElementById('histSave').addEventListener('click', ()=>{
+    bindClick('histSave', ()=>{
       try {
         const league = document.getElementById('histLeague').value;
         const season = document.getElementById('histSeason').value.trim().replace('/','-');
@@ -1401,13 +1471,13 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       } catch(e){ alert(e.message); }
     });
 
-    document.getElementById('histLoadSample').addEventListener('click', ()=>{
+    bindClick('histLoadSample', ()=>{
       document.getElementById('histText').value = SAMPLE_EPL;
       document.getElementById('histLeague').value = 'epl';
       document.getElementById('histSeason').value = '2025-26';
     });
 
-    document.getElementById('histMetrics').addEventListener('click', ()=>{
+    bindClick('histMetrics', ()=>{
       try {
         const league = document.getElementById('histLeague').value;
         document.getElementById('metaHist').textContent = formatHistMetrics(league);
@@ -1429,6 +1499,13 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       document.getElementById('histLoadSample').click();
     }
     refreshHistTable();
+    window.refreshHistTable = refreshHistTable;
+    setJsStatus('Версия fix-tabs-v2 — вкладки и кнопки активны');
+    } catch (err) {
+      setJsStatus('Ошибка JS: ' + (err.message || err), true);
+      console.error(err);
+    }
+    })();
   </script>
 </body>
 </html>
