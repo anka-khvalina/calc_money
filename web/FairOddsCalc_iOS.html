@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/team-registry-17b5 team-registry-v2 -->
+  <!-- build: cursor/team-registry-17b5 team-registry-v3 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -125,7 +125,7 @@
         try {
           document.documentElement.addEventListener('touchstart', function () {}, { passive: true });
           document.body.addEventListener('touchstart', function () {}, { passive: true });
-          var TAB = { a: 'tab-a', rank: 'tab-rank', shin: 'tab-shin', hist: 'tab-hist' };
+          var TAB = { a: 'tab-a', rank: 'tab-rank', teams: 'tab-teams', shin: 'tab-shin', hist: 'tab-hist' };
           function switchTab(id) {
             var btns = document.querySelectorAll('.tab-btn');
             for (var i = 0; i < btns.length; i++) {
@@ -137,6 +137,7 @@
               if (panel) panel.classList.toggle('active', k === id);
             }
             if (id === 'hist' && window.refreshHistTable) window.refreshHistTable();
+            if (id === 'teams' && window.refreshTeamsTable) window.refreshTeamsTable();
           }
           var tabsEl = document.querySelector('.tabs');
           if (tabsEl) {
@@ -1822,11 +1823,14 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       document.getElementById('histLoadSample').click();
     }
     seedDefaultTeams(false);
+    window.refreshTeamsTable = function(){
+      renderTeamsTable(document.getElementById('teamsLeague').value);
+    };
     renderTeamsTable(document.getElementById('teamsLeague').value);
     refreshShinTeamSelects();
     refreshHistTable();
     window.refreshHistTable = refreshHistTable;
-    setJsStatus('Версия team-registry-v2 — команды только из справочника');
+    setJsStatus('Версия team-registry-v3 — вкладки и справочник активны');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
       console.error(err);
