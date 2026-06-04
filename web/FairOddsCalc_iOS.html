@@ -68,6 +68,7 @@
     <div class="tabs">
       <button class="tab-btn active" data-tab="a">Кальк. A</button>
       <button class="tab-btn" data-tab="rank">Рейтинг</button>
+      <button class="tab-btn" data-tab="shin">Счет кэф</button>
       <button class="tab-btn" data-tab="hist">История</button>
     </div>
 
@@ -174,6 +175,44 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
     </section>
 
+    <!-- TAB SHIN -->
+    <section id="tab-shin" class="panel">
+      <div class="small">
+        Метод <strong>Shin</strong>: P1/P2 — Shin; ничья — px(d). Команда 1 — хозяин.
+        Приоритет: общий соперник → лига (≥3 матча) → предыдущий сезон.
+      </div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:10px;">
+        <div class="field" style="min-width:140px;flex:1">
+          <label>Команда 1</label>
+          <input id="shinTeam1" value="Arsenal" />
+        </div>
+        <div class="field" style="min-width:140px;flex:1">
+          <label>Команда 2</label>
+          <input id="shinTeam2" value="Chelsea" />
+        </div>
+        <div class="field" style="min-width:160px">
+          <label>Лига</label>
+          <select id="shinLeague">
+            <option value="epl">English Premier League</option>
+            <option value="la_liga">La Liga</option>
+            <option value="bundesliga">Bundesliga</option>
+            <option value="serie_a">Serie A</option>
+            <option value="ligue_1">Ligue 1</option>
+          </select>
+        </div>
+        <div class="field" style="min-width:100px">
+          <label>Сезон</label>
+          <input id="shinSeason" value="2025-26" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="calcShin" class="btn primary">Рассчитать</button>
+      </div>
+      <div id="shinResult" class="meta" style="margin-top:12px;white-space:pre-line">
+        Укажите команды, лигу и сезон (данные — вкладка «История»).
+      </div>
+    </section>
+
     <!-- TAB HISTORY -->
     <section id="tab-hist" class="panel">
       <div class="small">
@@ -269,7 +308,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     };
 
     // ---------------- Tabs ----------------
-    const TAB_IDS = { a: 'tab-a', rank: 'tab-rank', hist: 'tab-hist' };
+    const TAB_IDS = { a: 'tab-a', rank: 'tab-rank', shin: 'tab-shin', hist: 'tab-hist' };
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -388,6 +427,34 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       return { d: 400*Math.log10(eh/ea), eh, ea, px };
     }
 
+    function shinProb(pi, z){
+      return (Math.sqrt(z*z + 4*(1-z)*pi*pi) - z) / (2*(1-z));
+    }
+    function shinDevig(o1, ox, o2){
+      if (o1<=1||ox<=1||o2<=1) throw new Error('Коэффициенты должны быть > 1');
+      const implied = [1/o1, 1/ox, 1/o2];
+      let lo=0, hi=0.999999;
+      const excess = z => implied.reduce((s,p)=>s+shinProb(p,z),0) - 1;
+      if (excess(lo) < 0) {
+        const probs = implied.map(p => shinProb(p, lo));
+        const t = probs.reduce((a,b)=>a+b,0);
+        return probs.map(p => p/t);
+      }
+      for (let i=0;i<80;i++){
+        const mid = 0.5*(lo+hi);
+        if (excess(mid) > 0) lo = mid; else hi = mid;
+      }
+      const z = 0.5*(lo+hi);
+      const probs = implied.map(p => shinProb(p, z));
+      const t = probs.reduce((a,b)=>a+b,0);
+      return probs.map(p => p/t);
+    }
+    function shinMarketDiff(m){
+      const [p1,px,p2] = shinDevig(m.o1, m.ox, m.o2);
+      const eh=p1+0.5*px, ea=p2+0.5*px;
+      return 400*Math.log10(eh/ea);
+    }
+
     function solve(A,b){
       const n=A.length;
       for(let c=0;c<n;c++){
@@ -412,7 +479,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       return x;
     }
 
-    function buildRanking(matches){
+    function buildRanking(matches, useShin=false){
+      const diffFn = useShin ? shinMarketDiff : marketDiff;
       const teamSet = new Set();
       matches.forEach(m => { teamSet.add(m.home); teamSet.add(m.away); });
       const teams = [...teamSet].sort();
@@ -421,7 +489,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 
       const rows=[], targets=[], diffs=[];
       matches.forEach(m => {
-        const d=marketDiff(m); diffs.push({home:m.home, away:m.away, d});
+        const d=diffFn(m); diffs.push({home:m.home, away:m.away, d});
         const c=Array(p).fill(0);
         c[idx.get(m.home)] = 1;
         c[idx.get(m.away)] = -1;
@@ -773,6 +841,171 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const store = loadHistStore();
       return store.leagues[league]?.[season]?.matches || null;
     }
+
+    const SHIN_ERR = {
+      league: 'Лига не найдена. Проверьте название лиги и повторите расчет.',
+      season: 'Сезон не найден. Проверьте выбранный сезон или загрузите данные по сезону.',
+      team: 'Команда не найдена. Проверьте название команды и повторите расчет.',
+      data: 'Недостаточно данных для расчета. В текущем сезоне найдено менее 3 матчей, предыдущий загруженный сезон отсутствует.',
+    };
+    const SHIN_SOURCE_RU = {
+      'Common opponent': 'Общий соперник',
+      'League matches': 'Матчи лиги',
+      'Previous season': 'Предыдущий сезон',
+    };
+    const MIN_SHIN_MATCHES = 3;
+
+    function normTeamName(t){
+      return String(t||'').trim().toLowerCase().replace(/[^a-z0-9а-яё]/gi,'');
+    }
+    function resolveTeamInSeason(name, matches){
+      const n = normTeamName(name);
+      if (!n) throw new Error(SHIN_ERR.team);
+      const map = new Map();
+      matches.forEach(m => {
+        [m.home,m.away].forEach(t => map.set(normTeamName(t), t));
+      });
+      if (map.has(n)) return map.get(n);
+      for (const [k,v] of map.entries()){
+        if (k.includes(n) || n.includes(k)) return v;
+      }
+      throw new Error(SHIN_ERR.team);
+    }
+    function listLeagueSeasons(league){
+      return Object.keys(loadHistStore().leagues[league] || {}).sort();
+    }
+    function previousHistSeason(league, season){
+      const seasons = listLeagueSeasons(league);
+      const idx = seasons.indexOf(season);
+      if (idx <= 0) return null;
+      return seasons[idx - 1];
+    }
+    function countTeamMatches(t1, t2, matches){
+      const keys = new Set();
+      matches.forEach(m => {
+        if (m.home===t1||m.away===t1||m.home===t2||m.away===t2){
+          keys.add(`${m.date}|${m.home}|${m.away}`);
+        }
+      });
+      return keys.size;
+    }
+    function findCommonOpponents(t1, t2, matches){
+      const opps = (team, ms) => new Set(ms.filter(m => m.home===team||m.away===team).map(m => m.home===team?m.away:m.home));
+      const s1 = opps(t1, matches), s2 = opps(t2, matches);
+      return [...s1].filter(o => s2.has(o) && o!==t1 && o!==t2).sort();
+    }
+    function geomMean(vals){
+      const v = vals.filter(x => x>0 && isFinite(x));
+      if (!v.length) throw new Error(SHIN_ERR.data);
+      if (v.length===1) return v[0];
+      return Math.exp(v.map(Math.log).reduce((a,b)=>a+b,0)/v.length);
+    }
+    function strengthRatioShin(m, focal){
+      const [p1,,p2] = shinDevig(m.o1, m.ox, m.o2);
+      if (m.home===focal) return p1/(p2||1e-12);
+      if (m.away===focal) return p2/(p1||1e-12);
+      throw new Error('match');
+    }
+    function probsFromStrengths(s1, s2, px){
+      px = Math.max(0, Math.min(0.95, px));
+      const rem = Math.max(1e-9, 1-px);
+      const d = s1+s2;
+      let p1 = (s1/d)*rem, p2 = (s2/d)*rem;
+      const t = p1+px+p2;
+      return [p1/t, px/t, p2/t];
+    }
+    function calcShinCommon(t1, t2, opp, matches, league, seasonUsed){
+      const m1 = matches.filter(m => (m.home===t1||m.away===t1)&&(m.home===opp||m.away===opp));
+      const m2 = matches.filter(m => (m.home===t2||m.away===t2)&&(m.home===opp||m.away===opp));
+      if (!m1.length || !m2.length) throw new Error(SHIN_ERR.data);
+      const r1 = geomMean(m1.map(m => strengthRatioShin(m,t1)));
+      const r2 = geomMean(m2.map(m => strengthRatioShin(m,t2)));
+      const rAb = r1/r2;
+      const s1 = Math.sqrt(rAb), s2 = 1/Math.sqrt(rAb||1);
+      const dm = calibrateDrawModel(league);
+      const d = 400*Math.log10(s1/(s2||1));
+      const [p1,px,p2] = probsFromStrengths(s1, s2, dm.px(d));
+      return { p1,px,p2, source:'Common opponent', seasonUsed, matchesUsed: m1.length+m2.length, opp };
+    }
+    function calcShinLeague(t1, t2, matches, league, seasonUsed, source){
+      const rank = buildRanking(histToRankMatches(matches), true);
+      const ratings = new Map(rank.teams.map(t => [t.team, t.rating]));
+      if (!ratings.has(t1)||!ratings.has(t2)) throw new Error(SHIN_ERR.team);
+      const hCoef = Math.pow(10, rank.H/400);
+      const s1 = Math.pow(10, ratings.get(t1)/400)*hCoef;
+      const s2 = Math.pow(10, ratings.get(t2)/400);
+      const dm = calibrateDrawModel(league);
+      const d = ratings.get(t1) - ratings.get(t2);
+      const [p1,px,p2] = probsFromStrengths(s1, s2, dm.px(d));
+      return { p1,px,p2, source, seasonUsed, matchesUsed: matches.length, opp: null };
+    }
+    function calculateShinMatch(team1, team2, league, season){
+      if (!LEAGUE_TITLES[league]) throw new Error(SHIN_ERR.league);
+      const safe = season.trim().replace('/','-');
+      const seasons = listLeagueSeasons(league);
+      if (!seasons.includes(safe)) throw new Error(SHIN_ERR.season);
+      const current = getHistSeason(league, safe);
+      if (!current || !current.length) throw new Error(SHIN_ERR.season);
+      const t1 = resolveTeamInSeason(team1, current);
+      const t2 = resolveTeamInSeason(team2, current);
+      const common = findCommonOpponents(t1, t2, current);
+      if (common.length){
+        let best = common[0], bestScore = -1;
+        common.forEach(opp => {
+          const n1 = current.filter(m => (m.home===t1||m.away===t1)&&(m.home===opp||m.away===opp)).length;
+          const n2 = current.filter(m => (m.home===t2||m.away===t2)&&(m.home===opp||m.away===opp)).length;
+          const sc = Math.min(n1,n2);
+          if (sc > bestScore){ bestScore=sc; best=opp; }
+        });
+        return calcShinCommon(t1, t2, best, current, league, safe);
+      }
+      if (countTeamMatches(t1, t2, current) >= MIN_SHIN_MATCHES){
+        return calcShinLeague(t1, t2, current, league, safe, 'League matches');
+      }
+      const prev = previousHistSeason(league, safe);
+      if (!prev) throw new Error(SHIN_ERR.data);
+      const prevM = getHistSeason(league, prev);
+      if (!prevM || !prevM.length) throw new Error(SHIN_ERR.data);
+      const t1p = resolveTeamInSeason(team1, prevM);
+      const t2p = resolveTeamInSeason(team2, prevM);
+      const commonP = findCommonOpponents(t1p, t2p, prevM);
+      if (commonP.length){
+        let best = commonP[0], bestScore = -1;
+        commonP.forEach(opp => {
+          const n1 = prevM.filter(m => (m.home===t1p||m.away===t1p)&&(m.home===opp||m.away===opp)).length;
+          const n2 = prevM.filter(m => (m.home===t2p||m.away===t2p)&&(m.home===opp||m.away===opp)).length;
+          const sc = Math.min(n1,n2);
+          if (sc > bestScore){ bestScore=sc; best=opp; }
+        });
+        return calcShinCommon(t1p, t2p, best, prevM, league, prev);
+      }
+      if (countTeamMatches(t1p, t2p, prevM) < MIN_SHIN_MATCHES) throw new Error(SHIN_ERR.data);
+      return calcShinLeague(t1p, t2p, prevM, league, prev, 'Previous season');
+    }
+
+    document.getElementById('calcShin').addEventListener('click', () => {
+      const out = document.getElementById('shinResult');
+      try {
+        const res = calculateShinMatch(
+          document.getElementById('shinTeam1').value,
+          document.getElementById('shinTeam2').value,
+          document.getElementById('shinLeague').value,
+          document.getElementById('shinSeason').value,
+        );
+        const lines = [
+          `P1: ${fmt(res.p1*100,2)} %`,
+          `Draw / X: ${fmt(res.px*100,2)} %`,
+          `P2: ${fmt(res.p2*100,2)} %`,
+          `Источник: ${SHIN_SOURCE_RU[res.source] || res.source}`,
+          `Сезон: ${res.seasonUsed}`,
+          `Матчей: ${res.matchesUsed}`,
+        ];
+        if (res.opp) lines.push(`Общий соперник: ${res.opp}`);
+        out.textContent = lines.join('\n');
+      } catch (e) {
+        out.textContent = e.message || String(e);
+      }
+    });
 
     function homeAdvantagePrior(league, xi=0.5){
       const store = loadHistStore();
