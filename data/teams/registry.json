@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "next_seq": {
+    "epl": 21
+  },
+  "teams": [
+    {
+      "id": "epl:1",
+      "league": "epl",
+      "name": "Liverpool",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:2",
+      "league": "epl",
+      "name": "Bournemouth",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:3",
+      "league": "epl",
+      "name": "Aston Villa",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:4",
+      "league": "epl",
+      "name": "Newcastle",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:5",
+      "league": "epl",
+      "name": "Brighton",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:6",
+      "league": "epl",
+      "name": "Fulham",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:7",
+      "league": "epl",
+      "name": "Sunderland",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:8",
+      "league": "epl",
+      "name": "West Ham",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:9",
+      "league": "epl",
+      "name": "Tottenham",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:10",
+      "league": "epl",
+      "name": "Burnley",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:11",
+      "league": "epl",
+      "name": "Wolves",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:12",
+      "league": "epl",
+      "name": "Man City",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:13",
+      "league": "epl",
+      "name": "Chelsea",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:14",
+      "league": "epl",
+      "name": "Crystal Palace",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:15",
+      "league": "epl",
+      "name": "Nott'm Forest",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:16",
+      "league": "epl",
+      "name": "Brentford",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:17",
+      "league": "epl",
+      "name": "Man United",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:18",
+      "league": "epl",
+      "name": "Arsenal",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:19",
+      "league": "epl",
+      "name": "Leeds",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    },
+    {
+      "id": "epl:20",
+      "league": "epl",
+      "name": "Everton",
+      "created_at": "2026-06-04T11:01:38+00:00",
+      "updated_at": "2026-06-04T11:01:38+00:00"
+    }
+  ]
+}

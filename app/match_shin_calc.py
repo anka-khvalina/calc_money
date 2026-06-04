@@ -16,10 +16,12 @@ try:
     from . import devig_shin as ds
     from . import history_store as hs
     from . import team_ranking as tr
+    from . import team_registry as tg
 except ImportError:  # pragma: no cover
     import devig_shin as ds
     import history_store as hs
     import team_ranking as tr
+    import team_registry as tg
 
 
 class ShinCalculationError(Exception):
@@ -47,6 +49,7 @@ ERR_DATA = (
 )
 
 MIN_LEAGUE_MATCHES = 3
+NEW_TEAM_RATING = 0.0  # R для команд без матчей в сезоне (новички лиги)
 
 
 @dataclass(frozen=True)
@@ -61,6 +64,10 @@ class ShinMatchResult:
     common_opponent: Optional[str] = None
     team1: str = ""
     team2: str = ""
+    team1_id: str = ""
+    team2_id: str = ""
+    team1_new: bool = False
+    team2_new: bool = False
     d_market: float = 0.0
     h_used: Optional[float] = None
     d_chain: Optional[float] = None
@@ -135,6 +142,28 @@ def resolve_team_name(name: str, matches: Sequence[hs.HistoricalMatch]) -> str:
         if norm in key or key in norm:
             return canonical
     raise ShinCalculationError(ERR_TEAM)
+
+
+def resolve_team_ref(
+    league: str,
+    team_ref: str,
+    matches: Sequence[hs.HistoricalMatch],
+) -> Tuple[str, str, bool]:
+    """
+    team_ref — id из справочника (epl:3) или legacy-имя.
+    Возвращает (id, имя для расчёта, is_new_in_season).
+    """
+    league_key = hs.normalize_league(league)
+    try:
+        tid = tg.resolve_team_id(league_key, team_ref, required=True)
+    except ValueError as exc:
+        raise ShinCalculationError(str(exc)) from exc
+    reg_name = tg.team_name_by_id(tid)
+    try:
+        canon = resolve_team_name(reg_name, matches)
+        return tid, canon, False
+    except ShinCalculationError:
+        return tid, reg_name, True
 
 
 def _norm_team(text: str) -> str:
@@ -490,6 +519,19 @@ def _calc_common_opponent(
     )
 
 
+def _rating_for_team(
+    team: str,
+    ratings: Dict[str, float],
+    *,
+    is_new: bool,
+) -> float:
+    if team in ratings:
+        return ratings[team]
+    if is_new:
+        return NEW_TEAM_RATING
+    raise ShinCalculationError(ERR_TEAM)
+
+
 def _calc_league_ranking(
     team1: str,
     team2: str,
@@ -497,17 +539,22 @@ def _calc_league_ranking(
     league_key: str,
     season_used: str,
     source: CalculationSource,
+    *,
+    team1_new: bool = False,
+    team2_new: bool = False,
+    team1_id: str = "",
+    team2_id: str = "",
 ) -> ShinMatchResult:
     odds_matches = [m.to_match_odds() for m in matches]
     ranking = build_ranking_shin(odds_matches)
     ratings = {t.team: t.rating for t in ranking.teams}
-    if team1 not in ratings or team2 not in ratings:
-        raise ShinCalculationError(ERR_TEAM)
+    r1 = _rating_for_team(team1, ratings, is_new=team1_new)
+    r2 = _rating_for_team(team2, ratings, is_new=team2_new)
 
     h_coef = ranking.home_advantage_coef
-    s1 = (10.0 ** (ratings[team1] / 400.0)) * h_coef
-    s2 = 10.0 ** (ratings[team2] / 400.0)
-    d_rating = ratings[team1] - ratings[team2]
+    s1 = (10.0 ** (r1 / 400.0)) * h_coef
+    s2 = 10.0 ** (r2 / 400.0)
+    d_rating = r1 - r2
     d_target = d_rating + ranking.home_advantage
     draw = hs.calibrate_draw_model(league_key)
     px, px_lines = _match_draw_px(draw, d_target, s1, s2)
@@ -518,16 +565,31 @@ def _calc_league_ranking(
         f"Матчей в сезоне (вся лига): {used}",
         "",
         "Шаг A. Shin-рейтинг по всем матчам сезона (МНК)",
-        f"  R({team1}) = {_fmt_d(ratings[team1])},  R({team2}) = {_fmt_d(ratings[team2])}",
-        f"  H = {_fmt_d(ranking.home_advantage)},  коэф. дома = {_fmt_p(h_coef)}",
-        "",
-        "Шаг B. Силы для целевого матча (team1 дома)",
-        f"  s₁ = 10^(R₁/400)·H^coef = {_fmt_p(s1)}",
-        f"  s₂ = 10^(R₂/400) = {_fmt_p(s2)}",
-        f"  D_цель = R₁ − R₂ + H = {_fmt_d(d_target)}",
-        "",
-        "Шаг C. Ничья px(d)",
     ]
+    if team1_new:
+        det.append(
+            f"  R({team1}) = {_fmt_d(r1)}  ← новая команда (нет матчей в сезоне, R={NEW_TEAM_RATING:.0f})"
+        )
+    else:
+        det.append(f"  R({team1}) = {_fmt_d(r1)}")
+    if team2_new:
+        det.append(
+            f"  R({team2}) = {_fmt_d(r2)}  ← новая команда (нет матчей в сезоне, R={NEW_TEAM_RATING:.0f})"
+        )
+    else:
+        det.append(f"  R({team2}) = {_fmt_d(r2)}")
+    det.extend(
+        [
+            f"  H = {_fmt_d(ranking.home_advantage)},  коэф. дома = {_fmt_p(h_coef)}",
+            "",
+            "Шаг B. Силы для целевого матча (team1 дома)",
+            f"  s₁ = 10^(R₁/400)·H^coef = {_fmt_p(s1)}",
+            f"  s₂ = 10^(R₂/400) = {_fmt_p(s2)}",
+            f"  D_цель = R₁ − R₂ + H = {_fmt_d(d_target)}",
+            "",
+            "Шаг C. Ничья px(d)",
+        ]
+    )
     det.extend(px_lines)
     det.extend(
         [
@@ -546,6 +608,10 @@ def _calc_league_ranking(
         matches_used=used,
         team1=team1,
         team2=team2,
+        team1_id=team1_id,
+        team2_id=team2_id,
+        team1_new=team1_new,
+        team2_new=team2_new,
         d_market=d_target,
         h_used=ranking.home_advantage,
         details="\n".join(det),
@@ -575,19 +641,33 @@ def calculate_shin_match(
         raise ShinCalculationError(ERR_SEASON)
 
     current_matches = hs.load_season(league_key, season.strip())
-    t1 = resolve_team_name(team1, current_matches)
-    t2 = resolve_team_name(team2, current_matches)
+    t1_id, t1, t1_new = resolve_team_ref(league_key, team1, current_matches)
+    t2_id, t2, t2_new = resolve_team_ref(league_key, team2, current_matches)
 
     header = [
         "═══ Подробный расчёт Shin ═══",
         f"Матч: {t1} (дома) — {t2}",
+        f"ID: {t1_id} / {t2_id}",
         f"Лига: {hs.league_title(league_key)}, сезон: {season.strip()}",
         "",
         "Выбор источника данных:",
     ]
+    if t1_new or t2_new:
+        new_note = []
+        if t1_new:
+            new_note.append(f"{t1} ({t1_id})")
+        if t2_new:
+            new_note.append(f"{t2} ({t2_id})")
+        header.insert(
+            5,
+            f"Новые команды (нет матчей в сезоне): {', '.join(new_note)} → R={NEW_TEAM_RATING:.0f}",
+        )
+        header.insert(6, "")
 
-    # 1) Общий соперник в выбранном сезоне
-    common = find_common_opponents(t1, t2, current_matches)
+    # 1) Общий соперник в выбранном сезоне (только если обе команды играли в сезоне)
+    common = []
+    if not t1_new and not t2_new:
+        common = find_common_opponents(t1, t2, current_matches)
     if common:
         opp = _pick_best_opponent(t1, t2, common, current_matches)
         cand_lines = []
@@ -614,14 +694,26 @@ def calculate_shin_match(
         header.append(f"  → выбран: {opp}")
         header.append("")
         res = _calc_common_opponent(t1, t2, opp, current_matches, league_key, season.strip())
-        return replace(res, details="\n".join(header) + "\n" + res.details)
+        return replace(
+            res,
+            team1_id=t1_id,
+            team2_id=t2_id,
+            team1_new=t1_new,
+            team2_new=t2_new,
+            details="\n".join(header) + "\n" + res.details,
+        )
 
-    header.append("  1) Общий соперник — нет")
+    header.append("  1) Общий соперник — нет" + (" (новая команда)" if (t1_new or t2_new) else ""))
 
-    # 2) Матчи лиги: >= 3 матчей с участием команд
-    n_current = count_team_matches(t1, t2, current_matches)
-    if n_current >= MIN_LEAGUE_MATCHES:
-        header.append(f"  2) Матчи в сезоне — ДА ({n_current} матчей с участием команд)")
+    # 2) Матчи лиги: >= 3 матчей с участием команд (новые команды: R=0)
+    n_current = count_team_matches(t1, t2, current_matches) if not (t1_new and t2_new) else 0
+    league_ok = n_current >= MIN_LEAGUE_MATCHES or (t1_new or t2_new) and len(current_matches) >= MIN_LEAGUE_MATCHES
+    if league_ok:
+        header.append(
+            f"  2) Матчи в сезоне — ДА ({n_current} матчей с участием команд"
+            + (", новая команда → R=0" if (t1_new or t2_new) else "")
+            + ")"
+        )
         header.append("")
         res = _calc_league_ranking(
             t1,
@@ -630,6 +722,10 @@ def calculate_shin_match(
             league_key,
             season.strip(),
             CalculationSource.LEAGUE_MATCHES,
+            team1_new=t1_new,
+            team2_new=t2_new,
+            team1_id=t1_id,
+            team2_id=t2_id,
         )
         return replace(res, details="\n".join(header) + "\n" + res.details)
 
@@ -641,22 +737,32 @@ def calculate_shin_match(
         raise ShinCalculationError(ERR_DATA)
 
     prev_matches = hs.load_season(league_key, prev)
-    t1p = resolve_team_name(team1, prev_matches)
-    t2p = resolve_team_name(team2, prev_matches)
+    t1p_id, t1p, t1p_new = resolve_team_ref(league_key, team1, prev_matches)
+    t2p_id, t2p, t2p_new = resolve_team_ref(league_key, team2, prev_matches)
 
     header.append(f"  3) Предыдущий сезон — {prev}")
     header.append("")
 
-    common_prev = find_common_opponents(t1p, t2p, prev_matches)
+    common_prev = []
+    if not t1p_new and not t2p_new:
+        common_prev = find_common_opponents(t1p, t2p, prev_matches)
     if common_prev:
         opp = _pick_best_opponent(t1p, t2p, common_prev, prev_matches)
         res = _calc_common_opponent(
             t1p, t2p, opp, prev_matches, league_key, prev
         )
-        return replace(res, details="\n".join(header) + "\n" + res.details)
+        return replace(
+            res,
+            team1_id=t1p_id,
+            team2_id=t2p_id,
+            team1_new=t1p_new,
+            team2_new=t2p_new,
+            details="\n".join(header) + "\n" + res.details,
+        )
 
-    n_prev = count_team_matches(t1p, t2p, prev_matches)
-    if n_prev < MIN_LEAGUE_MATCHES:
+    n_prev = count_team_matches(t1p, t2p, prev_matches) if not (t1p_new and t2p_new) else 0
+    prev_league_ok = n_prev >= MIN_LEAGUE_MATCHES or (t1p_new or t2p_new) and len(prev_matches) >= MIN_LEAGUE_MATCHES
+    if not prev_league_ok:
         raise ShinCalculationError(ERR_DATA)
 
     res = _calc_league_ranking(
@@ -666,5 +772,9 @@ def calculate_shin_match(
         league_key,
         prev,
         CalculationSource.PREVIOUS_SEASON,
+        team1_new=t1p_new,
+        team2_new=t2p_new,
+        team1_id=t1p_id,
+        team2_id=t2p_id,
     )
     return replace(res, details="\n".join(header) + "\n" + res.details)

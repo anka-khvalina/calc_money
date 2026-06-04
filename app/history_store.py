@@ -696,6 +696,11 @@ def import_season_matches(
             previous_matches = 0
     write_canonical_csv(dest, matches)
     _update_index(key, safe, len(matches))
+    try:
+        from . import team_registry as _tr
+    except ImportError:  # pragma: no cover
+        import team_registry as _tr
+    _tr.sync_from_matches(matches)
     return ImportResult(
         league=key,
         season=safe,

@@ -659,9 +659,112 @@ def build_app():
     ttk.Button(btns, text="Сохранить рейтинг CSV", command=save_rating_csv).grid(row=0, column=2)
 
     # ======================================================================
-    # TAB 3: Счет кэф (метод Shin)
+    # TAB 3: Справочник команд
     # ======================================================================
     import history_store as hs
+    import team_registry as tg
+
+    try:
+        tg.sync_all_from_history()
+    except Exception:
+        pass
+
+    tab_teams = ttk.Frame(notebook, padding=10)
+    notebook.add(tab_teams, text="Справочник команд")
+
+    teams_top = ttk.Frame(tab_teams)
+    teams_top.pack(fill="x", anchor="n")
+
+    teams_league_labels = [title for title, _key in hs.format_league_options()]
+    teams_league_keys = {title: key for title, key in hs.format_league_options()}
+    teams_league_var = tk.StringVar(value=teams_league_labels[0])
+
+    ttk.Label(teams_top, text="Лига:").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
+    teams_league_combo = ttk.Combobox(
+        teams_top,
+        textvariable=teams_league_var,
+        values=teams_league_labels,
+        state="readonly",
+        width=28,
+    )
+    teams_league_combo.grid(row=0, column=1, sticky="w", pady=4)
+
+    teams_tree = ttk.Treeview(
+        tab_teams,
+        columns=("id", "name", "updated"),
+        show="headings",
+        height=16,
+    )
+    teams_tree.heading("id", text="ID")
+    teams_tree.heading("name", text="Команда")
+    teams_tree.heading("updated", text="Обновлено")
+    teams_tree.column("id", width=80, anchor="w")
+    teams_tree.column("name", width=220, anchor="w")
+    teams_tree.column("updated", width=160, anchor="w")
+    teams_tree.pack(fill="both", expand=True, pady=(12, 0))
+
+    teams_add_bar = ttk.Frame(tab_teams)
+    teams_add_bar.pack(fill="x", pady=(12, 0))
+    teams_name_var = tk.StringVar(value="")
+    ttk.Label(teams_add_bar, text="Новая команда:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+    ttk.Entry(teams_add_bar, textvariable=teams_name_var, width=32).grid(row=0, column=1, sticky="w")
+    teams_status_var = tk.StringVar(
+        value="Выберите лигу и нажмите «Поиск», чтобы показать команды."
+    )
+    ttk.Label(tab_teams, textvariable=teams_status_var, foreground="#555", justify="left").pack(
+        anchor="w", pady=(10, 0)
+    )
+
+    def _teams_league_key():
+        title = teams_league_var.get().strip()
+        key = teams_league_keys.get(title)
+        if not key:
+            key = hs.normalize_league(title)
+        return key
+
+    def clear_teams_tree():
+        for item in teams_tree.get_children():
+            teams_tree.delete(item)
+
+    def search_teams():
+        clear_teams_tree()
+        league_key = _teams_league_key()
+        entries = tg.list_teams(league_key)
+        for ent in entries:
+            updated = ent.updated_at.replace("T", " ")[:19] if ent.updated_at else ""
+            teams_tree.insert("", "end", values=(ent.id, ent.name, updated))
+        teams_status_var.set(
+            f"{hs.league_title(league_key)}: {len(entries)} команд(ы) в справочнике."
+            if entries
+            else f"{hs.league_title(league_key)}: справочник пуст. Добавьте команду ниже."
+        )
+        refresh_shin_team_options()
+
+    def add_team_entry():
+        league_key = _teams_league_key()
+        name = teams_name_var.get().strip()
+        if not name:
+            messagebox.showwarning("Справочник", "Введите название команды.")
+            return
+        try:
+            ent = tg.add_team(league_key, name)
+        except ValueError as exc:
+            messagebox.showerror("Справочник", str(exc))
+            return
+        teams_name_var.set("")
+        search_teams()
+        messagebox.showinfo("Справочник", f"Добавлено: {ent.id} — {ent.name}")
+
+    ttk.Button(teams_top, text="Поиск", command=search_teams).grid(
+        row=0, column=2, sticky="w", padx=(12, 0), pady=4
+    )
+    ttk.Button(teams_add_bar, text="Добавить", command=add_team_entry).grid(
+        row=0, column=2, sticky="w", padx=(12, 0)
+    )
+
+    # ======================================================================
+    # TAB 4: Счет кэф (метод Shin)
+    # ======================================================================
     import match_shin_calc as msc
 
     tab_shin = ttk.Frame(notebook, padding=10)
@@ -670,12 +773,12 @@ def build_app():
     shin_form = ttk.Frame(tab_shin)
     shin_form.pack(fill="x", anchor="n")
 
-    shin_team1_var = tk.StringVar(value="Arsenal")
-    shin_team2_var = tk.StringVar(value="Chelsea")
+    shin_team1_var = tk.StringVar(value="")
+    shin_team2_var = tk.StringVar(value="")
     shin_league_var = tk.StringVar(value=hs.format_league_options()[0][0])
     shin_season_var = tk.StringVar(value="2025-26")
 
-    def shin_labeled(parent, row, label, var, width=32):
+    def shin_labeled_entry(parent, row, label, var, width=32):
         ttk.Label(parent, text=label).grid(
             row=row, column=0, sticky="w", padx=(0, 8), pady=4
         )
@@ -686,19 +789,61 @@ def build_app():
     shin_league_labels = [title for title, _key in hs.format_league_options()]
     shin_league_keys = {title: key for title, key in hs.format_league_options()}
 
-    shin_labeled(shin_form, 0, "Команда 1:", shin_team1_var, 28)
-    shin_labeled(shin_form, 1, "Команда 2:", shin_team2_var, 28)
+    def _shin_league_key():
+        title = shin_league_var.get().strip()
+        key = shin_league_keys.get(title)
+        if not key:
+            key = hs.normalize_league(title)
+        return key
+
+    def refresh_shin_team_options(*_event=None):
+        league_key = _shin_league_key()
+        opts = tg.format_team_options(league_key)
+        shin_team1_combo["values"] = opts
+        shin_team2_combo["values"] = opts
+        if opts:
+            if not shin_team1_var.get() or shin_team1_var.get() not in opts:
+                shin_team1_var.set(opts[0])
+            if not shin_team2_var.get() or shin_team2_var.get() not in opts:
+                shin_team2_var.set(opts[1] if len(opts) > 1 else opts[0])
+        else:
+            shin_team1_var.set("")
+            shin_team2_var.set("")
+
+    ttk.Label(shin_form, text="Команда 1:").grid(
+        row=0, column=0, sticky="w", padx=(0, 8), pady=4
+    )
+    shin_team1_combo = ttk.Combobox(
+        shin_form,
+        textvariable=shin_team1_var,
+        state="readonly",
+        width=36,
+    )
+    shin_team1_combo.grid(row=0, column=1, sticky="w", pady=4)
+    ttk.Label(shin_form, text="Команда 2:").grid(
+        row=1, column=0, sticky="w", padx=(0, 8), pady=4
+    )
+    shin_team2_combo = ttk.Combobox(
+        shin_form,
+        textvariable=shin_team2_var,
+        state="readonly",
+        width=36,
+    )
+    shin_team2_combo.grid(row=1, column=1, sticky="w", pady=4)
     ttk.Label(shin_form, text="Лига:").grid(
         row=2, column=0, sticky="w", padx=(0, 8), pady=4
     )
-    ttk.Combobox(
+    shin_league_combo = ttk.Combobox(
         shin_form,
         textvariable=shin_league_var,
         values=shin_league_labels,
         state="readonly",
         width=26,
-    ).grid(row=2, column=1, sticky="w", pady=4)
-    shin_labeled(shin_form, 3, "Сезон:", shin_season_var, 12)
+    )
+    shin_league_combo.grid(row=2, column=1, sticky="w", pady=4)
+    shin_league_combo.bind("<<ComboboxSelected>>", refresh_shin_team_options)
+    shin_labeled_entry(shin_form, 3, "Сезон:", shin_season_var, 12)
+    refresh_shin_team_options()
 
     shin_out = ttk.LabelFrame(tab_shin, text="Результат (метод Shin)", padding=10)
     shin_out.pack(fill="both", expand=True, pady=(12, 0))
@@ -782,6 +927,21 @@ def build_app():
             meta_rows.insert(1, ("D (цепь через соперника)", fmt(res.d_chain, 1)))
         if res.common_opponent:
             meta_rows.insert(3, ("Общий соперник", res.common_opponent))
+        if res.team1_id:
+            meta_rows.append(("ID команды 1", res.team1_id))
+        if res.team2_id:
+            meta_rows.append(("ID команды 2", res.team2_id))
+        if res.team1_new or res.team2_new:
+            meta_rows.append(
+                (
+                    "Новые команды",
+                    ", ".join(
+                        n
+                        for n, flag in ((res.team1, res.team1_new), (res.team2, res.team2_new))
+                        if flag
+                    ),
+                )
+            )
         for param, value in meta_rows:
             shin_meta_tree.insert("", "end", values=(param, value))
         shin_details.configure(state="normal")
@@ -794,10 +954,16 @@ def build_app():
 
     def calc_shin_match():
         try:
-            league_key = shin_league_keys[shin_league_var.get()]
+            league_key = _shin_league_key()
+            t1_ref, _ = tg.parse_team_option(shin_team1_var.get())
+            t2_ref, _ = tg.parse_team_option(shin_team2_var.get())
+            if not t1_ref or not t2_ref:
+                raise msc.ShinCalculationError(
+                    "Выберите команды из справочника (вкладка «Справочник команд»)."
+                )
             res = msc.calculate_shin_match(
-                shin_team1_var.get(),
-                shin_team2_var.get(),
+                t1_ref,
+                t2_ref,
                 league_key,
                 shin_season_var.get().strip(),
             )
@@ -814,6 +980,7 @@ def build_app():
         tab_shin,
         text=(
             "Метод Shin: P1/P2 — формула Shin; ничья — draw-модель px(d).\n"
+            "Команды выбираются по id из справочника. Новые команды без матчей в сезоне: R=0.\n"
             "Приоритет: общий соперник → матчи лиги (≥3) → предыдущий сезон."
         ),
         foreground="#555",
@@ -1092,6 +1259,7 @@ def build_app():
             messagebox.showerror("Ошибка импорта", str(exc))
             return
         refresh_history_tree()
+        refresh_shin_team_options()
         iid = f"{res.league}|{res.season}"
         if hist_tree.exists(iid):
             hist_tree.selection_set(iid)

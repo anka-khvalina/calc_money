@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/shin-match-17b5 draw-px-v1 -->
+  <!-- build: cursor/team-registry-17b5 team-registry-v1 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -162,6 +162,7 @@
     <div class="tabs">
       <button type="button" class="tab-btn active" data-tab="a">Кальк. A</button>
       <button type="button" class="tab-btn" data-tab="rank">Рейтинг</button>
+      <button type="button" class="tab-btn" data-tab="teams">Справочник</button>
       <button type="button" class="tab-btn" data-tab="shin">Счет кэф</button>
       <button type="button" class="tab-btn" data-tab="hist">История</button>
     </div>
@@ -269,6 +270,51 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
     </section>
 
+    <!-- TAB TEAMS -->
+    <section id="tab-teams" class="panel">
+      <div class="small">
+        Справочник команд по лигам. Каждой команде присваивается id (<code>epl:1</code>).
+        Выберите лигу и нажмите «Поиск» — до этого список пуст.
+      </div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:10px;">
+        <div class="field" style="min-width:180px">
+          <label>Лига</label>
+          <select id="teamsLeague">
+            <option value="epl">English Premier League</option>
+            <option value="la_liga">La Liga</option>
+            <option value="bundesliga">Bundesliga</option>
+            <option value="serie_a">Serie A</option>
+            <option value="ligue_1">Ligue 1</option>
+          </select>
+        </div>
+        <div class="field" style="align-self:flex-end">
+          <button type="button" id="teamsSearch" class="btn primary">Поиск</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="teamsTable">
+          <thead>
+            <tr>
+              <th style="width:90px">ID</th>
+              <th>Команда</th>
+              <th style="width:150px">Обновлено</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:10px;">
+        <div class="field" style="flex:1;min-width:160px">
+          <label>Новая команда</label>
+          <input id="teamsNewName" placeholder="Название" />
+        </div>
+        <div class="field" style="align-self:flex-end">
+          <button type="button" id="teamsAdd" class="btn">Добавить</button>
+        </div>
+      </div>
+      <div id="metaTeams" class="meta" style="margin-top:10px">Выберите лигу и нажмите «Поиск».</div>
+    </section>
+
     <!-- TAB SHIN -->
     <section id="tab-shin" class="panel">
       <div class="small">
@@ -277,12 +323,12 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
       <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:10px;">
         <div class="field" style="min-width:140px;flex:1">
-          <label>Команда 1</label>
-          <input id="shinTeam1" value="Arsenal" />
+          <label>Команда 1 (id)</label>
+          <select id="shinTeam1"></select>
         </div>
         <div class="field" style="min-width:140px;flex:1">
-          <label>Команда 2</label>
-          <input id="shinTeam2" value="Chelsea" />
+          <label>Команда 2 (id)</label>
+          <select id="shinTeam2"></select>
         </div>
         <div class="field" style="min-width:160px">
           <label>Лига</label>
@@ -305,7 +351,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: draw-px-v1</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: team-registry-v1</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -701,6 +747,159 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       URL.revokeObjectURL(a.href);
     });
 
+    // ---------------- Team registry (localStorage) ----------------
+    const TEAMS_KEY = 'FairOddsCalc_teams_v1';
+    const NEW_TEAM_RATING = 0;
+
+    function emptyTeamStore(){
+      return { version: 1, next_seq: {}, teams: [] };
+    }
+    function loadTeamStore(){
+      try {
+        const raw = localStorage.getItem(TEAMS_KEY);
+        if (!raw) return emptyTeamStore();
+        const data = JSON.parse(raw);
+        data.next_seq = data.next_seq || {};
+        data.teams = data.teams || [];
+        return data;
+      } catch (e) { return emptyTeamStore(); }
+    }
+    function saveTeamStore(data){
+      localStorage.setItem(TEAMS_KEY, JSON.stringify(data));
+    }
+    function listTeams(league){
+      const lg = league;
+      return loadTeamStore().teams
+        .filter(t => t.league === lg)
+        .map(t => ({ ...t }))
+        .sort((a,b) => a.name.localeCompare(b.name, 'ru') || a.id.localeCompare(b.id));
+    }
+    function getTeamById(teamId){
+      return loadTeamStore().teams.find(t => t.id === teamId) || null;
+    }
+    function nextTeamId(store, league){
+      const n = (store.next_seq[league] || 1);
+      store.next_seq[league] = n + 1;
+      return `${league}:${n}`;
+    }
+    function addTeamEntry(league, name){
+      const nm = String(name||'').trim();
+      if (!nm) throw new Error('Название команды не может быть пустым.');
+      const store = loadTeamStore();
+      const existing = store.teams.find(t => t.league === league && t.name.toLowerCase() === nm.toLowerCase());
+      if (existing) return existing;
+      const now = new Date().toISOString();
+      const ent = { id: nextTeamId(store, league), league, name: nm, created_at: now, updated_at: now };
+      store.teams.push(ent);
+      saveTeamStore(store);
+      return ent;
+    }
+    function syncTeamsFromMatches(matches, league){
+      let added = 0;
+      const seen = new Set();
+      (matches || []).forEach(m => {
+        [m.home, m.away].forEach(nm => {
+          const n = String(nm||'').trim();
+          if (!n) return;
+          const key = n.toLowerCase();
+          if (seen.has(key)) return;
+          seen.add(key);
+          const exists = listTeams(league).some(t => t.name.toLowerCase() === key);
+          if (!exists){ addTeamEntry(league, n); added++; }
+        });
+      });
+      return added;
+    }
+    function resolveTeamId(league, ref){
+      const r = String(ref||'').trim();
+      if (!r) throw new Error('Не указана команда (выберите из справочника).');
+      if (/^[a-z0-9_]+:\d+$/.test(r)){
+        const ent = getTeamById(r);
+        if (!ent) throw new Error(`Команда с id ${r} не найдена в справочнике.`);
+        if (ent.league !== league) throw new Error(`Команда ${r} относится к другой лиге.`);
+        return ent.id;
+      }
+      if (r.includes(' — ')){
+        const tid = r.split(' — ')[0].trim();
+        return resolveTeamId(league, tid);
+      }
+      const hit = listTeams(league).find(t => t.name.toLowerCase() === r.toLowerCase());
+      if (hit) return hit.id;
+      throw new Error(`Команда «${r}» не найдена. Добавьте во вкладке «Справочник».`);
+    }
+    function teamNameById(teamId){
+      const ent = getTeamById(teamId);
+      return ent ? ent.name : teamId;
+    }
+    function formatTeamOptions(league){
+      return listTeams(league).map(t => `${t.id} — ${t.name}`);
+    }
+    function parseTeamOption(option){
+      const s = String(option||'').trim();
+      if (s.includes(' — ')){
+        const [tid, name] = s.split(' — ', 2);
+        return { id: tid.trim(), name: name.trim() };
+      }
+      return { id: s, name: teamNameById(s) };
+    }
+    function resolveTeamRef(league, ref, matches){
+      const tid = resolveTeamId(league, ref);
+      const regName = teamNameById(tid);
+      try {
+        return { id: tid, name: resolveTeamInSeason(regName, matches), isNew: false };
+      } catch (e){
+        return { id: tid, name: regName, isNew: true };
+      }
+    }
+    function fillTeamSelect(sel, league, selectedId){
+      sel.innerHTML = '';
+      const teams = listTeams(league);
+      teams.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = `${t.id} — ${t.name}`;
+        sel.appendChild(opt);
+      });
+      if (selectedId && teams.some(t => t.id === selectedId)) sel.value = selectedId;
+      else if (teams.length) sel.selectedIndex = Math.min(sel.id === 'shinTeam2' ? 1 : 0, teams.length - 1);
+    }
+    function refreshShinTeamSelects(){
+      const league = document.getElementById('shinLeague').value;
+      fillTeamSelect(document.getElementById('shinTeam1'), league, document.getElementById('shinTeam1').value);
+      fillTeamSelect(document.getElementById('shinTeam2'), league, document.getElementById('shinTeam2').value);
+    }
+    function renderTeamsTable(league){
+      const tbody = document.querySelector('#teamsTable tbody');
+      tbody.innerHTML = '';
+      const teams = listTeams(league);
+      teams.forEach(t => {
+        const tr = document.createElement('tr');
+        const upd = t.updated_at ? t.updated_at.replace('T',' ').slice(0,19) : '';
+        tr.innerHTML = `<td>${escapeHtml(t.id)}</td><td>${escapeHtml(t.name)}</td><td>${upd}</td>`;
+        tbody.appendChild(tr);
+      });
+      document.getElementById('metaTeams').textContent = teams.length
+        ? `${LEAGUE_TITLES[league]}: ${teams.length} команд(ы) в справочнике.`
+        : `${LEAGUE_TITLES[league]}: справочник пуст. Добавьте команду ниже.`;
+    }
+
+    bindClick('teamsSearch', ()=>{
+      const league = document.getElementById('teamsLeague').value;
+      renderTeamsTable(league);
+      refreshShinTeamSelects();
+    });
+    bindClick('teamsAdd', ()=>{
+      try {
+        const league = document.getElementById('teamsLeague').value;
+        const name = document.getElementById('teamsNewName').value;
+        const ent = addTeamEntry(league, name);
+        document.getElementById('teamsNewName').value = '';
+        renderTeamsTable(league);
+        refreshShinTeamSelects();
+        alert(`Добавлено: ${ent.id} — ${ent.name}`);
+      } catch(e){ alert(e.message); }
+    });
+
     // ---------------- History (localStorage) ----------------
     const HIST_KEY = 'FairOddsCalc_history_v1';
     const LEAGUE_TITLES = {
@@ -934,6 +1133,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         imported_at: new Date().toISOString(),
       };
       saveHistStore(store);
+      syncTeamsFromMatches(matches, league);
       return { count: matches.length, replaced, previous, season: safe };
     }
 
@@ -1109,22 +1309,24 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         details: det.join('\n'),
       };
     }
-    function calcShinLeague(t1, t2, matches, league, seasonUsed, source){
+    function calcShinLeague(t1, t2, matches, league, seasonUsed, source, t1New=false, t2New=false){
       const rank = buildRanking(histToRankMatches(matches), true);
       const ratings = new Map(rank.teams.map(t => [t.team, t.rating]));
-      if (!ratings.has(t1)||!ratings.has(t2)) throw new Error(SHIN_ERR.team);
+      const r1 = ratings.has(t1) ? ratings.get(t1) : (t1New ? NEW_TEAM_RATING : null);
+      const r2 = ratings.has(t2) ? ratings.get(t2) : (t2New ? NEW_TEAM_RATING : null);
+      if (r1 == null || r2 == null) throw new Error(SHIN_ERR.team);
       const hCoef = Math.pow(10, rank.H/400);
-      const s1 = Math.pow(10, ratings.get(t1)/400)*hCoef;
-      const s2 = Math.pow(10, ratings.get(t2)/400);
+      const s1 = Math.pow(10, r1/400)*hCoef;
+      const s2 = Math.pow(10, r2/400);
       const dm = calibrateDrawModel(league);
-      const dRating = ratings.get(t1) - ratings.get(t2);
+      const dRating = r1 - r2;
       const dMarket = dRating + rank.H;
       const { px: drawPx, lines: pxLines } = drawPxForMatch(dm, dMarket, s1, s2);
       const [p1, px, p2] = probsFromStrengths(s1, s2, drawPx);
       const det = [
         `Источник: ${SHIN_SOURCE_RU[source]||source}`,
         `Матчей в сезоне: ${matches.length}`,
-        `R(${t1})=${fmt(ratings.get(t1),1)}, R(${t2})=${fmt(ratings.get(t2),1)}, H=${fmt(rank.H,1)}`,
+        `R(${t1})=${fmt(r1,1)}${t1New?' ← новая (R=0)':''}, R(${t2})=${fmt(r2,1)}${t2New?' ← новая (R=0)':''}, H=${fmt(rank.H,1)}`,
         `s1=${s1.toFixed(4).replace('.',',')}, s2=${s2.toFixed(4).replace('.',',')}, D=${fmt(dMarket,1)}`,
         'Ничья:', ...pxLines,
         `Итог: ${formatShinOdds(p1,px,p2,2)}`,
@@ -1143,15 +1345,24 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       if (!seasons.includes(safe)) throw new Error(SHIN_ERR.season);
       const current = getHistSeason(league, safe);
       if (!current || !current.length) throw new Error(SHIN_ERR.season);
-      const t1 = resolveTeamInSeason(team1, current);
-      const t2 = resolveTeamInSeason(team2, current);
+      const ref1 = resolveTeamRef(league, team1, current);
+      const ref2 = resolveTeamRef(league, team2, current);
+      const t1 = ref1.name, t2 = ref2.name;
       const head = [
         '═══ Подробный расчёт Shin ═══',
         `Матч: ${t1} (дома) — ${t2}`,
+        `ID: ${ref1.id} / ${ref2.id}`,
         `Лига: ${LEAGUE_TITLES[league]}, сезон: ${safe}`,
         '', 'Выбор источника:',
       ];
-      const common = findCommonOpponents(t1, t2, current);
+      if (ref1.isNew || ref2.isNew){
+        const nn = [];
+        if (ref1.isNew) nn.push(`${t1} (${ref1.id})`);
+        if (ref2.isNew) nn.push(`${t2} (${ref2.id})`);
+        head.splice(5, 0, `Новые команды: ${nn.join(', ')} → R=${NEW_TEAM_RATING}`, '');
+      }
+      let common = [];
+      if (!ref1.isNew && !ref2.isNew) common = findCommonOpponents(t1, t2, current);
       if (common.length){
         let best = common[0], bestScore = -1;
         common.forEach(opp => {
@@ -1165,10 +1376,12 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         res.details = head.join('\n')+'\n'+res.details;
         return res;
       }
-      head.push('  1) Общий соперник — нет');
-      if (countTeamMatches(t1, t2, current) >= MIN_SHIN_MATCHES){
-        head.push('  2) Матчи сезона — ДА');
-        const res = calcShinLeague(t1, t2, current, league, safe, 'League matches');
+      head.push('  1) Общий соперник — нет' + ((ref1.isNew||ref2.isNew) ? ' (новая команда)' : ''));
+      const nCurrent = (ref1.isNew && ref2.isNew) ? 0 : countTeamMatches(t1, t2, current);
+      const leagueOk = nCurrent >= MIN_SHIN_MATCHES || ((ref1.isNew||ref2.isNew) && current.length >= MIN_SHIN_MATCHES);
+      if (leagueOk){
+        head.push(`  2) Матчи сезона — ДА (${nCurrent})` + ((ref1.isNew||ref2.isNew) ? ', новая → R=0' : ''));
+        const res = calcShinLeague(t1, t2, current, league, safe, 'League matches', ref1.isNew, ref2.isNew);
         res.details = head.join('\n')+'\n'+res.details;
         return res;
       }
@@ -1177,9 +1390,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       if (!prev) throw new Error(SHIN_ERR.data);
       const prevM = getHistSeason(league, prev);
       if (!prevM || !prevM.length) throw new Error(SHIN_ERR.data);
-      const t1p = resolveTeamInSeason(team1, prevM);
-      const t2p = resolveTeamInSeason(team2, prevM);
-      const commonP = findCommonOpponents(t1p, t2p, prevM);
+      const ref1p = resolveTeamRef(league, team1, prevM);
+      const ref2p = resolveTeamRef(league, team2, prevM);
+      const t1p = ref1p.name, t2p = ref2p.name;
+      let commonP = [];
+      if (!ref1p.isNew && !ref2p.isNew) commonP = findCommonOpponents(t1p, t2p, prevM);
       if (commonP.length){
         let best = commonP[0], bestScore = -1;
         commonP.forEach(opp => {
@@ -1193,8 +1408,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         res.details = head.join('\n')+'\n'+res.details;
         return res;
       }
-      if (countTeamMatches(t1p, t2p, prevM) < MIN_SHIN_MATCHES) throw new Error(SHIN_ERR.data);
-      const res = calcShinLeague(t1p, t2p, prevM, league, prev, 'Previous season');
+      const nPrev = (ref1p.isNew && ref2p.isNew) ? 0 : countTeamMatches(t1p, t2p, prevM);
+      const prevOk = nPrev >= MIN_SHIN_MATCHES || ((ref1p.isNew||ref2p.isNew) && prevM.length >= MIN_SHIN_MATCHES);
+      if (!prevOk) throw new Error(SHIN_ERR.data);
+      const res = calcShinLeague(t1p, t2p, prevM, league, prev, 'Previous season', ref1p.isNew, ref2p.isNew);
       res.details = head.join('\n')+'\n'+res.details;
       return res;
     }
@@ -1536,12 +1753,21 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       }
     });
 
+    document.getElementById('shinLeague').addEventListener('change', refreshShinTeamSelects);
+
     if (!document.getElementById('histText').value.trim() && !listHistSeasons().length){
       document.getElementById('histLoadSample').click();
     }
+    Object.keys(LEAGUE_TITLES).forEach(lg => {
+      const store = loadHistStore();
+      Object.keys(store.leagues[lg] || {}).forEach(season => {
+        syncTeamsFromMatches(getHistSeason(lg, season), lg);
+      });
+    });
+    refreshShinTeamSelects();
     refreshHistTable();
     window.refreshHistTable = refreshHistTable;
-    setJsStatus('Версия draw-px-v1 — вкладки и кнопки активны');
+    setJsStatus('Версия team-registry-v1 — вкладки и кнопки активны');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
       console.error(err);
