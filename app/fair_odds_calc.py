@@ -703,37 +703,78 @@ def build_app():
     shin_out = ttk.LabelFrame(tab_shin, text="Результат (метод Shin)", padding=10)
     shin_out.pack(fill="both", expand=True, pady=(12, 0))
 
-    shin_odds_var = tk.StringVar(value="—")
-    shin_d_var = tk.StringVar(value="—")
-    shin_p1_var = tk.StringVar(value="—")
-    shin_px_var = tk.StringVar(value="—")
-    shin_p2_var = tk.StringVar(value="—")
-    shin_source_var = tk.StringVar(value="—")
-    shin_season_used_var = tk.StringVar(value="—")
-    shin_matches_var = tk.StringVar(value="—")
-    shin_opp_var = tk.StringVar(value="")
+    shin_title_var = tk.StringVar(value="")
+    ttk.Label(
+        shin_out, textvariable=shin_title_var, font=("", 12, "bold")
+    ).pack(anchor="w", pady=(0, 8))
 
-    def shin_row(row, label, var, bold=True):
-        ttk.Label(shin_out, text=label, width=28).grid(
-            row=row, column=0, sticky="w", pady=2
-        )
-        font = ("", 11, "bold") if bold else ("", 10)
-        ttk.Label(shin_out, textvariable=var, font=font).grid(
-            row=row, column=1, sticky="w", pady=2
-        )
+    shin_odds_frame = ttk.Frame(shin_out)
+    shin_odds_frame.pack(fill="x", pady=(0, 10))
 
-    shin_row(0, "k1 / kx / k2 (1 / X / 2):", shin_odds_var)
-    shin_row(1, "D (разница сил):", shin_d_var)
-    shin_row(2, "P1 (вероятность):", shin_p1_var, bold=False)
-    shin_row(3, "Draw / X:", shin_px_var, bold=False)
-    shin_row(4, "P2 (вероятность):", shin_p2_var, bold=False)
-    shin_row(5, "Источник данных:", shin_source_var)
-    shin_row(6, "Сезон расчёта:", shin_season_used_var)
-    shin_row(7, "Матчей в расчёте:", shin_matches_var)
-
-    ttk.Label(shin_out, textvariable=shin_opp_var, foreground="#555").grid(
-        row=8, column=0, columnspan=2, sticky="w", pady=(8, 0)
+    shin_odds_tree = ttk.Treeview(
+        shin_odds_frame,
+        columns=("outcome", "k", "p"),
+        show="headings",
+        height=3,
     )
+    shin_odds_tree.heading("outcome", text="Исход")
+    shin_odds_tree.heading("k", text="k (коэфф.)")
+    shin_odds_tree.heading("p", text="p, %")
+    shin_odds_tree.column("outcome", width=200, anchor="w")
+    shin_odds_tree.column("k", width=100, anchor="e")
+    shin_odds_tree.column("p", width=100, anchor="e")
+    shin_odds_tree.pack(side="left", fill="x", expand=True)
+
+    shin_meta_frame = ttk.Frame(shin_out)
+    shin_meta_frame.pack(fill="x")
+
+    shin_meta_tree = ttk.Treeview(
+        shin_meta_frame,
+        columns=("param", "value"),
+        show="headings",
+        height=6,
+    )
+    shin_meta_tree.heading("param", text="Параметр")
+    shin_meta_tree.heading("value", text="Значение")
+    shin_meta_tree.column("param", width=200, anchor="w")
+    shin_meta_tree.column("value", width=280, anchor="w")
+    shin_meta_tree.pack(side="left", fill="x", expand=True)
+
+    def _clear_shin_trees():
+        for tree in (shin_odds_tree, shin_meta_tree):
+            for item in tree.get_children():
+                tree.delete(item)
+
+    def _fill_shin_result(res: msc.ShinMatchResult):
+        _clear_shin_trees()
+        shin_title_var.set(f"{res.team1}  —  {res.team2}  ·  {res.format_odds(2)}")
+        shin_odds_tree.insert(
+            "",
+            "end",
+            values=(f"P1 ({res.team1})", fmt(res.k1, 2), fmt(res.p1 * 100, 2) + " %"),
+        )
+        shin_odds_tree.insert(
+            "",
+            "end",
+            values=("X (ничья)", fmt(res.kx, 2), fmt(res.px * 100, 2) + " %"),
+        )
+        shin_odds_tree.insert(
+            "",
+            "end",
+            values=(f"P2 ({res.team2})", fmt(res.k2, 2), fmt(res.p2 * 100, 2) + " %"),
+        )
+        meta_rows = [
+            ("D (разница сил)", fmt(res.d_market, 1)),
+            ("H (домашнее преимущество)", fmt(res.h_used, 1) if res.h_used is not None else "—"),
+            ("Источник данных", res.source_label_ru),
+            ("Сезон расчёта", res.season_used),
+            ("Матчей в расчёте", str(res.matches_used)),
+            ("Метод", res.method),
+        ]
+        if res.common_opponent:
+            meta_rows.insert(3, ("Общий соперник", res.common_opponent))
+        for param, value in meta_rows:
+            shin_meta_tree.insert("", "end", values=(param, value))
 
     def calc_shin_match():
         try:
@@ -744,21 +785,7 @@ def build_app():
                 league_key,
                 shin_season_var.get().strip(),
             )
-            shin_odds_var.set(res.format_odds(2))
-            d_line = fmt(res.d_market, 1)
-            if res.h_used is not None:
-                d_line += f"  (H = {fmt(res.h_used, 1)})"
-            shin_d_var.set(d_line)
-            shin_p1_var.set(fmt(res.p1 * 100, 2) + " %")
-            shin_px_var.set(fmt(res.px * 100, 2) + " %")
-            shin_p2_var.set(fmt(res.p2 * 100, 2) + " %")
-            shin_source_var.set(res.source_label_ru)
-            shin_season_used_var.set(res.season_used)
-            shin_matches_var.set(str(res.matches_used))
-            if res.common_opponent:
-                shin_opp_var.set(f"Общий соперник: {res.common_opponent}")
-            else:
-                shin_opp_var.set("")
+            _fill_shin_result(res)
         except msc.ShinCalculationError as exc:
             messagebox.showerror("Счет кэф", str(exc))
         except Exception as exc:

@@ -46,7 +46,26 @@
     }
     .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
     .btn:active{ transform:translateY(1px); }
-    .meta{ font-size:12px; color:var(--muted); line-height:1.45; margin-top:8px; white-space:pre-line; }
+    .shin-result{ margin-top:14px; display:none; }
+    .shin-result.visible{ display:block; }
+    .shin-title{
+      font-size:15px; font-weight:700; margin:0 0 10px;
+      padding:10px 12px; background:#eef2ff; border-radius:10px;
+      border:1px solid #c7d4f7; line-height:1.35;
+    }
+    .shin-title .line{ display:block; font-size:13px; font-weight:600; color:#1f3ea6; margin-top:4px; }
+    .shin-table-wrap{ overflow:auto; border:1px solid var(--line); border-radius:10px; margin-top:8px; }
+    .shin-table{ width:100%; border-collapse:collapse; background:#fff; min-width:0; }
+    .shin-table th,.shin-table td{
+      border-bottom:1px solid var(--line); padding:9px 12px; font-size:13px;
+    }
+    .shin-table th{ background:#f8fafc; color:var(--muted); font-weight:600; text-align:left; }
+    .shin-table th.right,.shin-table td.num{ text-align:right; }    .shin-table td.num{ font-variant-numeric:tabular-nums; font-weight:600; }
+    .shin-table.meta td:first-child{ color:var(--muted); width:42%; }
+    .shin-empty{
+      margin-top:12px; padding:12px; border:1px dashed var(--line);
+      border-radius:10px; color:var(--muted); font-size:13px;
+    }
     .small{ font-size:12px; color:var(--muted); }
     .table-wrap{ overflow:auto; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
     table{ width:100%; border-collapse:collapse; min-width:560px; background:#fff; }
@@ -208,8 +227,28 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div class="row" style="margin-top:10px">
         <button id="calcShin" class="btn primary">Рассчитать</button>
       </div>
-      <div id="shinResult" class="meta" style="margin-top:12px;white-space:pre-line">
+      <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
+      </div>
+      <div id="shinResult" class="shin-result">
+        <div id="shinTitle" class="shin-title"></div>
+        <div class="table-wrap shin-table-wrap">
+          <table class="shin-table" id="shinOddsTable">
+            <thead>
+              <tr>
+                <th>Исход</th>
+                <th class="right">k (коэфф.)</th>
+                <th class="right">p, %</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="table-wrap shin-table-wrap" style="margin-top:10px">
+          <table class="shin-table meta" id="shinMetaTable">
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -934,6 +973,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         p1, px, p2, source:'Common opponent', seasonUsed,
         matchesUsed: m1.length+m2.length, opp,
         dMarket, hUsed: prior.hFinal,
+        team1: t1, team2: t2,
       };
     }
     function calcShinLeague(t1, t2, matches, league, seasonUsed, source){
@@ -950,6 +990,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       return {
         p1, px, p2, source, seasonUsed, matchesUsed: matches.length, opp: null,
         dMarket, hUsed: rank.H,
+        team1: t1, team2: t2,
       };
     }
     function calculateShinMatch(team1, team2, league, season){
@@ -996,8 +1037,49 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       return calcShinLeague(t1p, t2p, prevM, league, prev, 'Previous season');
     }
 
+    function renderShinResult(res){
+      const k = p => (1/p).toFixed(2).replace('.', ',');
+      document.getElementById('shinEmpty').style.display = 'none';
+      const box = document.getElementById('shinResult');
+      box.classList.add('visible');
+      document.getElementById('shinTitle').innerHTML =
+        `${escapeHtml(res.team1)} — ${escapeHtml(res.team2)}` +
+        `<span class="line">k1 / kx / k2: ${formatShinOdds(res.p1, res.px, res.p2, 2)}</span>`;
+      const oddsBody = document.querySelector('#shinOddsTable tbody');
+      oddsBody.innerHTML = [
+        { label: `P1 (${res.team1})`, kv: k(res.p1), pv: fmt(res.p1*100,2)+' %' },
+        { label: 'X (ничья)', kv: k(res.px), pv: fmt(res.px*100,2)+' %' },
+        { label: `P2 (${res.team2})`, kv: k(res.p2), pv: fmt(res.p2*100,2)+' %' },
+      ].map(r =>
+        `<tr><td>${escapeHtml(r.label)}</td><td class="num">${r.kv}</td><td class="num">${r.pv}</td></tr>`
+      ).join('');
+      const meta = [
+        ['D (разница сил)', fmt(res.dMarket, 1)],
+        ['H (домашнее преимущество)', res.hUsed != null ? fmt(res.hUsed, 1) : '—'],
+        ['Источник данных', SHIN_SOURCE_RU[res.source] || res.source],
+        ['Сезон расчёта', res.seasonUsed],
+        ['Матчей в расчёте', String(res.matchesUsed)],
+        ['Метод', 'Shin'],
+      ];
+      if (res.opp) meta.splice(3, 0, ['Общий соперник', res.opp]);
+      document.querySelector('#shinMetaTable tbody').innerHTML = meta.map(
+        ([p,v]) => `<tr><td>${escapeHtml(p)}</td><td>${escapeHtml(v)}</td></tr>`
+      ).join('');
+    }
+    function showShinError(msg){
+      document.getElementById('shinResult').classList.remove('visible');
+      const el = document.getElementById('shinEmpty');
+      el.style.display = 'block';
+      el.classList.add('danger');
+      el.textContent = msg;
+    }
+    function escapeHtml(s){
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
     document.getElementById('calcShin').addEventListener('click', () => {
-      const out = document.getElementById('shinResult');
+      const emptyEl = document.getElementById('shinEmpty');
+      emptyEl.classList.remove('danger');
       try {
         const res = calculateShinMatch(
           document.getElementById('shinTeam1').value,
@@ -1005,21 +1087,9 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           document.getElementById('shinLeague').value,
           document.getElementById('shinSeason').value,
         );
-        const lines = [
-          `k1 / kx / k2: ${formatShinOdds(res.p1, res.px, res.p2, 2)}`,
-          `D = ${fmt(res.dMarket, 1)}${res.hUsed != null ? `  (H = ${fmt(res.hUsed, 1)})` : ''}`,
-          '',
-          `P1: ${fmt(res.p1*100,2)} %`,
-          `Draw / X: ${fmt(res.px*100,2)} %`,
-          `P2: ${fmt(res.p2*100,2)} %`,
-          `Источник: ${SHIN_SOURCE_RU[res.source] || res.source}`,
-          `Сезон: ${res.seasonUsed}`,
-          `Матчей: ${res.matchesUsed}`,
-        ];
-        if (res.opp) lines.push(`Общий соперник: ${res.opp}`);
-        out.textContent = lines.join('\n');
+        renderShinResult(res);
       } catch (e) {
-        out.textContent = e.message || String(e);
+        showShinError(e.message || String(e));
       }
     });
 
