@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/team-registry-17b5 team-registry-v3 -->
+  <!-- build: cursor/team-registry-17b5 team-registry-v4 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -131,22 +131,27 @@
             for (var i = 0; i < btns.length; i++) {
               btns[i].classList.toggle('active', btns[i].getAttribute('data-tab') === id);
             }
-            for (var k in TAB) {
-              if (!Object.prototype.hasOwnProperty.call(TAB, k)) continue;
-              var panel = document.getElementById(TAB[k]);
-              if (panel) panel.classList.toggle('active', k === id);
+            var panelId = TAB[id] || ('tab-' + id);
+            var panels = document.querySelectorAll('.panel');
+            for (var j = 0; j < panels.length; j++) {
+              panels[j].classList.toggle('active', panels[j].id === panelId);
             }
             if (id === 'hist' && window.refreshHistTable) window.refreshHistTable();
-            if (id === 'teams' && window.refreshTeamsTable) window.refreshTeamsTable();
+            if (id === 'teams') {
+              if (window.__renderTeamsBootstrap) window.__renderTeamsBootstrap();
+              else if (window.refreshTeamsTable) window.refreshTeamsTable();
+            }
           }
           var tabsEl = document.querySelector('.tabs');
+          function onTabActivate(e) {
+            var btn = (e.target.closest && e.target.closest('.tab-btn')) || closestTabBtn(e.target, tabsEl);
+            if (!btn) return;
+            e.preventDefault();
+            switchTab(btn.getAttribute('data-tab'));
+          }
           if (tabsEl) {
-            tabsEl.addEventListener('click', function (e) {
-              var btn = (e.target.closest && e.target.closest('.tab-btn')) || closestTabBtn(e.target, tabsEl);
-              if (!btn) return;
-              e.preventDefault();
-              switchTab(btn.getAttribute('data-tab'));
-            });
+            tabsEl.addEventListener('click', onTabActivate);
+            tabsEl.addEventListener('touchend', onTabActivate);
           }
           window.__switchTab = switchTab;
         } catch (err) {
@@ -307,7 +312,28 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <th>Команда</th>
             </tr>
           </thead>
-          <tbody></tbody>
+          <tbody>
+            <tr><td class="right">1</td><td>Arsenal</td></tr>
+            <tr><td class="right">2</td><td>Aston Villa</td></tr>
+            <tr><td class="right">3</td><td>Bournemouth</td></tr>
+            <tr><td class="right">4</td><td>Brentford</td></tr>
+            <tr><td class="right">5</td><td>Brighton</td></tr>
+            <tr><td class="right">6</td><td>Burnley</td></tr>
+            <tr><td class="right">7</td><td>Chelsea</td></tr>
+            <tr><td class="right">8</td><td>Crystal Palace</td></tr>
+            <tr><td class="right">9</td><td>Everton</td></tr>
+            <tr><td class="right">10</td><td>Fulham</td></tr>
+            <tr><td class="right">11</td><td>Leeds</td></tr>
+            <tr><td class="right">12</td><td>Liverpool</td></tr>
+            <tr><td class="right">13</td><td>Man City</td></tr>
+            <tr><td class="right">14</td><td>Man United</td></tr>
+            <tr><td class="right">15</td><td>Newcastle</td></tr>
+            <tr><td class="right">16</td><td>Nott'm Forest</td></tr>
+            <tr><td class="right">17</td><td>Sunderland</td></tr>
+            <tr><td class="right">18</td><td>Tottenham</td></tr>
+            <tr><td class="right">19</td><td>West Ham</td></tr>
+            <tr><td class="right">20</td><td>Wolves</td></tr>
+          </tbody>
         </table>
       </div>
       <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:10px;">
@@ -319,8 +345,51 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <button type="button" id="teamsAdd" class="btn">Добавить</button>
         </div>
       </div>
-      <div id="metaTeams" class="meta" style="margin-top:10px"></div>
+      <div id="metaTeams" class="meta" style="margin-top:10px">English Premier League — 20 команд</div>
     </section>
+    <script>
+    (function teamsBootstrap(){
+      var TITLES = {
+        epl:'English Premier League', la_liga:'La Liga', bundesliga:'Bundesliga',
+        serie_a:'Serie A', ligue_1:'Ligue 1'
+      };
+      var SEED = {
+        bundesliga:['Augsburg','Bayern Munich','Dortmund','Ein Frankfurt','FC Koln','Freiburg','Hamburg','Heidenheim','Hoffenheim','Leverkusen',"M'gladbach",'Mainz','RB Leipzig','St Pauli','Stuttgart','Union Berlin','Werder Bremen','Wolfsburg'],
+        epl:['Arsenal','Aston Villa','Bournemouth','Brentford','Brighton','Burnley','Chelsea','Crystal Palace','Everton','Fulham','Leeds','Liverpool','Man City','Man United','Newcastle',"Nott'm Forest",'Sunderland','Tottenham','West Ham','Wolves'],
+        la_liga:['Alaves','Ath Bilbao','Ath Madrid','Barcelona','Betis','Celta','Elche','Espanol','Getafe','Girona','Levante','Mallorca','Osasuna','Oviedo','Real Madrid','Sevilla','Sociedad','Valencia','Vallecano','Villarreal'],
+        ligue_1:['Angers','Auxerre','Brest','Le Havre','Lens','Lille','Lorient','Lyon','Marseille','Metz','Monaco','Nantes','Nice','Paris FC','Paris SG','Rennes','Strasbourg','Toulouse'],
+        serie_a:['Atalanta','Bologna','Cagliari','Como','Cremonese','Fiorentina','Genoa','Inter','Juventus','Lazio','Lecce','Milan','Napoli','Parma','Pisa','Roma','Sassuolo','Torino','Udinese','Verona']
+      };
+      window.__TEAMS_SEED = SEED;
+      window.__renderTeamsBootstrap = function(league){
+        var sel = document.getElementById('teamsLeague');
+        var lg = league || (sel && sel.value) || 'epl';
+        var list = SEED[lg] || [];
+        var tbody = document.querySelector('#teamsTable tbody');
+        if (!tbody) return;
+        var html = '';
+        for (var i = 0; i < list.length; i++) {
+          html += '<tr><td class="right">' + (i+1) + '</td><td>' + list[i].replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td></tr>';
+        }
+        tbody.innerHTML = html;
+        var meta = document.getElementById('metaTeams');
+        if (meta) meta.textContent = (TITLES[lg] || lg) + ' — ' + list.length + ' команд';
+        if (sel && sel.value !== lg) sel.value = lg;
+      };
+      function hookTeamsLeague(){
+        var sel = document.getElementById('teamsLeague');
+        if (!sel || sel.__teamsHooked) return;
+        sel.__teamsHooked = true;
+        sel.addEventListener('change', function(){ window.__renderTeamsBootstrap(sel.value); });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function(){ hookTeamsLeague(); window.__renderTeamsBootstrap('epl'); });
+      } else {
+        hookTeamsLeague();
+        window.__renderTeamsBootstrap('epl');
+      }
+    })();
+    </script>
 
     <!-- TAB SHIN -->
     <section id="tab-shin" class="panel">
@@ -358,7 +427,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: team-registry-v3</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: team-registry-v4</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -1824,13 +1893,18 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     }
     seedDefaultTeams(false);
     window.refreshTeamsTable = function(){
+      if (window.__renderTeamsBootstrap) {
+        window.__renderTeamsBootstrap(document.getElementById('teamsLeague').value);
+        return;
+      }
       renderTeamsTable(document.getElementById('teamsLeague').value);
     };
-    renderTeamsTable(document.getElementById('teamsLeague').value);
+    if (window.__renderTeamsBootstrap) window.__renderTeamsBootstrap('epl');
+    else renderTeamsTable(document.getElementById('teamsLeague').value);
     refreshShinTeamSelects();
     refreshHistTable();
     window.refreshHistTable = refreshHistTable;
-    setJsStatus('Версия team-registry-v3 — вкладки и справочник активны');
+    setJsStatus('Версия team-registry-v4 — справочник по лигам');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
       console.error(err);
