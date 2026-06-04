@@ -26,12 +26,24 @@ def test_shin_devig_sums_to_one():
 
 
 def test_epl_arsenal_chelsea():
+    csv_path = ROOT / "docs" / "examples" / "history_epl_2025_26.csv"
+    try:
+        hs.import_season("epl", "2025-26", csv_path)
+    except ValueError:
+        pass  # already imported
     res = calculate_shin_match("Arsenal", "Chelsea", "epl", "2025-26")
     assert abs(res.p1 + res.px + res.p2 - 1.0) < 1e-5
     assert res.k1 > 1 and res.kx > 1 and res.k2 > 1
     assert " / " in res.format_odds()
     assert res.season_used == "2025-26"
     assert res.matches_used > 0
+    assert res.source == CalculationSource.COMMON_OPPONENT
+    assert res.common_opponent == "Man United"
+    # Chain with neutral ρ + h on forecast (both played MU away in sample data)
+    assert 0.56 < res.p1 < 0.59
+    assert 1.70 < res.k1 < 1.80
+    assert "ρ" in res.details or "ρ̄" in res.details
+    assert "× h" in res.details or "× h =" in res.details
 
 
 def test_previous_season_none_for_first():

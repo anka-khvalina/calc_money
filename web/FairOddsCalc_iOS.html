@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/shin-match-17b5 fix-tabs-v2 -->
+  <!-- build: cursor/shin-match-17b5 chain-h-v1 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -305,7 +305,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: fix-tabs-v2</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: chain-h-v1</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -1048,34 +1048,44 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         return { d: ratings.get(t1) - ratings.get(t2) + rank.H, h: rank.H };
       } catch (e) { return null; }
     }
+    function resolveHomeCoef(t1, t2, matches, league){
+      const target = targetMatchD(t1, t2, matches);
+      if (target && target.h != null) {
+        return { h: target.h, hCoef: Math.pow(10, target.h / 400) };
+      }
+      const prior = homeAdvantagePrior(league);
+      return { h: prior.hFinal, hCoef: Math.pow(10, prior.hFinal / 400) };
+    }
     function calcShinCommon(t1, t2, opp, matches, league, seasonUsed){
       const m1 = matches.filter(m => (m.home===t1||m.away===t1)&&(m.home===opp||m.away===opp));
       const m2 = matches.filter(m => (m.home===t2||m.away===t2)&&(m.home===opp||m.away===opp));
       if (!m1.length || !m2.length) throw new Error(SHIN_ERR.data);
+      const { h: hUsed, hCoef } = resolveHomeCoef(t1, t2, matches, league);
       const det = [];
       det.push(`Источник: общий соперник — ${opp}`);
       det.push(`Матчей: ${m1.length} (${t1}) + ${m2.length} (${t2})`);
-      det.push('', `Шаг A. ${t1} vs ${opp}`);
-      const c1 = chainMatchLines(t1, m1);
+      det.push(`H=${fmt(hUsed,1)}, h=10^(H/400)=${hCoef.toFixed(4).replace('.',',')} (дома: ρ=r/h, гости: ρ=r·h)`);
+      det.push('', `Шаг A. ${t1} vs ${opp} → нейтральное поле`);
+      const c1 = chainMatchLines(t1, m1, hCoef);
       det.push(...c1.lines);
-      const r1 = geomMeanLog(c1.ratios);
-      det.push(`  r̄ = ${r1.toFixed(4).replace('.',',')}`);
-      det.push('', `Шаг B. ${t2} vs ${opp}`);
-      const c2 = chainMatchLines(t2, m2);
+      const rho1 = geomMeanLog(c1.ratios);
+      det.push(`  ρ̄ = ${rho1.toFixed(4).replace('.',',')}`);
+      det.push('', `Шаг B. ${t2} vs ${opp} → нейтральное поле`);
+      const c2 = chainMatchLines(t2, m2, hCoef);
       det.push(...c2.lines);
-      const r2 = geomMeanLog(c2.ratios);
-      det.push(`  r̄ = ${r2.toFixed(4).replace('.',',')}`);
-      const rAb = r1/r2;
+      const rho2 = geomMeanLog(c2.ratios);
+      det.push(`  ρ̄ = ${rho2.toFixed(4).replace('.',',')}`);
+      const rhoAb = rho1 / (rho2 || 1);
+      const rAb = rhoAb * hCoef;
       const s1 = Math.sqrt(rAb), s2 = 1/Math.sqrt(rAb||1);
       const dChain = 400*Math.log10(s1/(s2||1));
-      det.push('', 'Шаг C. Цепочка P1/P2');
-      det.push(`  r_AB=${r1.toFixed(4).replace('.',',')}/${r2.toFixed(4).replace('.',',')}=${rAb.toFixed(4).replace('.',',')}`);
+      det.push('', 'Шаг C. Прогноз team1 дома (ρ̄ → × h)');
+      det.push(`  ρ_AB=${rho1.toFixed(4).replace('.',',')}/${rho2.toFixed(4).replace('.',',')}=${rhoAb.toFixed(4).replace('.',',')}`);
+      det.push(`  r_AB=ρ_AB×h=${rhoAb.toFixed(4).replace('.',',')}×${hCoef.toFixed(4).replace('.',',')}=${rAb.toFixed(4).replace('.',',')}`);
       det.push(`  s1=√r_AB=${s1.toFixed(4).replace('.',',')}, s2=1/√r_AB=${s2.toFixed(4).replace('.',',')}`);
       det.push(`  D_цепь=400·log10(s1/s2)=${fmt(dChain,1)}`);
       const target = targetMatchD(t1, t2, matches);
-      const prior = homeAdvantagePrior(league);
       const dDraw = target ? target.d : dChain;
-      const hUsed = target ? target.h : prior.hFinal;
       det.push('', 'Шаг D. D для ничьи');
       if (target){
         const rank = buildRanking(histToRankMatches(matches), true);
@@ -1324,17 +1334,21 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       lines.push(`  Итого px = ${(px*100).toFixed(2).replace('.',',')}%`);
       return { px, lines };
     }
-    function chainMatchLines(team, ms){
+    function chainMatchLines(team, ms, hCoef){
       const lines = [];
       const ratios = [];
       ms.forEach(m => {
         const [p1,px,p2] = shinDevig(m.o1, m.ox, m.o2);
         const home = m.home === team;
-        const r = home ? p1/(p2||1e-12) : p2/(p1||1e-12);
-        ratios.push(r);
+        const rRaw = home ? p1/(p2||1e-12) : p2/(p1||1e-12);
+        const rho = home ? rRaw/(hCoef||1) : rRaw*(hCoef||1);
+        ratios.push(rho);
         const ko = v => v.toFixed(2).replace('.',',');
         lines.push(`    ${m.date||'?'}  ${m.home}  ${ko(m.o1)}/${ko(m.ox)}/${ko(m.o2)}  ${m.away}`);
-        lines.push(`      Shin p1=${p1.toFixed(4).replace('.',',')} px=${px.toFixed(4).replace('.',',')} p2=${p2.toFixed(4).replace('.',',')}  |  r=${r.toFixed(4).replace('.',',')} (${home?'дома':'гости'})`);
+        lines.push(
+          `      Shin p1=${p1.toFixed(4).replace('.',',')} px=${px.toFixed(4).replace('.',',')} p2=${p2.toFixed(4).replace('.',',')}` +
+          `  |  r=${rRaw.toFixed(4).replace('.',',')} (${home?'дома':'гости'}) → ρ=${rho.toFixed(4).replace('.',',')}`
+        );
       });
       return { lines, ratios };
     }
@@ -1500,7 +1514,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     }
     refreshHistTable();
     window.refreshHistTable = refreshHistTable;
-    setJsStatus('Версия fix-tabs-v2 — вкладки и кнопки активны');
+    setJsStatus('Версия chain-h-v1 — вкладки и кнопки активны');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
       console.error(err);

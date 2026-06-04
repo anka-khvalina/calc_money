@@ -253,32 +253,56 @@ def _match_draw_px(
     return px_final, lines
 
 
+def _resolve_home_advantage(
+    team1: str,
+    team2: str,
+    matches: Sequence[hs.HistoricalMatch],
+    league_key: str,
+) -> Tuple[float, float]:
+    """H (D-шкала) и h_coef = 10^(H/400) для цепочки через соперника."""
+    _d_draw, h_rank = _target_match_d(team1, team2, matches)
+    if h_rank is not None:
+        odds_matches = [m.to_match_odds() for m in matches]
+        coef = build_ranking_shin(odds_matches).home_advantage_coef
+        return h_rank, coef
+    try:
+        h_est = hs.home_advantage_prior(league_key).h_final
+    except ValueError:
+        h_est = hs.LEAGUE_DEFAULT_H.get(league_key, 58.0)
+    return h_est, 10.0 ** (h_est / 400.0)
+
+
 def _chain_match_lines(
-    team: str, opponent: str, chain_matches: Sequence[hs.HistoricalMatch]
+    team: str,
+    opponent: str,
+    chain_matches: Sequence[hs.HistoricalMatch],
+    h_coef: float,
 ) -> Tuple[List[str], List[float]]:
-    """Строки расчёта и список r по матчам."""
+    """Строки расчёта и список ρ (нейтральное поле) по матчам цепочки."""
     lines: List[str] = []
-    ratios: List[float] = []
+    rhos: List[float] = []
     for m in chain_matches:
         p1, px, p2 = ds.shin_devig(m.odds_1, m.odds_x, m.odds_2)
         if team == m.home_team:
-            r = p1 / p2 if p2 > 1e-12 else 0.0
+            r_raw = p1 / p2 if p2 > 1e-12 else 0.0
             side = "дома"
-            p_win, p_loss = p1, p2
+            rho = r_raw / h_coef if h_coef > 0 else r_raw
+            adj = f"ρ = r/h = {_fmt_p(rho)}"
         else:
-            r = p2 / p1 if p1 > 1e-12 else 0.0
+            r_raw = p2 / p1 if p1 > 1e-12 else 0.0
             side = "в гостях"
-            p_win, p_loss = p2, p1
-        ratios.append(r)
+            rho = r_raw * h_coef if h_coef > 0 else r_raw
+            adj = f"ρ = r·h = {_fmt_p(rho)}"
+        rhos.append(rho)
         lines.append(
             f"    {m.date}  {m.home_team}  {_fmt_odds(m.odds_1)}/{_fmt_odds(m.odds_x)}/"
             f"{_fmt_odds(m.odds_2)}  {m.away_team}"
         )
         lines.append(
             f"      Shin: p1={_fmt_p(p1)} px={_fmt_p(px)} p2={_fmt_p(p2)}  |  "
-            f"{team} {side}: r = p_win/p_loss = {_fmt_p(r)}"
+            f"{team} {side}: r={_fmt_p(r_raw)}  →  {adj}"
         )
-    return lines, ratios
+    return lines, rhos
 
 
 def _probs_from_strengths(s1: float, s2: float, px: float) -> Tuple[float, float, float]:
@@ -386,52 +410,63 @@ def _calc_common_opponent(
     if not m1 or not m2:
         raise ShinCalculationError(ERR_DATA)
 
+    h_est, h_coef = _resolve_home_advantage(team1, team2, matches, league_key)
+
     det: List[str] = []
     det.append(f"Источник: общий соперник — {opponent}")
     det.append(f"Матчей в цепочке: {len(m1)} ({team1}) + {len(m2)} ({team2}) = {len(m1)+len(m2)}")
+    det.append(
+        f"H = {_fmt_d(h_est)},  h = 10^(H/400) = {_fmt_p(h_coef)}  "
+        f"(дома: ρ=r/h,  в гостях: ρ=r·h)"
+    )
     det.append("")
-    det.append(f"Шаг A. Матчи {team1} против {opponent}")
-    lines1, ratios1 = _chain_match_lines(team1, opponent, m1)
+    det.append(f"Шаг A. Матчи {team1} против {opponent} → нейтральное поле")
+    lines1, rhos1 = _chain_match_lines(team1, opponent, m1, h_coef)
     det.extend(lines1)
-    r1 = _geom_mean_ratios(ratios1)
-    if len(ratios1) > 1:
-        ln_sum = " + ".join(_fmt_p(math.log(x)) for x in ratios1)
-        det.append(f"  r̄_{team1[:3]} = exp(mean(ln r)) = exp(({ln_sum})/{len(ratios1)}) = {_fmt_p(r1)}")
+    rho1 = _geom_mean_ratios(rhos1)
+    if len(rhos1) > 1:
+        ln_sum = " + ".join(_fmt_p(math.log(x)) for x in rhos1)
+        det.append(
+            f"  ρ̄_{team1[:3]} = exp(mean(ln ρ)) = exp(({ln_sum})/{len(rhos1)}) = {_fmt_p(rho1)}"
+        )
     else:
-        det.append(f"  r̄_{team1[:3]} = {_fmt_p(r1)}")
+        det.append(f"  ρ̄_{team1[:3]} = {_fmt_p(rho1)}")
     det.append("")
-    det.append(f"Шаг B. Матчи {team2} против {opponent}")
-    lines2, ratios2 = _chain_match_lines(team2, opponent, m2)
+    det.append(f"Шаг B. Матчи {team2} против {opponent} → нейтральное поле")
+    lines2, rhos2 = _chain_match_lines(team2, opponent, m2, h_coef)
     det.extend(lines2)
-    r2 = _geom_mean_ratios(ratios2)
-    if len(ratios2) > 1:
-        ln_sum = " + ".join(_fmt_p(math.log(x)) for x in ratios2)
-        det.append(f"  r̄_{team2[:3]} = exp(mean(ln r)) = exp(({ln_sum})/{len(ratios2)}) = {_fmt_p(r2)}")
+    rho2 = _geom_mean_ratios(rhos2)
+    if len(rhos2) > 1:
+        ln_sum = " + ".join(_fmt_p(math.log(x)) for x in rhos2)
+        det.append(
+            f"  ρ̄_{team2[:3]} = exp(mean(ln ρ)) = exp(({ln_sum})/{len(rhos2)}) = {_fmt_p(rho2)}"
+        )
     else:
-        det.append(f"  r̄_{team2[:3]} = {_fmt_p(r2)}")
+        det.append(f"  ρ̄_{team2[:3]} = {_fmt_p(rho2)}")
     det.append("")
-    det.append("Шаг C. Сравнение сил (цепочка → P1/P2)")
-    r_ab = r1 / r2 if r2 > 0 else 1.0
+    det.append("Шаг C. Прогноз team1 дома (ρ̄ → × h на отношение сил)")
+    r_ab_neutral = rho1 / rho2 if rho2 > 0 else 1.0
+    r_ab = r_ab_neutral * h_coef
     s1 = math.sqrt(r_ab)
     s2 = 1.0 / math.sqrt(r_ab) if r_ab > 0 else 1.0
-    det.append(f"  r_AB = r̄₁/r̄₂ = {_fmt_p(r1)}/{_fmt_p(r2)} = {_fmt_p(r_ab)}")
+    det.append(
+        f"  ρ_AB (нейтр.) = ρ̄₁/ρ̄₂ = {_fmt_p(rho1)}/{_fmt_p(rho2)} = {_fmt_p(r_ab_neutral)}"
+    )
+    det.append(
+        f"  r_AB (прогноз) = ρ_AB × h = {_fmt_p(r_ab_neutral)} × {_fmt_p(h_coef)} = {_fmt_p(r_ab)}"
+    )
     det.append(f"  s₁ = √r_AB = {_fmt_p(s1)},  s₂ = 1/√r_AB = {_fmt_p(s2)}")
 
     chain_d = 400.0 * math.log10(s1 / s2) if s2 > 0 else 0.0
     det.append(f"  D_цепь = 400·log₁₀(s₁/s₂) = {_fmt_d(chain_d)}")
     det.append("")
     det.append("Шаг D. D для ничьи (целевой матч, team1 дома)")
-    d_draw, h_rank = _target_match_d(team1, team2, matches)
+    d_draw, _h_rank = _target_match_d(team1, team2, matches)
     if d_draw is None:
         d_draw = chain_d
-        try:
-            h_est = hs.home_advantage_prior(league_key).h_final
-        except ValueError:
-            h_est = hs.LEAGUE_DEFAULT_H.get(league_key, 58.0)
         det.append("  Рейтинг сезона недоступен → D_цель = D_цепь")
-        det.append(f"  H (приор лиги) = {_fmt_d(h_est)}")
+        det.append(f"  H = {_fmt_d(h_est)}")
     else:
-        h_est = h_rank if h_rank is not None else hs.LEAGUE_DEFAULT_H.get(league_key, 58.0)
         odds_matches = [m.to_match_odds() for m in matches]
         ranking = build_ranking_shin(odds_matches)
         ratings = {t.team: t.rating for t in ranking.teams}
