@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/shin-match-17b5 chain-h-v1 -->
+  <!-- build: cursor/shin-match-17b5 draw-px-v1 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -305,7 +305,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: chain-h-v1</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: draw-px-v1</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -1287,6 +1287,26 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     }
 
     const DRAW_SLOPE_FLOOR = -0.0010;
+    const DRAW_PX_FLOOR_D_START = 100;
+    const DRAW_PX_FLOOR_D_MID = 250;
+    const DRAW_PX_FLOOR_D_FULL = 350;
+    const DRAW_PX_LO_BASE = 0.06;
+    const DRAW_PX_LO_MID = 0.13;
+    const DRAW_PX_LO_FULL = 0.15;
+
+    function drawPxLowerBound(absD){
+      const ad = Math.abs(absD);
+      if (ad <= DRAW_PX_FLOOR_D_START) return DRAW_PX_LO_BASE;
+      if (ad <= DRAW_PX_FLOOR_D_MID){
+        const t = (ad - DRAW_PX_FLOOR_D_START) / (DRAW_PX_FLOOR_D_MID - DRAW_PX_FLOOR_D_START);
+        return DRAW_PX_LO_BASE + t * (DRAW_PX_LO_MID - DRAW_PX_LO_BASE);
+      }
+      if (ad <= DRAW_PX_FLOOR_D_FULL){
+        const t = (ad - DRAW_PX_FLOOR_D_MID) / (DRAW_PX_FLOOR_D_FULL - DRAW_PX_FLOOR_D_MID);
+        return DRAW_PX_LO_MID + t * (DRAW_PX_LO_FULL - DRAW_PX_LO_MID);
+      }
+      return DRAW_PX_LO_FULL;
+    }
 
     function calibrateDrawModel(league){
       const xs=[], ys=[];
@@ -1322,15 +1342,22 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const lines = [];
       const a = dm.a;
       const b = (dm.source === 'default' || dm.b <= DRAW_SLOPE_FLOOR) ? dm.b : DRAW_SLOPE_FLOOR;
-      let px = Math.max(0.06, Math.min(0.34, a + b * Math.abs(d)));
-      lines.push(`  px_mod = a+b·|d| → ${(px*100).toFixed(2).replace('.',',')}% (a=${a.toFixed(4).replace('.',',')}, b=${b.toFixed(6).replace('.',',')})`);
+      const pxLin = Math.max(0.06, Math.min(0.34, a + b * Math.abs(d)));
+      lines.push(`  px_mod = a+b·|d| → ${(pxLin*100).toFixed(2).replace('.',',')}% (a=${a.toFixed(4).replace('.',',')}, b=${b.toFixed(6).replace('.',',')})`);
+      const loEff = drawPxLowerBound(d);
+      lines.push(`  px_floor(|d|) → ${(loEff*100).toFixed(2).replace('.',',')}%`);
+      let px = Math.max(pxLin, loEff);
+      if (px > pxLin) lines.push(`  max(px_mod, px_floor) → ${(px*100).toFixed(2).replace('.',',')}%`);
       if (s2 > 1e-12 && s1 > 0){
         const lr = Math.log10(s1 / s2);
-        const pxFav = Math.max(0.18, Math.min(0.30, 0.265 - 0.06 * Math.abs(lr)));
-        lines.push(`  px_fav (фаворит) = ${(pxFav*100).toFixed(2).replace('.',',')}%`);
-        px = Math.min(px, pxFav);
+        const pxCap = Math.max(0.18, Math.min(0.30, 0.265 - 0.06 * Math.abs(lr)));
+        lines.push(`  px_cap (s1/s2) = ${(pxCap*100).toFixed(2).replace('.',',')}%`);
+        if (px > pxCap){
+          px = pxCap;
+          lines.push(`  ограничение сверху → ${(px*100).toFixed(2).replace('.',',')}%`);
+        }
       }
-      px = Math.max(0.06, Math.min(0.34, px));
+      px = Math.max(loEff, Math.min(0.34, px));
       lines.push(`  Итого px = ${(px*100).toFixed(2).replace('.',',')}%`);
       return { px, lines };
     }
@@ -1514,7 +1541,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     }
     refreshHistTable();
     window.refreshHistTable = refreshHistTable;
-    setJsStatus('Версия chain-h-v1 — вкладки и кнопки активны');
+    setJsStatus('Версия draw-px-v1 — вкладки и кнопки активны');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
       console.error(err);

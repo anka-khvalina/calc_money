@@ -226,31 +226,7 @@ def _match_draw_px(
     s2: float,
 ) -> Tuple[float, List[str]]:
     """px(d) с учётом явного фаворита (цепочка s1/s2)."""
-    lines: List[str] = []
-    dm = draw.for_match_forecast()
-    px_model = dm.px(d_target)
-    lines.append(
-        f"  px(d) по модели: a={_fmt_p(dm.a)}, b={_fmt_p(dm.b)}, "
-        f"n={dm.n}, источник={dm.source}"
-    )
-    lines.append(
-        f"  px_mod = a + b·|d| = {_fmt_p(dm.a)} + ({_fmt_p(dm.b)})·|{_fmt_d(d_target)}| "
-        f"→ {_fmt_pct(px_model)}"
-    )
-    px_final = px_model
-    if s2 > 1e-12 and s1 > 0:
-        log_ratio = math.log10(s1 / s2)
-        px_fav = max(0.18, min(0.30, 0.265 - 0.06 * abs(log_ratio)))
-        lines.append(
-            f"  Ограничение фаворита: px_fav = 0,265 − 0,06·|log₁₀(s₁/s₂)|, "
-            f"|log₁₀|={_fmt_p(abs(log_ratio))} → {_fmt_pct(px_fav)}"
-        )
-        px_final = min(px_model, px_fav)
-        if px_final < px_model:
-            lines.append(f"  Берём min(px_mod, px_fav) = {_fmt_pct(px_final)}")
-    px_final = max(dm.lo, min(dm.hi, px_final))
-    lines.append(f"  Итого px (ничья) = {_fmt_pct(px_final)}")
-    return px_final, lines
+    return draw.forecast_px(d_target, s1, s2)
 
 
 def _resolve_home_advantage(

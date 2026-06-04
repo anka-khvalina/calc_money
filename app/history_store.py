@@ -798,6 +798,69 @@ def home_advantage_prior(
 # Минимальный наклон px(d): при большом |d| ничья должна снижаться.
 _DRAW_SLOPE_FLOOR = -0.0010
 
+# Плавный нижний пол px для фаворитов: линейная модель уходит в 6%, рынок — ~12–17%.
+_DRAW_PX_FLOOR_D_START = 100.0
+_DRAW_PX_FLOOR_D_MID = 250.0
+_DRAW_PX_FLOOR_D_FULL = 350.0
+_DRAW_PX_LO_BASE = 0.06
+_DRAW_PX_LO_MID = 0.13
+_DRAW_PX_LO_FULL = 0.15
+
+
+def draw_px_lower_bound(abs_d: float) -> float:
+    """Нижняя граница px при прогнозе: растёт с |D| для явных фаворитов."""
+    ad = abs(abs_d)
+    if ad <= _DRAW_PX_FLOOR_D_START:
+        return _DRAW_PX_LO_BASE
+    if ad <= _DRAW_PX_FLOOR_D_MID:
+        t = (ad - _DRAW_PX_FLOOR_D_START) / (_DRAW_PX_FLOOR_D_MID - _DRAW_PX_FLOOR_D_START)
+        return _DRAW_PX_LO_BASE + t * (_DRAW_PX_LO_MID - _DRAW_PX_LO_BASE)
+    if ad <= _DRAW_PX_FLOOR_D_FULL:
+        t = (ad - _DRAW_PX_FLOOR_D_MID) / (_DRAW_PX_FLOOR_D_FULL - _DRAW_PX_FLOOR_D_MID)
+        return _DRAW_PX_LO_MID + t * (_DRAW_PX_LO_FULL - _DRAW_PX_LO_MID)
+    return _DRAW_PX_LO_FULL
+
+
+def forecast_draw_px(
+    draw: DrawModel,
+    d_target: float,
+    s1: float = 1.0,
+    s2: float = 1.0,
+) -> Tuple[float, List[str]]:
+    """px(d) для прогноза матча: линейная модель + пол по |D| + cap по s1/s2."""
+    lines: List[str] = []
+    dm = draw.for_match_forecast()
+    px_lin = dm.px(d_target)
+    lines.append(
+        f"  px(d) по модели: a={dm.a:.4f}, b={dm.b:.6f}, n={dm.n}, источник={dm.source}"
+    )
+    lines.append(
+        f"  px_mod = a + b·|d| = {dm.a:.4f} + ({dm.b:.6f})·|{abs(d_target):.1f}| "
+        f"→ {px_lin * 100:.2f} %"
+    )
+    lo_eff = draw_px_lower_bound(d_target)
+    lines.append(
+        f"  px_floor(|d|): плавный пол { _DRAW_PX_LO_BASE * 100:.0f}–"
+        f"{_DRAW_PX_LO_FULL * 100:.0f} % → {lo_eff * 100:.2f} %"
+    )
+    px = max(px_lin, lo_eff)
+    if px > px_lin:
+        lines.append(f"  Берём max(px_mod, px_floor) = {px * 100:.2f} %")
+    px_fav: Optional[float] = None
+    if s2 > 1e-12 and s1 > 0:
+        log_ratio = math.log10(s1 / s2)
+        px_fav = max(0.18, min(0.30, 0.265 - 0.06 * abs(log_ratio)))
+        lines.append(
+            f"  px_cap (фаворит по s1/s2) = 0,265 − 0,06·|log₁₀(s₁/s₂)| "
+            f"→ {px_fav * 100:.2f} %"
+        )
+        if px > px_fav:
+            px = px_fav
+            lines.append(f"  Ограничение сверху: px = {px * 100:.2f} %")
+    px = max(lo_eff, min(dm.hi, px))
+    lines.append(f"  Итого px (ничья) = {px * 100:.2f} %")
+    return px, lines
+
 
 @dataclass
 class DrawModel:
@@ -822,6 +885,10 @@ class DrawModel:
         return DrawModel(
             a=self.a, b=b, lo=self.lo, hi=self.hi, n=self.n, source=self.source
         )
+
+    def forecast_px(self, d_target: float, s1: float = 1.0, s2: float = 1.0) -> Tuple[float, List[str]]:
+        """px(d) для прогноза с плавным полом по |D| (см. forecast_draw_px)."""
+        return forecast_draw_px(self, d_target, s1, s2)
 
 
 def calibrate_draw_model(league: str) -> DrawModel:
