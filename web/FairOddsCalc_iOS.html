@@ -914,6 +914,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const t = p1+px+p2;
       return [p1/t, px/t, p2/t];
     }
+    function formatShinOdds(p1, px, p2, digits=2){
+      const k = p => (1/p).toFixed(digits).replace('.', ',');
+      return `${k(p1)} / ${k(px)} / ${k(p2)}`;
+    }
     function calcShinCommon(t1, t2, opp, matches, league, seasonUsed){
       const m1 = matches.filter(m => (m.home===t1||m.away===t1)&&(m.home===opp||m.away===opp));
       const m2 = matches.filter(m => (m.home===t2||m.away===t2)&&(m.home===opp||m.away===opp));
@@ -923,9 +927,14 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const rAb = r1/r2;
       const s1 = Math.sqrt(rAb), s2 = 1/Math.sqrt(rAb||1);
       const dm = calibrateDrawModel(league);
-      const d = 400*Math.log10(s1/(s2||1));
-      const [p1,px,p2] = probsFromStrengths(s1, s2, dm.px(d));
-      return { p1,px,p2, source:'Common opponent', seasonUsed, matchesUsed: m1.length+m2.length, opp };
+      const dMarket = 400*Math.log10(s1/(s2||1));
+      const prior = homeAdvantagePrior(league);
+      const [p1,px,p2] = probsFromStrengths(s1, s2, dm.px(dMarket));
+      return {
+        p1, px, p2, source:'Common opponent', seasonUsed,
+        matchesUsed: m1.length+m2.length, opp,
+        dMarket, hUsed: prior.hFinal,
+      };
     }
     function calcShinLeague(t1, t2, matches, league, seasonUsed, source){
       const rank = buildRanking(histToRankMatches(matches), true);
@@ -935,9 +944,13 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const s1 = Math.pow(10, ratings.get(t1)/400)*hCoef;
       const s2 = Math.pow(10, ratings.get(t2)/400);
       const dm = calibrateDrawModel(league);
-      const d = ratings.get(t1) - ratings.get(t2);
-      const [p1,px,p2] = probsFromStrengths(s1, s2, dm.px(d));
-      return { p1,px,p2, source, seasonUsed, matchesUsed: matches.length, opp: null };
+      const dRating = ratings.get(t1) - ratings.get(t2);
+      const dMarket = dRating + rank.H;
+      const [p1,px,p2] = probsFromStrengths(s1, s2, dm.px(dRating));
+      return {
+        p1, px, p2, source, seasonUsed, matchesUsed: matches.length, opp: null,
+        dMarket, hUsed: rank.H,
+      };
     }
     function calculateShinMatch(team1, team2, league, season){
       if (!LEAGUE_TITLES[league]) throw new Error(SHIN_ERR.league);
@@ -993,6 +1006,9 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           document.getElementById('shinSeason').value,
         );
         const lines = [
+          `k1 / kx / k2: ${formatShinOdds(res.p1, res.px, res.p2, 2)}`,
+          `D = ${fmt(res.dMarket, 1)}${res.hUsed != null ? `  (H = ${fmt(res.hUsed, 1)})` : ''}`,
+          '',
           `P1: ${fmt(res.p1*100,2)} %`,
           `Draw / X: ${fmt(res.px*100,2)} %`,
           `P2: ${fmt(res.p2*100,2)} %`,

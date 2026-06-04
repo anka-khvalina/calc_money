@@ -28,6 +28,8 @@ def test_shin_devig_sums_to_one():
 def test_epl_arsenal_chelsea():
     res = calculate_shin_match("Arsenal", "Chelsea", "epl", "2025-26")
     assert abs(res.p1 + res.px + res.p2 - 1.0) < 1e-5
+    assert res.k1 > 1 and res.kx > 1 and res.k2 > 1
+    assert " / " in res.format_odds()
     assert res.season_used == "2025-26"
     assert res.matches_used > 0
 

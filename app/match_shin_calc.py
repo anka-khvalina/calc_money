@@ -61,10 +61,40 @@ class ShinMatchResult:
     common_opponent: Optional[str] = None
     team1: str = ""
     team2: str = ""
+    d_market: float = 0.0
+    h_used: Optional[float] = None
 
     @property
     def source_label_ru(self) -> str:
         return SOURCE_LABELS_RU.get(self.source, self.source.value)
+
+    @property
+    def k1(self) -> float:
+        return 1.0 / self.p1 if self.p1 > 1e-12 else float("inf")
+
+    @property
+    def kx(self) -> float:
+        return 1.0 / self.px if self.px > 1e-12 else float("inf")
+
+    @property
+    def k2(self) -> float:
+        return 1.0 / self.p2 if self.p2 > 1e-12 else float("inf")
+
+    def format_odds(self, digits: int = 2) -> str:
+        """Строка k1 / kx / k2 с десятичной запятой."""
+        return " / ".join(
+            _fmt_odds(k, digits) for k in (self.k1, self.kx, self.k2)
+        )
+
+
+def _fmt_odds(value: float, digits: int = 2) -> str:
+    if not math.isfinite(value):
+        return "—"
+    return f"{value:.{digits}f}".replace(".", ",")
+
+
+def _fmt_d(value: float, digits: int = 1) -> str:
+    return f"{value:.{digits}f}".replace(".", ",")
 
 
 def previous_season(league: str, season: str) -> Optional[str]:
@@ -278,6 +308,10 @@ def _calc_common_opponent(
     px = draw.px(d)
     p1, px, p2 = _probs_from_strengths(s1, s2, px)
     used = len(m1) + len(m2)
+    try:
+        h_est = hs.home_advantage_prior(league_key).h_final
+    except ValueError:
+        h_est = hs.LEAGUE_DEFAULT_H.get(league_key, 58.0)
     return ShinMatchResult(
         p1=p1,
         px=px,
@@ -288,6 +322,8 @@ def _calc_common_opponent(
         common_opponent=opponent,
         team1=team1,
         team2=team2,
+        d_market=d,
+        h_used=h_est,
     )
 
 
@@ -308,9 +344,10 @@ def _calc_league_ranking(
     h_coef = ranking.home_advantage_coef
     s1 = (10.0 ** (ratings[team1] / 400.0)) * h_coef
     s2 = 10.0 ** (ratings[team2] / 400.0)
-    d = ratings[team1] - ratings[team2]
+    d_rating = ratings[team1] - ratings[team2]
+    d_target = d_rating + ranking.home_advantage
     draw = hs.calibrate_draw_model(league_key)
-    px = draw.px(d)
+    px = draw.px(d_rating)
     p1, px, p2 = _probs_from_strengths(s1, s2, px)
     used = len(matches)
     return ShinMatchResult(
@@ -322,6 +359,8 @@ def _calc_league_ranking(
         matches_used=used,
         team1=team1,
         team2=team2,
+        d_market=d_target,
+        h_used=ranking.home_advantage,
     )
 
 

@@ -703,6 +703,8 @@ def build_app():
     shin_out = ttk.LabelFrame(tab_shin, text="Результат (метод Shin)", padding=10)
     shin_out.pack(fill="both", expand=True, pady=(12, 0))
 
+    shin_odds_var = tk.StringVar(value="—")
+    shin_d_var = tk.StringVar(value="—")
     shin_p1_var = tk.StringVar(value="—")
     shin_px_var = tk.StringVar(value="—")
     shin_p2_var = tk.StringVar(value="—")
@@ -711,23 +713,26 @@ def build_app():
     shin_matches_var = tk.StringVar(value="—")
     shin_opp_var = tk.StringVar(value="")
 
-    def shin_row(row, label, var):
+    def shin_row(row, label, var, bold=True):
         ttk.Label(shin_out, text=label, width=28).grid(
             row=row, column=0, sticky="w", pady=2
         )
-        ttk.Label(shin_out, textvariable=var, font=("", 11, "bold")).grid(
+        font = ("", 11, "bold") if bold else ("", 10)
+        ttk.Label(shin_out, textvariable=var, font=font).grid(
             row=row, column=1, sticky="w", pady=2
         )
 
-    shin_row(0, "P1 (победа Команды 1):", shin_p1_var)
-    shin_row(1, "Draw / X:", shin_px_var)
-    shin_row(2, "P2 (победа Команды 2):", shin_p2_var)
-    shin_row(3, "Источник данных:", shin_source_var)
-    shin_row(4, "Сезон расчёта:", shin_season_used_var)
-    shin_row(5, "Матчей в расчёте:", shin_matches_var)
+    shin_row(0, "k1 / kx / k2 (1 / X / 2):", shin_odds_var)
+    shin_row(1, "D (разница сил):", shin_d_var)
+    shin_row(2, "P1 (вероятность):", shin_p1_var, bold=False)
+    shin_row(3, "Draw / X:", shin_px_var, bold=False)
+    shin_row(4, "P2 (вероятность):", shin_p2_var, bold=False)
+    shin_row(5, "Источник данных:", shin_source_var)
+    shin_row(6, "Сезон расчёта:", shin_season_used_var)
+    shin_row(7, "Матчей в расчёте:", shin_matches_var)
 
     ttk.Label(shin_out, textvariable=shin_opp_var, foreground="#555").grid(
-        row=6, column=0, columnspan=2, sticky="w", pady=(8, 0)
+        row=8, column=0, columnspan=2, sticky="w", pady=(8, 0)
     )
 
     def calc_shin_match():
@@ -739,6 +744,11 @@ def build_app():
                 league_key,
                 shin_season_var.get().strip(),
             )
+            shin_odds_var.set(res.format_odds(2))
+            d_line = fmt(res.d_market, 1)
+            if res.h_used is not None:
+                d_line += f"  (H = {fmt(res.h_used, 1)})"
+            shin_d_var.set(d_line)
             shin_p1_var.set(fmt(res.p1 * 100, 2) + " %")
             shin_px_var.set(fmt(res.px * 100, 2) + " %")
             shin_p2_var.set(fmt(res.p2 * 100, 2) + " %")
