@@ -685,6 +685,11 @@ def import_season_matches(
     if not matches:
         raise ValueError("Нет матчей для импорта")
     key = normalize_league(league)
+    try:
+        from . import team_registry as _tr
+    except ImportError:  # pragma: no cover
+        import team_registry as _tr
+    _tr.validate_matches_teams(key, matches)
     safe = _safe_season(season)
     dest = season_path(key, safe)
     replaced = dest.exists()
