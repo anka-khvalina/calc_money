@@ -54,8 +54,10 @@ def test_new_team_shin_calc(tmp_path, monkeypatch):
     monkeypatch.setattr(tg, "DEFAULT_REGISTRY_PATH", reg)
 
     csv_path = ROOT / "docs" / "examples" / "history_epl_2025_26.csv"
-    hs.import_season("epl", "2025-26", csv_path)
-    tg.sync_from_matches(hs.load_season("epl", "2025-26"), path=reg)
+    raw = csv_path.read_text(encoding="utf-8-sig")
+    matches, _ = hs.parse_history_text_with_stats(raw)
+    tg.sync_from_matches(matches, path=reg)
+    hs.import_season_matches("epl", "2025-26", matches)
 
     new_ent = tg.add_team("epl", "Promoted FC", path=reg)
     arsenal_id = tg.resolve_team_id("epl", "Arsenal", path=reg)

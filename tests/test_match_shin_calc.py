@@ -17,6 +17,7 @@ from match_shin_calc import (  # noqa: E402
     previous_season,
 )
 import history_store as hs  # noqa: E402
+import team_registry as tg  # noqa: E402
 
 
 def test_shin_devig_sums_to_one():
@@ -27,11 +28,16 @@ def test_shin_devig_sums_to_one():
 
 def test_epl_arsenal_chelsea():
     csv_path = ROOT / "docs" / "examples" / "history_epl_2025_26.csv"
+    raw = csv_path.read_text(encoding="utf-8-sig")
+    matches, _ = hs.parse_history_text_with_stats(raw)
     try:
-        hs.import_season("epl", "2025-26", csv_path)
+        tg.sync_from_matches(matches)
+        hs.import_season_matches("epl", "2025-26", matches)
     except ValueError:
         pass  # already imported
-    res = calculate_shin_match("Arsenal", "Chelsea", "epl", "2025-26")
+    arsenal_id = tg.resolve_team_id("epl", "Arsenal")
+    chelsea_id = tg.resolve_team_id("epl", "Chelsea")
+    res = calculate_shin_match(arsenal_id, chelsea_id, "epl", "2025-26")
     assert abs(res.p1 + res.px + res.p2 - 1.0) < 1e-5
     assert res.k1 > 1 and res.kx > 1 and res.k2 > 1
     assert " / " in res.format_odds()

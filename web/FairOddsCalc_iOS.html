@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/team-registry-17b5 team-registry-v1 -->
+  <!-- build: cursor/team-registry-17b5 team-registry-v2 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -224,7 +224,7 @@
 
     <!-- TAB RANK -->
     <section id="tab-rank" class="panel">
-      <div class="small">Формат строк: <code>home_team,away_team,odds_1,odds_x,odds_2</code>. CSV с заголовком и без заголовка поддерживаются.</div>
+      <div class="small">Формат строк: <code>home_team,away_team,odds_1,odds_x,odds_2</code>. Команды — только из справочника выбранной лиги.</div>
       <div class="split" style="margin-top:8px;">
         <div class="field">
           <label>Матчи (вставка / файл)</label>
@@ -243,6 +243,16 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           </div>
         </div>
         <div>
+          <div class="field" style="min-width:180px">
+            <label>Лига (справочник)</label>
+            <select id="rankLeague">
+              <option value="epl">English Premier League</option>
+              <option value="la_liga">La Liga</option>
+              <option value="bundesliga">Bundesliga</option>
+              <option value="serie_a">Serie A</option>
+              <option value="ligue_1">Ligue 1</option>
+            </select>
+          </div>
           <div class="field" style="max-width:140px">
             <label>TOP N (0 = все)</label>
             <input id="topN" value="0" />
@@ -260,6 +270,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <thead>
             <tr>
               <th style="width:55px">№</th>
+              <th style="width:80px">ID</th>
               <th>Команда</th>
               <th class="right">Рейтинг</th>
               <th class="right">Коэф. силы</th>
@@ -351,7 +362,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: team-registry-v1</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: team-registry-v2</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -380,7 +391,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <section id="tab-hist" class="panel">
       <div class="small">
         Импорт истории сезона (формат Excel): Match Date, Team Home, 1 Odds, X Odds, 2 Odds, Away Team, …
-        Данные хранятся на устройстве (localStorage Safari).
+        Все команды должны быть заранее в справочнике лиги.
       </div>
       <div class="row" style="margin-top:8px;">
         <div class="field" style="flex:1;min-width:160px">
@@ -702,15 +713,17 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     }
 
     let latestRanking = null;
+    let latestRankingIds = {};
 
-    function renderRanking(result){
+    function renderRanking(result, teamIds){
       const tbody = document.querySelector('#rankTable tbody');
       tbody.innerHTML = '';
       const topN = parseInt(document.getElementById('topN').value || '0', 10);
       const rows = (topN>0 ? result.teams.slice(0,topN) : result.teams);
+      const ids = teamIds || latestRankingIds || {};
       rows.forEach((r,i)=>{
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${i+1}</td><td>${r.team}</td><td class="right">${fmt(r.rating,3)}</td><td class="right">${fmt(r.coef,4)}</td>`;
+        tr.innerHTML = `<td>${i+1}</td><td>${escapeHtml(ids[r.team]||'')}</td><td>${escapeHtml(r.team)}</td><td class="right">${fmt(r.rating,3)}</td><td class="right">${fmt(r.coef,4)}</td>`;
         tbody.appendChild(tr);
       });
       document.getElementById('metaRank').textContent =
@@ -722,9 +735,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 
     bindClick('calcRank', ()=>{
       try{
+        const league = document.getElementById('rankLeague').value;
         const matches = parseMatches(document.getElementById('matchesText').value);
+        latestRankingIds = validateMatchesTeams(league, matches);
         latestRanking = buildRanking(matches);
-        renderRanking(latestRanking);
+        renderRanking(latestRanking, latestRankingIds);
       }catch(e){ alert(e.message); }
     });
 
@@ -809,6 +824,37 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         });
       });
       return added;
+    }
+    function validateTeamsRegistered(league, names){
+      const unknown = [];
+      const out = {};
+      [...new Set((names||[]).map(n => String(n||'').trim()).filter(Boolean))].forEach(ref => {
+        try {
+          const tid = resolveTeamId(league, ref);
+          out[ref] = tid;
+          out[teamNameById(tid)] = tid;
+        } catch (e) {
+          unknown.push(ref);
+        }
+      });
+      if (unknown.length){
+        const uniq = [...new Set(unknown)].sort((a,b)=>a.localeCompare(b,'ru'));
+        throw new Error(
+          `Система не знает команд без id в справочнике (${LEAGUE_TITLES[league]}): ${uniq.join(', ')}. ` +
+          'Добавьте их во вкладке «Справочник».'
+        );
+      }
+      return out;
+    }
+    function validateMatchesTeams(league, matches){
+      const names = [];
+      (matches||[]).forEach(m => {
+        if (m.home) names.push(m.home);
+        if (m.away) names.push(m.away);
+        if (m.home_team) names.push(m.home_team);
+        if (m.away_team) names.push(m.away_team);
+      });
+      return validateTeamsRegistered(league, names);
     }
     function resolveTeamId(league, ref){
       const r = String(ref||'').trim();
@@ -1133,7 +1179,6 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         imported_at: new Date().toISOString(),
       };
       saveHistStore(store);
-      syncTeamsFromMatches(matches, league);
       return { count: matches.length, replaced, previous, season: safe };
     }
 
@@ -1709,6 +1754,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         document.getElementById('histText').value = cleaned;
         const { matches, skipped: skipped2 } = parseHistoryText(cleaned);
         const blankRemoved = Math.max(skipped, skipped2);
+        validateMatchesTeams(league, matches.map(m => ({ home: m.home, away: m.away })));
         if (seasonExists(league, season)){
           const prev = (loadHistStore().leagues[league][season].matches || []).length;
           const ok = confirm(
@@ -1758,16 +1804,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     if (!document.getElementById('histText').value.trim() && !listHistSeasons().length){
       document.getElementById('histLoadSample').click();
     }
-    Object.keys(LEAGUE_TITLES).forEach(lg => {
-      const store = loadHistStore();
-      Object.keys(store.leagues[lg] || {}).forEach(season => {
-        syncTeamsFromMatches(getHistSeason(lg, season), lg);
-      });
-    });
     refreshShinTeamSelects();
     refreshHistTable();
     window.refreshHistTable = refreshHistTable;
-    setJsStatus('Версия team-registry-v1 — вкладки и кнопки активны');
+    setJsStatus('Версия team-registry-v2 — команды только из справочника');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
       console.error(err);

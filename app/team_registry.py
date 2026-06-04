@@ -183,6 +183,56 @@ def sync_from_matches(matches: List[Any], *, path: Optional[Path] = None) -> int
     return added
 
 
+def validate_teams_registered(
+    league: str,
+    names: Iterable[str],
+    *,
+    path: Optional[Path] = None,
+) -> Dict[str, str]:
+    """
+    Проверить, что все команды зарегистрированы в справочнике.
+    Возвращает имя/id → team id. Неизвестные команды → ValueError.
+    """
+    lg = normalize_league(league)
+    out: Dict[str, str] = {}
+    unknown: List[str] = []
+    for raw in names:
+        ref = str(raw).strip()
+        if not ref:
+            continue
+        try:
+            tid = resolve_team_id(lg, ref, path=path, required=True)
+            out[ref] = tid
+            out[team_name_by_id(tid, path=path)] = tid
+        except ValueError:
+            unknown.append(ref)
+    if unknown:
+        uniq = sorted({u for u in unknown}, key=str.lower)
+        raise ValueError(
+            f"Система не знает команд без id в справочнике ({league_title(lg)}): "
+            + ", ".join(uniq)
+            + ". Добавьте их во вкладке «Справочник команд»."
+        )
+    return out
+
+
+def validate_matches_teams(
+    league: str,
+    matches: Sequence[Any],
+    *,
+    path: Optional[Path] = None,
+) -> Dict[str, str]:
+    """Все home/away в матчах должны быть в справочнике лиги."""
+    names: List[str] = []
+    for m in matches:
+        for attr in ("home_team", "away_team", "home", "away"):
+            if hasattr(m, attr):
+                val = str(getattr(m, attr, "")).strip()
+                if val:
+                    names.append(val)
+    return validate_teams_registered(league, names, path=path)
+
+
 def resolve_team_id(
     league: str,
     team_ref: str,
@@ -240,19 +290,8 @@ def parse_team_option(option: str) -> Tuple[str, str]:
 
 
 def ensure_teams_for_league(league: str, names: List[str], *, path: Optional[Path] = None) -> Dict[str, str]:
-    """Имя → id для списка имён (создаёт отсутствующие записи)."""
-    lg = normalize_league(league)
-    out: Dict[str, str] = {}
-    for nm in names:
-        n = str(nm).strip()
-        if not n:
-            continue
-        tid = resolve_team_id(lg, n, path=path, required=False)
-        if tid is None:
-            ent = add_team(lg, n, path=path)
-            tid = ent.id
-        out[n] = tid
-    return out
+    """Имя → id; только уже зарегистрированные команды (без автодобавления)."""
+    return validate_teams_registered(league, names, path=path)
 
 
 def sync_all_from_history(*, path: Optional[Path] = None) -> int:

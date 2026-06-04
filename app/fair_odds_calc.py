@@ -484,6 +484,9 @@ def build_app():
     # ======================================================================
     # TAB 2: рейтинг команд
     # ======================================================================
+    import history_store as hs
+    import team_registry as tg
+
     tab_rank = ttk.Frame(notebook, padding=10)
     notebook.add(tab_rank, text="Рейтинг команд")
 
@@ -496,7 +499,7 @@ def build_app():
         rank_left,
         text=(
             "Матчи (по строке): home_team,away_team,odds_1,odds_x,odds_2\n"
-            "Например: Barcelona,Real Madrid,1.72,4.00,4.80"
+            "Команды должны быть в справочнике выбранной лиги (с id)."
         ),
     ).pack(anchor="w")
 
@@ -528,6 +531,25 @@ def build_app():
 
     ttk.Label(controls, text="Параметры расчёта").pack(anchor="w")
 
+    rank_league_labels = [title for title, _key in hs.format_league_options()]
+    rank_league_keys = {title: key for title, key in hs.format_league_options()}
+    rank_league_var = tk.StringVar(value=rank_league_labels[0])
+    ttk.Label(controls, text="Лига (справочник):").pack(anchor="w", pady=(8, 0))
+    ttk.Combobox(
+        controls,
+        textvariable=rank_league_var,
+        values=rank_league_labels,
+        state="readonly",
+        width=28,
+    ).pack(anchor="w")
+
+    def _rank_league_key():
+        title = rank_league_var.get().strip()
+        key = rank_league_keys.get(title)
+        if not key:
+            key = hs.normalize_league(title)
+        return key
+
     top_var = tk.StringVar(value="0")
     ttk.Label(controls, text="TOP N (0 = все):").pack(anchor="w", pady=(8, 0))
     ttk.Entry(controls, textvariable=top_var, width=10).pack(anchor="w")
@@ -545,37 +567,50 @@ def build_app():
     ttk.Label(rank_right, text="Рейтинг команд").pack(anchor="w")
     tree = ttk.Treeview(
         rank_right,
-        columns=("rank", "team", "rating", "coef"),
+        columns=("rank", "id", "team", "rating", "coef"),
         show="headings",
         height=20,
     )
     tree.heading("rank", text="№")
+    tree.heading("id", text="ID")
     tree.heading("team", text="Команда")
     tree.heading("rating", text="Рейтинг")
     tree.heading("coef", text="Коэф. силы")
     tree.column("rank", width=44, anchor="e")
-    tree.column("team", width=180, anchor="w")
+    tree.column("id", width=72, anchor="w")
+    tree.column("team", width=160, anchor="w")
     tree.column("rating", width=100, anchor="e")
     tree.column("coef", width=100, anchor="e")
     tree.pack(fill="both", expand=True)
 
-    latest_result = {"value": None}
+    latest_result = {"value": None, "team_ids": {}}
 
-    def fill_tree(result, top_n):
+    def fill_tree(result, top_n, team_ids=None):
+        team_ids = team_ids or {}
         for item in tree.get_children():
             tree.delete(item)
         rows = result.teams if top_n <= 0 else result.teams[:top_n]
         for i, r in enumerate(rows, start=1):
+            tid = team_ids.get(r.team, "")
             tree.insert(
                 "",
                 "end",
-                values=(i, r.team, f"{r.rating:.3f}".replace(".", ","), f"{r.strength_coef:.4f}".replace(".", ",")),
+                values=(
+                    i,
+                    tid,
+                    r.team,
+                    f"{r.rating:.3f}".replace(".", ","),
+                    f"{r.strength_coef:.4f}".replace(".", ","),
+                ),
             )
 
     def run_ranking(matches, top_n):
+        league_key = _rank_league_key()
+        team_ids = tg.validate_matches_teams(league_key, matches)
         result = tr.build_ranking(matches, robust=robust_var.get())
         latest_result["value"] = result
-        fill_tree(result, top_n)
+        latest_result["team_ids"] = team_ids
+        fill_tree(result, top_n, team_ids)
         lines = [
             f"Матчей: {result.matches_count}",
             f"Команд: {len(result.teams)}",
@@ -661,13 +696,6 @@ def build_app():
     # ======================================================================
     # TAB 3: Справочник команд
     # ======================================================================
-    import history_store as hs
-    import team_registry as tg
-
-    try:
-        tg.sync_all_from_history()
-    except Exception:
-        pass
 
     tab_teams = ttk.Frame(notebook, padding=10)
     notebook.add(tab_teams, text="Справочник команд")
@@ -1004,7 +1032,7 @@ def build_app():
         text=(
             "Импорт истории прошлого сезона (формат Excel-таблицы):\n"
             "Match Date, Team Home, 1 Odds, X Odds, 2 Odds, Away Team, …\n"
-            "Можно вставить из буфера или загрузить CSV-файл."
+            "Все команды должны быть заранее в справочнике выбранной лиги."
         ),
         justify="left",
     ).pack(anchor="w")
