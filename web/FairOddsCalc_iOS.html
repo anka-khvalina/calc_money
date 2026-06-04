@@ -284,8 +284,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <!-- TAB TEAMS -->
     <section id="tab-teams" class="panel">
       <div class="small">
-        Справочник команд по лигам. Каждой команде присваивается id (<code>epl:1</code>).
-        Выберите лигу и нажмите «Поиск» — до этого список пуст.
+        Справочник команд по лигам. Выберите лигу — ниже список всех команд этой лиги.
       </div>
       <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:10px;">
         <div class="field" style="min-width:180px">
@@ -298,18 +297,13 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <option value="ligue_1">Ligue 1</option>
           </select>
         </div>
-        <div class="field" style="align-self:flex-end">
-          <button type="button" id="teamsSearch" class="btn primary">Поиск</button>
-          <button type="button" id="teamsSeed" class="btn" style="margin-left:6px">Все лиги</button>
-        </div>
       </div>
       <div class="table-wrap">
         <table id="teamsTable">
           <thead>
             <tr>
-              <th style="width:90px">ID</th>
+              <th style="width:55px">№</th>
               <th>Команда</th>
-              <th style="width:150px">Обновлено</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -324,7 +318,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <button type="button" id="teamsAdd" class="btn">Добавить</button>
         </div>
       </div>
-      <div id="metaTeams" class="meta" style="margin-top:10px">Выберите лигу и нажмите «Поиск».</div>
+      <div id="metaTeams" class="meta" style="margin-top:10px"></div>
     </section>
 
     <!-- TAB SHIN -->
@@ -335,11 +329,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
       <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:10px;">
         <div class="field" style="min-width:140px;flex:1">
-          <label>Команда 1 (id)</label>
+          <label>Команда 1</label>
           <select id="shinTeam1"></select>
         </div>
         <div class="field" style="min-width:140px;flex:1">
-          <label>Команда 2 (id)</label>
+          <label>Команда 2</label>
           <select id="shinTeam2"></select>
         </div>
         <div class="field" style="min-width:160px">
@@ -921,50 +915,36 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         return { id: tid, name: regName, isNew: true };
       }
     }
-    function fillTeamSelect(sel, league, selectedId){
+    function fillTeamSelect(sel, league, selectedName){
       sel.innerHTML = '';
       const teams = listTeams(league);
       teams.forEach(t => {
         const opt = document.createElement('option');
-        opt.value = t.id;
-        opt.textContent = `${t.id} — ${t.name}`;
+        opt.value = t.name;
+        opt.textContent = t.name;
         sel.appendChild(opt);
       });
-      if (selectedId && teams.some(t => t.id === selectedId)) sel.value = selectedId;
+      if (selectedName && teams.some(t => t.name === selectedName)) sel.value = selectedName;
       else if (teams.length) sel.selectedIndex = Math.min(sel.id === 'shinTeam2' ? 1 : 0, teams.length - 1);
-    }
-    function refreshShinTeamSelects(){
-      const league = document.getElementById('shinLeague').value;
-      fillTeamSelect(document.getElementById('shinTeam1'), league, document.getElementById('shinTeam1').value);
-      fillTeamSelect(document.getElementById('shinTeam2'), league, document.getElementById('shinTeam2').value);
     }
     function renderTeamsTable(league){
       const tbody = document.querySelector('#teamsTable tbody');
       tbody.innerHTML = '';
       const teams = listTeams(league);
-      teams.forEach(t => {
+      teams.forEach((t, i) => {
         const tr = document.createElement('tr');
-        const upd = t.updated_at ? t.updated_at.replace('T',' ').slice(0,19) : '';
-        tr.innerHTML = `<td>${escapeHtml(t.id)}</td><td>${escapeHtml(t.name)}</td><td>${upd}</td>`;
+        tr.innerHTML = `<td class="right">${i+1}</td><td>${escapeHtml(t.name)}</td>`;
         tbody.appendChild(tr);
       });
       document.getElementById('metaTeams').textContent = teams.length
-        ? `${LEAGUE_TITLES[league]}: ${teams.length} команд(ы) в справочнике.`
-        : `${LEAGUE_TITLES[league]}: справочник пуст. Добавьте команду ниже.`;
+        ? `${LEAGUE_TITLES[league]} — ${teams.length} команд`
+        : `${LEAGUE_TITLES[league]} — справочник пуст`;
     }
 
-    bindClick('teamsSearch', ()=>{
-      const league = document.getElementById('teamsLeague').value;
-      renderTeamsTable(league);
-      refreshShinTeamSelects();
+    document.getElementById('teamsLeague').addEventListener('change', ()=>{
+      renderTeamsTable(document.getElementById('teamsLeague').value);
     });
-    bindClick('teamsSeed', ()=>{
-      seedDefaultTeams(true);
-      const league = document.getElementById('teamsLeague').value;
-      renderTeamsTable(league);
-      refreshShinTeamSelects();
-      alert('Справочник загружен: 96 команд (5 лиг). Выберите лигу и нажмите «Поиск».');
-    });
+
     bindClick('teamsAdd', ()=>{
       try {
         const league = document.getElementById('teamsLeague').value;
@@ -973,9 +953,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         document.getElementById('teamsNewName').value = '';
         renderTeamsTable(league);
         refreshShinTeamSelects();
-        alert(`Добавлено: ${ent.id} — ${ent.name}`);
+        alert(`Добавлено: ${ent.name}`);
       } catch(e){ alert(e.message); }
     });
+
+    function refreshShinTeamSelects(){
+      const league = document.getElementById('shinLeague').value;
+      fillTeamSelect(document.getElementById('shinTeam1'), league, document.getElementById('shinTeam1').value);
+      fillTeamSelect(document.getElementById('shinTeam2'), league, document.getElementById('shinTeam2').value);
+    }
 
     // ---------------- History (localStorage) ----------------
     const HIST_KEY = 'FairOddsCalc_history_v1';
@@ -1836,6 +1822,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       document.getElementById('histLoadSample').click();
     }
     seedDefaultTeams(false);
+    renderTeamsTable(document.getElementById('teamsLeague').value);
     refreshShinTeamSelects();
     refreshHistTable();
     window.refreshHistTable = refreshHistTable;

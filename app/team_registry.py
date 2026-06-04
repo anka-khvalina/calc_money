@@ -274,7 +274,8 @@ def team_name_by_id(team_id: str, *, path: Optional[Path] = None) -> str:
 
 
 def format_team_options(league: str, *, path: Optional[Path] = None) -> List[str]:
-    return [f"{t.id} — {t.name}" for t in list_teams(league, path=path)]
+    """Имена команд лиги для выпадающих списков (без id)."""
+    return [t.name for t in list_teams(league, path=path)]
 
 
 def parse_team_option(option: str) -> Tuple[str, str]:
