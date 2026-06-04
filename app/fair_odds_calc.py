@@ -659,9 +659,170 @@ def build_app():
     ttk.Button(btns, text="Сохранить рейтинг CSV", command=save_rating_csv).grid(row=0, column=2)
 
     # ======================================================================
-    # TAB 3: история сезонов
+    # TAB 3: Счет кэф (метод Shin)
     # ======================================================================
     import history_store as hs
+    import match_shin_calc as msc
+
+    tab_shin = ttk.Frame(notebook, padding=10)
+    notebook.add(tab_shin, text="Счет кэф")
+
+    shin_form = ttk.Frame(tab_shin)
+    shin_form.pack(fill="x", anchor="n")
+
+    shin_team1_var = tk.StringVar(value="Arsenal")
+    shin_team2_var = tk.StringVar(value="Chelsea")
+    shin_league_var = tk.StringVar(value=hs.format_league_options()[0][0])
+    shin_season_var = tk.StringVar(value="2025-26")
+
+    def shin_labeled(parent, row, label, var, width=32):
+        ttk.Label(parent, text=label).grid(
+            row=row, column=0, sticky="w", padx=(0, 8), pady=4
+        )
+        ttk.Entry(parent, textvariable=var, width=width).grid(
+            row=row, column=1, sticky="w", pady=4
+        )
+
+    shin_league_labels = [title for title, _key in hs.format_league_options()]
+    shin_league_keys = {title: key for title, key in hs.format_league_options()}
+
+    shin_labeled(shin_form, 0, "Команда 1:", shin_team1_var, 28)
+    shin_labeled(shin_form, 1, "Команда 2:", shin_team2_var, 28)
+    ttk.Label(shin_form, text="Лига:").grid(
+        row=2, column=0, sticky="w", padx=(0, 8), pady=4
+    )
+    ttk.Combobox(
+        shin_form,
+        textvariable=shin_league_var,
+        values=shin_league_labels,
+        state="readonly",
+        width=26,
+    ).grid(row=2, column=1, sticky="w", pady=4)
+    shin_labeled(shin_form, 3, "Сезон:", shin_season_var, 12)
+
+    shin_out = ttk.LabelFrame(tab_shin, text="Результат (метод Shin)", padding=10)
+    shin_out.pack(fill="both", expand=True, pady=(12, 0))
+
+    shin_title_var = tk.StringVar(value="")
+    ttk.Label(
+        shin_out, textvariable=shin_title_var, font=("", 12, "bold")
+    ).pack(anchor="w", pady=(0, 8))
+
+    shin_odds_frame = ttk.Frame(shin_out)
+    shin_odds_frame.pack(fill="x", pady=(0, 10))
+
+    shin_odds_tree = ttk.Treeview(
+        shin_odds_frame,
+        columns=("outcome", "k", "p"),
+        show="headings",
+        height=3,
+    )
+    shin_odds_tree.heading("outcome", text="Исход")
+    shin_odds_tree.heading("k", text="k (коэфф.)")
+    shin_odds_tree.heading("p", text="p, %")
+    shin_odds_tree.column("outcome", width=200, anchor="w")
+    shin_odds_tree.column("k", width=100, anchor="e")
+    shin_odds_tree.column("p", width=100, anchor="e")
+    shin_odds_tree.pack(side="left", fill="x", expand=True)
+
+    shin_meta_frame = ttk.Frame(shin_out)
+    shin_meta_frame.pack(fill="x")
+
+    shin_meta_tree = ttk.Treeview(
+        shin_meta_frame,
+        columns=("param", "value"),
+        show="headings",
+        height=6,
+    )
+    shin_meta_tree.heading("param", text="Параметр")
+    shin_meta_tree.heading("value", text="Значение")
+    shin_meta_tree.column("param", width=200, anchor="w")
+    shin_meta_tree.column("value", width=280, anchor="w")
+    shin_meta_tree.pack(side="left", fill="x", expand=True)
+
+    ttk.Label(shin_out, text="Подробный расчёт").pack(anchor="w", pady=(12, 4))
+    shin_details = tk.Text(
+        shin_out, width=95, height=18, relief="solid", borderwidth=1, font=("Consolas", 10)
+    )
+    shin_details.pack(fill="both", expand=True, pady=(0, 4))
+    shin_details.configure(state="disabled")
+
+    def _clear_shin_trees():
+        for tree in (shin_odds_tree, shin_meta_tree):
+            for item in tree.get_children():
+                tree.delete(item)
+
+    def _fill_shin_result(res: msc.ShinMatchResult):
+        _clear_shin_trees()
+        shin_title_var.set(f"{res.team1}  —  {res.team2}  ·  {res.format_odds(2)}")
+        shin_odds_tree.insert(
+            "",
+            "end",
+            values=(f"P1 ({res.team1})", fmt(res.k1, 2), fmt(res.p1 * 100, 2) + " %"),
+        )
+        shin_odds_tree.insert(
+            "",
+            "end",
+            values=("X (ничья)", fmt(res.kx, 2), fmt(res.px * 100, 2) + " %"),
+        )
+        shin_odds_tree.insert(
+            "",
+            "end",
+            values=(f"P2 ({res.team2})", fmt(res.k2, 2), fmt(res.p2 * 100, 2) + " %"),
+        )
+        meta_rows = [
+            ("D (целевой матч, для X)", fmt(res.d_market, 1)),
+            ("H (домашнее преимущество)", fmt(res.h_used, 1) if res.h_used is not None else "—"),
+            ("Источник данных", res.source_label_ru),
+            ("Сезон расчёта", res.season_used),
+            ("Матчей в расчёте", str(res.matches_used)),
+            ("Метод", res.method),
+        ]
+        if res.d_chain is not None:
+            meta_rows.insert(1, ("D (цепь через соперника)", fmt(res.d_chain, 1)))
+        if res.common_opponent:
+            meta_rows.insert(3, ("Общий соперник", res.common_opponent))
+        for param, value in meta_rows:
+            shin_meta_tree.insert("", "end", values=(param, value))
+        shin_details.configure(state="normal")
+        shin_details.delete("1.0", "end")
+        if res.details:
+            shin_details.insert("1.0", res.details)
+        else:
+            shin_details.insert("1.0", "Подробный лог недоступен.")
+        shin_details.configure(state="disabled")
+
+    def calc_shin_match():
+        try:
+            league_key = shin_league_keys[shin_league_var.get()]
+            res = msc.calculate_shin_match(
+                shin_team1_var.get(),
+                shin_team2_var.get(),
+                league_key,
+                shin_season_var.get().strip(),
+            )
+            _fill_shin_result(res)
+        except msc.ShinCalculationError as exc:
+            messagebox.showerror("Счет кэф", str(exc))
+        except Exception as exc:
+            messagebox.showerror("Счет кэф", str(exc))
+
+    ttk.Button(tab_shin, text="Рассчитать", command=calc_shin_match).pack(
+        anchor="w", pady=(12, 0), ipadx=16, ipady=4
+    )
+    ttk.Label(
+        tab_shin,
+        text=(
+            "Метод Shin: P1/P2 — формула Shin; ничья — draw-модель px(d).\n"
+            "Приоритет: общий соперник → матчи лиги (≥3) → предыдущий сезон."
+        ),
+        foreground="#555",
+        justify="left",
+    ).pack(anchor="w", pady=(8, 0))
+
+    # ======================================================================
+    # TAB 4: история сезонов
+    # ======================================================================
 
     tab_hist = ttk.Frame(notebook, padding=10)
     notebook.add(tab_hist, text="История сезонов")
