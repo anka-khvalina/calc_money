@@ -240,7 +240,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: details-v1</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: fix-tabs-v1</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -1017,9 +1017,9 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       }
       det.push('', 'Шаг E. Ничья');
       const dm = calibrateDrawModel(league);
-      const { px, lines: pxLines } = drawPxForMatch(dm, dDraw, s1, s2);
+      const { px: drawPx, lines: pxLines } = drawPxForMatch(dm, dDraw, s1, s2);
       det.push(...pxLines);
-      const [p1,px,p2] = probsFromStrengths(s1, s2, px);
+      const [p1, px, p2] = probsFromStrengths(s1, s2, drawPx);
       det.push('', 'Шаг F. Итог', `  p1=${(p1*100).toFixed(2).replace('.',',')}%, px=${(px*100).toFixed(2).replace('.',',')}%, p2=${(p2*100).toFixed(2).replace('.',',')}%`);
       return {
         p1, px, p2, source:'Common opponent', seasonUsed,
@@ -1039,8 +1039,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const dm = calibrateDrawModel(league);
       const dRating = ratings.get(t1) - ratings.get(t2);
       const dMarket = dRating + rank.H;
-      const { px, lines: pxLines } = drawPxForMatch(dm, dMarket, s1, s2);
-      const [p1,px,p2] = probsFromStrengths(s1, s2, px);
+      const { px: drawPx, lines: pxLines } = drawPxForMatch(dm, dMarket, s1, s2);
+      const [p1, px, p2] = probsFromStrengths(s1, s2, drawPx);
       const det = [
         `Источник: ${SHIN_SOURCE_RU[source]||source}`,
         `Матчей в сезоне: ${matches.length}`,
