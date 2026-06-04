@@ -300,6 +300,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </div>
         <div class="field" style="align-self:flex-end">
           <button type="button" id="teamsSearch" class="btn primary">Поиск</button>
+          <button type="button" id="teamsSeed" class="btn" style="margin-left:6px">Все лиги</button>
         </div>
       </div>
       <div class="table-wrap">
@@ -765,6 +766,29 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     // ---------------- Team registry (localStorage) ----------------
     const TEAMS_KEY = 'FairOddsCalc_teams_v1';
     const NEW_TEAM_RATING = 0;
+    const TEAMS_SEED = {
+      bundesliga: ['Augsburg','Bayern Munich','Dortmund','Ein Frankfurt','FC Koln','Freiburg','Hamburg','Heidenheim','Hoffenheim','Leverkusen',"M'gladbach",'Mainz','RB Leipzig','St Pauli','Stuttgart','Union Berlin','Werder Bremen','Wolfsburg'],
+      epl: ['Arsenal','Aston Villa','Bournemouth','Brentford','Brighton','Burnley','Chelsea','Crystal Palace','Everton','Fulham','Leeds','Liverpool','Man City','Man United','Newcastle',"Nott'm Forest",'Sunderland','Tottenham','West Ham','Wolves'],
+      la_liga: ['Alaves','Ath Bilbao','Ath Madrid','Barcelona','Betis','Celta','Elche','Espanol','Getafe','Girona','Levante','Mallorca','Osasuna','Oviedo','Real Madrid','Sevilla','Sociedad','Valencia','Vallecano','Villarreal'],
+      ligue_1: ['Angers','Auxerre','Brest','Le Havre','Lens','Lille','Lorient','Lyon','Marseille','Metz','Monaco','Nantes','Nice','Paris FC','Paris SG','Rennes','Strasbourg','Toulouse'],
+      serie_a: ['Atalanta','Bologna','Cagliari','Como','Cremonese','Fiorentina','Genoa','Inter','Juventus','Lazio','Lecce','Milan','Napoli','Parma','Pisa','Roma','Sassuolo','Torino','Udinese','Verona'],
+    };
+
+    function seedDefaultTeams(force=false){
+      const cur = loadTeamStore();
+      if (!force && cur.teams && cur.teams.length) return false;
+      const now = new Date().toISOString();
+      const teams = [];
+      const next_seq = {};
+      Object.entries(TEAMS_SEED).forEach(([league, names]) => {
+        next_seq[league] = names.length + 1;
+        names.forEach((name, i) => {
+          teams.push({ id: `${league}:${i+1}`, league, name, created_at: now, updated_at: now });
+        });
+      });
+      saveTeamStore({ version: 1, next_seq, teams });
+      return true;
+    }
 
     function emptyTeamStore(){
       return { version: 1, next_seq: {}, teams: [] };
@@ -933,6 +957,13 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const league = document.getElementById('teamsLeague').value;
       renderTeamsTable(league);
       refreshShinTeamSelects();
+    });
+    bindClick('teamsSeed', ()=>{
+      seedDefaultTeams(true);
+      const league = document.getElementById('teamsLeague').value;
+      renderTeamsTable(league);
+      refreshShinTeamSelects();
+      alert('Справочник загружен: 96 команд (5 лиг). Выберите лигу и нажмите «Поиск».');
     });
     bindClick('teamsAdd', ()=>{
       try {
@@ -1804,6 +1835,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     if (!document.getElementById('histText').value.trim() && !listHistSeasons().length){
       document.getElementById('histLoadSample').click();
     }
+    seedDefaultTeams(false);
     refreshShinTeamSelects();
     refreshHistTable();
     window.refreshHistTable = refreshHistTable;
