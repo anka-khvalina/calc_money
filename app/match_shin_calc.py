@@ -210,6 +210,23 @@ def _strength_ratio_shin(match: hs.HistoricalMatch, focal: str) -> float:
     raise ValueError(f"Команда {focal} не участвует в матче")
 
 
+def _match_draw_px(
+    draw: hs.DrawModel,
+    d_target: float,
+    s1: float,
+    s2: float,
+) -> float:
+    """px(d) с учётом явного фаворита (цепочка s1/s2)."""
+    dm = draw.for_match_forecast()
+    px_model = dm.px(d_target)
+    if s2 > 1e-12 and s1 > 0:
+        log_ratio = math.log10(s1 / s2)
+        # Эвристика: при сильном фаворите ничья ниже среднего по лиге
+        px_fav = max(0.18, min(0.30, 0.265 - 0.06 * abs(log_ratio)))
+        px_model = min(px_model, px_fav)
+    return max(dm.lo, min(dm.hi, px_model))
+
+
 def _probs_from_strengths(s1: float, s2: float, px: float) -> Tuple[float, float, float]:
     px = max(0.0, min(0.95, px))
     rem = max(1e-9, 1.0 - px)
@@ -333,7 +350,7 @@ def _calc_common_opponent(
         h_est = h_rank if h_rank is not None else hs.LEAGUE_DEFAULT_H.get(league_key, 58.0)
 
     draw = hs.calibrate_draw_model(league_key)
-    px = draw.px(d_draw)
+    px = _match_draw_px(draw, d_draw, s1, s2)
     p1, px, p2 = _probs_from_strengths(s1, s2, px)
     used = len(m1) + len(m2)
     return ShinMatchResult(
@@ -372,7 +389,7 @@ def _calc_league_ranking(
     d_rating = ratings[team1] - ratings[team2]
     d_target = d_rating + ranking.home_advantage
     draw = hs.calibrate_draw_model(league_key)
-    px = draw.px(d_target)
+    px = _match_draw_px(draw, d_target, s1, s2)
     p1, px, p2 = _probs_from_strengths(s1, s2, px)
     used = len(matches)
     return ShinMatchResult(

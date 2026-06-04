@@ -795,6 +795,10 @@ def home_advantage_prior(
     )
 
 
+# Минимальный наклон px(d): при большом |d| ничья должна снижаться.
+_DRAW_SLOPE_FLOOR = -0.0010
+
+
 @dataclass
 class DrawModel:
     """Линейная модель ничьей px(d) = clamp(a + b*|d|, lo, hi)."""
@@ -809,6 +813,15 @@ class DrawModel:
     def px(self, d: float) -> float:
         val = self.a + self.b * abs(d)
         return max(self.lo, min(self.hi, val))
+
+    def for_match_forecast(self) -> "DrawModel":
+        """Скорректировать калибровку для прогноза: ничья падает при большом |d|."""
+        if self.source == "default":
+            return self
+        b = self.b if self.b <= _DRAW_SLOPE_FLOOR else _DRAW_SLOPE_FLOOR
+        return DrawModel(
+            a=self.a, b=b, lo=self.lo, hi=self.hi, n=self.n, source=self.source
+        )
 
 
 def calibrate_draw_model(league: str) -> DrawModel:

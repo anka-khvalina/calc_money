@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
+  <!-- build: cursor/shin-match-17b5 draw-fix-v2 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -232,6 +233,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: draw-fix-v3 — при 26% ничьей сделайте жёсткое обновление страницы</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -981,7 +983,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const dDraw = target ? target.d : dChain;
       const hUsed = target ? target.h : prior.hFinal;
       const dm = calibrateDrawModel(league);
-      const [p1,px,p2] = probsFromStrengths(s1, s2, dm.px(dDraw));
+      const [p1,px,p2] = probsFromStrengths(s1, s2, drawPxForMatch(dm, dDraw, s1, s2));
       return {
         p1, px, p2, source:'Common opponent', seasonUsed,
         matchesUsed: m1.length+m2.length, opp,
@@ -999,7 +1001,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const dm = calibrateDrawModel(league);
       const dRating = ratings.get(t1) - ratings.get(t2);
       const dMarket = dRating + rank.H;
-      const [p1,px,p2] = probsFromStrengths(s1, s2, dm.px(dMarket));
+      const [p1,px,p2] = probsFromStrengths(s1, s2, drawPxForMatch(dm, dMarket, s1, s2));
       return {
         p1, px, p2, source, seasonUsed, matchesUsed: matches.length, opp: null,
         dMarket, dChain: null, hUsed: rank.H,
@@ -1136,6 +1138,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       return { hPrior, hFinal: hPrior, fromDefault, used, confidence: fromDefault ? 'default' : 'low' };
     }
 
+    const DRAW_SLOPE_FLOOR = -0.0010;
+
     function calibrateDrawModel(league){
       const xs=[], ys=[];
       let source = 'results';
@@ -1156,17 +1160,26 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         });
       }
       const n = xs.length;
-      if (n < 5) return { a: 0.26, b: -0.0006, n, source: 'default', px(d){ return Math.max(0.06, Math.min(0.34, this.a + this.b * Math.abs(d))); } };
+      if (n < 5) return { a: 0.26, b: -0.0006, n, source: 'default' };
       const mx = xs.reduce((a,b)=>a+b,0)/n;
       const my = ys.reduce((a,b)=>a+b,0)/n;
       let sxx=0, sxy=0;
       for (let i=0;i<n;i++){ sxx += (xs[i]-mx)**2; sxy += (xs[i]-mx)*(ys[i]-my); }
       const b = sxx > 1e-9 ? sxy/sxx : 0;
       const a = my - b * mx;
-      return {
-        a, b, n, source,
-        px(d){ return Math.max(0.06, Math.min(0.34, this.a + this.b * Math.abs(d))); }
-      };
+      return { a, b, n, source };
+    }
+
+    function drawPxForMatch(dm, d, s1, s2){
+      const a = dm.a;
+      const b = (dm.source === 'default' || dm.b <= DRAW_SLOPE_FLOOR) ? dm.b : DRAW_SLOPE_FLOOR;
+      let px = Math.max(0.06, Math.min(0.34, a + b * Math.abs(d)));
+      if (s2 > 1e-12 && s1 > 0){
+        const lr = Math.log10(s1 / s2);
+        const pxFav = Math.max(0.18, Math.min(0.30, 0.265 - 0.06 * Math.abs(lr)));
+        px = Math.min(px, pxFav);
+      }
+      return px;
     }
 
     function formatHistMetrics(league, season=null){
