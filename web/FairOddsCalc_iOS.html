@@ -69,6 +69,13 @@
       margin-top:12px; padding:12px; border:1px dashed var(--line);
       border-radius:10px; color:var(--muted); font-size:13px;
     }
+    .shin-details{
+      margin-top:10px; padding:10px 12px; background:#f8fafc;
+      border:1px solid var(--line); border-radius:10px;
+      font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size:11px; line-height:1.45; white-space:pre-wrap;
+      max-height:420px; overflow:auto; color:#1a1a1a;
+    }
     .small{ font-size:12px; color:var(--muted); }
     .table-wrap{ overflow:auto; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
     table{ width:100%; border-collapse:collapse; min-width:560px; background:#fff; }
@@ -233,7 +240,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: draw-fix-v3 — при 26% ничьей сделайте жёсткое обновление страницы</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: details-v1</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -253,6 +260,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <tbody></tbody>
           </table>
         </div>
+        <div class="small" style="margin-top:10px;font-weight:600">Подробный расчёт</div>
+        <pre id="shinDetails" class="shin-details"></pre>
       </div>
     </section>
 
@@ -973,22 +982,51 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const m1 = matches.filter(m => (m.home===t1||m.away===t1)&&(m.home===opp||m.away===opp));
       const m2 = matches.filter(m => (m.home===t2||m.away===t2)&&(m.home===opp||m.away===opp));
       if (!m1.length || !m2.length) throw new Error(SHIN_ERR.data);
-      const r1 = geomMean(m1.map(m => strengthRatioShin(m,t1)));
-      const r2 = geomMean(m2.map(m => strengthRatioShin(m,t2)));
+      const det = [];
+      det.push(`Источник: общий соперник — ${opp}`);
+      det.push(`Матчей: ${m1.length} (${t1}) + ${m2.length} (${t2})`);
+      det.push('', `Шаг A. ${t1} vs ${opp}`);
+      const c1 = chainMatchLines(t1, m1);
+      det.push(...c1.lines);
+      const r1 = geomMeanLog(c1.ratios);
+      det.push(`  r̄ = ${r1.toFixed(4).replace('.',',')}`);
+      det.push('', `Шаг B. ${t2} vs ${opp}`);
+      const c2 = chainMatchLines(t2, m2);
+      det.push(...c2.lines);
+      const r2 = geomMeanLog(c2.ratios);
+      det.push(`  r̄ = ${r2.toFixed(4).replace('.',',')}`);
       const rAb = r1/r2;
       const s1 = Math.sqrt(rAb), s2 = 1/Math.sqrt(rAb||1);
       const dChain = 400*Math.log10(s1/(s2||1));
+      det.push('', 'Шаг C. Цепочка P1/P2');
+      det.push(`  r_AB=${r1.toFixed(4).replace('.',',')}/${r2.toFixed(4).replace('.',',')}=${rAb.toFixed(4).replace('.',',')}`);
+      det.push(`  s1=√r_AB=${s1.toFixed(4).replace('.',',')}, s2=1/√r_AB=${s2.toFixed(4).replace('.',',')}`);
+      det.push(`  D_цепь=400·log10(s1/s2)=${fmt(dChain,1)}`);
       const target = targetMatchD(t1, t2, matches);
       const prior = homeAdvantagePrior(league);
       const dDraw = target ? target.d : dChain;
       const hUsed = target ? target.h : prior.hFinal;
+      det.push('', 'Шаг D. D для ничьи');
+      if (target){
+        const rank = buildRanking(histToRankMatches(matches), true);
+        const ratings = new Map(rank.teams.map(t => [t.team, t.rating]));
+        det.push(`  R(${t1})=${fmt(ratings.get(t1),1)}, R(${t2})=${fmt(ratings.get(t2),1)}, H=${fmt(rank.H,1)}`);
+        det.push(`  D_цель=R1-R2+H=${fmt(dDraw,1)}`);
+      } else {
+        det.push(`  D_цель=D_цепь=${fmt(dDraw,1)}, H=${fmt(hUsed,1)}`);
+      }
+      det.push('', 'Шаг E. Ничья');
       const dm = calibrateDrawModel(league);
-      const [p1,px,p2] = probsFromStrengths(s1, s2, drawPxForMatch(dm, dDraw, s1, s2));
+      const { px, lines: pxLines } = drawPxForMatch(dm, dDraw, s1, s2);
+      det.push(...pxLines);
+      const [p1,px,p2] = probsFromStrengths(s1, s2, px);
+      det.push('', 'Шаг F. Итог', `  p1=${(p1*100).toFixed(2).replace('.',',')}%, px=${(px*100).toFixed(2).replace('.',',')}%, p2=${(p2*100).toFixed(2).replace('.',',')}%`);
       return {
         p1, px, p2, source:'Common opponent', seasonUsed,
         matchesUsed: m1.length+m2.length, opp,
         dMarket: dDraw, dChain, hUsed,
         team1: t1, team2: t2,
+        details: det.join('\n'),
       };
     }
     function calcShinLeague(t1, t2, matches, league, seasonUsed, source){
@@ -1001,11 +1039,21 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const dm = calibrateDrawModel(league);
       const dRating = ratings.get(t1) - ratings.get(t2);
       const dMarket = dRating + rank.H;
-      const [p1,px,p2] = probsFromStrengths(s1, s2, drawPxForMatch(dm, dMarket, s1, s2));
+      const { px, lines: pxLines } = drawPxForMatch(dm, dMarket, s1, s2);
+      const [p1,px,p2] = probsFromStrengths(s1, s2, px);
+      const det = [
+        `Источник: ${SHIN_SOURCE_RU[source]||source}`,
+        `Матчей в сезоне: ${matches.length}`,
+        `R(${t1})=${fmt(ratings.get(t1),1)}, R(${t2})=${fmt(ratings.get(t2),1)}, H=${fmt(rank.H,1)}`,
+        `s1=${s1.toFixed(4).replace('.',',')}, s2=${s2.toFixed(4).replace('.',',')}, D=${fmt(dMarket,1)}`,
+        'Ничья:', ...pxLines,
+        `Итог: ${formatShinOdds(p1,px,p2,2)}`,
+      ];
       return {
         p1, px, p2, source, seasonUsed, matchesUsed: matches.length, opp: null,
         dMarket, dChain: null, hUsed: rank.H,
         team1: t1, team2: t2,
+        details: det.join('\n'),
       };
     }
     function calculateShinMatch(team1, team2, league, season){
@@ -1017,6 +1065,12 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       if (!current || !current.length) throw new Error(SHIN_ERR.season);
       const t1 = resolveTeamInSeason(team1, current);
       const t2 = resolveTeamInSeason(team2, current);
+      const head = [
+        '═══ Подробный расчёт Shin ═══',
+        `Матч: ${t1} (дома) — ${t2}`,
+        `Лига: ${LEAGUE_TITLES[league]}, сезон: ${safe}`,
+        '', 'Выбор источника:',
+      ];
       const common = findCommonOpponents(t1, t2, current);
       if (common.length){
         let best = common[0], bestScore = -1;
@@ -1026,11 +1080,19 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           const sc = Math.min(n1,n2);
           if (sc > bestScore){ bestScore=sc; best=opp; }
         });
-        return calcShinCommon(t1, t2, best, current, league, safe);
+        head.push('  1) Общий соперник — ДА → '+best);
+        const res = calcShinCommon(t1, t2, best, current, league, safe);
+        res.details = head.join('\n')+'\n'+res.details;
+        return res;
       }
+      head.push('  1) Общий соперник — нет');
       if (countTeamMatches(t1, t2, current) >= MIN_SHIN_MATCHES){
-        return calcShinLeague(t1, t2, current, league, safe, 'League matches');
+        head.push('  2) Матчи сезона — ДА');
+        const res = calcShinLeague(t1, t2, current, league, safe, 'League matches');
+        res.details = head.join('\n')+'\n'+res.details;
+        return res;
       }
+      head.push('  2) Матчи сезона — мало');
       const prev = previousHistSeason(league, safe);
       if (!prev) throw new Error(SHIN_ERR.data);
       const prevM = getHistSeason(league, prev);
@@ -1046,10 +1108,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           const sc = Math.min(n1,n2);
           if (sc > bestScore){ bestScore=sc; best=opp; }
         });
-        return calcShinCommon(t1p, t2p, best, prevM, league, prev);
+        head.push(`  3) Предыдущий сезон ${prev}, общий соперник ${best}`);
+        const res = calcShinCommon(t1p, t2p, best, prevM, league, prev);
+        res.details = head.join('\n')+'\n'+res.details;
+        return res;
       }
       if (countTeamMatches(t1p, t2p, prevM) < MIN_SHIN_MATCHES) throw new Error(SHIN_ERR.data);
-      return calcShinLeague(t1p, t2p, prevM, league, prev, 'Previous season');
+      const res = calcShinLeague(t1p, t2p, prevM, league, prev, 'Previous season');
+      res.details = head.join('\n')+'\n'+res.details;
+      return res;
     }
 
     function renderShinResult(res){
@@ -1081,6 +1148,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       document.querySelector('#shinMetaTable tbody').innerHTML = meta.map(
         ([p,v]) => `<tr><td>${escapeHtml(p)}</td><td>${escapeHtml(v)}</td></tr>`
       ).join('');
+      document.getElementById('shinDetails').textContent = res.details || '';
     }
     function showShinError(msg){
       document.getElementById('shinResult').classList.remove('visible');
@@ -1171,15 +1239,38 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     }
 
     function drawPxForMatch(dm, d, s1, s2){
+      const lines = [];
       const a = dm.a;
       const b = (dm.source === 'default' || dm.b <= DRAW_SLOPE_FLOOR) ? dm.b : DRAW_SLOPE_FLOOR;
       let px = Math.max(0.06, Math.min(0.34, a + b * Math.abs(d)));
+      lines.push(`  px_mod = a+b·|d| → ${(px*100).toFixed(2).replace('.',',')}% (a=${a.toFixed(4).replace('.',',')}, b=${b.toFixed(6).replace('.',',')})`);
       if (s2 > 1e-12 && s1 > 0){
         const lr = Math.log10(s1 / s2);
         const pxFav = Math.max(0.18, Math.min(0.30, 0.265 - 0.06 * Math.abs(lr)));
+        lines.push(`  px_fav (фаворит) = ${(pxFav*100).toFixed(2).replace('.',',')}%`);
         px = Math.min(px, pxFav);
       }
-      return px;
+      px = Math.max(0.06, Math.min(0.34, px));
+      lines.push(`  Итого px = ${(px*100).toFixed(2).replace('.',',')}%`);
+      return { px, lines };
+    }
+    function chainMatchLines(team, ms){
+      const lines = [];
+      const ratios = [];
+      ms.forEach(m => {
+        const [p1,px,p2] = shinDevig(m.o1, m.ox, m.o2);
+        const home = m.home === team;
+        const r = home ? p1/(p2||1e-12) : p2/(p1||1e-12);
+        ratios.push(r);
+        const ko = v => v.toFixed(2).replace('.',',');
+        lines.push(`    ${m.date||'?'}  ${m.home}  ${ko(m.o1)}/${ko(m.ox)}/${ko(m.o2)}  ${m.away}`);
+        lines.push(`      Shin p1=${p1.toFixed(4).replace('.',',')} px=${px.toFixed(4).replace('.',',')} p2=${p2.toFixed(4).replace('.',',')}  |  r=${r.toFixed(4).replace('.',',')} (${home?'дома':'гости'})`);
+      });
+      return { lines, ratios };
+    }
+    function geomMeanLog(ratios){
+      if (ratios.length===1) return ratios[0];
+      return Math.exp(ratios.map(Math.log).reduce((a,b)=>a+b,0)/ratios.length);
     }
 
     function formatHistMetrics(league, season=null){

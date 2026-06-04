@@ -8,7 +8,7 @@ Draw — отдельная модель px(d) из history_store.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -64,6 +64,7 @@ class ShinMatchResult:
     d_market: float = 0.0
     h_used: Optional[float] = None
     d_chain: Optional[float] = None
+    details: str = ""
 
     @property
     def source_label_ru(self) -> str:
@@ -96,6 +97,14 @@ def _fmt_odds(value: float, digits: int = 2) -> str:
 
 def _fmt_d(value: float, digits: int = 1) -> str:
     return f"{value:.{digits}f}".replace(".", ",")
+
+
+def _fmt_p(value: float, digits: int = 4) -> str:
+    return f"{value:.{digits}f}".replace(".", ",")
+
+
+def _fmt_pct(value: float, digits: int = 2) -> str:
+    return _fmt_odds(value * 100, digits) + " %"
 
 
 def previous_season(league: str, season: str) -> Optional[str]:
@@ -215,16 +224,61 @@ def _match_draw_px(
     d_target: float,
     s1: float,
     s2: float,
-) -> float:
+) -> Tuple[float, List[str]]:
     """px(d) с учётом явного фаворита (цепочка s1/s2)."""
+    lines: List[str] = []
     dm = draw.for_match_forecast()
     px_model = dm.px(d_target)
+    lines.append(
+        f"  px(d) по модели: a={_fmt_p(dm.a)}, b={_fmt_p(dm.b)}, "
+        f"n={dm.n}, источник={dm.source}"
+    )
+    lines.append(
+        f"  px_mod = a + b·|d| = {_fmt_p(dm.a)} + ({_fmt_p(dm.b)})·|{_fmt_d(d_target)}| "
+        f"→ {_fmt_pct(px_model)}"
+    )
+    px_final = px_model
     if s2 > 1e-12 and s1 > 0:
         log_ratio = math.log10(s1 / s2)
-        # Эвристика: при сильном фаворите ничья ниже среднего по лиге
         px_fav = max(0.18, min(0.30, 0.265 - 0.06 * abs(log_ratio)))
-        px_model = min(px_model, px_fav)
-    return max(dm.lo, min(dm.hi, px_model))
+        lines.append(
+            f"  Ограничение фаворита: px_fav = 0,265 − 0,06·|log₁₀(s₁/s₂)|, "
+            f"|log₁₀|={_fmt_p(abs(log_ratio))} → {_fmt_pct(px_fav)}"
+        )
+        px_final = min(px_model, px_fav)
+        if px_final < px_model:
+            lines.append(f"  Берём min(px_mod, px_fav) = {_fmt_pct(px_final)}")
+    px_final = max(dm.lo, min(dm.hi, px_final))
+    lines.append(f"  Итого px (ничья) = {_fmt_pct(px_final)}")
+    return px_final, lines
+
+
+def _chain_match_lines(
+    team: str, opponent: str, chain_matches: Sequence[hs.HistoricalMatch]
+) -> Tuple[List[str], List[float]]:
+    """Строки расчёта и список r по матчам."""
+    lines: List[str] = []
+    ratios: List[float] = []
+    for m in chain_matches:
+        p1, px, p2 = ds.shin_devig(m.odds_1, m.odds_x, m.odds_2)
+        if team == m.home_team:
+            r = p1 / p2 if p2 > 1e-12 else 0.0
+            side = "дома"
+            p_win, p_loss = p1, p2
+        else:
+            r = p2 / p1 if p1 > 1e-12 else 0.0
+            side = "в гостях"
+            p_win, p_loss = p2, p1
+        ratios.append(r)
+        lines.append(
+            f"    {m.date}  {m.home_team}  {_fmt_odds(m.odds_1)}/{_fmt_odds(m.odds_x)}/"
+            f"{_fmt_odds(m.odds_2)}  {m.away_team}"
+        )
+        lines.append(
+            f"      Shin: p1={_fmt_p(p1)} px={_fmt_p(px)} p2={_fmt_p(p2)}  |  "
+            f"{team} {side}: r = p_win/p_loss = {_fmt_p(r)}"
+        )
+    return lines, ratios
 
 
 def _probs_from_strengths(s1: float, s2: float, px: float) -> Tuple[float, float, float]:
@@ -332,13 +386,41 @@ def _calc_common_opponent(
     if not m1 or not m2:
         raise ShinCalculationError(ERR_DATA)
 
-    r1 = _geom_mean_ratios([_strength_ratio_shin(m, team1) for m in m1])
-    r2 = _geom_mean_ratios([_strength_ratio_shin(m, team2) for m in m2])
+    det: List[str] = []
+    det.append(f"Источник: общий соперник — {opponent}")
+    det.append(f"Матчей в цепочке: {len(m1)} ({team1}) + {len(m2)} ({team2}) = {len(m1)+len(m2)}")
+    det.append("")
+    det.append(f"Шаг A. Матчи {team1} против {opponent}")
+    lines1, ratios1 = _chain_match_lines(team1, opponent, m1)
+    det.extend(lines1)
+    r1 = _geom_mean_ratios(ratios1)
+    if len(ratios1) > 1:
+        ln_sum = " + ".join(_fmt_p(math.log(x)) for x in ratios1)
+        det.append(f"  r̄_{team1[:3]} = exp(mean(ln r)) = exp(({ln_sum})/{len(ratios1)}) = {_fmt_p(r1)}")
+    else:
+        det.append(f"  r̄_{team1[:3]} = {_fmt_p(r1)}")
+    det.append("")
+    det.append(f"Шаг B. Матчи {team2} против {opponent}")
+    lines2, ratios2 = _chain_match_lines(team2, opponent, m2)
+    det.extend(lines2)
+    r2 = _geom_mean_ratios(ratios2)
+    if len(ratios2) > 1:
+        ln_sum = " + ".join(_fmt_p(math.log(x)) for x in ratios2)
+        det.append(f"  r̄_{team2[:3]} = exp(mean(ln r)) = exp(({ln_sum})/{len(ratios2)}) = {_fmt_p(r2)}")
+    else:
+        det.append(f"  r̄_{team2[:3]} = {_fmt_p(r2)}")
+    det.append("")
+    det.append("Шаг C. Сравнение сил (цепочка → P1/P2)")
     r_ab = r1 / r2 if r2 > 0 else 1.0
     s1 = math.sqrt(r_ab)
     s2 = 1.0 / math.sqrt(r_ab) if r_ab > 0 else 1.0
+    det.append(f"  r_AB = r̄₁/r̄₂ = {_fmt_p(r1)}/{_fmt_p(r2)} = {_fmt_p(r_ab)}")
+    det.append(f"  s₁ = √r_AB = {_fmt_p(s1)},  s₂ = 1/√r_AB = {_fmt_p(s2)}")
 
     chain_d = 400.0 * math.log10(s1 / s2) if s2 > 0 else 0.0
+    det.append(f"  D_цепь = 400·log₁₀(s₁/s₂) = {_fmt_d(chain_d)}")
+    det.append("")
+    det.append("Шаг D. D для ничьи (целевой матч, team1 дома)")
     d_draw, h_rank = _target_match_d(team1, team2, matches)
     if d_draw is None:
         d_draw = chain_d
@@ -346,12 +428,39 @@ def _calc_common_opponent(
             h_est = hs.home_advantage_prior(league_key).h_final
         except ValueError:
             h_est = hs.LEAGUE_DEFAULT_H.get(league_key, 58.0)
+        det.append("  Рейтинг сезона недоступен → D_цель = D_цепь")
+        det.append(f"  H (приор лиги) = {_fmt_d(h_est)}")
     else:
         h_est = h_rank if h_rank is not None else hs.LEAGUE_DEFAULT_H.get(league_key, 58.0)
+        odds_matches = [m.to_match_odds() for m in matches]
+        ranking = build_ranking_shin(odds_matches)
+        ratings = {t.team: t.rating for t in ranking.teams}
+        det.append(
+            f"  R({team1})={_fmt_d(ratings[team1])}, R({team2})={_fmt_d(ratings[team2])}, "
+            f"H={_fmt_d(ranking.home_advantage)}"
+        )
+        det.append(
+            f"  D_цель = R₁ − R₂ + H = {_fmt_d(d_draw)}  (для px(d), не для s₁/s₂)"
+        )
 
+    det.append("")
+    det.append("Шаг E. Ничья px(d), отдельно от Shin P1/P2")
     draw = hs.calibrate_draw_model(league_key)
-    px = _match_draw_px(draw, d_draw, s1, s2)
+    px, px_lines = _match_draw_px(draw, d_draw, s1, s2)
+    det.extend(px_lines)
+    det.append("")
+    det.append("Шаг F. Итоговые вероятности и коэффициенты")
+    p1_raw = (s1 / (s1 + s2)) * (1.0 - px)
+    p2_raw = (s2 / (s1 + s2)) * (1.0 - px)
+    det.append(
+        f"  p1' = s₁/(s₁+s₂)·(1−px) = {_fmt_pct(p1_raw)},  "
+        f"p2' = s₂/(s₁+s₂)·(1−px) = {_fmt_pct(p2_raw)},  px = {_fmt_pct(px)}"
+    )
     p1, px, p2 = _probs_from_strengths(s1, s2, px)
+    det.append(f"  После нормализации: p1={_fmt_pct(p1)}, px={_fmt_pct(px)}, p2={_fmt_pct(p2)}")
+    det.append(
+        f"  k = 1/p: {_fmt_odds(1/p1)} / {_fmt_odds(1/px)} / {_fmt_odds(1/p2)}"
+    )
     used = len(m1) + len(m2)
     return ShinMatchResult(
         p1=p1,
@@ -366,6 +475,7 @@ def _calc_common_opponent(
         d_market=d_draw,
         h_used=h_est,
         d_chain=chain_d,
+        details="\n".join(det),
     )
 
 
@@ -389,9 +499,33 @@ def _calc_league_ranking(
     d_rating = ratings[team1] - ratings[team2]
     d_target = d_rating + ranking.home_advantage
     draw = hs.calibrate_draw_model(league_key)
-    px = _match_draw_px(draw, d_target, s1, s2)
+    px, px_lines = _match_draw_px(draw, d_target, s1, s2)
     p1, px, p2 = _probs_from_strengths(s1, s2, px)
     used = len(matches)
+    det = [
+        f"Источник: {SOURCE_LABELS_RU[source]}",
+        f"Матчей в сезоне (вся лига): {used}",
+        "",
+        "Шаг A. Shin-рейтинг по всем матчам сезона (МНК)",
+        f"  R({team1}) = {_fmt_d(ratings[team1])},  R({team2}) = {_fmt_d(ratings[team2])}",
+        f"  H = {_fmt_d(ranking.home_advantage)},  коэф. дома = {_fmt_p(h_coef)}",
+        "",
+        "Шаг B. Силы для целевого матча (team1 дома)",
+        f"  s₁ = 10^(R₁/400)·H^coef = {_fmt_p(s1)}",
+        f"  s₂ = 10^(R₂/400) = {_fmt_p(s2)}",
+        f"  D_цель = R₁ − R₂ + H = {_fmt_d(d_target)}",
+        "",
+        "Шаг C. Ничья px(d)",
+    ]
+    det.extend(px_lines)
+    det.extend(
+        [
+            "",
+            "Шаг D. Итог",
+            f"  p1={_fmt_pct(p1)}, px={_fmt_pct(px)}, p2={_fmt_pct(p2)}",
+            f"  k = {_fmt_odds(1/p1)} / {_fmt_odds(1/px)} / {_fmt_odds(1/p2)}",
+        ]
+    )
     return ShinMatchResult(
         p1=p1,
         px=px,
@@ -403,6 +537,7 @@ def _calc_league_ranking(
         team2=team2,
         d_market=d_target,
         h_used=ranking.home_advantage,
+        details="\n".join(det),
     )
 
 
@@ -432,16 +567,52 @@ def calculate_shin_match(
     t1 = resolve_team_name(team1, current_matches)
     t2 = resolve_team_name(team2, current_matches)
 
+    header = [
+        "═══ Подробный расчёт Shin ═══",
+        f"Матч: {t1} (дома) — {t2}",
+        f"Лига: {hs.league_title(league_key)}, сезон: {season.strip()}",
+        "",
+        "Выбор источника данных:",
+    ]
+
     # 1) Общий соперник в выбранном сезоне
     common = find_common_opponents(t1, t2, current_matches)
     if common:
         opp = _pick_best_opponent(t1, t2, common, current_matches)
-        return _calc_common_opponent(t1, t2, opp, current_matches, league_key, season.strip())
+        cand_lines = []
+        for c in common:
+            n1 = len(
+                [
+                    m
+                    for m in current_matches
+                    if c in (m.home_team, m.away_team)
+                    and t1 in (m.home_team, m.away_team)
+                ]
+            )
+            n2 = len(
+                [
+                    m
+                    for m in current_matches
+                    if c in (m.home_team, m.away_team)
+                    and t2 in (m.home_team, m.away_team)
+                ]
+            )
+            cand_lines.append(f"  • {c}: min({n1},{n2})={min(n1,n2)} матчей")
+        header.append("  1) Общий соперник — ДА")
+        header.extend(cand_lines)
+        header.append(f"  → выбран: {opp}")
+        header.append("")
+        res = _calc_common_opponent(t1, t2, opp, current_matches, league_key, season.strip())
+        return replace(res, details="\n".join(header) + "\n" + res.details)
+
+    header.append("  1) Общий соперник — нет")
 
     # 2) Матчи лиги: >= 3 матчей с участием команд
     n_current = count_team_matches(t1, t2, current_matches)
     if n_current >= MIN_LEAGUE_MATCHES:
-        return _calc_league_ranking(
+        header.append(f"  2) Матчи в сезоне — ДА ({n_current} матчей с участием команд)")
+        header.append("")
+        res = _calc_league_ranking(
             t1,
             t2,
             current_matches,
@@ -449,6 +620,9 @@ def calculate_shin_match(
             season.strip(),
             CalculationSource.LEAGUE_MATCHES,
         )
+        return replace(res, details="\n".join(header) + "\n" + res.details)
+
+    header.append(f"  2) Матчи в сезоне — мало ({n_current} < {MIN_LEAGUE_MATCHES})")
 
     # 3) Предыдущий сезон
     prev = previous_season(league_key, season.strip())
@@ -459,18 +633,22 @@ def calculate_shin_match(
     t1p = resolve_team_name(team1, prev_matches)
     t2p = resolve_team_name(team2, prev_matches)
 
+    header.append(f"  3) Предыдущий сезон — {prev}")
+    header.append("")
+
     common_prev = find_common_opponents(t1p, t2p, prev_matches)
     if common_prev:
         opp = _pick_best_opponent(t1p, t2p, common_prev, prev_matches)
-        return _calc_common_opponent(
+        res = _calc_common_opponent(
             t1p, t2p, opp, prev_matches, league_key, prev
         )
+        return replace(res, details="\n".join(header) + "\n" + res.details)
 
     n_prev = count_team_matches(t1p, t2p, prev_matches)
     if n_prev < MIN_LEAGUE_MATCHES:
         raise ShinCalculationError(ERR_DATA)
 
-    return _calc_league_ranking(
+    res = _calc_league_ranking(
         t1p,
         t2p,
         prev_matches,
@@ -478,3 +656,4 @@ def calculate_shin_match(
         prev,
         CalculationSource.PREVIOUS_SEASON,
     )
+    return replace(res, details="\n".join(header) + "\n" + res.details)

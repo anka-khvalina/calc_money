@@ -740,6 +740,13 @@ def build_app():
     shin_meta_tree.column("value", width=280, anchor="w")
     shin_meta_tree.pack(side="left", fill="x", expand=True)
 
+    ttk.Label(shin_out, text="Подробный расчёт").pack(anchor="w", pady=(12, 4))
+    shin_details = tk.Text(
+        shin_out, width=95, height=18, relief="solid", borderwidth=1, font=("Consolas", 10)
+    )
+    shin_details.pack(fill="both", expand=True, pady=(0, 4))
+    shin_details.configure(state="disabled")
+
     def _clear_shin_trees():
         for tree in (shin_odds_tree, shin_meta_tree):
             for item in tree.get_children():
@@ -777,6 +784,13 @@ def build_app():
             meta_rows.insert(3, ("Общий соперник", res.common_opponent))
         for param, value in meta_rows:
             shin_meta_tree.insert("", "end", values=(param, value))
+        shin_details.configure(state="normal")
+        shin_details.delete("1.0", "end")
+        if res.details:
+            shin_details.insert("1.0", res.details)
+        else:
+            shin_details.insert("1.0", "Подробный лог недоступен.")
+        shin_details.configure(state="disabled")
 
     def calc_shin_match():
         try:
