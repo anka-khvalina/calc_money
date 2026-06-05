@@ -1,0 +1,2111 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>FairOddsCalc iOS</title>
+  <!-- build: cursor/team-logos-17b5 team-logos-v4 -->
+  <style>
+    :root{
+      --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
+      --accent:#255ad6; --danger:#b42318;
+    }
+    * { box-sizing:border-box; }
+    html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+    body{
+      margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      background:var(--bg); color:var(--text);
+    }
+    .wrap{ max-width:980px; margin:0 auto; padding:14px 12px 24px; }
+    h1{ font-size:20px; margin:8px 0 12px; }
+    .tabs{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+    .tab-btn{
+      border:1px solid var(--line); background:#eef2ff; color:#1f3ea6;
+      border-radius:10px; padding:8px 10px; font-size:13px; font-weight:600;
+      flex:1 1 auto; min-width:0;
+      cursor:pointer; touch-action:manipulation;
+      -webkit-tap-highlight-color:rgba(37,90,214,0.15);
+    }
+    .tab-btn.active{ background:var(--accent); color:#fff; border-color:var(--accent); }
+    .panel{
+      background:var(--card); border:1px solid var(--line); border-radius:14px;
+      padding:12px; display:none;
+    }
+    .panel.active{ display:block; }
+    .grid{
+      display:grid; gap:10px;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+    }
+    .field label{ display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+    textarea,input,select{
+      width:100%; border:1px solid var(--line); border-radius:10px;
+      padding:8px 10px; font-size:14px; background:#fff;
+    }
+    textarea{ min-height:210px; resize:vertical; }
+    .out{ background:#f8fafc; }
+    .row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .btn{
+      border:1px solid var(--line); background:#fff; border-radius:10px;
+      padding:9px 12px; font-size:14px; font-weight:600;
+      cursor:pointer; touch-action:manipulation;
+      -webkit-tap-highlight-color:rgba(37,90,214,0.15);
+    }
+    .js-status{
+      font-size:11px; color:var(--muted); margin:-4px 0 10px;
+      padding:6px 10px; background:#fff; border:1px solid var(--line);
+      border-radius:8px;
+    }
+    .js-status.err{ color:var(--danger); border-color:#f5c2c0; background:#fff5f5; }
+    .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+    .btn:active{ transform:translateY(1px); }
+    .shin-result{ margin-top:14px; display:none; }
+    .shin-result.visible{ display:block; }
+    .shin-title{
+      font-size:15px; font-weight:700; margin:0 0 10px;
+      padding:10px 12px; background:#eef2ff; border-radius:10px;
+      border:1px solid #c7d4f7; line-height:1.35;
+    }
+    .shin-title .line{ display:block; font-size:13px; font-weight:600; color:#1f3ea6; margin-top:4px; }
+    .shin-table-wrap{ overflow:auto; border:1px solid var(--line); border-radius:10px; margin-top:8px; }
+    .shin-table{ width:100%; border-collapse:collapse; background:#fff; min-width:0; }
+    .shin-table th,.shin-table td{
+      border-bottom:1px solid var(--line); padding:9px 12px; font-size:13px;
+    }
+    .shin-table th{ background:#f8fafc; color:var(--muted); font-weight:600; text-align:left; }
+    .shin-table th.right,.shin-table td.num{ text-align:right; }
+    .shin-table td.num{ font-variant-numeric:tabular-nums; font-weight:600; }
+    .shin-table tr:last-child td{ border-bottom:none; }
+    .shin-table.meta td:first-child{ color:var(--muted); width:42%; }
+    .shin-empty{
+      margin-top:12px; padding:12px; border:1px dashed var(--line);
+      border-radius:10px; color:var(--muted); font-size:13px;
+    }
+    .shin-details{
+      margin-top:10px; padding:10px 12px; background:#f8fafc;
+      border:1px solid var(--line); border-radius:10px;
+      font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size:11px; line-height:1.45; white-space:pre-wrap;
+      max-height:420px; overflow:auto; color:#1a1a1a;
+    }
+    .small{ font-size:12px; color:var(--muted); }
+    .table-wrap{ overflow:auto; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
+    table{ width:100%; border-collapse:collapse; min-width:560px; background:#fff; }
+    th,td{ border-bottom:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; }
+    th{ background:#f8fafc; }
+    .right{ text-align:right; }
+    .logo-cell{ width:42px; text-align:center; vertical-align:middle; }
+    .team-logo{
+      width:24px; height:24px; object-fit:contain; vertical-align:middle;
+      display:inline-block;
+    }
+    .shin-title .shin-matchup{
+      display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+    }
+    .shin-outcome-label{ display:inline-flex; align-items:center; gap:6px; }
+    .danger{ color:var(--danger); }
+    .split{ display:grid; grid-template-columns:1.2fr 1fr; gap:10px; }
+    @media (max-width:860px){
+      .grid{ grid-template-columns:1fr; }
+      .split{ grid-template-columns:1fr; }
+      table{ min-width:0; }
+    }
+  </style>
+  <script>
+    /* Minimal bootstrap: tabs work even if the main script fails (iOS iframe / cache). */
+    (function () {
+      function ready(fn) {
+        if (document.readyState !== 'loading') fn();
+        else document.addEventListener('DOMContentLoaded', fn);
+      }
+      function setStatus(msg, err) {
+        var el = document.getElementById('jsStatus');
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.toggle('err', !!err);
+      }
+      function closestTabBtn(node, root) {
+        while (node && node !== root) {
+          if (node.classList && node.classList.contains('tab-btn')) return node;
+          node = node.parentNode;
+        }
+        return null;
+      }
+      ready(function () {
+        try {
+          document.documentElement.addEventListener('touchstart', function () {}, { passive: true });
+          document.body.addEventListener('touchstart', function () {}, { passive: true });
+          var TAB = { a: 'tab-a', rank: 'tab-rank', teams: 'tab-teams', shin: 'tab-shin', hist: 'tab-hist' };
+          function switchTab(id) {
+            var btns = document.querySelectorAll('.tab-btn');
+            for (var i = 0; i < btns.length; i++) {
+              btns[i].classList.toggle('active', btns[i].getAttribute('data-tab') === id);
+            }
+            var panelId = TAB[id] || ('tab-' + id);
+            var panels = document.querySelectorAll('.panel');
+            for (var j = 0; j < panels.length; j++) {
+              panels[j].classList.toggle('active', panels[j].id === panelId);
+            }
+            if (id === 'hist' && window.refreshHistTable) window.refreshHistTable();
+            if (id === 'teams') {
+              if (window.refreshTeamsTable) window.refreshTeamsTable();
+              else if (window.__renderTeamsBootstrap) window.__renderTeamsBootstrap();
+            }
+          }
+          var tabsEl = document.querySelector('.tabs');
+          function onTabActivate(e) {
+            var btn = (e.target.closest && e.target.closest('.tab-btn')) || closestTabBtn(e.target, tabsEl);
+            if (!btn) return;
+            e.preventDefault();
+            switchTab(btn.getAttribute('data-tab'));
+          }
+          if (tabsEl) {
+            tabsEl.addEventListener('click', onTabActivate);
+            tabsEl.addEventListener('touchend', onTabActivate);
+          }
+          window.__switchTab = switchTab;
+        } catch (err) {
+          setStatus('Ошибка вкладок: ' + err.message, true);
+        }
+      });
+    })();
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <h1>FairOddsCalc (iOS / Safari)</h1>
+    <div id="jsStatus" class="js-status">Инициализация…</div>
+    <div class="tabs">
+      <button type="button" class="tab-btn active" data-tab="a">Кальк. A</button>
+      <button type="button" class="tab-btn" data-tab="rank">Рейтинг</button>
+      <button type="button" class="tab-btn" data-tab="teams">Справочник</button>
+      <button type="button" class="tab-btn" data-tab="shin">Счет кэф</button>
+      <button type="button" class="tab-btn" data-tab="hist">История</button>
+    </div>
+
+    <!-- TAB A -->
+    <section id="tab-a" class="panel active">
+      <div class="grid">
+        <div class="field">
+          <label>Коэф дома (по одному в строке)</label>
+          <textarea id="homeOdds">2.02
+1.88
+2.42
+2.07</textarea>
+        </div>
+        <div class="field">
+          <label>Коэф гости (по одному в строке)</label>
+          <textarea id="awayOdds">2.21
+2.11
+2.79
+2.36</textarea>
+        </div>
+        <div class="field">
+          <label>A (вывод)</label>
+          <textarea id="aOutput" class="out" readonly></textarea>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="field" style="min-width:210px">
+          <label>Метод расчёта средней A</label>
+          <select id="avgMethod">
+            <option value="arith">Среднеарифметическое</option>
+            <option value="geom" selected>Геометрическое</option>
+            <option value="trim5">Линейное усечённое 5%</option>
+            <option value="trimGeom5">Усечённо-геометрическое 5%</option>
+          </select>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:22px;">
+          <input id="dropOutliers" type="checkbox" checked style="width:auto" />
+          <span class="small">Исключать аномалии (IQR ×1.5)</span>
+        </label>
+      </div>
+
+      <div class="row">
+        <button type="button" id="calcA" class="btn primary">Считать</button>
+        <button type="button" id="calcLeagueA" class="btn">Считаем A лиги</button>
+      </div>
+
+      <div class="split" style="margin-top:10px">
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
+          <div class="field"><label>Результат</label><input id="resultA" class="out" readonly /></div>
+          <div class="field"><label>A:</label><input id="arithA" class="out" readonly /></div>
+          <div class="field"><label>X :</label><input id="medianA" class="out" readonly /></div>
+          <div class="field"><label>Средняя A</label><input id="meanA" class="out" readonly /></div>
+        </div>
+        <div class="meta" id="metaA"></div>
+      </div>
+    </section>
+
+    <!-- TAB RANK -->
+    <section id="tab-rank" class="panel">
+      <div class="small">Формат строк: <code>home_team,away_team,odds_1,odds_x,odds_2</code>. Команды — только из справочника выбранной лиги.</div>
+      <div class="split" style="margin-top:8px;">
+        <div class="field">
+          <label>Матчи (вставка / файл)</label>
+          <textarea id="matchesText">Girona,Vallecano,2.50,3.19,3.18
+Mallorca,Real Madrid,9.11,5.61,1.34
+Sevilla,Getafe,2.15,3.40,3.45
+Villarreal,Las Palmas,1.95,3.55,4.10
+Barcelona,Athletic,1.42,5.20,7.50
+Real Sociedad,Alaves,2.05,3.30,3.80
+Real Madrid,Espanyol,1.25,7.00,11.50
+Vallecano,Elche,1.27,6.28,11.27
+Atletico Madrid,Betis,1.55,4.10,6.20
+Osasuna,Leganes,2.40,3.25,3.10</textarea>
+          <div class="row">
+            <input id="csvFile" type="file" accept=".csv,text/csv" />
+          </div>
+        </div>
+        <div>
+          <div class="field" style="min-width:180px">
+            <label>Лига (справочник)</label>
+            <select id="rankLeague">
+              <option value="epl">English Premier League</option>
+              <option value="la_liga">La Liga</option>
+              <option value="bundesliga">Bundesliga</option>
+              <option value="serie_a">Serie A</option>
+              <option value="ligue_1">Ligue 1</option>
+            </select>
+          </div>
+          <div class="field" style="max-width:140px">
+            <label>TOP N (0 = все)</label>
+            <input id="topN" value="0" />
+          </div>
+          <div class="row">
+            <button type="button" id="calcRank" class="btn primary">Рассчитать рейтинг</button>
+            <button type="button" id="exportRank" class="btn">Сохранить рейтинг CSV</button>
+          </div>
+          <div id="metaRank" class="meta">Результат пока не рассчитан</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="rankTable">
+          <thead>
+            <tr>
+              <th style="width:55px">№</th>
+              <th style="width:80px">ID</th>
+              <th>Команда</th>
+              <th class="right">Рейтинг</th>
+              <th class="right">Коэф. силы</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB TEAMS -->
+    <section id="tab-teams" class="panel">
+      <div class="small">
+        Справочник команд по лигам. Логотип: выберите лигу → команду (ID) → файл.
+      </div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:10px;">
+        <div class="field" style="min-width:180px">
+          <label>Лига</label>
+          <select id="teamsLeague">
+            <option value="epl">English Premier League</option>
+            <option value="la_liga">La Liga</option>
+            <option value="bundesliga">Bundesliga</option>
+            <option value="serie_a">Serie A</option>
+            <option value="ligue_1">Ligue 1</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+        <div class="field" style="min-width:180px;flex:1">
+          <label>Команда (ID)</label>
+          <select id="teamsLogoTeam"></select>
+        </div>
+        <div class="field" style="flex:1;min-width:180px">
+          <label>Логотип (PNG или JPEG)</label>
+          <input type="file" id="teamsLogoFile" accept="image/png,image/jpeg,.png,.jpg,.jpeg" />
+        </div>
+        <div class="field" style="align-self:flex-end">
+          <button type="button" id="teamsLogoUpload" class="btn primary">Загрузить</button>
+        </div>
+        <div class="field" style="align-self:flex-end">
+          <button type="button" id="teamsLogoRemove" class="btn">Удалить</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="teamsTable">
+          <thead>
+            <tr>
+              <th style="width:42px"></th>
+              <th style="width:55px">№</th>
+              <th>Команда</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td></td><td class="right">1</td><td>Arsenal</td></tr>
+            <tr><td></td><td class="right">2</td><td>Aston Villa</td></tr>
+            <tr><td></td><td class="right">3</td><td>Bournemouth</td></tr>
+            <tr><td></td><td class="right">4</td><td>Brentford</td></tr>
+            <tr><td></td><td class="right">5</td><td>Brighton</td></tr>
+            <tr><td></td><td class="right">6</td><td>Burnley</td></tr>
+            <tr><td></td><td class="right">7</td><td>Chelsea</td></tr>
+            <tr><td></td><td class="right">8</td><td>Crystal Palace</td></tr>
+            <tr><td></td><td class="right">9</td><td>Everton</td></tr>
+            <tr><td></td><td class="right">10</td><td>Fulham</td></tr>
+            <tr><td></td><td class="right">11</td><td>Leeds</td></tr>
+            <tr><td></td><td class="right">12</td><td>Liverpool</td></tr>
+            <tr><td></td><td class="right">13</td><td>Man City</td></tr>
+            <tr><td></td><td class="right">14</td><td>Man United</td></tr>
+            <tr><td></td><td class="right">15</td><td>Newcastle</td></tr>
+            <tr><td></td><td class="right">16</td><td>Nott'm Forest</td></tr>
+            <tr><td></td><td class="right">17</td><td>Sunderland</td></tr>
+            <tr><td></td><td class="right">18</td><td>Tottenham</td></tr>
+            <tr><td></td><td class="right">19</td><td>West Ham</td></tr>
+            <tr><td></td><td class="right">20</td><td>Wolves</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+        <div class="field" style="flex:1;min-width:160px">
+          <label>Новая команда</label>
+          <input id="teamsNewName" placeholder="Название" />
+        </div>
+        <div class="field" style="align-self:flex-end">
+          <button type="button" id="teamsAdd" class="btn">Добавить</button>
+        </div>
+      </div>
+      <div id="metaTeams" class="meta" style="margin-top:10px">English Premier League — 20 команд</div>
+    </section>
+    <script>
+    (function teamsBootstrap(){
+      var TITLES = {
+        epl:'English Premier League', la_liga:'La Liga', bundesliga:'Bundesliga',
+        serie_a:'Serie A', ligue_1:'Ligue 1'
+      };
+      var SEED = {
+        bundesliga:['Augsburg','Bayern Munich','Dortmund','Ein Frankfurt','FC Koln','Freiburg','Hamburg','Heidenheim','Hoffenheim','Leverkusen',"M'gladbach",'Mainz','RB Leipzig','St Pauli','Stuttgart','Union Berlin','Werder Bremen','Wolfsburg'],
+        epl:['Arsenal','Aston Villa','Bournemouth','Brentford','Brighton','Burnley','Chelsea','Crystal Palace','Everton','Fulham','Leeds','Liverpool','Man City','Man United','Newcastle',"Nott'm Forest",'Sunderland','Tottenham','West Ham','Wolves'],
+        la_liga:['Alaves','Ath Bilbao','Ath Madrid','Barcelona','Betis','Celta','Elche','Espanol','Getafe','Girona','Levante','Mallorca','Osasuna','Oviedo','Real Madrid','Sevilla','Sociedad','Valencia','Vallecano','Villarreal'],
+        ligue_1:['Angers','Auxerre','Brest','Le Havre','Lens','Lille','Lorient','Lyon','Marseille','Metz','Monaco','Nantes','Nice','Paris FC','Paris SG','Rennes','Strasbourg','Toulouse'],
+        serie_a:['Atalanta','Bologna','Cagliari','Como','Cremonese','Fiorentina','Genoa','Inter','Juventus','Lazio','Lecce','Milan','Napoli','Parma','Pisa','Roma','Sassuolo','Torino','Udinese','Verona']
+      };
+      window.__TEAMS_SEED = SEED;
+      window.__renderTeamsBootstrap = function(league){
+        if (window.refreshTeamsTable) {
+          window.refreshTeamsTable(league);
+          return;
+        }
+        var sel = document.getElementById('teamsLeague');
+        var lg = league || (sel && sel.value) || 'epl';
+        var list = SEED[lg] || [];
+        var tbody = document.querySelector('#teamsTable tbody');
+        if (!tbody) return;
+        var html = '';
+        for (var i = 0; i < list.length; i++) {
+          html += '<tr><td></td><td class="right">' + (i+1) + '</td><td>' + list[i].replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td></tr>';
+        }
+        tbody.innerHTML = html;
+        var meta = document.getElementById('metaTeams');
+        if (meta) meta.textContent = (TITLES[lg] || lg) + ' — ' + list.length + ' команд';
+        if (sel && sel.value !== lg) sel.value = lg;
+        if (window.fillLogoTeamSelect) window.fillLogoTeamSelect(lg);
+      };
+      function hookTeamsLeague(){
+        var sel = document.getElementById('teamsLeague');
+        if (!sel || sel.__teamsHooked) return;
+        sel.__teamsHooked = true;
+        sel.addEventListener('change', function(){
+          if (window.refreshTeamsTable) window.refreshTeamsTable(sel.value);
+          else window.__renderTeamsBootstrap(sel.value);
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function(){ hookTeamsLeague(); window.__renderTeamsBootstrap('epl'); });
+      } else {
+        hookTeamsLeague();
+        window.__renderTeamsBootstrap('epl');
+      }
+    })();
+    </script>
+
+    <!-- TAB SHIN -->
+    <section id="tab-shin" class="panel">
+      <div class="small">
+        Метод <strong>Shin</strong>: P1/P2 — Shin; ничья — px(d). Команда 1 — хозяин.
+        Приоритет: общий соперник → лига (≥3 матча) → предыдущий сезон.
+      </div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:10px;">
+        <div class="field" style="min-width:140px;flex:1">
+          <label>Команда 1</label>
+          <select id="shinTeam1"></select>
+        </div>
+        <div class="field" style="min-width:140px;flex:1">
+          <label>Команда 2</label>
+          <select id="shinTeam2"></select>
+        </div>
+        <div class="field" style="min-width:160px">
+          <label>Лига</label>
+          <select id="shinLeague">
+            <option value="epl">English Premier League</option>
+            <option value="la_liga">La Liga</option>
+            <option value="bundesliga">Bundesliga</option>
+            <option value="serie_a">Serie A</option>
+            <option value="ligue_1">Ligue 1</option>
+          </select>
+        </div>
+        <div class="field" style="min-width:100px">
+          <label>Сезон</label>
+          <input id="shinSeason" value="2025-26" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button type="button" id="calcShin" class="btn primary">Рассчитать</button>
+      </div>
+      <div id="shinEmpty" class="shin-empty">
+        Укажите команды, лигу и сезон (данные — вкладка «История»).
+      </div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: team-logos-v4</div>
+      <div id="shinResult" class="shin-result">
+        <div id="shinTitle" class="shin-title"></div>
+        <div class="table-wrap shin-table-wrap">
+          <table class="shin-table" id="shinOddsTable">
+            <thead>
+              <tr>
+                <th>Исход</th>
+                <th class="right">k (коэфф.)</th>
+                <th class="right">p, %</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="table-wrap shin-table-wrap" style="margin-top:10px">
+          <table class="shin-table meta" id="shinMetaTable">
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="small" style="margin-top:10px;font-weight:600">Подробный расчёт</div>
+        <pre id="shinDetails" class="shin-details"></pre>
+      </div>
+    </section>
+
+    <!-- TAB HISTORY -->
+    <section id="tab-hist" class="panel">
+      <div class="small">
+        Импорт истории сезона (формат Excel): Match Date, Team Home, 1 Odds, X Odds, 2 Odds, Away Team, …
+        Все команды должны быть заранее в справочнике лиги.
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <div class="field" style="flex:1;min-width:160px">
+          <label>Лига</label>
+          <select id="histLeague">
+            <option value="epl">English Premier League</option>
+            <option value="la_liga">La Liga</option>
+            <option value="bundesliga">Bundesliga</option>
+            <option value="serie_a">Serie A</option>
+            <option value="ligue_1">Ligue 1</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:120px">
+          <label>Сезон</label>
+          <input id="histSeason" value="2024-25" />
+        </div>
+      </div>
+      <div class="field" style="margin-top:8px;">
+        <label>Таблица (вставка / файл CSV)</label>
+        <textarea id="histText" style="min-height:160px"></textarea>
+        <div class="row">
+          <input id="histFile" type="file" accept=".csv,text/csv" />
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="histSave" class="btn primary">Сохранить в хранилище</button>
+        <button type="button" id="histView" class="btn">Просмотр истории</button>
+        <button type="button" id="histLoadSample" class="btn">Пример EPL</button>
+        <button type="button" id="histMetrics" class="btn">H / draw по лиге</button>
+      </div>
+      <div class="small" style="margin-top:6px;">Сохранённые сезоны (тап — быстрый просмотр):</div>
+      <div class="table-wrap">
+        <table id="histTable">
+          <thead>
+            <tr>
+              <th>Лига</th>
+              <th>Сезон</th>
+              <th class="right">Матчей</th>
+              <th>Импорт</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="small" style="margin-top:10px;">Матчи выбранного сезона:</div>
+      <div class="table-wrap">
+        <table id="histViewTable">
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Дома</th>
+              <th class="right">1</th>
+              <th class="right">X</th>
+              <th class="right">2</th>
+              <th>Гости</th>
+              <th class="right">Счёт</th>
+              <th>Исх.</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="metaHist" class="meta">Загрузите сезон или нажмите «Просмотр истории».</div>
+    </section>
+  </div>
+
+  <script>
+    (function appMain() {
+    try {
+    // ---------------- Helpers ----------------
+    const setJsStatus = (msg, err) => {
+      const el = document.getElementById('jsStatus');
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.toggle('err', !!err);
+    };
+    const bindClick = (id, fn) => {
+      const el = document.getElementById(id);
+      if (!el) throw new Error('Нет элемента #' + id);
+      el.addEventListener('click', fn);
+    };
+    const fmt = (x, d=6) => Number(x).toFixed(d).replace('.', ',').replace(/,?0+$/, '').replace(/,$/, '');
+    const parseNum = (s) => {
+      const v = parseFloat(String(s).trim().replace(',', '.'));
+      if (Number.isNaN(v)) throw new Error(`Не число: ${s}`);
+      return v;
+    };
+    const parseColumn = (text) => text.split(/\r?\n/).map(v => v.trim()).filter(Boolean).map(parseNum);
+    const percentile = (sorted, p) => {
+      if (!sorted.length) throw new Error('Пустой список');
+      const pos = (sorted.length - 1) * p;
+      const lo = Math.floor(pos), hi = Math.ceil(pos);
+      if (lo === hi) return sorted[lo];
+      const w = pos - lo;
+      return sorted[lo] * (1 - w) + sorted[hi] * w;
+    };
+    const trimmed = (arr, frac=0.05) => {
+      const s = [...arr].sort((a,b)=>a-b);
+      const k = Math.floor(s.length * frac);
+      return k === 0 ? s : s.slice(k, s.length - k);
+    };
+
+    // Tabs: handled by bootstrap script in <head> (window.__switchTab)
+
+    // ---------------- A Calculator ----------------
+    function avg(values, method){
+      if (!values.length) throw new Error('Нет данных');
+      if (method === 'arith') return values.reduce((a,b)=>a+b,0)/values.length;
+      if (method === 'geom') return Math.exp(values.map(Math.log).reduce((a,b)=>a+b,0)/values.length);
+      if (method === 'trim5') {
+        const c = trimmed(values,0.05); return c.reduce((a,b)=>a+b,0)/c.length;
+      }
+      if (method === 'trimGeom5') {
+        const c = trimmed(values.map(Math.log),0.05); return Math.exp(c.reduce((a,b)=>a+b,0)/c.length);
+      }
+      throw new Error('Неизвестный метод');
+    }
+    const median = (vals) => {
+      const s=[...vals].sort((a,b)=>a-b), n=s.length, m=Math.floor(n/2);
+      return n%2 ? s[m] : (s[m-1]+s[m])/2;
+    };
+
+    function runA(leagueMode=false){
+      const home = parseColumn(document.getElementById('homeOdds').value);
+      const away = parseColumn(document.getElementById('awayOdds').value);
+      if (home.length !== away.length) throw new Error('Число коэффициентов дома/гости не совпадает');
+      const vals = home.map((h,i)=>{
+        if (h<=1 || away[i]<=1) throw new Error('Коэффициенты должны быть > 1');
+        return (away[i]-1)/(h-1);
+      });
+
+      let flags = vals.map(()=>false), bounds=null;
+      const useOut = document.getElementById('dropOutliers').checked;
+      if (useOut && vals.length>=4){
+        const s=[...vals].sort((a,b)=>a-b);
+        const q1=percentile(s,0.25), q3=percentile(s,0.75), iqr=q3-q1;
+        const lo=q1-1.5*iqr, up=q3+1.5*iqr;
+        flags = vals.map(v => v<lo || v>up);
+        bounds = {q1,q3,iqr,lo,up};
+      }
+      const valid = vals.filter((v,i)=>!flags[i]);
+      if (!valid.length) throw new Error('Все значения помечены как аномалии');
+
+      document.getElementById('aOutput').value = vals.map((v,i)=>
+        `${fmt(Math.round(v*100)/100,3)}${flags[i]?'  ✕':''}`
+      ).join('\n');
+
+      const method = document.getElementById('avgMethod').value;
+      const meanSel = avg(valid, method), geom = avg(valid,'geom'), ar = avg(valid,'arith'), med=median(valid);
+
+      document.getElementById('meanA').value = fmt(meanSel, 12);
+      document.getElementById('arithA').value = fmt(ar, 12);
+      document.getElementById('medianA').value = fmt(med, 12);
+      document.getElementById('resultA').value = leagueMode ? fmt(geom, 12) : fmt(geom, 3);
+
+      const lines = [`строк: ${vals.length}   валидных: ${valid.length}   аномалий: ${flags.filter(Boolean).length}`];
+      if(bounds){
+        lines.push(`Q1=${fmt(bounds.q1,3)}  Q3=${fmt(bounds.q3,3)}  IQR=${fmt(bounds.iqr,3)}`);
+        lines.push(`границы: [${fmt(bounds.lo,3)} ; ${fmt(bounds.up,3)}]`);
+      }
+      lines.push(`геом=${fmt(geom,4)}  ариф=${fmt(ar,4)}  медиана=${fmt(med,4)}`);
+      document.getElementById('metaA').textContent = lines.join('\n');
+    }
+
+    bindClick('calcA', ()=> {
+      try { runA(false); } catch(e){ alert(e.message); }
+    });
+    bindClick('calcLeagueA', ()=> {
+      try { runA(true); } catch(e){ alert(e.message); }
+    });
+
+    // ---------------- Team Ranking ----------------
+    function parseMatches(text){
+      const raw = text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
+      if (!raw.length) throw new Error('Пустой список матчей');
+      const rows = raw.map(r => r.includes(';') ? r.split(';') : r.split(','));
+      let start = 0;
+      if (rows[0].length>=5){
+        try { parseNum(rows[0][2]); parseNum(rows[0][3]); parseNum(rows[0][4]); }
+        catch (e) { start = 1; }
+      }
+      const matches=[];
+      for(let i=start;i<rows.length;i++){
+        const row = rows[i];
+        if (row.length<5) throw new Error(`Строка ${i+1}: нужно 5 колонок`);
+        const home = row[0].trim(), away = row[1].trim();
+        const o1=parseNum(row[2]), ox=parseNum(row[3]), o2=parseNum(row[4]);
+        if (!home || !away) throw new Error(`Строка ${i+1}: пустое имя команды`);
+        if (home===away) throw new Error(`Строка ${i+1}: команды не могут совпадать`);
+        if (o1<=1 || ox<=1 || o2<=1) throw new Error(`Строка ${i+1}: коэффициенты должны быть >1`);
+        matches.push({home,away,o1,ox,o2});
+      }
+      if (!matches.length) throw new Error('Нет валидных матчей');
+      return matches;
+    }
+
+    function marketDiff(m){
+      const p1r=1/m.o1, pxr=1/m.ox, p2r=1/m.o2, over=p1r+pxr+p2r;
+      const p1=p1r/over, px=pxr/over, p2=p2r/over;
+      const eh=p1+0.5*px, ea=p2+0.5*px;
+      return 400*Math.log10(eh/ea);
+    }
+
+    function marketDiffScores(m){
+      const p1r=1/m.o1, pxr=1/m.ox, p2r=1/m.o2, over=p1r+pxr+p2r;
+      const p1=p1r/over, px=pxr/over, p2=p2r/over;
+      const eh=p1+0.5*px, ea=p2+0.5*px;
+      return { d: 400*Math.log10(eh/ea), eh, ea, px };
+    }
+
+    function shinProb(pi, z){
+      return (Math.sqrt(z*z + 4*(1-z)*pi*pi) - z) / (2*(1-z));
+    }
+    function shinDevig(o1, ox, o2){
+      if (o1<=1||ox<=1||o2<=1) throw new Error('Коэффициенты должны быть > 1');
+      const implied = [1/o1, 1/ox, 1/o2];
+      let lo=0, hi=0.999999;
+      const excess = z => implied.reduce((s,p)=>s+shinProb(p,z),0) - 1;
+      if (excess(lo) < 0) {
+        const probs = implied.map(p => shinProb(p, lo));
+        const t = probs.reduce((a,b)=>a+b,0);
+        return probs.map(p => p/t);
+      }
+      for (let i=0;i<80;i++){
+        const mid = 0.5*(lo+hi);
+        if (excess(mid) > 0) lo = mid; else hi = mid;
+      }
+      const z = 0.5*(lo+hi);
+      const probs = implied.map(p => shinProb(p, z));
+      const t = probs.reduce((a,b)=>a+b,0);
+      return probs.map(p => p/t);
+    }
+    function shinMarketDiff(m){
+      const [p1,px,p2] = shinDevig(m.o1, m.ox, m.o2);
+      const eh=p1+0.5*px, ea=p2+0.5*px;
+      return 400*Math.log10(eh/ea);
+    }
+
+    function solve(A,b){
+      const n=A.length;
+      for(let c=0;c<n;c++){
+        let piv=c;
+        for(let r=c+1;r<n;r++) if(Math.abs(A[r][c])>Math.abs(A[piv][c])) piv=r;
+        if (Math.abs(A[piv][c])<1e-12) throw new Error('Система вырождена (недостаточно связности матчей)');
+        [A[c],A[piv]]=[A[piv],A[c]]; [b[c],b[piv]]=[b[piv],b[c]];
+        const pv=A[c][c];
+        for(let j=c;j<n;j++) A[c][j]/=pv; b[c]/=pv;
+        for(let r=c+1;r<n;r++){
+          const f=A[r][c]; if(!f) continue;
+          for(let j=c;j<n;j++) A[r][j]-=f*A[c][j];
+          b[r]-=f*b[c];
+        }
+      }
+      const x=Array(n).fill(0);
+      for(let i=n-1;i>=0;i--){
+        let s=b[i];
+        for(let j=i+1;j<n;j++) s-=A[i][j]*x[j];
+        x[i]=s;
+      }
+      return x;
+    }
+
+    function buildRanking(matches, useShin=false){
+      const diffFn = useShin ? shinMarketDiff : marketDiff;
+      const teamSet = new Set();
+      matches.forEach(m => { teamSet.add(m.home); teamSet.add(m.away); });
+      const teams = [...teamSet].sort();
+      const idx = new Map(teams.map((t,i)=>[t,i]));
+      const p = teams.length + 1; // + H
+
+      const rows=[], targets=[], diffs=[];
+      matches.forEach(m => {
+        const d=diffFn(m); diffs.push({home:m.home, away:m.away, d});
+        const c=Array(p).fill(0);
+        c[idx.get(m.home)] = 1;
+        c[idx.get(m.away)] = -1;
+        c[p-1] = 1;
+        rows.push(c); targets.push(d);
+      });
+      // gauge sum(R)=0
+      rows.push([...Array(teams.length).fill(1), 0]);
+      targets.push(0);
+
+      const ATA = Array.from({length:p},()=>Array(p).fill(0));
+      const ATb = Array(p).fill(0);
+      rows.forEach((c,ridx)=>{
+        const y=targets[ridx];
+        for(let i=0;i<p;i++){
+          if(!c[i]) continue;
+          ATb[i]+=c[i]*y;
+          for(let j=0;j<p;j++){
+            if(!c[j]) continue;
+            ATA[i][j]+=c[i]*c[j];
+          }
+        }
+      });
+      const x = solve(ATA, ATb);
+      const H = x[p-1];
+      const ratings = teams.map(t => ({team:t, rating:x[idx.get(t)]}));
+      const withCoef = ratings.map(r => ({...r, coef:Math.pow(10,r.rating/400)}))
+                              .sort((a,b)=>b.rating-a.rating);
+
+      let mse=0;
+      diffs.forEach(d=>{
+        const rh = ratings[idx.get(d.home)].rating;
+        const ra = ratings[idx.get(d.away)].rating;
+        const pred = rh-ra+H;
+        mse += (pred-d.d)*(pred-d.d);
+      });
+      const rmse = Math.sqrt(mse/diffs.length);
+
+      return {
+        teams: withCoef,
+        H,
+        Hcoef: Math.pow(10,H/400),
+        rmse,
+        matches: matches.length,
+      };
+    }
+
+    let latestRanking = null;
+    let latestRankingIds = {};
+
+    function renderRanking(result, teamIds){
+      const tbody = document.querySelector('#rankTable tbody');
+      tbody.innerHTML = '';
+      const topN = parseInt(document.getElementById('topN').value || '0', 10);
+      const rows = (topN>0 ? result.teams.slice(0,topN) : result.teams);
+      const ids = teamIds || latestRankingIds || {};
+      rows.forEach((r,i)=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${i+1}</td><td>${escapeHtml(ids[r.team]||'')}</td><td>${escapeHtml(r.team)}</td><td class="right">${fmt(r.rating,3)}</td><td class="right">${fmt(r.coef,4)}</td>`;
+        tbody.appendChild(tr);
+      });
+      document.getElementById('metaRank').textContent =
+        `Матчей: ${result.matches}\n`+
+        `Команд: ${result.teams.length}\n`+
+        `H: ${fmt(result.H,3)}  (x${fmt(result.Hcoef,4)})\n`+
+        `RMSE: ${fmt(result.rmse,3)}`;
+    }
+
+    bindClick('calcRank', ()=>{
+      try{
+        const league = document.getElementById('rankLeague').value;
+        const matches = parseMatches(document.getElementById('matchesText').value);
+        latestRankingIds = validateMatchesTeams(league, matches);
+        latestRanking = buildRanking(matches);
+        renderRanking(latestRanking, latestRankingIds);
+      }catch(e){ alert(e.message); }
+    });
+
+    document.getElementById('csvFile').addEventListener('change', async (e)=>{
+      const file = e.target.files && e.target.files[0];
+      if(!file) return;
+      const text = await file.text();
+      document.getElementById('matchesText').value = text;
+    });
+
+    bindClick('exportRank', ()=>{
+      if(!latestRanking){ alert('Сначала рассчитайте рейтинг'); return; }
+      const head = 'rank,team,rating,strength_coef\n';
+      const body = latestRanking.teams.map((r,i)=>`${i+1},"${r.team.replace(/"/g,'""')}",${r.rating.toFixed(6)},${r.coef.toFixed(8)}`).join('\n');
+      const blob = new Blob([head+body], {type:'text/csv;charset=utf-8'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'rating.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+
+    // ---------------- Team registry (localStorage) ----------------
+    const TEAMS_KEY = 'FairOddsCalc_teams_v1';
+    const LOGOS_KEY = 'FairOddsCalc_logos_v1';
+    const NEW_TEAM_RATING = 0;
+    const TEAMS_SEED = {
+      bundesliga: ['Augsburg','Bayern Munich','Dortmund','Ein Frankfurt','FC Koln','Freiburg','Hamburg','Heidenheim','Hoffenheim','Leverkusen',"M'gladbach",'Mainz','RB Leipzig','St Pauli','Stuttgart','Union Berlin','Werder Bremen','Wolfsburg'],
+      epl: ['Arsenal','Aston Villa','Bournemouth','Brentford','Brighton','Burnley','Chelsea','Crystal Palace','Everton','Fulham','Leeds','Liverpool','Man City','Man United','Newcastle',"Nott'm Forest",'Sunderland','Tottenham','West Ham','Wolves'],
+      la_liga: ['Alaves','Ath Bilbao','Ath Madrid','Barcelona','Betis','Celta','Elche','Espanol','Getafe','Girona','Levante','Mallorca','Osasuna','Oviedo','Real Madrid','Sevilla','Sociedad','Valencia','Vallecano','Villarreal'],
+      ligue_1: ['Angers','Auxerre','Brest','Le Havre','Lens','Lille','Lorient','Lyon','Marseille','Metz','Monaco','Nantes','Nice','Paris FC','Paris SG','Rennes','Strasbourg','Toulouse'],
+      serie_a: ['Atalanta','Bologna','Cagliari','Como','Cremonese','Fiorentina','Genoa','Inter','Juventus','Lazio','Lecce','Milan','Napoli','Parma','Pisa','Roma','Sassuolo','Torino','Udinese','Verona'],
+    };
+
+    function validateLogoFile(file){
+      const t = (file.type || '').toLowerCase();
+      const name = (file.name || '').toLowerCase();
+      const okType = t === 'image/png' || t === 'image/jpeg';
+      const okExt = /\.(png|jpe?g)$/.test(name);
+      if (!okType && !okExt){
+        throw new Error('Поддерживаются только PNG и JPEG.');
+      }
+    }
+    function loadLogoStore(){
+      try {
+        const raw = localStorage.getItem(LOGOS_KEY);
+        if (!raw) return {};
+        const data = JSON.parse(raw);
+        return (data && typeof data === 'object') ? data : {};
+      } catch (e) { return {}; }
+    }
+    function saveLogoStore(data){
+      localStorage.setItem(LOGOS_KEY, JSON.stringify(data));
+    }
+    function bundledLogoUrl(teamId){
+      const league = String(teamId || '').split(':')[0];
+      if (!league) return '';
+      return `logos/${league}/${String(teamId).replace(':', '_')}.png`;
+    }
+    function getTeamLogoSrc(teamId){
+      const stored = loadLogoStore()[teamId];
+      if (stored) return stored;
+      return bundledLogoUrl(teamId);
+    }
+    function hasTeamLogo(teamId){
+      return Boolean(loadLogoStore()[teamId]);
+    }
+    function setTeamLogoData(teamId, dataUrl){
+      const store = loadLogoStore();
+      store[teamId] = dataUrl;
+      saveLogoStore(store);
+    }
+    function removeTeamLogoData(teamId){
+      const store = loadLogoStore();
+      delete store[teamId];
+      saveLogoStore(store);
+    }
+    function teamLogoImgHtml(teamId, size=24){
+      const src = getTeamLogoSrc(teamId);
+      if (!src) return '';
+      return `<img class="team-logo" src="${src}" alt="" width="${size}" height="${size}" loading="lazy" onerror="this.style.display='none'" />`;
+    }
+
+    function seedDefaultTeams(force=false){
+      const cur = loadTeamStore();
+      if (!force && cur.teams && cur.teams.length) return false;
+      const now = new Date().toISOString();
+      const teams = [];
+      const next_seq = {};
+      Object.entries(TEAMS_SEED).forEach(([league, names]) => {
+        next_seq[league] = names.length + 1;
+        names.forEach((name, i) => {
+          teams.push({ id: `${league}:${i+1}`, league, name, created_at: now, updated_at: now });
+        });
+      });
+      saveTeamStore({ version: 1, next_seq, teams });
+      return true;
+    }
+
+    function emptyTeamStore(){
+      return { version: 1, next_seq: {}, teams: [] };
+    }
+    function loadTeamStore(){
+      try {
+        const raw = localStorage.getItem(TEAMS_KEY);
+        if (!raw) return emptyTeamStore();
+        const data = JSON.parse(raw);
+        data.next_seq = data.next_seq || {};
+        data.teams = data.teams || [];
+        return data;
+      } catch (e) { return emptyTeamStore(); }
+    }
+    function saveTeamStore(data){
+      localStorage.setItem(TEAMS_KEY, JSON.stringify(data));
+    }
+    function listTeams(league){
+      const lg = league;
+      return loadTeamStore().teams
+        .filter(t => t.league === lg)
+        .map(t => ({ ...t }))
+        .sort((a,b) => a.name.localeCompare(b.name, 'ru') || a.id.localeCompare(b.id));
+    }
+    function getTeamById(teamId){
+      return loadTeamStore().teams.find(t => t.id === teamId) || null;
+    }
+    function nextTeamId(store, league){
+      const n = (store.next_seq[league] || 1);
+      store.next_seq[league] = n + 1;
+      return `${league}:${n}`;
+    }
+    function addTeamEntry(league, name){
+      const nm = String(name||'').trim();
+      if (!nm) throw new Error('Название команды не может быть пустым.');
+      const store = loadTeamStore();
+      const existing = store.teams.find(t => t.league === league && t.name.toLowerCase() === nm.toLowerCase());
+      if (existing) return existing;
+      const now = new Date().toISOString();
+      const ent = { id: nextTeamId(store, league), league, name: nm, created_at: now, updated_at: now };
+      store.teams.push(ent);
+      saveTeamStore(store);
+      return ent;
+    }
+    function syncTeamsFromMatches(matches, league){
+      let added = 0;
+      const seen = new Set();
+      (matches || []).forEach(m => {
+        [m.home, m.away].forEach(nm => {
+          const n = String(nm||'').trim();
+          if (!n) return;
+          const key = n.toLowerCase();
+          if (seen.has(key)) return;
+          seen.add(key);
+          const exists = listTeams(league).some(t => t.name.toLowerCase() === key);
+          if (!exists){ addTeamEntry(league, n); added++; }
+        });
+      });
+      return added;
+    }
+    function validateTeamsRegistered(league, names){
+      const unknown = [];
+      const out = {};
+      [...new Set((names||[]).map(n => String(n||'').trim()).filter(Boolean))].forEach(ref => {
+        try {
+          const tid = resolveTeamId(league, ref);
+          out[ref] = tid;
+          out[teamNameById(tid)] = tid;
+        } catch (e) {
+          unknown.push(ref);
+        }
+      });
+      if (unknown.length){
+        const uniq = [...new Set(unknown)].sort((a,b)=>a.localeCompare(b,'ru'));
+        throw new Error(
+          `Система не знает команд без id в справочнике (${LEAGUE_TITLES[league]}): ${uniq.join(', ')}. ` +
+          'Добавьте их во вкладке «Справочник».'
+        );
+      }
+      return out;
+    }
+    function validateMatchesTeams(league, matches){
+      const names = [];
+      (matches||[]).forEach(m => {
+        if (m.home) names.push(m.home);
+        if (m.away) names.push(m.away);
+        if (m.home_team) names.push(m.home_team);
+        if (m.away_team) names.push(m.away_team);
+      });
+      return validateTeamsRegistered(league, names);
+    }
+    function resolveTeamId(league, ref){
+      const r = String(ref||'').trim();
+      if (!r) throw new Error('Не указана команда (выберите из справочника).');
+      if (/^[a-z0-9_]+:\d+$/.test(r)){
+        const ent = getTeamById(r);
+        if (!ent) throw new Error(`Команда с id ${r} не найдена в справочнике.`);
+        if (ent.league !== league) throw new Error(`Команда ${r} относится к другой лиге.`);
+        return ent.id;
+      }
+      if (r.includes(' — ')){
+        const tid = r.split(' — ')[0].trim();
+        return resolveTeamId(league, tid);
+      }
+      const hit = listTeams(league).find(t => t.name.toLowerCase() === r.toLowerCase());
+      if (hit) return hit.id;
+      throw new Error(`Команда «${r}» не найдена. Добавьте во вкладке «Справочник».`);
+    }
+    function teamNameById(teamId){
+      const ent = getTeamById(teamId);
+      return ent ? ent.name : teamId;
+    }
+    function formatTeamOptions(league){
+      return listTeams(league).map(t => `${t.id} — ${t.name}`);
+    }
+    function parseTeamOption(option){
+      const s = String(option||'').trim();
+      if (s.includes(' — ')){
+        const [tid, name] = s.split(' — ', 2);
+        return { id: tid.trim(), name: name.trim() };
+      }
+      return { id: s, name: teamNameById(s) };
+    }
+    function resolveTeamRef(league, ref, matches){
+      const tid = resolveTeamId(league, ref);
+      const regName = teamNameById(tid);
+      try {
+        return { id: tid, name: resolveTeamInSeason(regName, matches), isNew: false };
+      } catch (e){
+        return { id: tid, name: regName, isNew: true };
+      }
+    }
+    function fillTeamSelect(sel, league, selectedName){
+      sel.innerHTML = '';
+      const teams = listTeams(league);
+      teams.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.name;
+        opt.textContent = t.name;
+        sel.appendChild(opt);
+      });
+      if (selectedName && teams.some(t => t.name === selectedName)) sel.value = selectedName;
+      else if (teams.length) sel.selectedIndex = Math.min(sel.id === 'shinTeam2' ? 1 : 0, teams.length - 1);
+    }
+    function fillLogoTeamSelect(league, selectedTeamId=null){
+      const sel = document.getElementById('teamsLogoTeam');
+      if (!sel) return '';
+      sel.innerHTML = '';
+      const teams = listTeams(league);
+      if (!teams.length) {
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = '— нет команд в лиге —';
+        sel.appendChild(empty);
+        return '';
+      }
+      teams.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        const seq = String(t.id).split(':').pop();
+        opt.textContent = `${seq} — ${t.name}`;
+        sel.appendChild(opt);
+      });
+      if (selectedTeamId && teams.some(t => t.id === selectedTeamId)) sel.value = selectedTeamId;
+      else sel.selectedIndex = 0;
+      return sel.value || '';
+    }
+    window.fillLogoTeamSelect = fillLogoTeamSelect;
+    function selectedLogoTeamId(){
+      const sel = document.getElementById('teamsLogoTeam');
+      return sel ? String(sel.value || '').trim() : '';
+    }
+    function renderTeamsTable(league){
+      const tbody = document.querySelector('#teamsTable tbody');
+      tbody.innerHTML = '';
+      const teams = listTeams(league);
+      const activeId = selectedLogoTeamId();
+      teams.forEach((t, i) => {
+        const tr = document.createElement('tr');
+        tr.dataset.teamId = t.id;
+        if (t.id === activeId) tr.style.background = '#eef2ff';
+        tr.innerHTML =
+          `<td class="logo-cell">${teamLogoImgHtml(t.id)}</td>` +
+          `<td class="right">${i+1}</td>` +
+          `<td>${escapeHtml(t.name)} <span class="small" style="color:#888">(${escapeHtml(t.id)})</span></td>`;
+        tr.addEventListener('click', () => {
+          fillLogoTeamSelect(league, t.id);
+          renderTeamsTable(league);
+        });
+        tbody.appendChild(tr);
+      });
+      document.getElementById('metaTeams').textContent = teams.length
+        ? `${LEAGUE_TITLES[league]} — ${teams.length} команд`
+        : `${LEAGUE_TITLES[league]} — справочник пуст`;
+    }
+
+    document.getElementById('teamsLeague').addEventListener('change', ()=>{
+      refreshTeamsTable();
+    });
+
+    function refreshTeamsTable(league){
+      const lg = league || document.getElementById('teamsLeague').value;
+      fillLogoTeamSelect(lg);
+      renderTeamsTable(lg);
+    }
+    window.refreshTeamsTable = refreshTeamsTable;
+
+    bindClick('teamsAdd', ()=>{
+      try {
+        const league = document.getElementById('teamsLeague').value;
+        const name = document.getElementById('teamsNewName').value;
+        const ent = addTeamEntry(league, name);
+        document.getElementById('teamsNewName').value = '';
+        fillLogoTeamSelect(league, ent.id);
+        renderTeamsTable(league);
+        refreshShinTeamSelects();
+        alert(`Добавлено: ${ent.name} (${ent.id})`);
+      } catch(e){ alert(e.message); }
+    });
+
+    bindClick('teamsLogoUpload', () => {
+      const league = document.getElementById('teamsLeague').value;
+      const teamId = selectedLogoTeamId();
+      const fileInput = document.getElementById('teamsLogoFile');
+      const file = fileInput.files && fileInput.files[0];
+      if (!teamId){
+        alert(`Выберите команду лиги ${LEAGUE_TITLES[league] || league}.`);
+        return;
+      }
+      if (!getTeamById(teamId)){
+        alert(`Команда с id «${teamId}» не найдена в справочнике.`);
+        return;
+      }
+      if (!file){
+        alert('Выберите файл логотипа (PNG или JPEG).');
+        return;
+      }
+      try {
+        validateLogoFile(file);
+      } catch (e) {
+        alert(e.message);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        setTeamLogoData(teamId, reader.result);
+        renderTeamsTable(league);
+        fileInput.value = '';
+        const ent = getTeamById(teamId);
+        alert(`Логотип сохранён для ${ent ? ent.name : teamId}.`);
+      };
+      reader.onerror = () => alert('Не удалось прочитать файл.');
+      reader.readAsDataURL(file);
+    });
+
+    bindClick('teamsLogoRemove', () => {
+      const league = document.getElementById('teamsLeague').value;
+      const teamId = selectedLogoTeamId();
+      if (!teamId){
+        alert(`Выберите команду лиги ${LEAGUE_TITLES[league] || league}.`);
+        return;
+      }
+      const ent = getTeamById(teamId);
+      if (!ent){
+        alert(`Команда с id «${teamId}» не найдена в справочнике.`);
+        return;
+      }
+      if (!hasTeamLogo(teamId)){
+        alert(`У команды ${ent.name} нет загруженного логотипа.`);
+        return;
+      }
+      removeTeamLogoData(teamId);
+      renderTeamsTable(league);
+      alert(`Логотип удалён для ${ent.name}.`);
+    });
+
+    function refreshShinTeamSelects(){
+      const league = document.getElementById('shinLeague').value;
+      fillTeamSelect(document.getElementById('shinTeam1'), league, document.getElementById('shinTeam1').value);
+      fillTeamSelect(document.getElementById('shinTeam2'), league, document.getElementById('shinTeam2').value);
+    }
+
+    // ---------------- History (localStorage) ----------------
+    const HIST_KEY = 'FairOddsCalc_history_v1';
+    const LEAGUE_TITLES = {
+      epl: 'English Premier League',
+      la_liga: 'La Liga',
+      bundesliga: 'Bundesliga',
+      serie_a: 'Serie A',
+      ligue_1: 'Ligue 1',
+    };
+    const LEAGUE_DEFAULT_H = { epl: 55, la_liga: 60, bundesliga: 58, serie_a: 62, ligue_1: 65 };
+
+    const HIST_ALIASES = {
+      date: ['matchdate','date'],
+      home_team: ['teamhome','hometeam','home_team','home','team1'],
+      away_team: ['awayteam','away_team','away','team2'],
+      odds_1: ['1odds','odds1','odds_1','p1','1'],
+      odds_x: ['xodds','oddsx','odds_x','px','x'],
+      odds_2: ['2odds','odds2','odds_2','p2','2'],
+      home_goals: ['homegoals','home_goals','hg'],
+      away_goals: ['awaygoals','away_goals','ag'],
+      result: ['result','ftr'],
+      derby: ['derby'],
+      venue_type: ['venuetype','venue_type','venue'],
+      comment: ['comment','note'],
+    };
+    const HIST_LOOKUP = {};
+    Object.entries(HIST_ALIASES).forEach(([field, aliases]) => {
+      aliases.forEach(a => { HIST_LOOKUP[a.replace(/[^a-z0-9]/gi,'').toLowerCase()] = field; });
+    });
+
+    const normHeader = (s) => String(s).trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+
+    const SAMPLE_EPL = `Match Date,Team Home,1 Odds,X Odds,2 Odds,Away Team,Derby,Venue Type,Home Goals,Away Goals,Result,Comment
+2025-08-15,Liverpool,1.30,6.25,9.75,Bournemouth,,,4,2,H,
+2025-08-16,Aston Villa,2.38,3.61,3.03,Newcastle,,,0,0,D,
+2025-08-16,Brighton,1.88,3.84,4.22,Fulham,,,1,1,D,
+2025-08-16,Sunderland,3.47,3.26,2.31,West Ham,,,3,0,H,
+2025-08-16,Tottenham,1.54,4.25,6.87,Burnley,,,3,0,H,
+2025-08-16,Wolves,6.55,4.45,1.53,Man City,,,0,4,A,
+2025-08-17,Chelsea,1.86,3.78,4.39,Crystal Palace,City derby,,0,0,D,
+2025-08-17,Nott'm Forest,1.93,3.60,4.25,Brentford,,,3,1,H,
+2025-08-17,Man United,3.86,3.68,2.01,Arsenal,,,0,1,A,
+2025-08-18,Leeds,2.47,3.26,3.16,Everton,,,1,0,H,
+2025-08-22,West Ham,4.50,3.85,1.82,Chelsea,City derby,,1,5,A,
+2025-08-23,Man City,1.53,4.80,6.00,Tottenham,,,0,2,A,
+2025-08-23,Bournemouth,1.82,3.87,4.49,Wolves,,,1,0,H,
+2025-08-23,Brentford,3.50,3.59,2.15,Aston Villa,,,1,0,H,
+2025-08-23,Burnley,2.41,3.19,3.34,Sunderland,,,2,0,H,
+2025-08-23,Arsenal,1.34,5.50,9.90,Leeds,,,5,0,H,
+2025-08-24,Crystal Palace,2.41,3.33,3.20,Nott'm Forest,,,1,1,D,
+2025-08-24,Everton,3.02,3.45,2.46,Brighton,,,2,0,H,
+2025-08-24,Fulham,3.58,3.55,2.14,Man United,,,1,1,D,
+2025-08-25,Newcastle,2.97,3.76,2.35,Liverpool,,,2,3,A,
+2025-08-30,Chelsea,1.71,3.85,5.45,Fulham,City derby,,2,0,H,
+2025-08-30,Man United,1.41,5.15,7.90,Burnley,,,3,2,H,
+2025-08-30,Sunderland,3.17,3.41,2.38,Brentford,,,2,1,H,
+2025-08-30,Tottenham,1.93,3.83,3.99,Bournemouth,,,0,1,A,
+2025-08-30,Wolves,3.38,3.24,2.36,Everton,,,2,3,A,
+2025-08-30,Leeds,3.72,3.58,2.08,Newcastle,,,0,0,D,
+2025-08-31,Brighton,3.69,3.67,2.06,Man City,,,2,1,H,
+2025-08-31,Nott'm Forest,1.67,4.11,5.24,West Ham,,,0,3,A,
+2025-08-31,Liverpool,2.44,3.39,3.10,Arsenal,,,1,0,H,
+2025-08-31,Aston Villa,2.16,3.55,3.52,Crystal Palace,,,0,3,A,
+2025-09-13,Arsenal,1.43,4.90,8.00,Nott'm Forest,,,3,0,H,
+2025-09-13,Bournemouth,2.43,3.57,2.97,Brighton,,,2,1,H,
+2025-09-13,Crystal Palace,1.71,3.63,5.70,Sunderland,,,0,0,D,
+2025-09-13,Everton,2.66,3.25,2.90,Aston Villa,,,0,0,D,
+2025-09-13,Fulham,2.05,3.43,4.01,Leeds,,,1,0,H,
+2025-09-13,Newcastle,1.36,5.15,9.45,Wolves,,,1,0,H,
+2025-09-13,West Ham,3.30,3.60,2.24,Tottenham,,,0,3,A,
+2025-09-13,Brentford,4.33,3.81,1.87,Chelsea,City derby,,2,2,D,
+2025-09-14,Burnley,9.50,5.70,1.33,Liverpool,,,0,1,A,
+2025-09-14,Man City,1.63,4.36,5.20,Man United,City derby,,3,0,H,
+2025-09-20,Liverpool,1.53,4.45,6.65,Everton,City derby,,2,1,H,
+2025-09-20,Brighton,2.14,3.72,3.43,Tottenham,,,2,2,D,
+2025-09-20,Burnley,3.77,3.39,2.14,Nott'm Forest,,,1,1,D,
+2025-09-20,West Ham,3.25,3.58,2.27,Crystal Palace,,,1,2,A,
+2025-09-20,Wolves,3.08,3.13,2.61,Leeds,,,1,3,A,
+2025-09-20,Man United,2.67,3.74,2.59,Chelsea,,,2,1,H,
+2025-09-20,Fulham,2.19,3.32,3.69,Brentford,City derby,,3,1,H,
+2025-09-21,Bournemouth,2.52,3.24,3.11,Newcastle,,,0,0,D,
+2025-09-21,Sunderland,4.01,3.49,2.03,Aston Villa,,,1,1,D,
+2025-09-21,Arsenal,2.05,3.57,3.85,Man City,,,1,1,D,
+2025-09-27,Brentford,3.43,3.83,2.10,Man United,,,3,1,H,
+2025-09-27,Chelsea,1.94,3.85,3.93,Brighton,,,1,3,A,
+2025-09-27,Crystal Palace,4.30,3.71,1.90,Liverpool,,,2,1,H,
+2025-09-27,Leeds,2.95,3.32,2.59,Bournemouth,,,2,2,D,
+2025-09-27,Man City,1.19,7.75,16.00,Burnley,,,5,1,H,`;
+
+    function loadHistStore(){
+      try {
+        const raw = localStorage.getItem(HIST_KEY);
+        if (!raw) return { leagues: {} };
+        return JSON.parse(raw);
+      } catch (e) { return { leagues: {} }; }
+    }
+    function saveHistStore(store){
+      localStorage.setItem(HIST_KEY, JSON.stringify(store));
+    }
+
+    function parseIntOrNull(s){
+      const t = String(s||'').trim();
+      if (!t || t === '-' || t === '—') return null;
+      const v = parseInt(parseFloat(t.replace(',','.')), 10);
+      return Number.isNaN(v) ? null : v;
+    }
+
+    function derivedResult(m){
+      const r = String(m.result||'').trim().toUpperCase();
+      if (r === 'H' || r === 'D' || r === 'A') return r;
+      if (r === '1') return 'H';
+      if (r === 'X') return 'D';
+      if (r === '2') return 'A';
+      if (m.hg != null && m.ag != null){
+        if (m.hg > m.ag) return 'H';
+        if (m.hg < m.ag) return 'A';
+        return 'D';
+      }
+      return '';
+    }
+
+    function isBlankCell(s){
+      const t = String(s != null ? s : '').trim();
+      if (!t || t === '-' || t === '—') return true;
+      if (t.length >= 2 && t[0] === t[t.length-1] && (t[0] === '"' || t[0] === "'"))
+        return !t.slice(1,-1).trim();
+      return false;
+    }
+
+    function isBlankRow(row){
+      return row.every(isBlankCell);
+    }
+
+    function isBlankLine(line){
+      const t = String(line != null ? line : '').trim();
+      if (!t) return true;
+      return !t.replace(/["',;\s]/g, '');
+    }
+
+    function parseCsvLine(line, delim){
+      const out = [];
+      let cur = '', inQ = false;
+      for (let i = 0; i < line.length; i++){
+        const ch = line[i];
+        if (ch === '"'){
+          if (inQ && line[i+1] === '"'){ cur += '"'; i++; continue; }
+          inQ = !inQ; continue;
+        }
+        if ((ch === delim) && !inQ){ out.push(cur); cur = ''; continue; }
+        cur += ch;
+      }
+      out.push(cur);
+      return out.map(s => s.trim());
+    }
+
+    function cleanHistoryText(text){
+      const lines = text.split(/\r?\n/);
+      const kept = lines.filter(l => !isBlankLine(l));
+      const skipped = lines.length - kept.length;
+      return { text: kept.join('\n'), skipped };
+    }
+
+    function parseHistoryText(text){
+      const { text: cleaned, skipped } = cleanHistoryText(text);
+      if (!cleaned.trim()) throw new Error('Текст пуст');
+      const rawLines = cleaned.split(/\r?\n/).filter(l => !isBlankLine(l));
+      if (!rawLines.length) throw new Error('Текст пуст');
+      const delim = rawLines.join('\n').includes(';') && !rawLines[0].includes(',') ? ';' : ',';
+      const rows = rawLines.map(l => parseCsvLine(l, delim)).filter(r => !isBlankRow(r));
+      if (rows.length < 2) throw new Error('Нужны заголовок и хотя бы одна строка данных');
+      const header = rows[0];
+      const mapping = {};
+      header.forEach((h,i) => {
+        const f = HIST_LOOKUP[normHeader(h)];
+        if (f && mapping[f] === undefined) mapping[f] = i;
+      });
+      const req = ['home_team','away_team','odds_1','odds_x','odds_2'];
+      const miss = req.filter(r => mapping[r] === undefined);
+      if (miss.length) throw new Error('Нет колонок: ' + miss.join(', ') + '. Заголовок: ' + header.join(', '));
+
+      const cell = (row, f) => {
+        const i = mapping[f];
+        return i === undefined || i >= row.length ? '' : row[i].trim();
+      };
+      const matches = [];
+      for (let li = 1; li < rows.length; li++){
+        const row = rows[li];
+        const home = cell(row,'home_team'), away = cell(row,'away_team');
+        if (!home || !away) continue;
+        const o1 = parseNum(cell(row,'odds_1'));
+        const ox = parseNum(cell(row,'odds_x'));
+        const o2 = parseNum(cell(row,'odds_2'));
+        if (o1<=1||ox<=1||o2<=1) throw new Error(`Строка ${li+1}: коэффициенты > 1`);
+        matches.push({
+          date: cell(row,'date'),
+          home, away, o1, ox, o2,
+          hg: parseIntOrNull(cell(row,'home_goals')),
+          ag: parseIntOrNull(cell(row,'away_goals')),
+          result: cell(row,'result'),
+          derby: cell(row,'derby'),
+          venue: cell(row,'venue_type'),
+          comment: cell(row,'comment'),
+        });
+      }
+      if (!matches.length) throw new Error('Нет валидных матчей');
+      return { matches, skipped };
+    }
+
+    function parseHistoryMatches(text){
+      return parseHistoryText(text).matches;
+    }
+
+    function histToRankMatches(matches){
+      return matches.map(m => ({ home: m.home, away: m.away, o1: m.o1, ox: m.ox, o2: m.o2 }));
+    }
+
+    function seasonExists(league, season){
+      const store = loadHistStore();
+      const safe = season.trim().replace('/','-');
+      return !!(store.leagues[league] && store.leagues[league][safe]);
+    }
+
+    function importHistSeason(league, season, matches){
+      const store = loadHistStore();
+      const safe = season.trim().replace('/','-');
+      if (!store.leagues[league]) store.leagues[league] = {};
+      const replaced = !!store.leagues[league][safe];
+      const previous = replaced ? (store.leagues[league][safe].matches || []).length : 0;
+      store.leagues[league][safe] = {
+        matches,
+        imported_at: new Date().toISOString(),
+      };
+      saveHistStore(store);
+      return { count: matches.length, replaced, previous, season: safe };
+    }
+
+    function listHistSeasons(){
+      const store = loadHistStore();
+      const out = [];
+      Object.keys(LEAGUE_TITLES).forEach(league => {
+        const seasons = store.leagues[league] || {};
+        Object.keys(seasons).sort().forEach(season => {
+          const entry = seasons[season];
+          out.push({
+            league, season,
+            title: LEAGUE_TITLES[league],
+            matches: (entry.matches || []).length,
+            imported_at: entry.imported_at || '',
+          });
+        });
+      });
+      return out;
+    }
+
+    function getHistSeason(league, season){
+      const store = loadHistStore();
+      const leagueData = store.leagues[league];
+      if (!leagueData) return null;
+      const seasonData = leagueData[season];
+      if (!seasonData) return null;
+      return seasonData.matches || null;
+    }
+
+    const SHIN_ERR = {
+      league: 'Лига не найдена. Проверьте название лиги и повторите расчет.',
+      season: 'Сезон не найден. Проверьте выбранный сезон или загрузите данные по сезону.',
+      team: 'Команда не найдена. Проверьте название команды и повторите расчет.',
+      data: 'Недостаточно данных для расчета. В текущем сезоне найдено менее 3 матчей, предыдущий загруженный сезон отсутствует.',
+    };
+    const SHIN_SOURCE_RU = {
+      'Common opponent': 'Общий соперник',
+      'League matches': 'Матчи лиги',
+      'Previous season': 'Предыдущий сезон',
+    };
+    const MIN_SHIN_MATCHES = 3;
+
+    function normTeamName(t){
+      return String(t||'').trim().toLowerCase().replace(/[^a-z0-9а-яё]/gi,'');
+    }
+    function resolveTeamInSeason(name, matches){
+      const n = normTeamName(name);
+      if (!n) throw new Error(SHIN_ERR.team);
+      const map = new Map();
+      matches.forEach(m => {
+        [m.home,m.away].forEach(t => map.set(normTeamName(t), t));
+      });
+      if (map.has(n)) return map.get(n);
+      for (const [k,v] of map.entries()){
+        if (k.includes(n) || n.includes(k)) return v;
+      }
+      throw new Error(SHIN_ERR.team);
+    }
+    function listLeagueSeasons(league){
+      return Object.keys(loadHistStore().leagues[league] || {}).sort();
+    }
+    function previousHistSeason(league, season){
+      const seasons = listLeagueSeasons(league);
+      const idx = seasons.indexOf(season);
+      if (idx <= 0) return null;
+      return seasons[idx - 1];
+    }
+    function countTeamMatches(t1, t2, matches){
+      const keys = new Set();
+      matches.forEach(m => {
+        if (m.home===t1||m.away===t1||m.home===t2||m.away===t2){
+          keys.add(`${m.date}|${m.home}|${m.away}`);
+        }
+      });
+      return keys.size;
+    }
+    function findCommonOpponents(t1, t2, matches){
+      const opps = (team, ms) => new Set(ms.filter(m => m.home===team||m.away===team).map(m => m.home===team?m.away:m.home));
+      const s1 = opps(t1, matches), s2 = opps(t2, matches);
+      return [...s1].filter(o => s2.has(o) && o!==t1 && o!==t2).sort();
+    }
+    function geomMean(vals){
+      const v = vals.filter(x => x>0 && isFinite(x));
+      if (!v.length) throw new Error(SHIN_ERR.data);
+      if (v.length===1) return v[0];
+      return Math.exp(v.map(Math.log).reduce((a,b)=>a+b,0)/v.length);
+    }
+    function strengthRatioShin(m, focal){
+      const [p1,,p2] = shinDevig(m.o1, m.ox, m.o2);
+      if (m.home===focal) return p1/(p2||1e-12);
+      if (m.away===focal) return p2/(p1||1e-12);
+      throw new Error('match');
+    }
+    function probsFromStrengths(s1, s2, px){
+      px = Math.max(0, Math.min(0.95, px));
+      const rem = Math.max(1e-9, 1-px);
+      const d = s1+s2;
+      let p1 = (s1/d)*rem, p2 = (s2/d)*rem;
+      const t = p1+px+p2;
+      return [p1/t, px/t, p2/t];
+    }
+    function formatShinOdds(p1, px, p2, digits=2){
+      const k = p => (1/p).toFixed(digits).replace('.', ',');
+      return `${k(p1)} / ${k(px)} / ${k(p2)}`;
+    }
+    function targetMatchD(t1, t2, matches){
+      try {
+        const rank = buildRanking(histToRankMatches(matches), true);
+        const ratings = new Map(rank.teams.map(t => [t.team, t.rating]));
+        if (!ratings.has(t1) || !ratings.has(t2)) return null;
+        return { d: ratings.get(t1) - ratings.get(t2) + rank.H, h: rank.H };
+      } catch (e) { return null; }
+    }
+    function resolveHomeCoef(t1, t2, matches, league){
+      const target = targetMatchD(t1, t2, matches);
+      if (target && target.h != null) {
+        return { h: target.h, hCoef: Math.pow(10, target.h / 400) };
+      }
+      const prior = homeAdvantagePrior(league);
+      return { h: prior.hFinal, hCoef: Math.pow(10, prior.hFinal / 400) };
+    }
+    function calcShinCommon(t1, t2, opp, matches, league, seasonUsed){
+      const m1 = matches.filter(m => (m.home===t1||m.away===t1)&&(m.home===opp||m.away===opp));
+      const m2 = matches.filter(m => (m.home===t2||m.away===t2)&&(m.home===opp||m.away===opp));
+      if (!m1.length || !m2.length) throw new Error(SHIN_ERR.data);
+      const { h: hUsed, hCoef } = resolveHomeCoef(t1, t2, matches, league);
+      const det = [];
+      det.push(`Источник: общий соперник — ${opp}`);
+      det.push(`Матчей: ${m1.length} (${t1}) + ${m2.length} (${t2})`);
+      det.push(`H=${fmt(hUsed,1)}, h=10^(H/400)=${hCoef.toFixed(4).replace('.',',')} (дома: ρ=r/h, гости: ρ=r·h)`);
+      det.push('', `Шаг A. ${t1} vs ${opp} → нейтральное поле`);
+      const c1 = chainMatchLines(t1, m1, hCoef);
+      det.push(...c1.lines);
+      const rho1 = geomMeanLog(c1.ratios);
+      det.push(`  ρ̄ = ${rho1.toFixed(4).replace('.',',')}`);
+      det.push('', `Шаг B. ${t2} vs ${opp} → нейтральное поле`);
+      const c2 = chainMatchLines(t2, m2, hCoef);
+      det.push(...c2.lines);
+      const rho2 = geomMeanLog(c2.ratios);
+      det.push(`  ρ̄ = ${rho2.toFixed(4).replace('.',',')}`);
+      const rhoAb = rho1 / (rho2 || 1);
+      const rAb = rhoAb * hCoef;
+      const s1 = Math.sqrt(rAb), s2 = 1/Math.sqrt(rAb||1);
+      const dChain = 400*Math.log10(s1/(s2||1));
+      det.push('', 'Шаг C. Прогноз team1 дома (ρ̄ → × h)');
+      det.push(`  ρ_AB=${rho1.toFixed(4).replace('.',',')}/${rho2.toFixed(4).replace('.',',')}=${rhoAb.toFixed(4).replace('.',',')}`);
+      det.push(`  r_AB=ρ_AB×h=${rhoAb.toFixed(4).replace('.',',')}×${hCoef.toFixed(4).replace('.',',')}=${rAb.toFixed(4).replace('.',',')}`);
+      det.push(`  s1=√r_AB=${s1.toFixed(4).replace('.',',')}, s2=1/√r_AB=${s2.toFixed(4).replace('.',',')}`);
+      det.push(`  D_цепь=400·log10(s1/s2)=${fmt(dChain,1)}`);
+      const target = targetMatchD(t1, t2, matches);
+      const dDraw = target ? target.d : dChain;
+      det.push('', 'Шаг D. D для ничьи');
+      if (target){
+        const rank = buildRanking(histToRankMatches(matches), true);
+        const ratings = new Map(rank.teams.map(t => [t.team, t.rating]));
+        det.push(`  R(${t1})=${fmt(ratings.get(t1),1)}, R(${t2})=${fmt(ratings.get(t2),1)}, H=${fmt(rank.H,1)}`);
+        det.push(`  D_цель=R1-R2+H=${fmt(dDraw,1)}`);
+      } else {
+        det.push(`  D_цель=D_цепь=${fmt(dDraw,1)}, H=${fmt(hUsed,1)}`);
+      }
+      det.push('', 'Шаг E. Ничья');
+      const dm = calibrateDrawModel(league);
+      const { px: drawPx, lines: pxLines } = drawPxForMatch(dm, dDraw, s1, s2);
+      det.push(...pxLines);
+      const [p1, px, p2] = probsFromStrengths(s1, s2, drawPx);
+      det.push('', 'Шаг F. Итог', `  p1=${(p1*100).toFixed(2).replace('.',',')}%, px=${(px*100).toFixed(2).replace('.',',')}%, p2=${(p2*100).toFixed(2).replace('.',',')}%`);
+      return {
+        p1, px, p2, source:'Common opponent', seasonUsed,
+        matchesUsed: m1.length+m2.length, opp,
+        dMarket: dDraw, dChain, hUsed,
+        team1: t1, team2: t2,
+        details: det.join('\n'),
+      };
+    }
+    function calcShinLeague(t1, t2, matches, league, seasonUsed, source, t1New=false, t2New=false){
+      const rank = buildRanking(histToRankMatches(matches), true);
+      const ratings = new Map(rank.teams.map(t => [t.team, t.rating]));
+      const r1 = ratings.has(t1) ? ratings.get(t1) : (t1New ? NEW_TEAM_RATING : null);
+      const r2 = ratings.has(t2) ? ratings.get(t2) : (t2New ? NEW_TEAM_RATING : null);
+      if (r1 == null || r2 == null) throw new Error(SHIN_ERR.team);
+      const hCoef = Math.pow(10, rank.H/400);
+      const s1 = Math.pow(10, r1/400)*hCoef;
+      const s2 = Math.pow(10, r2/400);
+      const dm = calibrateDrawModel(league);
+      const dRating = r1 - r2;
+      const dMarket = dRating + rank.H;
+      const { px: drawPx, lines: pxLines } = drawPxForMatch(dm, dMarket, s1, s2);
+      const [p1, px, p2] = probsFromStrengths(s1, s2, drawPx);
+      const det = [
+        `Источник: ${SHIN_SOURCE_RU[source]||source}`,
+        `Матчей в сезоне: ${matches.length}`,
+        `R(${t1})=${fmt(r1,1)}${t1New?' ← новая (R=0)':''}, R(${t2})=${fmt(r2,1)}${t2New?' ← новая (R=0)':''}, H=${fmt(rank.H,1)}`,
+        `s1=${s1.toFixed(4).replace('.',',')}, s2=${s2.toFixed(4).replace('.',',')}, D=${fmt(dMarket,1)}`,
+        'Ничья:', ...pxLines,
+        `Итог: ${formatShinOdds(p1,px,p2,2)}`,
+      ];
+      return {
+        p1, px, p2, source, seasonUsed, matchesUsed: matches.length, opp: null,
+        dMarket, dChain: null, hUsed: rank.H,
+        team1: t1, team2: t2,
+        details: det.join('\n'),
+      };
+    }
+    function calculateShinMatch(team1, team2, league, season){
+      if (!LEAGUE_TITLES[league]) throw new Error(SHIN_ERR.league);
+      const safe = season.trim().replace('/','-');
+      const seasons = listLeagueSeasons(league);
+      if (!seasons.includes(safe)) throw new Error(SHIN_ERR.season);
+      const current = getHistSeason(league, safe);
+      if (!current || !current.length) throw new Error(SHIN_ERR.season);
+      const ref1 = resolveTeamRef(league, team1, current);
+      const ref2 = resolveTeamRef(league, team2, current);
+      const t1 = ref1.name, t2 = ref2.name;
+      const stampIds = (res, a=ref1, b=ref2) => {
+        res.team1Id = a.id;
+        res.team2Id = b.id;
+        return res;
+      };
+      const head = [
+        '═══ Подробный расчёт Shin ═══',
+        `Матч: ${t1} (дома) — ${t2}`,
+        `ID: ${ref1.id} / ${ref2.id}`,
+        `Лига: ${LEAGUE_TITLES[league]}, сезон: ${safe}`,
+        '', 'Выбор источника:',
+      ];
+      if (ref1.isNew || ref2.isNew){
+        const nn = [];
+        if (ref1.isNew) nn.push(`${t1} (${ref1.id})`);
+        if (ref2.isNew) nn.push(`${t2} (${ref2.id})`);
+        head.splice(5, 0, `Новые команды: ${nn.join(', ')} → R=${NEW_TEAM_RATING}`, '');
+      }
+      let common = [];
+      if (!ref1.isNew && !ref2.isNew) common = findCommonOpponents(t1, t2, current);
+      if (common.length){
+        let best = common[0], bestScore = -1;
+        common.forEach(opp => {
+          const n1 = current.filter(m => (m.home===t1||m.away===t1)&&(m.home===opp||m.away===opp)).length;
+          const n2 = current.filter(m => (m.home===t2||m.away===t2)&&(m.home===opp||m.away===opp)).length;
+          const sc = Math.min(n1,n2);
+          if (sc > bestScore){ bestScore=sc; best=opp; }
+        });
+        head.push('  1) Общий соперник — ДА → '+best);
+        const res = calcShinCommon(t1, t2, best, current, league, safe);
+        res.details = head.join('\n')+'\n'+res.details;
+        return stampIds(res);
+      }
+      head.push('  1) Общий соперник — нет' + ((ref1.isNew||ref2.isNew) ? ' (новая команда)' : ''));
+      const nCurrent = (ref1.isNew && ref2.isNew) ? 0 : countTeamMatches(t1, t2, current);
+      const leagueOk = nCurrent >= MIN_SHIN_MATCHES || ((ref1.isNew||ref2.isNew) && current.length >= MIN_SHIN_MATCHES);
+      if (leagueOk){
+        head.push(`  2) Матчи сезона — ДА (${nCurrent})` + ((ref1.isNew||ref2.isNew) ? ', новая → R=0' : ''));
+        const res = calcShinLeague(t1, t2, current, league, safe, 'League matches', ref1.isNew, ref2.isNew);
+        res.details = head.join('\n')+'\n'+res.details;
+        return stampIds(res);
+      }
+      head.push('  2) Матчи сезона — мало');
+      const prev = previousHistSeason(league, safe);
+      if (!prev) throw new Error(SHIN_ERR.data);
+      const prevM = getHistSeason(league, prev);
+      if (!prevM || !prevM.length) throw new Error(SHIN_ERR.data);
+      const ref1p = resolveTeamRef(league, team1, prevM);
+      const ref2p = resolveTeamRef(league, team2, prevM);
+      const t1p = ref1p.name, t2p = ref2p.name;
+      let commonP = [];
+      if (!ref1p.isNew && !ref2p.isNew) commonP = findCommonOpponents(t1p, t2p, prevM);
+      if (commonP.length){
+        let best = commonP[0], bestScore = -1;
+        commonP.forEach(opp => {
+          const n1 = prevM.filter(m => (m.home===t1p||m.away===t1p)&&(m.home===opp||m.away===opp)).length;
+          const n2 = prevM.filter(m => (m.home===t2p||m.away===t2p)&&(m.home===opp||m.away===opp)).length;
+          const sc = Math.min(n1,n2);
+          if (sc > bestScore){ bestScore=sc; best=opp; }
+        });
+        head.push(`  3) Предыдущий сезон ${prev}, общий соперник ${best}`);
+        const res = calcShinCommon(t1p, t2p, best, prevM, league, prev);
+        res.details = head.join('\n')+'\n'+res.details;
+        return stampIds(res, ref1p, ref2p);
+      }
+      const nPrev = (ref1p.isNew && ref2p.isNew) ? 0 : countTeamMatches(t1p, t2p, prevM);
+      const prevOk = nPrev >= MIN_SHIN_MATCHES || ((ref1p.isNew||ref2p.isNew) && prevM.length >= MIN_SHIN_MATCHES);
+      if (!prevOk) throw new Error(SHIN_ERR.data);
+      const res = calcShinLeague(t1p, t2p, prevM, league, prev, 'Previous season', ref1p.isNew, ref2p.isNew);
+      res.details = head.join('\n')+'\n'+res.details;
+      return stampIds(res, ref1p, ref2p);
+    }
+
+    function renderShinResult(res){
+      const k = p => (1/p).toFixed(2).replace('.', ',');
+      const league = document.getElementById('shinLeague').value;
+      let id1 = res.team1Id, id2 = res.team2Id;
+      try {
+        if (!id1) id1 = resolveTeamId(league, res.team1);
+        if (!id2) id2 = resolveTeamId(league, res.team2);
+      } catch (e) { /* logos optional */ }
+      document.getElementById('shinEmpty').style.display = 'none';
+      const box = document.getElementById('shinResult');
+      box.classList.add('visible');
+      document.getElementById('shinTitle').innerHTML =
+        `<span class="shin-matchup">` +
+        `${id1 ? teamLogoImgHtml(id1, 28) : ''}<span>${escapeHtml(res.team1)}</span>` +
+        `<span>—</span>` +
+        `${id2 ? teamLogoImgHtml(id2, 28) : ''}<span>${escapeHtml(res.team2)}</span>` +
+        `</span>` +
+        `<span class="line">k1 / kx / k2: ${formatShinOdds(res.p1, res.px, res.p2, 2)}</span>`;
+      const oddsBody = document.querySelector('#shinOddsTable tbody');
+      oddsBody.innerHTML = [
+        { label: `P1 (${res.team1})`, kv: k(res.p1), pv: fmt(res.p1*100,2)+' %', logoId: id1 },
+        { label: 'X (ничья)', kv: k(res.px), pv: fmt(res.px*100,2)+' %', logoId: null },
+        { label: `P2 (${res.team2})`, kv: k(res.p2), pv: fmt(res.p2*100,2)+' %', logoId: id2 },
+      ].map(r => {
+        const outcome = r.logoId
+          ? `<span class="shin-outcome-label">${teamLogoImgHtml(r.logoId, 22)}<span>${escapeHtml(r.label)}</span></span>`
+          : escapeHtml(r.label);
+        return `<tr><td>${outcome}</td><td class="num">${r.kv}</td><td class="num">${r.pv}</td></tr>`;
+      }).join('');
+      const meta = [
+        ['D (целевой матч, для X)', fmt(res.dMarket, 1)],
+        ['H (домашнее преимущество)', res.hUsed != null ? fmt(res.hUsed, 1) : '—'],
+        ['Источник данных', SHIN_SOURCE_RU[res.source] || res.source],
+        ['Сезон расчёта', res.seasonUsed],
+        ['Матчей в расчёте', String(res.matchesUsed)],
+        ['Метод', 'Shin'],
+      ];
+      if (res.dChain != null) meta.splice(1, 0, ['D (цепь через соперника)', fmt(res.dChain, 1)]);
+      if (res.opp) meta.splice(3, 0, ['Общий соперник', res.opp]);
+      document.querySelector('#shinMetaTable tbody').innerHTML = meta.map(
+        ([p,v]) => `<tr><td>${escapeHtml(p)}</td><td>${escapeHtml(v)}</td></tr>`
+      ).join('');
+      document.getElementById('shinDetails').textContent = res.details || '';
+    }
+    function showShinError(msg){
+      document.getElementById('shinResult').classList.remove('visible');
+      const el = document.getElementById('shinEmpty');
+      el.style.display = 'block';
+      el.classList.add('danger');
+      el.textContent = msg;
+    }
+    function escapeHtml(s){
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    bindClick('calcShin', () => {
+      const emptyEl = document.getElementById('shinEmpty');
+      emptyEl.classList.remove('danger');
+      try {
+        const res = calculateShinMatch(
+          document.getElementById('shinTeam1').value,
+          document.getElementById('shinTeam2').value,
+          document.getElementById('shinLeague').value,
+          document.getElementById('shinSeason').value,
+        );
+        renderShinResult(res);
+      } catch (e) {
+        showShinError(e.message || String(e));
+      }
+    });
+
+    function homeAdvantagePrior(league, xi=0.5){
+      const store = loadHistStore();
+      const seasons = Object.keys(store.leagues[league] || {}).sort();
+      const estimates = [];
+      seasons.forEach(season => {
+        const raw = getHistSeason(league, season);
+        if (!raw || raw.length < 2) return;
+        try {
+          const res = buildRanking(histToRankMatches(raw));
+          estimates.push({ season, h: res.H });
+        } catch (e) { /* skip */ }
+      });
+      let hPrior, fromDefault = false, used = [];
+      if (estimates.length){
+        const ordered = [...estimates].reverse();
+        let num=0, den=0;
+        ordered.forEach((e,k) => {
+          const w = Math.exp(-xi * k);
+          num += w * e.h; den += w;
+          used.push({ ...e, w });
+        });
+        hPrior = num / den;
+      } else {
+        hPrior = LEAGUE_DEFAULT_H[league] || 60;
+        fromDefault = true;
+      }
+      return { hPrior, hFinal: hPrior, fromDefault, used, confidence: fromDefault ? 'default' : 'low' };
+    }
+
+    const DRAW_SLOPE_FLOOR = -0.0010;
+    const DRAW_PX_FLOOR_D_START = 100;
+    const DRAW_PX_FLOOR_D_MID = 250;
+    const DRAW_PX_FLOOR_D_FULL = 350;
+    const DRAW_PX_LO_BASE = 0.06;
+    const DRAW_PX_LO_MID = 0.13;
+    const DRAW_PX_LO_FULL = 0.15;
+
+    function drawPxLowerBound(absD){
+      const ad = Math.abs(absD);
+      if (ad <= DRAW_PX_FLOOR_D_START) return DRAW_PX_LO_BASE;
+      if (ad <= DRAW_PX_FLOOR_D_MID){
+        const t = (ad - DRAW_PX_FLOOR_D_START) / (DRAW_PX_FLOOR_D_MID - DRAW_PX_FLOOR_D_START);
+        return DRAW_PX_LO_BASE + t * (DRAW_PX_LO_MID - DRAW_PX_LO_BASE);
+      }
+      if (ad <= DRAW_PX_FLOOR_D_FULL){
+        const t = (ad - DRAW_PX_FLOOR_D_MID) / (DRAW_PX_FLOOR_D_FULL - DRAW_PX_FLOOR_D_MID);
+        return DRAW_PX_LO_MID + t * (DRAW_PX_LO_FULL - DRAW_PX_LO_MID);
+      }
+      return DRAW_PX_LO_FULL;
+    }
+
+    function calibrateDrawModel(league){
+      const xs=[], ys=[];
+      let source = 'results';
+      Object.keys(loadHistStore().leagues[league] || {}).forEach(season => {
+        (getHistSeason(league, season) || []).forEach(m => {
+          const sc = marketDiffScores({ o1: m.o1, ox: m.ox, o2: m.o2 });
+          const res = derivedResult(m);
+          if (res){ xs.push(Math.abs(sc.d)); ys.push(res === 'D' ? 1 : 0); }
+        });
+      });
+      if (!xs.length){
+        source = 'market';
+        Object.keys(loadHistStore().leagues[league] || {}).forEach(season => {
+          (getHistSeason(league, season) || []).forEach(m => {
+            const sc = marketDiffScores({ o1: m.o1, ox: m.ox, o2: m.o2 });
+            xs.push(Math.abs(sc.d)); ys.push(sc.px);
+          });
+        });
+      }
+      const n = xs.length;
+      if (n < 5) return { a: 0.26, b: -0.0006, n, source: 'default' };
+      const mx = xs.reduce((a,b)=>a+b,0)/n;
+      const my = ys.reduce((a,b)=>a+b,0)/n;
+      let sxx=0, sxy=0;
+      for (let i=0;i<n;i++){ sxx += (xs[i]-mx)**2; sxy += (xs[i]-mx)*(ys[i]-my); }
+      const b = sxx > 1e-9 ? sxy/sxx : 0;
+      const a = my - b * mx;
+      return { a, b, n, source };
+    }
+
+    function drawPxForMatch(dm, d, s1, s2){
+      const lines = [];
+      const a = dm.a;
+      const b = (dm.source === 'default' || dm.b <= DRAW_SLOPE_FLOOR) ? dm.b : DRAW_SLOPE_FLOOR;
+      const pxLin = Math.max(0.06, Math.min(0.34, a + b * Math.abs(d)));
+      lines.push(`  px_mod = a+b·|d| → ${(pxLin*100).toFixed(2).replace('.',',')}% (a=${a.toFixed(4).replace('.',',')}, b=${b.toFixed(6).replace('.',',')})`);
+      const loEff = drawPxLowerBound(d);
+      lines.push(`  px_floor(|d|) → ${(loEff*100).toFixed(2).replace('.',',')}%`);
+      let px = Math.max(pxLin, loEff);
+      if (px > pxLin) lines.push(`  max(px_mod, px_floor) → ${(px*100).toFixed(2).replace('.',',')}%`);
+      if (s2 > 1e-12 && s1 > 0){
+        const lr = Math.log10(s1 / s2);
+        const pxCap = Math.max(0.18, Math.min(0.30, 0.265 - 0.06 * Math.abs(lr)));
+        lines.push(`  px_cap (s1/s2) = ${(pxCap*100).toFixed(2).replace('.',',')}%`);
+        if (px > pxCap){
+          px = pxCap;
+          lines.push(`  ограничение сверху → ${(px*100).toFixed(2).replace('.',',')}%`);
+        }
+      }
+      px = Math.max(loEff, Math.min(0.34, px));
+      lines.push(`  Итого px = ${(px*100).toFixed(2).replace('.',',')}%`);
+      return { px, lines };
+    }
+    function chainMatchLines(team, ms, hCoef){
+      const lines = [];
+      const ratios = [];
+      ms.forEach(m => {
+        const [p1,px,p2] = shinDevig(m.o1, m.ox, m.o2);
+        const home = m.home === team;
+        const rRaw = home ? p1/(p2||1e-12) : p2/(p1||1e-12);
+        const rho = home ? rRaw/(hCoef||1) : rRaw*(hCoef||1);
+        ratios.push(rho);
+        const ko = v => v.toFixed(2).replace('.',',');
+        lines.push(`    ${m.date||'?'}  ${m.home}  ${ko(m.o1)}/${ko(m.ox)}/${ko(m.o2)}  ${m.away}`);
+        lines.push(
+          `      Shin p1=${p1.toFixed(4).replace('.',',')} px=${px.toFixed(4).replace('.',',')} p2=${p2.toFixed(4).replace('.',',')}` +
+          `  |  r=${rRaw.toFixed(4).replace('.',',')} (${home?'дома':'гости'}) → ρ=${rho.toFixed(4).replace('.',',')}`
+        );
+      });
+      return { lines, ratios };
+    }
+    function geomMeanLog(ratios){
+      if (ratios.length===1) return ratios[0];
+      return Math.exp(ratios.map(Math.log).reduce((a,b)=>a+b,0)/ratios.length);
+    }
+
+    function formatHistMetrics(league, season=null){
+      const prior = homeAdvantagePrior(league);
+      const dm = calibrateDrawModel(league);
+      const lines = [`${LEAGUE_TITLES[league]} (${league})`];
+      if (prior.fromDefault){
+        lines.push(`H_prior (default): ${fmt(prior.hPrior,2)}`);
+      } else {
+        lines.push(`H_prior (история): ${fmt(prior.hPrior,2)}`);
+        prior.used.slice(0,5).forEach(u => lines.push(`  ${u.season}: H=${fmt(u.h,1)} w=${fmt(u.w,3)}`));
+      }
+      lines.push(`H = ${fmt(prior.hFinal,2)} (x${fmt(Math.pow(10,prior.hFinal/400),4)}); ${prior.confidence}`);
+      lines.push(`draw px(d)=clamp(${fmt(dm.a,4)}+(${fmt(dm.b,6)})·|d|); n=${dm.n}, ${dm.source}`);
+      if (season){
+        const raw = getHistSeason(league, season);
+        if (raw){
+          lines.push('', `${season}: ${raw.length} матчей`);
+          raw.slice(0,3).forEach(m => {
+            lines.push(`  ${m.date||'?'} ${m.home} ${m.o1}/${m.ox}/${m.o2} ${m.away} (${derivedResult(m)||'?'})`);
+          });
+          if (raw.length > 3) lines.push(`  … всего ${raw.length}`);
+        }
+      }
+      return lines.join('\n');
+    }
+
+    function matchesToCsvText(matches){
+      const esc = (s) => {
+        const t = String(s != null ? s : '');
+        return t.includes(',') || t.includes('"') ? `"${t.replace(/"/g,'""')}"` : t;
+      };
+      const header = 'Match Date,Team Home,1 Odds,X Odds,2 Odds,Away Team,Derby,Venue Type,Home Goals,Away Goals,Result,Comment';
+      const rows = matches.map(m => [
+        m.date, m.home, m.o1, m.ox, m.o2, m.away, m.derby||'', m.venue||'',
+        m.hg != null ? m.hg : '', m.ag != null ? m.ag : '', derivedResult(m)||'', m.comment||''
+      ].map(esc).join(','));
+      return header + '\n' + rows.join('\n') + '\n';
+    }
+
+    function renderHistViewTable(matches){
+      const tbody = document.querySelector('#histViewTable tbody');
+      tbody.innerHTML = '';
+      matches.forEach(m => {
+        const tr = document.createElement('tr');
+        const score = (m.hg != null && m.ag != null) ? `${m.hg}:${m.ag}` : '';
+        const res = derivedResult(m);
+        tr.innerHTML =
+          `<td>${m.date||''}</td><td>${m.home}</td>`+
+          `<td class="right">${fmt(m.o1,2)}</td><td class="right">${fmt(m.ox,2)}</td><td class="right">${fmt(m.o2,2)}</td>`+
+          `<td>${m.away}</td><td class="right">${score}</td><td>${res}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function viewHistSeason(league, season){
+      const safe = season.trim().replace('/','-');
+      const raw = getHistSeason(league, safe);
+      if (!raw || !raw.length){
+        throw new Error(`${LEAGUE_TITLES[league]} / ${safe}: сезон не найден в хранилище`);
+      }
+      document.getElementById('histLeague').value = league;
+      document.getElementById('histSeason').value = safe;
+      document.getElementById('histText').value = matchesToCsvText(raw);
+      renderHistViewTable(raw);
+      document.getElementById('metaHist').textContent =
+        `${LEAGUE_TITLES[league]} / ${safe}\nМатчей: ${raw.length}\n\n` + formatHistMetrics(league, safe);
+      return safe;
+    }
+
+    function refreshHistTable(){
+      const tbody = document.querySelector('#histTable tbody');
+      tbody.innerHTML = '';
+      listHistSeasons().forEach(info => {
+        const tr = document.createElement('tr');
+        tr.dataset.league = info.league;
+        tr.dataset.season = info.season;
+        const imp = info.imported_at ? info.imported_at.replace('T',' ').slice(0,19) : '';
+        tr.innerHTML = `<td>${info.title}</td><td>${info.season}</td><td class="right">${info.matches}</td><td>${imp}</td>`;
+        tr.addEventListener('click', () => {
+          document.querySelectorAll('#histTable tbody tr').forEach(r => r.style.background='');
+          tr.style.background = '#eef2ff';
+          try {
+            viewHistSeason(info.league, info.season);
+          } catch(e){ alert(e.message); }
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    bindClick('histView', ()=>{
+      try {
+        const league = document.getElementById('histLeague').value;
+        const season = document.getElementById('histSeason').value.trim().replace('/','-');
+        if (!season) throw new Error('Укажите сезон');
+        viewHistSeason(league, season);
+      } catch(e){ alert(e.message); }
+    });
+
+    bindClick('histSave', ()=>{
+      try {
+        const league = document.getElementById('histLeague').value;
+        const season = document.getElementById('histSeason').value.trim().replace('/','-');
+        if (!season) throw new Error('Укажите сезон');
+        const raw = document.getElementById('histText').value;
+        const { text: cleaned, skipped } = cleanHistoryText(raw);
+        if (!cleaned.trim()) throw new Error('Нет данных: только пустые строки');
+        document.getElementById('histText').value = cleaned;
+        const { matches, skipped: skipped2 } = parseHistoryText(cleaned);
+        const blankRemoved = Math.max(skipped, skipped2);
+        validateMatchesTeams(league, matches.map(m => ({ home: m.home, away: m.away })));
+        if (seasonExists(league, season)){
+          const prev = (loadHistStore().leagues[league][season].matches || []).length;
+          const ok = confirm(
+            `${LEAGUE_TITLES[league]} / ${season} уже сохранён (${prev} матчей).\n\n` +
+            `Перезаписать новыми данными (${matches.length} матчей)?`
+          );
+          if (!ok) return;
+        }
+        const res = importHistSeason(league, season, matches);
+        refreshHistTable();
+        viewHistSeason(league, res.season);
+        alert(
+          `Сохранено: ${LEAGUE_TITLES[league]} / ${res.season}\n` +
+          `Матчей: ${res.count}\n` +
+          (res.replaced ? `(перезаписано, было ${res.previous})\n` : '(новый сезон)\n') +
+          (blankRemoved ? `Удалено пустых строк: ${blankRemoved}` : '')
+        );
+      } catch(e){ alert(e.message); }
+    });
+
+    bindClick('histLoadSample', ()=>{
+      document.getElementById('histText').value = SAMPLE_EPL;
+      document.getElementById('histLeague').value = 'epl';
+      document.getElementById('histSeason').value = '2025-26';
+    });
+
+    bindClick('histMetrics', ()=>{
+      try {
+        const league = document.getElementById('histLeague').value;
+        document.getElementById('metaHist').textContent = formatHistMetrics(league);
+      } catch(e){ alert(e.message); }
+    });
+
+    document.getElementById('histFile').addEventListener('change', async (e)=>{
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const raw = await file.text();
+      const { text: cleaned, skipped } = cleanHistoryText(raw);
+      document.getElementById('histText').value = cleaned;
+      if (skipped > 0){
+        alert(`Проверка файла: удалено пустых строк — ${skipped}`);
+      }
+    });
+
+    document.getElementById('shinLeague').addEventListener('change', refreshShinTeamSelects);
+
+    if (!document.getElementById('histText').value.trim() && !listHistSeasons().length){
+      document.getElementById('histLoadSample').click();
+    }
+    seedDefaultTeams(false);
+    refreshTeamsTable('epl');
+    refreshShinTeamSelects();
+    refreshHistTable();
+    window.refreshHistTable = refreshHistTable;
+    setJsStatus('Версия team-logos-v4 — лига → команда (ID) → логотип');
+    } catch (err) {
+      setJsStatus('Ошибка JS: ' + (err.message || err), true);
+      console.error(err);
+    }
+    })();
+  </script>
+</body>
+</html>
