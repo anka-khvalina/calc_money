@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - cursor/team-registry-17b5
+      - cursor/team-logos-17b5
       - cursor/build-exe-17b5
       - main
     paths:

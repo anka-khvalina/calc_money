@@ -242,6 +242,13 @@ def build_app():
 
     import team_ranking as tr
 
+    def _examples_dir() -> Path:
+        try:
+            from runtime_paths import examples_dir as _ed
+        except ImportError:  # pragma: no cover
+            return Path(__file__).resolve().parents[1] / "docs" / "examples"
+        return _ed()
+
     root = tk.Tk()
     root.title("Калькулятор A + Рейтинг + История")
     root.geometry("1220x720")
@@ -507,7 +514,7 @@ def build_app():
     text_matches.pack(fill="both", expand=True, pady=(6, 0))
 
     sample_lines = []
-    sample_path = Path(__file__).resolve().parents[1] / "docs" / "examples" / "season_odds_la_liga_2024_25.csv"
+    sample_path = _examples_dir() / "season_odds_la_liga_2024_25.csv"
     if sample_path.exists():
         try:
             with sample_path.open("r", encoding="utf-8-sig", newline="") as f:
@@ -560,6 +567,9 @@ def build_app():
         text="Робастная оценка (Huber + вес)",
         variable=robust_var,
     ).pack(anchor="w", pady=(8, 0))
+
+    btns = ttk.Frame(controls)
+    btns.pack(anchor="w", pady=(8, 0))
 
     stats_var = tk.StringVar(value="Результат пока не рассчитан")
     ttk.Label(controls, textvariable=stats_var, justify="left").pack(anchor="w", pady=(10, 6))
@@ -685,8 +695,6 @@ def build_app():
             return
         messagebox.showinfo("Готово", f"Рейтинг сохранён:\n{path}")
 
-    btns = ttk.Frame(controls)
-    btns.pack(anchor="w", pady=(8, 0))
     ttk.Button(btns, text="Рассчитать рейтинг", command=calc_from_text).grid(
         row=0, column=0, padx=(0, 6)
     )
@@ -724,24 +732,128 @@ def build_app():
     )
     teams_league_combo.grid(row=0, column=1, sticky="w", pady=4)
 
+    teams_add_bar = ttk.Frame(tab_teams)
+    teams_add_bar.pack(fill="x", pady=(10, 0))
+    teams_name_var = tk.StringVar(value="")
+    teams_status_var = tk.StringVar(value="")
+    ttk.Label(teams_add_bar, text="Новая команда:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+    ttk.Entry(teams_add_bar, textvariable=teams_name_var, width=32).grid(row=0, column=1, sticky="w")
+
+    teams_logo_bar = ttk.LabelFrame(tab_teams, text="Логотип команды", padding=8)
+    teams_logo_bar.pack(fill="x", pady=(10, 0))
+    teams_logo_id_var = tk.StringVar(value="")
+    teams_logo_path_var = tk.StringVar(value="")
+    ttk.Label(teams_logo_bar, text="ID команды:").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
+    ttk.Entry(teams_logo_bar, textvariable=teams_logo_id_var, width=14).grid(
+        row=0, column=1, sticky="w", pady=4
+    )
+    ttk.Label(teams_logo_bar, text="(например epl:1)", foreground="#888").grid(
+        row=0, column=2, sticky="w", padx=(8, 0), pady=4
+    )
+
     teams_tree = ttk.Treeview(
         tab_teams,
         columns=("num", "name"),
-        show="headings",
-        height=20,
+        show="tree headings",
+        height=16,
     )
+    teams_tree.heading("#0", text="")
     teams_tree.heading("num", text="№")
     teams_tree.heading("name", text="Команда")
+    teams_tree.column("#0", width=36, stretch=False, anchor="center")
     teams_tree.column("num", width=44, anchor="e")
     teams_tree.column("name", width=320, anchor="w")
     teams_tree.pack(fill="both", expand=True, pady=(12, 0))
 
-    teams_add_bar = ttk.Frame(tab_teams)
-    teams_add_bar.pack(fill="x", pady=(12, 0))
-    teams_name_var = tk.StringVar(value="")
-    ttk.Label(teams_add_bar, text="Новая команда:").grid(row=0, column=0, sticky="w", padx=(0, 8))
-    ttk.Entry(teams_add_bar, textvariable=teams_name_var, width=32).grid(row=0, column=1, sticky="w")
-    teams_status_var = tk.StringVar(value="")
+    _teams_logo_photos: dict[str, tk.PhotoImage] = {}
+
+    def _load_team_logo_photo(team_id: str, cache: dict[str, tk.PhotoImage], size: int = 24):
+        if not team_id or not tg.has_logo(team_id):
+            return None
+        if team_id in cache:
+            return cache[team_id]
+        try:
+            img = tk.PhotoImage(file=str(tg.logo_path(team_id)), master=root)
+            w, h = img.width(), img.height()
+            if w > size or h > size:
+                factor = max(w // size, h // size, 1)
+                img = img.subsample(factor, factor)
+            cache[team_id] = img
+            return img
+        except tk.TclError:
+            return None
+
+    def browse_team_logo_file():
+        path = filedialog.askopenfilename(
+            title="Логотип команды (PNG или JPEG)",
+            filetypes=[
+                ("PNG / JPEG", "*.png *.jpg *.jpeg"),
+                ("PNG", "*.png"),
+                ("JPEG", "*.jpg *.jpeg"),
+            ],
+        )
+        if path:
+            teams_logo_path_var.set(path)
+
+    def upload_team_logo_by_id():
+        team_id = teams_logo_id_var.get().strip()
+        if not team_id:
+            messagebox.showwarning("Справочник", "Укажите ID команды (например epl:1).")
+            return
+        ent = tg.get_team(team_id)
+        if ent is None:
+            messagebox.showerror("Справочник", f"Команда с id {team_id!r} не найдена в справочнике.")
+            return
+        path = teams_logo_path_var.get().strip()
+        if not path:
+            messagebox.showwarning("Справочник", "Выберите файл логотипа (PNG или JPEG).")
+            return
+        try:
+            tg.set_team_logo(team_id, path)
+        except ValueError as exc:
+            messagebox.showerror("Справочник", str(exc))
+            return
+        teams_logo_path_var.set("")
+        show_teams_for_league()
+        messagebox.showinfo("Справочник", f"Логотип сохранён для {ent.name} ({team_id}).")
+
+    def remove_team_logo_by_id():
+        team_id = teams_logo_id_var.get().strip()
+        if not team_id:
+            messagebox.showwarning("Справочник", "Укажите ID команды (например epl:1).")
+            return
+        ent = tg.get_team(team_id)
+        if ent is None:
+            messagebox.showerror("Справочник", f"Команда с id {team_id!r} не найдена в справочнике.")
+            return
+        if not tg.has_logo(team_id):
+            messagebox.showinfo("Справочник", f"У команды {ent.name} нет логотипа.")
+            return
+        tg.remove_team_logo(team_id)
+        show_teams_for_league()
+        messagebox.showinfo("Справочник", f"Логотип удалён для {ent.name}.")
+
+    ttk.Label(teams_logo_bar, text="Файл:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=4)
+    ttk.Entry(teams_logo_bar, textvariable=teams_logo_path_var, width=48, state="readonly").grid(
+        row=1, column=1, columnspan=2, sticky="we", pady=4
+    )
+    ttk.Button(teams_logo_bar, text="Обзор…", command=browse_team_logo_file).grid(
+        row=1, column=3, sticky="w", padx=(8, 0), pady=4
+    )
+    ttk.Button(teams_logo_bar, text="Загрузить логотип", command=upload_team_logo_by_id).grid(
+        row=2, column=1, sticky="w", pady=(8, 0)
+    )
+    ttk.Button(teams_logo_bar, text="Удалить логотип", command=remove_team_logo_by_id).grid(
+        row=2, column=2, sticky="w", padx=(8, 0), pady=(8, 0)
+    )
+    teams_logo_bar.columnconfigure(1, weight=1)
+
+    def on_teams_tree_select(_event=None):
+        sel = teams_tree.selection()
+        if sel:
+            teams_logo_id_var.set(sel[0])
+
+    teams_tree.bind("<<TreeviewSelect>>", on_teams_tree_select)
 
     def _teams_league_key():
         title = teams_league_var.get().strip()
@@ -756,10 +868,15 @@ def build_app():
 
     def show_teams_for_league():
         clear_teams_tree()
+        _teams_logo_photos.clear()
         league_key = _teams_league_key()
         entries = tg.list_teams(league_key)
         for i, ent in enumerate(entries, start=1):
-            teams_tree.insert("", "end", values=(i, ent.name))
+            img = _load_team_logo_photo(ent.id, _teams_logo_photos)
+            kw: dict = {"values": (i, ent.name)}
+            if img:
+                kw["image"] = img
+            teams_tree.insert("", "end", iid=ent.id, **kw)
         teams_status_var.set(
             f"{hs.league_title(league_key)} — {len(entries)} команд"
             if entries
@@ -879,12 +996,30 @@ def build_app():
     teams_show_on_start()
 
     shin_out = ttk.LabelFrame(tab_shin, text="Результат (метод Shin)", padding=10)
-    shin_out.pack(fill="both", expand=True, pady=(12, 0))
 
-    shin_title_var = tk.StringVar(value="")
-    ttk.Label(
-        shin_out, textvariable=shin_title_var, font=("", 12, "bold")
-    ).pack(anchor="w", pady=(0, 8))
+    shin_title_frame = ttk.Frame(shin_out)
+    shin_title_frame.pack(anchor="w", fill="x", pady=(0, 8))
+
+    shin_logo1_lbl = ttk.Label(shin_title_frame)
+    shin_logo1_lbl.grid(row=0, column=0, padx=(0, 4))
+    shin_title_team1_lbl = ttk.Label(shin_title_frame, font=("", 12, "bold"))
+    shin_title_team1_lbl.grid(row=0, column=1, padx=(0, 6))
+    ttk.Label(shin_title_frame, text="—", font=("", 12, "bold")).grid(row=0, column=2, padx=(0, 6))
+    shin_logo2_lbl = ttk.Label(shin_title_frame)
+    shin_logo2_lbl.grid(row=0, column=3, padx=(0, 4))
+    shin_title_team2_lbl = ttk.Label(shin_title_frame, font=("", 12, "bold"))
+    shin_title_team2_lbl.grid(row=0, column=4, padx=(0, 6))
+    shin_title_odds_lbl = ttk.Label(shin_title_frame, font=("", 11), foreground="#1f3ea6")
+    shin_title_odds_lbl.grid(row=0, column=5, sticky="w")
+
+    _shin_logo_photos: dict[str, tk.PhotoImage] = {}
+
+    def _set_shin_logo_label(lbl: ttk.Label, team_id: str):
+        img = _load_team_logo_photo(team_id, _shin_logo_photos, size=28)
+        if img:
+            lbl.configure(image=img, text="")
+        else:
+            lbl.configure(image="", text="")
 
     shin_odds_frame = ttk.Frame(shin_out)
     shin_odds_frame.pack(fill="x", pady=(0, 10))
@@ -892,12 +1027,14 @@ def build_app():
     shin_odds_tree = ttk.Treeview(
         shin_odds_frame,
         columns=("outcome", "k", "p"),
-        show="headings",
+        show="tree headings",
         height=3,
     )
+    shin_odds_tree.heading("#0", text="")
     shin_odds_tree.heading("outcome", text="Исход")
     shin_odds_tree.heading("k", text="k (коэфф.)")
     shin_odds_tree.heading("p", text="p, %")
+    shin_odds_tree.column("#0", width=32, stretch=False)
     shin_odds_tree.column("outcome", width=200, anchor="w")
     shin_odds_tree.column("k", width=100, anchor="e")
     shin_odds_tree.column("p", width=100, anchor="e")
@@ -932,22 +1069,32 @@ def build_app():
 
     def _fill_shin_result(res: msc.ShinMatchResult):
         _clear_shin_trees()
-        shin_title_var.set(f"{res.team1}  —  {res.team2}  ·  {res.format_odds(2)}")
-        shin_odds_tree.insert(
-            "",
-            "end",
-            values=(f"P1 ({res.team1})", fmt(res.k1, 2), fmt(res.p1 * 100, 2) + " %"),
-        )
+        _shin_logo_photos.clear()
+        shin_title_team1_lbl.configure(text=res.team1)
+        shin_title_team2_lbl.configure(text=res.team2)
+        shin_title_odds_lbl.configure(text=f"k1 / kx / k2: {res.format_odds(2)}")
+        _set_shin_logo_label(shin_logo1_lbl, res.team1_id)
+        _set_shin_logo_label(shin_logo2_lbl, res.team2_id)
+
+        img1 = _load_team_logo_photo(res.team1_id, _shin_logo_photos)
+        row1: dict = {
+            "values": (f"P1 ({res.team1})", fmt(res.k1, 2), fmt(res.p1 * 100, 2) + " %"),
+        }
+        if img1:
+            row1["image"] = img1
+        shin_odds_tree.insert("", "end", **row1)
         shin_odds_tree.insert(
             "",
             "end",
             values=("X (ничья)", fmt(res.kx, 2), fmt(res.px * 100, 2) + " %"),
         )
-        shin_odds_tree.insert(
-            "",
-            "end",
-            values=(f"P2 ({res.team2})", fmt(res.k2, 2), fmt(res.p2 * 100, 2) + " %"),
-        )
+        img2 = _load_team_logo_photo(res.team2_id, _shin_logo_photos)
+        row2: dict = {
+            "values": (f"P2 ({res.team2})", fmt(res.k2, 2), fmt(res.p2 * 100, 2) + " %"),
+        }
+        if img2:
+            row2["image"] = img2
+        shin_odds_tree.insert("", "end", **row2)
         meta_rows = [
             ("D (целевой матч, для X)", fmt(res.d_market, 1)),
             ("H (домашнее преимущество)", fmt(res.h_used, 1) if res.h_used is not None else "—"),
@@ -1006,8 +1153,10 @@ def build_app():
         except Exception as exc:
             messagebox.showerror("Счет кэф", str(exc))
 
-    ttk.Button(tab_shin, text="Рассчитать", command=calc_shin_match).pack(
-        anchor="w", pady=(12, 0), ipadx=16, ipady=4
+    shin_actions = ttk.Frame(tab_shin)
+    shin_actions.pack(fill="x", pady=(8, 0))
+    ttk.Button(shin_actions, text="Рассчитать", command=calc_shin_match).pack(
+        anchor="w", ipadx=16, ipady=4
     )
     ttk.Label(
         tab_shin,
@@ -1019,9 +1168,10 @@ def build_app():
         foreground="#555",
         justify="left",
     ).pack(anchor="w", pady=(8, 0))
+    shin_out.pack(fill="both", expand=True, pady=(12, 0))
 
     # ======================================================================
-    # TAB 4: история сезонов
+    # TAB 5: история сезонов
     # ======================================================================
 
     tab_hist = ttk.Frame(notebook, padding=10)
@@ -1062,15 +1212,13 @@ def build_app():
     hist_season_var = tk.StringVar(value="2024-25")
     ttk.Entry(import_bar, textvariable=hist_season_var, width=12).grid(row=0, column=3, sticky="w")
 
+    hist_btns = ttk.Frame(hist_left)
+    hist_btns.pack(anchor="w", pady=(8, 0))
+
     text_history = tk.Text(hist_left, width=90, height=22, relief="solid", borderwidth=1)
     text_history.pack(fill="both", expand=True, pady=(6, 0))
 
-    sample_hist = (
-        Path(__file__).resolve().parents[1]
-        / "docs"
-        / "examples"
-        / "history_epl_2025_26.csv"
-    )
+    sample_hist = _examples_dir() / "history_epl_2025_26.csv"
     if sample_hist.exists():
         try:
             text_history.insert("1.0", sample_hist.read_text(encoding="utf-8-sig"))
@@ -1335,8 +1483,6 @@ def build_app():
         except Exception as exc:
             messagebox.showerror("Просмотр истории", str(exc))
 
-    hist_btns = ttk.Frame(hist_left)
-    hist_btns.pack(anchor="w", pady=(8, 0))
     ttk.Button(hist_btns, text="Загрузить CSV…", command=load_history_csv).grid(
         row=0, column=0, padx=(0, 6)
     )
@@ -1365,7 +1511,7 @@ def build_app():
 def main():
     try:
         from runtime_paths import ensure_user_data
-    except ImportError:
+    except ImportError:  # pragma: no cover
         ensure_user_data = None  # type: ignore
     if ensure_user_data is not None:
         ensure_user_data()

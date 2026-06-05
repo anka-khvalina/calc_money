@@ -33,6 +33,11 @@ def teams_registry_path() -> Path:
     return user_data_dir() / "teams" / "registry.json"
 
 
+
+def teams_logos_dir() -> Path:
+    return user_data_dir() / "teams" / "logos"
+
+
 def examples_dir() -> Path:
     if getattr(sys, "frozen", False):
         p = Path(sys._MEIPASS) / "docs" / "examples"  # type: ignore[attr-defined]
