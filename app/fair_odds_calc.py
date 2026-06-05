@@ -242,6 +242,13 @@ def build_app():
 
     import team_ranking as tr
 
+    def _examples_dir() -> Path:
+        try:
+            from runtime_paths import examples_dir as _ed
+        except ImportError:  # pragma: no cover
+            return Path(__file__).resolve().parents[1] / "docs" / "examples"
+        return _ed()
+
     root = tk.Tk()
     root.title("Калькулятор A + Рейтинг + История")
     root.geometry("1220x720")
@@ -507,7 +514,7 @@ def build_app():
     text_matches.pack(fill="both", expand=True, pady=(6, 0))
 
     sample_lines = []
-    sample_path = Path(__file__).resolve().parents[1] / "docs" / "examples" / "season_odds_la_liga_2024_25.csv"
+    sample_path = _examples_dir() / "season_odds_la_liga_2024_25.csv"
     if sample_path.exists():
         try:
             with sample_path.open("r", encoding="utf-8-sig", newline="") as f:
@@ -560,6 +567,9 @@ def build_app():
         text="Робастная оценка (Huber + вес)",
         variable=robust_var,
     ).pack(anchor="w", pady=(8, 0))
+
+    btns = ttk.Frame(controls)
+    btns.pack(anchor="w", pady=(8, 0))
 
     stats_var = tk.StringVar(value="Результат пока не рассчитан")
     ttk.Label(controls, textvariable=stats_var, justify="left").pack(anchor="w", pady=(10, 6))
@@ -685,8 +695,6 @@ def build_app():
             return
         messagebox.showinfo("Готово", f"Рейтинг сохранён:\n{path}")
 
-    btns = ttk.Frame(controls)
-    btns.pack(anchor="w", pady=(8, 0))
     ttk.Button(btns, text="Рассчитать рейтинг", command=calc_from_text).grid(
         row=0, column=0, padx=(0, 6)
     )
@@ -724,11 +732,30 @@ def build_app():
     )
     teams_league_combo.grid(row=0, column=1, sticky="w", pady=4)
 
+    teams_add_bar = ttk.Frame(tab_teams)
+    teams_add_bar.pack(fill="x", pady=(10, 0))
+    teams_name_var = tk.StringVar(value="")
+    teams_status_var = tk.StringVar(value="")
+    ttk.Label(teams_add_bar, text="Новая команда:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+    ttk.Entry(teams_add_bar, textvariable=teams_name_var, width=32).grid(row=0, column=1, sticky="w")
+
+    teams_logo_bar = ttk.LabelFrame(tab_teams, text="Логотип команды", padding=8)
+    teams_logo_bar.pack(fill="x", pady=(10, 0))
+    teams_logo_id_var = tk.StringVar(value="")
+    teams_logo_path_var = tk.StringVar(value="")
+    ttk.Label(teams_logo_bar, text="ID команды:").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
+    ttk.Entry(teams_logo_bar, textvariable=teams_logo_id_var, width=14).grid(
+        row=0, column=1, sticky="w", pady=4
+    )
+    ttk.Label(teams_logo_bar, text="(например epl:1)", foreground="#888").grid(
+        row=0, column=2, sticky="w", padx=(8, 0), pady=4
+    )
+
     teams_tree = ttk.Treeview(
         tab_teams,
         columns=("num", "name"),
         show="tree headings",
-        height=20,
+        height=16,
     )
     teams_tree.heading("#0", text="")
     teams_tree.heading("num", text="№")
@@ -755,25 +782,6 @@ def build_app():
             return img
         except tk.TclError:
             return None
-
-    teams_add_bar = ttk.Frame(tab_teams)
-    teams_add_bar.pack(fill="x", pady=(12, 0))
-    teams_name_var = tk.StringVar(value="")
-    ttk.Label(teams_add_bar, text="Новая команда:").grid(row=0, column=0, sticky="w", padx=(0, 8))
-    ttk.Entry(teams_add_bar, textvariable=teams_name_var, width=32).grid(row=0, column=1, sticky="w")
-    teams_status_var = tk.StringVar(value="")
-
-    teams_logo_bar = ttk.LabelFrame(tab_teams, text="Логотип команды", padding=8)
-    teams_logo_bar.pack(fill="x", pady=(10, 0))
-    teams_logo_id_var = tk.StringVar(value="")
-    teams_logo_path_var = tk.StringVar(value="")
-    ttk.Label(teams_logo_bar, text="ID команды:").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
-    ttk.Entry(teams_logo_bar, textvariable=teams_logo_id_var, width=14).grid(
-        row=0, column=1, sticky="w", pady=4
-    )
-    ttk.Label(teams_logo_bar, text="(например epl:1)", foreground="#888").grid(
-        row=0, column=2, sticky="w", padx=(8, 0), pady=4
-    )
 
     def browse_team_logo_file():
         path = filedialog.askopenfilename(
@@ -988,7 +996,6 @@ def build_app():
     teams_show_on_start()
 
     shin_out = ttk.LabelFrame(tab_shin, text="Результат (метод Shin)", padding=10)
-    shin_out.pack(fill="both", expand=True, pady=(12, 0))
 
     shin_title_frame = ttk.Frame(shin_out)
     shin_title_frame.pack(anchor="w", fill="x", pady=(0, 8))
@@ -1146,8 +1153,10 @@ def build_app():
         except Exception as exc:
             messagebox.showerror("Счет кэф", str(exc))
 
-    ttk.Button(tab_shin, text="Рассчитать", command=calc_shin_match).pack(
-        anchor="w", pady=(12, 0), ipadx=16, ipady=4
+    shin_actions = ttk.Frame(tab_shin)
+    shin_actions.pack(fill="x", pady=(8, 0))
+    ttk.Button(shin_actions, text="Рассчитать", command=calc_shin_match).pack(
+        anchor="w", ipadx=16, ipady=4
     )
     ttk.Label(
         tab_shin,
@@ -1159,9 +1168,10 @@ def build_app():
         foreground="#555",
         justify="left",
     ).pack(anchor="w", pady=(8, 0))
+    shin_out.pack(fill="both", expand=True, pady=(12, 0))
 
     # ======================================================================
-    # TAB 4: история сезонов
+    # TAB 5: история сезонов
     # ======================================================================
 
     tab_hist = ttk.Frame(notebook, padding=10)
@@ -1202,15 +1212,13 @@ def build_app():
     hist_season_var = tk.StringVar(value="2024-25")
     ttk.Entry(import_bar, textvariable=hist_season_var, width=12).grid(row=0, column=3, sticky="w")
 
+    hist_btns = ttk.Frame(hist_left)
+    hist_btns.pack(anchor="w", pady=(8, 0))
+
     text_history = tk.Text(hist_left, width=90, height=22, relief="solid", borderwidth=1)
     text_history.pack(fill="both", expand=True, pady=(6, 0))
 
-    sample_hist = (
-        Path(__file__).resolve().parents[1]
-        / "docs"
-        / "examples"
-        / "history_epl_2025_26.csv"
-    )
+    sample_hist = _examples_dir() / "history_epl_2025_26.csv"
     if sample_hist.exists():
         try:
             text_history.insert("1.0", sample_hist.read_text(encoding="utf-8-sig"))
@@ -1475,8 +1483,6 @@ def build_app():
         except Exception as exc:
             messagebox.showerror("Просмотр истории", str(exc))
 
-    hist_btns = ttk.Frame(hist_left)
-    hist_btns.pack(anchor="w", pady=(8, 0))
     ttk.Button(hist_btns, text="Загрузить CSV…", command=load_history_csv).grid(
         row=0, column=0, padx=(0, 6)
     )
@@ -1503,6 +1509,11 @@ def build_app():
 
 
 def main():
+    try:
+        from runtime_paths import ensure_user_data
+    except ImportError:  # pragma: no cover
+        from .runtime_paths import ensure_user_data  # type: ignore
+    ensure_user_data()
     build_app().mainloop()
 
 
