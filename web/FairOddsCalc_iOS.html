@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/team-logos-17b5 team-logos-v1 -->
+  <!-- build: cursor/team-logos-17b5 team-logos-v2 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -356,13 +356,19 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </div>
       </div>
       <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:10px;align-items:flex-end;">
-        <div class="field" style="flex:1;min-width:200px">
-          <label>Логотип (выберите строку в таблице)</label>
-          <div id="teamsSelectedName" class="small" style="margin-bottom:4px;color:#888">Команда не выбрана</div>
-          <input type="file" id="teamsLogoFile" accept="image/png,image/jpeg,image/gif,image/webp" />
+        <div class="field" style="min-width:120px">
+          <label>ID команды</label>
+          <input id="teamsLogoId" placeholder="epl:1" />
+        </div>
+        <div class="field" style="flex:1;min-width:180px">
+          <label>Логотип (PNG или JPEG)</label>
+          <input type="file" id="teamsLogoFile" accept="image/png,image/jpeg,.png,.jpg,.jpeg" />
         </div>
         <div class="field" style="align-self:flex-end">
-          <button type="button" id="teamsLogoRemove" class="btn">Удалить логотип</button>
+          <button type="button" id="teamsLogoUpload" class="btn primary">Загрузить</button>
+        </div>
+        <div class="field" style="align-self:flex-end">
+          <button type="button" id="teamsLogoRemove" class="btn">Удалить</button>
         </div>
       </div>
       <div id="metaTeams" class="meta" style="margin-top:10px">English Premier League — 20 команд</div>
@@ -447,7 +453,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: team-logos-v1</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: team-logos-v2</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -850,7 +856,6 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     // ---------------- Team registry (localStorage) ----------------
     const TEAMS_KEY = 'FairOddsCalc_teams_v1';
     const LOGOS_KEY = 'FairOddsCalc_logos_v1';
-    let selectedTeamId = null;
     const NEW_TEAM_RATING = 0;
     const TEAMS_SEED = {
       bundesliga: ['Augsburg','Bayern Munich','Dortmund','Ein Frankfurt','FC Koln','Freiburg','Hamburg','Heidenheim','Hoffenheim','Leverkusen',"M'gladbach",'Mainz','RB Leipzig','St Pauli','Stuttgart','Union Berlin','Werder Bremen','Wolfsburg'],
@@ -860,6 +865,18 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       serie_a: ['Atalanta','Bologna','Cagliari','Como','Cremonese','Fiorentina','Genoa','Inter','Juventus','Lazio','Lecce','Milan','Napoli','Parma','Pisa','Roma','Sassuolo','Torino','Udinese','Verona'],
     };
 
+    function normalizeLogoTeamId(raw){
+      return String(raw || '').trim();
+    }
+    function validateLogoFile(file){
+      const t = (file.type || '').toLowerCase();
+      const name = (file.name || '').toLowerCase();
+      const okType = t === 'image/png' || t === 'image/jpeg';
+      const okExt = /\.(png|jpe?g)$/.test(name);
+      if (!okType && !okExt){
+        throw new Error('Поддерживаются только PNG и JPEG.');
+      }
+    }
     function loadLogoStore(){
       try {
         const raw = localStorage.getItem(LOGOS_KEY);
@@ -1063,18 +1080,18 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const tbody = document.querySelector('#teamsTable tbody');
       tbody.innerHTML = '';
       const teams = listTeams(league);
+      const idInput = document.getElementById('teamsLogoId');
+      const activeId = idInput ? normalizeLogoTeamId(idInput.value) : '';
       teams.forEach((t, i) => {
         const tr = document.createElement('tr');
         tr.dataset.teamId = t.id;
-        if (t.id === selectedTeamId) tr.style.background = '#eef2ff';
+        if (t.id === activeId) tr.style.background = '#eef2ff';
         tr.innerHTML =
           `<td class="logo-cell">${teamLogoImgHtml(t.id)}</td>` +
           `<td class="right">${i+1}</td>` +
-          `<td>${escapeHtml(t.name)}</td>`;
+          `<td>${escapeHtml(t.name)} <span class="small" style="color:#888">(${escapeHtml(t.id)})</span></td>`;
         tr.addEventListener('click', () => {
-          selectedTeamId = t.id;
-          const label = document.getElementById('teamsSelectedName');
-          if (label) label.textContent = t.name;
+          if (idInput) idInput.value = t.id;
           renderTeamsTable(league);
         });
         tbody.appendChild(tr);
@@ -1085,9 +1102,6 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     }
 
     document.getElementById('teamsLeague').addEventListener('change', ()=>{
-      selectedTeamId = null;
-      const label = document.getElementById('teamsSelectedName');
-      if (label) label.textContent = 'Команда не выбрана';
       renderTeamsTable(document.getElementById('teamsLeague').value);
     });
 
@@ -1099,39 +1113,62 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         document.getElementById('teamsNewName').value = '';
         renderTeamsTable(league);
         refreshShinTeamSelects();
-        alert(`Добавлено: ${ent.name}`);
+        alert(`Добавлено: ${ent.name} (${ent.id})`);
       } catch(e){ alert(e.message); }
     });
 
-    document.getElementById('teamsLogoFile').addEventListener('change', (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      if (!selectedTeamId){
-        alert('Сначала выберите команду в таблице.');
-        e.target.value = '';
+    bindClick('teamsLogoUpload', () => {
+      const teamId = normalizeLogoTeamId(document.getElementById('teamsLogoId').value);
+      const fileInput = document.getElementById('teamsLogoFile');
+      const file = fileInput.files && fileInput.files[0];
+      if (!teamId){
+        alert('Укажите ID команды (например epl:1).');
+        return;
+      }
+      if (!getTeamById(teamId)){
+        alert(`Команда с id «${teamId}» не найдена в справочнике.`);
+        return;
+      }
+      if (!file){
+        alert('Выберите файл логотипа (PNG или JPEG).');
+        return;
+      }
+      try {
+        validateLogoFile(file);
+      } catch (e) {
+        alert(e.message);
         return;
       }
       const reader = new FileReader();
       reader.onload = () => {
-        setTeamLogoData(selectedTeamId, reader.result);
+        setTeamLogoData(teamId, reader.result);
         renderTeamsTable(document.getElementById('teamsLeague').value);
-        e.target.value = '';
+        fileInput.value = '';
+        const ent = getTeamById(teamId);
+        alert(`Логотип сохранён для ${ent ? ent.name : teamId}.`);
       };
       reader.onerror = () => alert('Не удалось прочитать файл.');
       reader.readAsDataURL(file);
     });
 
     bindClick('teamsLogoRemove', () => {
-      if (!selectedTeamId){
-        alert('Сначала выберите команду в таблице.');
+      const teamId = normalizeLogoTeamId(document.getElementById('teamsLogoId').value);
+      if (!teamId){
+        alert('Укажите ID команды (например epl:1).');
         return;
       }
-      if (!hasTeamLogo(selectedTeamId)){
-        alert('У команды нет загруженного логотипа.');
+      const ent = getTeamById(teamId);
+      if (!ent){
+        alert(`Команда с id «${teamId}» не найдена в справочнике.`);
         return;
       }
-      removeTeamLogoData(selectedTeamId);
+      if (!hasTeamLogo(teamId)){
+        alert(`У команды ${ent.name} нет загруженного логотипа.`);
+        return;
+      }
+      removeTeamLogoData(teamId);
       renderTeamsTable(document.getElementById('teamsLeague').value);
+      alert(`Логотип удалён для ${ent.name}.`);
     });
 
     function refreshShinTeamSelects(){
@@ -2029,7 +2066,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     refreshShinTeamSelects();
     refreshHistTable();
     window.refreshHistTable = refreshHistTable;
-    setJsStatus('Версия team-logos-v1 — справочник и логотипы команд');
+    setJsStatus('Версия team-logos-v2 — ID + логотип на вкладке «Справочник»');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
       console.error(err);

@@ -763,6 +763,90 @@ def build_app():
     ttk.Entry(teams_add_bar, textvariable=teams_name_var, width=32).grid(row=0, column=1, sticky="w")
     teams_status_var = tk.StringVar(value="")
 
+    teams_logo_bar = ttk.LabelFrame(tab_teams, text="Логотип команды", padding=8)
+    teams_logo_bar.pack(fill="x", pady=(10, 0))
+    teams_logo_id_var = tk.StringVar(value="")
+    teams_logo_path_var = tk.StringVar(value="")
+    ttk.Label(teams_logo_bar, text="ID команды:").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
+    ttk.Entry(teams_logo_bar, textvariable=teams_logo_id_var, width=14).grid(
+        row=0, column=1, sticky="w", pady=4
+    )
+    ttk.Label(teams_logo_bar, text="(например epl:1)", foreground="#888").grid(
+        row=0, column=2, sticky="w", padx=(8, 0), pady=4
+    )
+
+    def browse_team_logo_file():
+        path = filedialog.askopenfilename(
+            title="Логотип команды (PNG или JPEG)",
+            filetypes=[
+                ("PNG / JPEG", "*.png *.jpg *.jpeg"),
+                ("PNG", "*.png"),
+                ("JPEG", "*.jpg *.jpeg"),
+            ],
+        )
+        if path:
+            teams_logo_path_var.set(path)
+
+    def upload_team_logo_by_id():
+        team_id = teams_logo_id_var.get().strip()
+        if not team_id:
+            messagebox.showwarning("Справочник", "Укажите ID команды (например epl:1).")
+            return
+        ent = tg.get_team(team_id)
+        if ent is None:
+            messagebox.showerror("Справочник", f"Команда с id {team_id!r} не найдена в справочнике.")
+            return
+        path = teams_logo_path_var.get().strip()
+        if not path:
+            messagebox.showwarning("Справочник", "Выберите файл логотипа (PNG или JPEG).")
+            return
+        try:
+            tg.set_team_logo(team_id, path)
+        except ValueError as exc:
+            messagebox.showerror("Справочник", str(exc))
+            return
+        teams_logo_path_var.set("")
+        show_teams_for_league()
+        messagebox.showinfo("Справочник", f"Логотип сохранён для {ent.name} ({team_id}).")
+
+    def remove_team_logo_by_id():
+        team_id = teams_logo_id_var.get().strip()
+        if not team_id:
+            messagebox.showwarning("Справочник", "Укажите ID команды (например epl:1).")
+            return
+        ent = tg.get_team(team_id)
+        if ent is None:
+            messagebox.showerror("Справочник", f"Команда с id {team_id!r} не найдена в справочнике.")
+            return
+        if not tg.has_logo(team_id):
+            messagebox.showinfo("Справочник", f"У команды {ent.name} нет логотипа.")
+            return
+        tg.remove_team_logo(team_id)
+        show_teams_for_league()
+        messagebox.showinfo("Справочник", f"Логотип удалён для {ent.name}.")
+
+    ttk.Label(teams_logo_bar, text="Файл:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=4)
+    ttk.Entry(teams_logo_bar, textvariable=teams_logo_path_var, width=48, state="readonly").grid(
+        row=1, column=1, columnspan=2, sticky="we", pady=4
+    )
+    ttk.Button(teams_logo_bar, text="Обзор…", command=browse_team_logo_file).grid(
+        row=1, column=3, sticky="w", padx=(8, 0), pady=4
+    )
+    ttk.Button(teams_logo_bar, text="Загрузить логотип", command=upload_team_logo_by_id).grid(
+        row=2, column=1, sticky="w", pady=(8, 0)
+    )
+    ttk.Button(teams_logo_bar, text="Удалить логотип", command=remove_team_logo_by_id).grid(
+        row=2, column=2, sticky="w", padx=(8, 0), pady=(8, 0)
+    )
+    teams_logo_bar.columnconfigure(1, weight=1)
+
+    def on_teams_tree_select(_event=None):
+        sel = teams_tree.selection()
+        if sel:
+            teams_logo_id_var.set(sel[0])
+
+    teams_tree.bind("<<TreeviewSelect>>", on_teams_tree_select)
+
     def _teams_league_key():
         title = teams_league_var.get().strip()
         key = teams_league_keys.get(title)
@@ -794,43 +878,6 @@ def build_app():
     def search_teams():
         show_teams_for_league()
 
-    def upload_team_logo():
-        sel = teams_tree.selection()
-        if not sel:
-            messagebox.showwarning("Справочник", "Выберите команду в списке.")
-            return
-        team_id = sel[0]
-        ent = tg.get_team(team_id)
-        path = filedialog.askopenfilename(
-            title=f"Логотип — {ent.name if ent else team_id}",
-            filetypes=[
-                ("Изображения", "*.png *.jpg *.jpeg *.gif *.webp"),
-                ("PNG", "*.png"),
-                ("Все файлы", "*.*"),
-            ],
-        )
-        if not path:
-            return
-        try:
-            tg.set_team_logo(team_id, path)
-        except ValueError as exc:
-            messagebox.showerror("Справочник", str(exc))
-            return
-        show_teams_for_league()
-        messagebox.showinfo("Справочник", "Логотип сохранён.")
-
-    def remove_team_logo():
-        sel = teams_tree.selection()
-        if not sel:
-            messagebox.showwarning("Справочник", "Выберите команду в списке.")
-            return
-        team_id = sel[0]
-        if not tg.has_logo(team_id):
-            messagebox.showinfo("Справочник", "У команды нет логотипа.")
-            return
-        tg.remove_team_logo(team_id)
-        show_teams_for_league()
-
     def add_team_entry():
         league_key = _teams_league_key()
         name = teams_name_var.get().strip()
@@ -849,12 +896,6 @@ def build_app():
     teams_league_combo.bind("<<ComboboxSelected>>", lambda _e: show_teams_for_league())
     ttk.Button(teams_add_bar, text="Добавить", command=add_team_entry).grid(
         row=0, column=2, sticky="w", padx=(12, 0)
-    )
-    ttk.Button(teams_add_bar, text="Загрузить логотип…", command=upload_team_logo).grid(
-        row=0, column=3, sticky="w", padx=(12, 0)
-    )
-    ttk.Button(teams_add_bar, text="Удалить логотип", command=remove_team_logo).grid(
-        row=0, column=4, sticky="w", padx=(8, 0)
     )
     ttk.Label(tab_teams, textvariable=teams_status_var, foreground="#555", justify="left").pack(
         anchor="w", pady=(10, 0)
