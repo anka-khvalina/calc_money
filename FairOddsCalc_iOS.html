@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/team-logos-17b5 team-logos-v4 -->
+  <!-- build: cursor/team-logos-17b5 team-logos-v5 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -461,7 +461,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: team-logos-v4</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: team-logos-v5</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -845,8 +845,12 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     document.getElementById('csvFile').addEventListener('change', async (e)=>{
       const file = e.target.files && e.target.files[0];
       if(!file) return;
-      const text = await file.text();
-      document.getElementById('matchesText').value = text;
+      try {
+        const text = await file.text();
+        document.getElementById('matchesText').value = text;
+      } catch (err) {
+        alert('Не удалось прочитать файл: ' + (err.message || err));
+      }
     });
 
     bindClick('exportRank', ()=>{
@@ -891,20 +895,17 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       } catch (e) { return {}; }
     }
     function saveLogoStore(data){
-      localStorage.setItem(LOGOS_KEY, JSON.stringify(data));
-    }
-    function bundledLogoUrl(teamId){
-      const league = String(teamId || '').split(':')[0];
-      if (!league) return '';
-      return `logos/${league}/${String(teamId).replace(':', '_')}.png`;
+      try {
+        localStorage.setItem(LOGOS_KEY, JSON.stringify(data));
+      } catch (e) {
+        alert('Не удалось сохранить логотип (localStorage недоступен). Откройте страницу в Safari напрямую, не во встроенном браузере.');
+      }
     }
     function getTeamLogoSrc(teamId){
-      const stored = loadLogoStore()[teamId];
-      if (stored) return stored;
-      return bundledLogoUrl(teamId);
+      return loadLogoStore()[teamId] || '';
     }
     function hasTeamLogo(teamId){
-      return Boolean(loadLogoStore()[teamId]);
+      return Boolean(getTeamLogoSrc(teamId));
     }
     function setTeamLogoData(teamId, dataUrl){
       const store = loadLogoStore();
@@ -952,7 +953,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       } catch (e) { return emptyTeamStore(); }
     }
     function saveTeamStore(data){
-      localStorage.setItem(TEAMS_KEY, JSON.stringify(data));
+      try {
+        localStorage.setItem(TEAMS_KEY, JSON.stringify(data));
+      } catch (e) {
+        throw new Error('localStorage недоступен. Откройте в Safari (не Telegram/WhatsApp).');
+      }
     }
     function listTeams(league){
       const lg = league;
@@ -2082,11 +2087,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     document.getElementById('histFile').addEventListener('change', async (e)=>{
       const file = e.target.files && e.target.files[0];
       if (!file) return;
-      const raw = await file.text();
-      const { text: cleaned, skipped } = cleanHistoryText(raw);
-      document.getElementById('histText').value = cleaned;
-      if (skipped > 0){
-        alert(`Проверка файла: удалено пустых строк — ${skipped}`);
+      try {
+        const raw = await file.text();
+        const { text: cleaned, skipped } = cleanHistoryText(raw);
+        document.getElementById('histText').value = cleaned;
+        if (skipped > 0){
+          alert(`Проверка файла: удалено пустых строк — ${skipped}`);
+        }
+      } catch (err) {
+        alert('Не удалось прочитать файл: ' + (err.message || err));
       }
     });
 
@@ -2096,11 +2105,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       document.getElementById('histLoadSample').click();
     }
     seedDefaultTeams(false);
-    refreshTeamsTable('epl');
-    refreshShinTeamSelects();
-    refreshHistTable();
+    try { refreshTeamsTable('epl'); } catch (e) { console.error(e); }
+    try { refreshShinTeamSelects(); } catch (e) { console.error(e); }
+    try { refreshHistTable(); } catch (e) { console.error(e); }
     window.refreshHistTable = refreshHistTable;
-    setJsStatus('Версия team-logos-v4 — лига → команда (ID) → логотип');
+    setJsStatus('Версия team-logos-v5 — откройте в Safari (не HTML Preview)');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
       console.error(err);
