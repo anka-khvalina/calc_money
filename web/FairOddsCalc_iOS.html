@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/team-registry-17b5 team-registry-v4 -->
+  <!-- build: cursor/team-logos-17b5 team-logos-v1 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -93,6 +93,15 @@
     th,td{ border-bottom:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; }
     th{ background:#f8fafc; }
     .right{ text-align:right; }
+    .logo-cell{ width:42px; text-align:center; vertical-align:middle; }
+    .team-logo{
+      width:24px; height:24px; object-fit:contain; vertical-align:middle;
+      display:inline-block;
+    }
+    .shin-title .shin-matchup{
+      display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+    }
+    .shin-outcome-label{ display:inline-flex; align-items:center; gap:6px; }
     .danger{ color:var(--danger); }
     .split{ display:grid; grid-template-columns:1.2fr 1fr; gap:10px; }
     @media (max-width:860px){
@@ -308,41 +317,52 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <table id="teamsTable">
           <thead>
             <tr>
+              <th style="width:42px"></th>
               <th style="width:55px">№</th>
               <th>Команда</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td class="right">1</td><td>Arsenal</td></tr>
-            <tr><td class="right">2</td><td>Aston Villa</td></tr>
-            <tr><td class="right">3</td><td>Bournemouth</td></tr>
-            <tr><td class="right">4</td><td>Brentford</td></tr>
-            <tr><td class="right">5</td><td>Brighton</td></tr>
-            <tr><td class="right">6</td><td>Burnley</td></tr>
-            <tr><td class="right">7</td><td>Chelsea</td></tr>
-            <tr><td class="right">8</td><td>Crystal Palace</td></tr>
-            <tr><td class="right">9</td><td>Everton</td></tr>
-            <tr><td class="right">10</td><td>Fulham</td></tr>
-            <tr><td class="right">11</td><td>Leeds</td></tr>
-            <tr><td class="right">12</td><td>Liverpool</td></tr>
-            <tr><td class="right">13</td><td>Man City</td></tr>
-            <tr><td class="right">14</td><td>Man United</td></tr>
-            <tr><td class="right">15</td><td>Newcastle</td></tr>
-            <tr><td class="right">16</td><td>Nott'm Forest</td></tr>
-            <tr><td class="right">17</td><td>Sunderland</td></tr>
-            <tr><td class="right">18</td><td>Tottenham</td></tr>
-            <tr><td class="right">19</td><td>West Ham</td></tr>
-            <tr><td class="right">20</td><td>Wolves</td></tr>
+            <tr><td></td><td class="right">1</td><td>Arsenal</td></tr>
+            <tr><td></td><td class="right">2</td><td>Aston Villa</td></tr>
+            <tr><td></td><td class="right">3</td><td>Bournemouth</td></tr>
+            <tr><td></td><td class="right">4</td><td>Brentford</td></tr>
+            <tr><td></td><td class="right">5</td><td>Brighton</td></tr>
+            <tr><td></td><td class="right">6</td><td>Burnley</td></tr>
+            <tr><td></td><td class="right">7</td><td>Chelsea</td></tr>
+            <tr><td></td><td class="right">8</td><td>Crystal Palace</td></tr>
+            <tr><td></td><td class="right">9</td><td>Everton</td></tr>
+            <tr><td></td><td class="right">10</td><td>Fulham</td></tr>
+            <tr><td></td><td class="right">11</td><td>Leeds</td></tr>
+            <tr><td></td><td class="right">12</td><td>Liverpool</td></tr>
+            <tr><td></td><td class="right">13</td><td>Man City</td></tr>
+            <tr><td></td><td class="right">14</td><td>Man United</td></tr>
+            <tr><td></td><td class="right">15</td><td>Newcastle</td></tr>
+            <tr><td></td><td class="right">16</td><td>Nott'm Forest</td></tr>
+            <tr><td></td><td class="right">17</td><td>Sunderland</td></tr>
+            <tr><td></td><td class="right">18</td><td>Tottenham</td></tr>
+            <tr><td></td><td class="right">19</td><td>West Ham</td></tr>
+            <tr><td></td><td class="right">20</td><td>Wolves</td></tr>
           </tbody>
         </table>
       </div>
-      <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:10px;">
+      <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:10px;align-items:flex-end;">
         <div class="field" style="flex:1;min-width:160px">
           <label>Новая команда</label>
           <input id="teamsNewName" placeholder="Название" />
         </div>
         <div class="field" style="align-self:flex-end">
           <button type="button" id="teamsAdd" class="btn">Добавить</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+        <div class="field" style="flex:1;min-width:200px">
+          <label>Логотип (выберите строку в таблице)</label>
+          <div id="teamsSelectedName" class="small" style="margin-bottom:4px;color:#888">Команда не выбрана</div>
+          <input type="file" id="teamsLogoFile" accept="image/png,image/jpeg,image/gif,image/webp" />
+        </div>
+        <div class="field" style="align-self:flex-end">
+          <button type="button" id="teamsLogoRemove" class="btn">Удалить логотип</button>
         </div>
       </div>
       <div id="metaTeams" class="meta" style="margin-top:10px">English Premier League — 20 команд</div>
@@ -369,7 +389,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         if (!tbody) return;
         var html = '';
         for (var i = 0; i < list.length; i++) {
-          html += '<tr><td class="right">' + (i+1) + '</td><td>' + list[i].replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td></tr>';
+          html += '<tr><td></td><td class="right">' + (i+1) + '</td><td>' + list[i].replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td></tr>';
         }
         tbody.innerHTML = html;
         var meta = document.getElementById('metaTeams');
@@ -427,7 +447,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: team-registry-v4</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: team-logos-v1</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -829,6 +849,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 
     // ---------------- Team registry (localStorage) ----------------
     const TEAMS_KEY = 'FairOddsCalc_teams_v1';
+    const LOGOS_KEY = 'FairOddsCalc_logos_v1';
+    let selectedTeamId = null;
     const NEW_TEAM_RATING = 0;
     const TEAMS_SEED = {
       bundesliga: ['Augsburg','Bayern Munich','Dortmund','Ein Frankfurt','FC Koln','Freiburg','Hamburg','Heidenheim','Hoffenheim','Leverkusen',"M'gladbach",'Mainz','RB Leipzig','St Pauli','Stuttgart','Union Berlin','Werder Bremen','Wolfsburg'],
@@ -837,6 +859,46 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       ligue_1: ['Angers','Auxerre','Brest','Le Havre','Lens','Lille','Lorient','Lyon','Marseille','Metz','Monaco','Nantes','Nice','Paris FC','Paris SG','Rennes','Strasbourg','Toulouse'],
       serie_a: ['Atalanta','Bologna','Cagliari','Como','Cremonese','Fiorentina','Genoa','Inter','Juventus','Lazio','Lecce','Milan','Napoli','Parma','Pisa','Roma','Sassuolo','Torino','Udinese','Verona'],
     };
+
+    function loadLogoStore(){
+      try {
+        const raw = localStorage.getItem(LOGOS_KEY);
+        if (!raw) return {};
+        const data = JSON.parse(raw);
+        return (data && typeof data === 'object') ? data : {};
+      } catch (e) { return {}; }
+    }
+    function saveLogoStore(data){
+      localStorage.setItem(LOGOS_KEY, JSON.stringify(data));
+    }
+    function bundledLogoUrl(teamId){
+      const league = String(teamId || '').split(':')[0];
+      if (!league) return '';
+      return `logos/${league}/${String(teamId).replace(':', '_')}.png`;
+    }
+    function getTeamLogoSrc(teamId){
+      const stored = loadLogoStore()[teamId];
+      if (stored) return stored;
+      return bundledLogoUrl(teamId);
+    }
+    function hasTeamLogo(teamId){
+      return Boolean(loadLogoStore()[teamId]);
+    }
+    function setTeamLogoData(teamId, dataUrl){
+      const store = loadLogoStore();
+      store[teamId] = dataUrl;
+      saveLogoStore(store);
+    }
+    function removeTeamLogoData(teamId){
+      const store = loadLogoStore();
+      delete store[teamId];
+      saveLogoStore(store);
+    }
+    function teamLogoImgHtml(teamId, size=24){
+      const src = getTeamLogoSrc(teamId);
+      if (!src) return '';
+      return `<img class="team-logo" src="${src}" alt="" width="${size}" height="${size}" loading="lazy" onerror="this.style.display='none'" />`;
+    }
 
     function seedDefaultTeams(force=false){
       const cur = loadTeamStore();
@@ -1003,7 +1065,18 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const teams = listTeams(league);
       teams.forEach((t, i) => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td class="right">${i+1}</td><td>${escapeHtml(t.name)}</td>`;
+        tr.dataset.teamId = t.id;
+        if (t.id === selectedTeamId) tr.style.background = '#eef2ff';
+        tr.innerHTML =
+          `<td class="logo-cell">${teamLogoImgHtml(t.id)}</td>` +
+          `<td class="right">${i+1}</td>` +
+          `<td>${escapeHtml(t.name)}</td>`;
+        tr.addEventListener('click', () => {
+          selectedTeamId = t.id;
+          const label = document.getElementById('teamsSelectedName');
+          if (label) label.textContent = t.name;
+          renderTeamsTable(league);
+        });
         tbody.appendChild(tr);
       });
       document.getElementById('metaTeams').textContent = teams.length
@@ -1012,6 +1085,9 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     }
 
     document.getElementById('teamsLeague').addEventListener('change', ()=>{
+      selectedTeamId = null;
+      const label = document.getElementById('teamsSelectedName');
+      if (label) label.textContent = 'Команда не выбрана';
       renderTeamsTable(document.getElementById('teamsLeague').value);
     });
 
@@ -1025,6 +1101,37 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         refreshShinTeamSelects();
         alert(`Добавлено: ${ent.name}`);
       } catch(e){ alert(e.message); }
+    });
+
+    document.getElementById('teamsLogoFile').addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      if (!selectedTeamId){
+        alert('Сначала выберите команду в таблице.');
+        e.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        setTeamLogoData(selectedTeamId, reader.result);
+        renderTeamsTable(document.getElementById('teamsLeague').value);
+        e.target.value = '';
+      };
+      reader.onerror = () => alert('Не удалось прочитать файл.');
+      reader.readAsDataURL(file);
+    });
+
+    bindClick('teamsLogoRemove', () => {
+      if (!selectedTeamId){
+        alert('Сначала выберите команду в таблице.');
+        return;
+      }
+      if (!hasTeamLogo(selectedTeamId)){
+        alert('У команды нет загруженного логотипа.');
+        return;
+      }
+      removeTeamLogoData(selectedTeamId);
+      renderTeamsTable(document.getElementById('teamsLeague').value);
     });
 
     function refreshShinTeamSelects(){
@@ -1480,6 +1587,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const ref1 = resolveTeamRef(league, team1, current);
       const ref2 = resolveTeamRef(league, team2, current);
       const t1 = ref1.name, t2 = ref2.name;
+      const stampIds = (res, a=ref1, b=ref2) => {
+        res.team1Id = a.id;
+        res.team2Id = b.id;
+        return res;
+      };
       const head = [
         '═══ Подробный расчёт Shin ═══',
         `Матч: ${t1} (дома) — ${t2}`,
@@ -1506,7 +1618,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         head.push('  1) Общий соперник — ДА → '+best);
         const res = calcShinCommon(t1, t2, best, current, league, safe);
         res.details = head.join('\n')+'\n'+res.details;
-        return res;
+        return stampIds(res);
       }
       head.push('  1) Общий соперник — нет' + ((ref1.isNew||ref2.isNew) ? ' (новая команда)' : ''));
       const nCurrent = (ref1.isNew && ref2.isNew) ? 0 : countTeamMatches(t1, t2, current);
@@ -1515,7 +1627,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         head.push(`  2) Матчи сезона — ДА (${nCurrent})` + ((ref1.isNew||ref2.isNew) ? ', новая → R=0' : ''));
         const res = calcShinLeague(t1, t2, current, league, safe, 'League matches', ref1.isNew, ref2.isNew);
         res.details = head.join('\n')+'\n'+res.details;
-        return res;
+        return stampIds(res);
       }
       head.push('  2) Матчи сезона — мало');
       const prev = previousHistSeason(league, safe);
@@ -1538,32 +1650,45 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         head.push(`  3) Предыдущий сезон ${prev}, общий соперник ${best}`);
         const res = calcShinCommon(t1p, t2p, best, prevM, league, prev);
         res.details = head.join('\n')+'\n'+res.details;
-        return res;
+        return stampIds(res, ref1p, ref2p);
       }
       const nPrev = (ref1p.isNew && ref2p.isNew) ? 0 : countTeamMatches(t1p, t2p, prevM);
       const prevOk = nPrev >= MIN_SHIN_MATCHES || ((ref1p.isNew||ref2p.isNew) && prevM.length >= MIN_SHIN_MATCHES);
       if (!prevOk) throw new Error(SHIN_ERR.data);
       const res = calcShinLeague(t1p, t2p, prevM, league, prev, 'Previous season', ref1p.isNew, ref2p.isNew);
       res.details = head.join('\n')+'\n'+res.details;
-      return res;
+      return stampIds(res, ref1p, ref2p);
     }
 
     function renderShinResult(res){
       const k = p => (1/p).toFixed(2).replace('.', ',');
+      const league = document.getElementById('shinLeague').value;
+      let id1 = res.team1Id, id2 = res.team2Id;
+      try {
+        if (!id1) id1 = resolveTeamId(league, res.team1);
+        if (!id2) id2 = resolveTeamId(league, res.team2);
+      } catch (e) { /* logos optional */ }
       document.getElementById('shinEmpty').style.display = 'none';
       const box = document.getElementById('shinResult');
       box.classList.add('visible');
       document.getElementById('shinTitle').innerHTML =
-        `${escapeHtml(res.team1)} — ${escapeHtml(res.team2)}` +
+        `<span class="shin-matchup">` +
+        `${id1 ? teamLogoImgHtml(id1, 28) : ''}<span>${escapeHtml(res.team1)}</span>` +
+        `<span>—</span>` +
+        `${id2 ? teamLogoImgHtml(id2, 28) : ''}<span>${escapeHtml(res.team2)}</span>` +
+        `</span>` +
         `<span class="line">k1 / kx / k2: ${formatShinOdds(res.p1, res.px, res.p2, 2)}</span>`;
       const oddsBody = document.querySelector('#shinOddsTable tbody');
       oddsBody.innerHTML = [
-        { label: `P1 (${res.team1})`, kv: k(res.p1), pv: fmt(res.p1*100,2)+' %' },
-        { label: 'X (ничья)', kv: k(res.px), pv: fmt(res.px*100,2)+' %' },
-        { label: `P2 (${res.team2})`, kv: k(res.p2), pv: fmt(res.p2*100,2)+' %' },
-      ].map(r =>
-        `<tr><td>${escapeHtml(r.label)}</td><td class="num">${r.kv}</td><td class="num">${r.pv}</td></tr>`
-      ).join('');
+        { label: `P1 (${res.team1})`, kv: k(res.p1), pv: fmt(res.p1*100,2)+' %', logoId: id1 },
+        { label: 'X (ничья)', kv: k(res.px), pv: fmt(res.px*100,2)+' %', logoId: null },
+        { label: `P2 (${res.team2})`, kv: k(res.p2), pv: fmt(res.p2*100,2)+' %', logoId: id2 },
+      ].map(r => {
+        const outcome = r.logoId
+          ? `<span class="shin-outcome-label">${teamLogoImgHtml(r.logoId, 22)}<span>${escapeHtml(r.label)}</span></span>`
+          : escapeHtml(r.label);
+        return `<tr><td>${outcome}</td><td class="num">${r.kv}</td><td class="num">${r.pv}</td></tr>`;
+      }).join('');
       const meta = [
         ['D (целевой матч, для X)', fmt(res.dMarket, 1)],
         ['H (домашнее преимущество)', res.hUsed != null ? fmt(res.hUsed, 1) : '—'],
@@ -1904,7 +2029,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     refreshShinTeamSelects();
     refreshHistTable();
     window.refreshHistTable = refreshHistTable;
-    setJsStatus('Версия team-registry-v4 — справочник по лигам');
+    setJsStatus('Версия team-logos-v1 — справочник и логотипы команд');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
       console.error(err);

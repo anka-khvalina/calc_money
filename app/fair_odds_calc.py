@@ -727,14 +727,34 @@ def build_app():
     teams_tree = ttk.Treeview(
         tab_teams,
         columns=("num", "name"),
-        show="headings",
+        show="tree headings",
         height=20,
     )
+    teams_tree.heading("#0", text="")
     teams_tree.heading("num", text="№")
     teams_tree.heading("name", text="Команда")
+    teams_tree.column("#0", width=36, stretch=False, anchor="center")
     teams_tree.column("num", width=44, anchor="e")
     teams_tree.column("name", width=320, anchor="w")
     teams_tree.pack(fill="both", expand=True, pady=(12, 0))
+
+    _teams_logo_photos: dict[str, tk.PhotoImage] = {}
+
+    def _load_team_logo_photo(team_id: str, cache: dict[str, tk.PhotoImage], size: int = 24):
+        if not team_id or not tg.has_logo(team_id):
+            return None
+        if team_id in cache:
+            return cache[team_id]
+        try:
+            img = tk.PhotoImage(file=str(tg.logo_path(team_id)), master=root)
+            w, h = img.width(), img.height()
+            if w > size or h > size:
+                factor = max(w // size, h // size, 1)
+                img = img.subsample(factor, factor)
+            cache[team_id] = img
+            return img
+        except tk.TclError:
+            return None
 
     teams_add_bar = ttk.Frame(tab_teams)
     teams_add_bar.pack(fill="x", pady=(12, 0))
@@ -756,10 +776,15 @@ def build_app():
 
     def show_teams_for_league():
         clear_teams_tree()
+        _teams_logo_photos.clear()
         league_key = _teams_league_key()
         entries = tg.list_teams(league_key)
         for i, ent in enumerate(entries, start=1):
-            teams_tree.insert("", "end", values=(i, ent.name))
+            img = _load_team_logo_photo(ent.id, _teams_logo_photos)
+            kw: dict = {"values": (i, ent.name)}
+            if img:
+                kw["image"] = img
+            teams_tree.insert("", "end", iid=ent.id, **kw)
         teams_status_var.set(
             f"{hs.league_title(league_key)} — {len(entries)} команд"
             if entries
@@ -767,6 +792,43 @@ def build_app():
         )
 
     def search_teams():
+        show_teams_for_league()
+
+    def upload_team_logo():
+        sel = teams_tree.selection()
+        if not sel:
+            messagebox.showwarning("Справочник", "Выберите команду в списке.")
+            return
+        team_id = sel[0]
+        ent = tg.get_team(team_id)
+        path = filedialog.askopenfilename(
+            title=f"Логотип — {ent.name if ent else team_id}",
+            filetypes=[
+                ("Изображения", "*.png *.jpg *.jpeg *.gif *.webp"),
+                ("PNG", "*.png"),
+                ("Все файлы", "*.*"),
+            ],
+        )
+        if not path:
+            return
+        try:
+            tg.set_team_logo(team_id, path)
+        except ValueError as exc:
+            messagebox.showerror("Справочник", str(exc))
+            return
+        show_teams_for_league()
+        messagebox.showinfo("Справочник", "Логотип сохранён.")
+
+    def remove_team_logo():
+        sel = teams_tree.selection()
+        if not sel:
+            messagebox.showwarning("Справочник", "Выберите команду в списке.")
+            return
+        team_id = sel[0]
+        if not tg.has_logo(team_id):
+            messagebox.showinfo("Справочник", "У команды нет логотипа.")
+            return
+        tg.remove_team_logo(team_id)
         show_teams_for_league()
 
     def add_team_entry():
@@ -787,6 +849,12 @@ def build_app():
     teams_league_combo.bind("<<ComboboxSelected>>", lambda _e: show_teams_for_league())
     ttk.Button(teams_add_bar, text="Добавить", command=add_team_entry).grid(
         row=0, column=2, sticky="w", padx=(12, 0)
+    )
+    ttk.Button(teams_add_bar, text="Загрузить логотип…", command=upload_team_logo).grid(
+        row=0, column=3, sticky="w", padx=(12, 0)
+    )
+    ttk.Button(teams_add_bar, text="Удалить логотип", command=remove_team_logo).grid(
+        row=0, column=4, sticky="w", padx=(8, 0)
     )
     ttk.Label(tab_teams, textvariable=teams_status_var, foreground="#555", justify="left").pack(
         anchor="w", pady=(10, 0)
@@ -828,7 +896,7 @@ def build_app():
             key = hs.normalize_league(title)
         return key
 
-    def refresh_shin_team_options(*_event=None):
+    def refresh_shin_team_options(_event=None):
         league_key = _shin_league_key()
         opts = tg.format_team_options(league_key)
         shin_team1_combo["values"] = opts
@@ -881,10 +949,29 @@ def build_app():
     shin_out = ttk.LabelFrame(tab_shin, text="Результат (метод Shin)", padding=10)
     shin_out.pack(fill="both", expand=True, pady=(12, 0))
 
-    shin_title_var = tk.StringVar(value="")
-    ttk.Label(
-        shin_out, textvariable=shin_title_var, font=("", 12, "bold")
-    ).pack(anchor="w", pady=(0, 8))
+    shin_title_frame = ttk.Frame(shin_out)
+    shin_title_frame.pack(anchor="w", fill="x", pady=(0, 8))
+
+    shin_logo1_lbl = ttk.Label(shin_title_frame)
+    shin_logo1_lbl.grid(row=0, column=0, padx=(0, 4))
+    shin_title_team1_lbl = ttk.Label(shin_title_frame, font=("", 12, "bold"))
+    shin_title_team1_lbl.grid(row=0, column=1, padx=(0, 6))
+    ttk.Label(shin_title_frame, text="—", font=("", 12, "bold")).grid(row=0, column=2, padx=(0, 6))
+    shin_logo2_lbl = ttk.Label(shin_title_frame)
+    shin_logo2_lbl.grid(row=0, column=3, padx=(0, 4))
+    shin_title_team2_lbl = ttk.Label(shin_title_frame, font=("", 12, "bold"))
+    shin_title_team2_lbl.grid(row=0, column=4, padx=(0, 6))
+    shin_title_odds_lbl = ttk.Label(shin_title_frame, font=("", 11), foreground="#1f3ea6")
+    shin_title_odds_lbl.grid(row=0, column=5, sticky="w")
+
+    _shin_logo_photos: dict[str, tk.PhotoImage] = {}
+
+    def _set_shin_logo_label(lbl: ttk.Label, team_id: str):
+        img = _load_team_logo_photo(team_id, _shin_logo_photos, size=28)
+        if img:
+            lbl.configure(image=img, text="")
+        else:
+            lbl.configure(image="", text="")
 
     shin_odds_frame = ttk.Frame(shin_out)
     shin_odds_frame.pack(fill="x", pady=(0, 10))
@@ -892,12 +979,14 @@ def build_app():
     shin_odds_tree = ttk.Treeview(
         shin_odds_frame,
         columns=("outcome", "k", "p"),
-        show="headings",
+        show="tree headings",
         height=3,
     )
+    shin_odds_tree.heading("#0", text="")
     shin_odds_tree.heading("outcome", text="Исход")
     shin_odds_tree.heading("k", text="k (коэфф.)")
     shin_odds_tree.heading("p", text="p, %")
+    shin_odds_tree.column("#0", width=32, stretch=False)
     shin_odds_tree.column("outcome", width=200, anchor="w")
     shin_odds_tree.column("k", width=100, anchor="e")
     shin_odds_tree.column("p", width=100, anchor="e")
@@ -932,22 +1021,32 @@ def build_app():
 
     def _fill_shin_result(res: msc.ShinMatchResult):
         _clear_shin_trees()
-        shin_title_var.set(f"{res.team1}  —  {res.team2}  ·  {res.format_odds(2)}")
-        shin_odds_tree.insert(
-            "",
-            "end",
-            values=(f"P1 ({res.team1})", fmt(res.k1, 2), fmt(res.p1 * 100, 2) + " %"),
-        )
+        _shin_logo_photos.clear()
+        shin_title_team1_lbl.configure(text=res.team1)
+        shin_title_team2_lbl.configure(text=res.team2)
+        shin_title_odds_lbl.configure(text=f"k1 / kx / k2: {res.format_odds(2)}")
+        _set_shin_logo_label(shin_logo1_lbl, res.team1_id)
+        _set_shin_logo_label(shin_logo2_lbl, res.team2_id)
+
+        img1 = _load_team_logo_photo(res.team1_id, _shin_logo_photos)
+        row1: dict = {
+            "values": (f"P1 ({res.team1})", fmt(res.k1, 2), fmt(res.p1 * 100, 2) + " %"),
+        }
+        if img1:
+            row1["image"] = img1
+        shin_odds_tree.insert("", "end", **row1)
         shin_odds_tree.insert(
             "",
             "end",
             values=("X (ничья)", fmt(res.kx, 2), fmt(res.px * 100, 2) + " %"),
         )
-        shin_odds_tree.insert(
-            "",
-            "end",
-            values=(f"P2 ({res.team2})", fmt(res.k2, 2), fmt(res.p2 * 100, 2) + " %"),
-        )
+        img2 = _load_team_logo_photo(res.team2_id, _shin_logo_photos)
+        row2: dict = {
+            "values": (f"P2 ({res.team2})", fmt(res.k2, 2), fmt(res.p2 * 100, 2) + " %"),
+        }
+        if img2:
+            row2["image"] = img2
+        shin_odds_tree.insert("", "end", **row2)
         meta_rows = [
             ("D (целевой матч, для X)", fmt(res.d_market, 1)),
             ("H (домашнее преимущество)", fmt(res.h_used, 1) if res.h_used is not None else "—"),
