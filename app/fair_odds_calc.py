@@ -828,7 +828,7 @@ def build_app():
             key = hs.normalize_league(title)
         return key
 
-    def refresh_shin_team_options(*_event=None):
+    def refresh_shin_team_options(_event=None):
         league_key = _shin_league_key()
         opts = tg.format_team_options(league_key)
         shin_team1_combo["values"] = opts
@@ -1363,6 +1363,12 @@ def build_app():
 
 
 def main():
+    try:
+        from runtime_paths import ensure_user_data
+    except ImportError:
+        ensure_user_data = None  # type: ignore
+    if ensure_user_data is not None:
+        ensure_user_data()
     build_app().mainloop()
 
 

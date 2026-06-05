@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,6 +55,12 @@ def registry_path() -> Path:
     override = os.environ.get(_REGISTRY_ENV, "").strip()
     if override:
         return Path(override).expanduser()
+    if getattr(sys, "frozen", False):
+        try:
+            from .runtime_paths import teams_registry_path
+        except ImportError:  # pragma: no cover
+            from runtime_paths import teams_registry_path
+        return teams_registry_path()
     return DEFAULT_REGISTRY_PATH
 
 
