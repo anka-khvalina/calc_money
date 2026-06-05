@@ -2,35 +2,30 @@ name: Deploy iOS web app (GitHub Pages)
 
 on:
   push:
-    branches: [main, cursor/history-store-17b5, cursor/shin-match-17b5]
+    branches:
+      - main
+      - cursor/history-store-17b5
+      - cursor/shin-match-17b5
+      - cursor/team-registry-17b5
+      - cursor/team-logos-17b5
+      - cursor/build-exe-17b5
     paths:
       - 'web/**'
       - '.github/workflows/pages-ios.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages-ios
-  cancel-in-progress: false
+  contents: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
+      - name: Deploy web/ to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: web
-
-      - uses: actions/deploy-pages@v4
-        id: deployment
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web
+          destination_dir: .

@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 try:
     from .history_store import LEAGUES, league_title, normalize_league
@@ -20,6 +22,8 @@ DEFAULT_LEAGUE = "epl"
 DEFAULT_REGISTRY_PATH = Path(__file__).resolve().parent.parent / "data" / "teams" / "registry.json"
 _REGISTRY_ENV = "FAIR_ODDS_TEAMS"
 _ID_RE = re.compile(r"^([a-z0-9_]+):(\d+)$")
+_LOGO_EXT = ".png"
+_ALLOWED_LOGO_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
 
 @dataclass(frozen=True)
@@ -50,10 +54,97 @@ class TeamEntry:
         )
 
 
+def logo_filename(team_id: str) -> str:
+    return str(team_id).strip().replace(":", "_") + _LOGO_EXT
+
+
+def logos_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        try:
+            from .runtime_paths import teams_logos_dir
+        except ImportError:  # pragma: no cover
+            try:
+                from runtime_paths import teams_logos_dir
+            except ImportError:
+                return registry_path().parent / "logos"
+            return teams_logos_dir()
+        return teams_logos_dir()
+    return registry_path().parent / "logos"
+
+
+def logo_path(team_id: str, *, path: Optional[Path] = None) -> Path:
+    """Путь к файлу логотипа команды (PNG). path — только для тестов (каталог logos)."""
+    base = path if path is not None else logos_dir()
+    return base / logo_filename(team_id)
+
+
+def has_logo(team_id: str, *, path: Optional[Path] = None) -> bool:
+    return logo_path(team_id, path=path).is_file()
+
+
+def _save_logo_png(source: Path, dest: Path) -> None:
+    suffix = source.suffix.lower()
+    if suffix == ".png":
+        shutil.copy2(source, dest)
+        return
+    try:
+        from PIL import Image
+    except ImportError as exc:  # pragma: no cover
+        if suffix in {".jpg", ".jpeg", ".webp"}:
+            raise ValueError(
+                "Для загрузки JPEG/WebP установите Pillow (pip install Pillow) или сохраните логотип в PNG."
+            ) from exc
+        if suffix == ".gif":
+            shutil.copy2(source, dest.with_suffix(".gif"))
+            dest.unlink(missing_ok=True)
+            raise ValueError("GIF сохраните как PNG или установите Pillow для автоконвертации.")
+        raise ValueError(f"Формат {suffix!r} не поддерживается.") from exc
+    with Image.open(source) as im:
+        im.convert("RGBA").save(dest, format="PNG")
+
+
+def set_team_logo(
+    team_id: str,
+    source_path: os.PathLike[str] | str,
+    *,
+    path: Optional[Path] = None,
+) -> Path:
+    """Скопировать/конвертировать файл логотипа для команды."""
+    tid = str(team_id).strip()
+    if get_team(tid, path=path) is None:
+        raise ValueError(f"Команда {tid!r} не найдена в справочнике.")
+    src = Path(source_path)
+    if not src.is_file():
+        raise ValueError("Файл логотипа не найден.")
+    suffix = src.suffix.lower()
+    if suffix not in _ALLOWED_LOGO_SUFFIXES:
+        raise ValueError(
+            f"Формат {suffix!r} не поддерживается. Используйте PNG, JPG, GIF или WebP."
+        )
+    dest = logo_path(tid, path=path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    _save_logo_png(src, dest)
+    return dest
+
+
+def remove_team_logo(team_id: str, *, path: Optional[Path] = None) -> bool:
+    p = logo_path(team_id, path=path)
+    if p.is_file():
+        p.unlink()
+        return True
+    return False
+
+
 def registry_path() -> Path:
     override = os.environ.get(_REGISTRY_ENV, "").strip()
     if override:
         return Path(override).expanduser()
+    if getattr(sys, "frozen", False):
+        try:
+            from .runtime_paths import teams_registry_path
+        except ImportError:  # pragma: no cover
+            from runtime_paths import teams_registry_path
+        return teams_registry_path()
     return DEFAULT_REGISTRY_PATH
 
 
