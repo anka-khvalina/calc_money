@@ -40,6 +40,7 @@ import io
 import json
 import math
 import os
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -414,11 +415,17 @@ def _parse_history_rows(rows: Sequence[Sequence[str]], source: str = "") -> List
 def data_root() -> Path:
     """Корень хранилища истории.
 
-    Приоритет: переменная окружения FAIR_ODDS_DATA, иначе <repo>/data/history.
+    Приоритет: FAIR_ODDS_DATA → рядом с exe → <repo>/data/history.
     """
     env = os.environ.get("FAIR_ODDS_DATA")
     if env:
         return Path(env).expanduser()
+    try:
+        from .runtime_paths import history_data_root
+    except ImportError:  # pragma: no cover
+        from runtime_paths import history_data_root
+    if getattr(sys, "frozen", False):
+        return history_data_root()
     return Path(__file__).resolve().parent.parent / "data" / "history"
 
 

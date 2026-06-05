@@ -3,60 +3,45 @@ name: Build Windows EXE
 on:
   push:
     branches:
-      - "**"
-    tags:
-      - "v*"
+      - cursor/team-registry-17b5
+      - cursor/team-logos-17b5
+      - cursor/build-exe-17b5
+      - main
+    paths:
+      - 'app/**'
+      - 'data/**'
+      - 'scripts/FairOddsCalc.spec'
+      - '.github/workflows/build-windows.yml'
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
 
       - name: Install PyInstaller
-        run: pip install pyinstaller
+        run: python -m pip install --upgrade pip pyinstaller
 
-      - name: Build EXE
-        run: pyinstaller --onefile --windowed --name FairOddsCalc app/fair_odds_calc.py
+      - name: Build FairOddsCalc.exe
+        run: pyinstaller --noconfirm scripts/FairOddsCalc.spec
 
-      - name: Upload EXE artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FairOddsCalc-windows
+          name: FairOddsCalc-Windows
           path: dist/FairOddsCalc.exe
-          if-no-files-found: error
+          retention-days: 90
 
-      - name: Upload iOS HTML artifact
+      - name: Upload data folder template
         uses: actions/upload-artifact@v4
         with:
-          name: FairOddsCalc-ios-html
-          path: web/FairOddsCalc_iOS.html
-          if-no-files-found: error
-
-      - name: Publish Release (on tag)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/FairOddsCalc.exe
-            web/FairOddsCalc_iOS.html
-          name: FairOddsCalc ${{ github.ref_name }}
-          body: |
-            Калькулятор средней A + рейтинг команд.
-
-            Вложения:
-            - `FairOddsCalc.exe` — Windows desktop
-            - `FairOddsCalc_iOS.html` — iOS Safari / Mobile Web (один файл)
-
-            Если Windows покажет SmartScreen ("Windows защитила ваш компьютер"):
-            нажмите "Подробнее" -> "Выполнить в любом случае" (файл не подписан сертификатом).
+          name: FairOddsCalc-data-seed
+          path: |
+            data/teams/registry.json
+            data/history/index.json
+          retention-days: 90

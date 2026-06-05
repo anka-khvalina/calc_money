@@ -48,6 +48,26 @@ def test_sync_from_matches(tmp_path):
     assert names == {"Arsenal", "Chelsea", "Leeds", "Everton"}
 
 
+def test_team_logo_save_and_remove(tmp_path):
+    reg = tmp_path / "registry.json"
+    logos = tmp_path / "logos"
+    ent = tg.add_team("epl", "Arsenal", path=reg)
+    png = tmp_path / "logo.png"
+    png.write_bytes(
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01"
+        b"\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    assert not tg.has_logo(ent.id, path=logos)
+    saved = tg.set_team_logo(ent.id, png, path=logos)
+    assert saved.is_file()
+    assert tg.has_logo(ent.id, path=logos)
+    assert tg.logo_path(ent.id, path=logos) == logos / "epl_1.png"
+    assert tg.remove_team_logo(ent.id, path=logos)
+    assert not tg.has_logo(ent.id, path=logos)
+
+
 def test_new_team_shin_calc(tmp_path, monkeypatch):
     reg = tmp_path / "registry.json"
     monkeypatch.setattr(tg, "registry_path", lambda: reg)
