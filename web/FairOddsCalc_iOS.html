@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/team-logos-17b5 team-logos-v3 -->
+  <!-- build: cursor/team-logos-17b5 team-logos-v4 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -147,8 +147,8 @@
             }
             if (id === 'hist' && window.refreshHistTable) window.refreshHistTable();
             if (id === 'teams') {
-              if (window.__renderTeamsBootstrap) window.__renderTeamsBootstrap();
-              else if (window.refreshTeamsTable) window.refreshTeamsTable();
+              if (window.refreshTeamsTable) window.refreshTeamsTable();
+              else if (window.__renderTeamsBootstrap) window.__renderTeamsBootstrap();
             }
           }
           var tabsEl = document.querySelector('.tabs');
@@ -388,6 +388,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       };
       window.__TEAMS_SEED = SEED;
       window.__renderTeamsBootstrap = function(league){
+        if (window.refreshTeamsTable) {
+          window.refreshTeamsTable(league);
+          return;
+        }
         var sel = document.getElementById('teamsLeague');
         var lg = league || (sel && sel.value) || 'epl';
         var list = SEED[lg] || [];
@@ -401,12 +405,16 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         var meta = document.getElementById('metaTeams');
         if (meta) meta.textContent = (TITLES[lg] || lg) + ' — ' + list.length + ' команд';
         if (sel && sel.value !== lg) sel.value = lg;
+        if (window.fillLogoTeamSelect) window.fillLogoTeamSelect(lg);
       };
       function hookTeamsLeague(){
         var sel = document.getElementById('teamsLeague');
         if (!sel || sel.__teamsHooked) return;
         sel.__teamsHooked = true;
-        sel.addEventListener('change', function(){ window.__renderTeamsBootstrap(sel.value); });
+        sel.addEventListener('change', function(){
+          if (window.refreshTeamsTable) window.refreshTeamsTable(sel.value);
+          else window.__renderTeamsBootstrap(sel.value);
+        });
       }
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function(){ hookTeamsLeague(); window.__renderTeamsBootstrap('epl'); });
@@ -453,7 +461,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: team-logos-v3</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: team-logos-v4</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -1078,6 +1086,13 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       if (!sel) return '';
       sel.innerHTML = '';
       const teams = listTeams(league);
+      if (!teams.length) {
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = '— нет команд в лиге —';
+        sel.appendChild(empty);
+        return '';
+      }
       teams.forEach(t => {
         const opt = document.createElement('option');
         opt.value = t.id;
@@ -1086,9 +1101,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         sel.appendChild(opt);
       });
       if (selectedTeamId && teams.some(t => t.id === selectedTeamId)) sel.value = selectedTeamId;
-      else if (teams.length) sel.selectedIndex = 0;
+      else sel.selectedIndex = 0;
       return sel.value || '';
     }
+    window.fillLogoTeamSelect = fillLogoTeamSelect;
     function selectedLogoTeamId(){
       const sel = document.getElementById('teamsLogoTeam');
       return sel ? String(sel.value || '').trim() : '';
@@ -1118,10 +1134,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     }
 
     document.getElementById('teamsLeague').addEventListener('change', ()=>{
-      const league = document.getElementById('teamsLeague').value;
-      fillLogoTeamSelect(league);
-      renderTeamsTable(league);
+      refreshTeamsTable();
     });
+
+    function refreshTeamsTable(league){
+      const lg = league || document.getElementById('teamsLeague').value;
+      fillLogoTeamSelect(lg);
+      renderTeamsTable(lg);
+    }
+    window.refreshTeamsTable = refreshTeamsTable;
 
     bindClick('teamsAdd', ()=>{
       try {
@@ -2075,24 +2096,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       document.getElementById('histLoadSample').click();
     }
     seedDefaultTeams(false);
-    window.refreshTeamsTable = function(){
-      const league = document.getElementById('teamsLeague').value;
-      if (window.__renderTeamsBootstrap) {
-        window.__renderTeamsBootstrap(league);
-      } else {
-        fillLogoTeamSelect(league);
-        renderTeamsTable(league);
-      }
-    };
-    if (window.__renderTeamsBootstrap) window.__renderTeamsBootstrap('epl');
-    else {
-      fillLogoTeamSelect(document.getElementById('teamsLeague').value);
-      renderTeamsTable(document.getElementById('teamsLeague').value);
-    }
+    refreshTeamsTable('epl');
     refreshShinTeamSelects();
     refreshHistTable();
     window.refreshHistTable = refreshHistTable;
-    setJsStatus('Версия team-logos-v3 — лига → команда (ID) → логотип');
+    setJsStatus('Версия team-logos-v4 — лига → команда (ID) → логотип');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
       console.error(err);
