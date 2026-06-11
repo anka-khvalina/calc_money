@@ -209,7 +209,7 @@ python3 app/history_store.py prior --league EPL
 #   + усадка к текущему сезону: H = w*H_current + (1-w)*H_prior, w = m/(m+kappa)
 python3 app/history_store.py prior --league EPL --current current.csv --kappa 30
 
-# калибровка draw-модели px(d) по фактическим результатам
+# калибровка логит-модели ничьей px = σ(α + β·X + γ·X²), X = |D|
 python3 app/history_store.py draw-model --league EPL
 ```
 
@@ -230,10 +230,14 @@ python3 app/history_store.py draw-model --league EPL
   сезоны весомее, вес `exp(-xi*k)`). Если есть матчи текущего сезона — усадка
   `H = w·H_current + (1−w)·H_prior`, `w = m/(m+κ)`; при `m ≤ 2` или несвязном
   графе берётся только приор. Нет истории → константа лиги (`LEAGUE_DEFAULT_H`).
-- **draw-модель** `px(d) = clamp(a + b·|d|, 0.06, 0.34)`: линейная регрессия
-  доли ничьих по `|D_market|` (по фактическим результатам; при их отсутствии —
-  по de-vig вероятности ничьей). Используется для разбиения `E_home` на `p1`/`px`
-  в прогнозах через общих соперников.
+- **draw-модель (логит)** `px = σ(α + β·X + γ·X²)`, `X = |EffectiveD|`:
+  по каждому сезону Shin-МНК даёт рейтинги и `H`; для каждого матча
+  `X_i = |R_home − R_away + H|`, `Y_i = ln(px_i/(1−px_i))` (px из Shin de-vig);
+  МНК `Y = α + β·X + γ·X²`. В прогнозе `EffectiveD = D_final + H` (team1 дома),
+  `D_final` (нейтрально) или `D_final − H` (team1 в гостях);
+  `s₁ = σ(EffectiveD)`, `p1 = (1−px)·s₁`, `p2 = (1−px)·(1−s₁)`.
+  Базовый D матча: `D = 400·log₁₀(p1/p2)` по Shin de-vig (без «ожидаемых очков»
+  `E = p + 0.5·px`).
 
 Это даёт корректный league-specific `H` для цепочек/переворота площадки и
 откалиброванную ничью вместо «магической» константы `k_draw`.

@@ -1035,6 +1035,22 @@ def build_app():
     shin_league_combo.grid(row=2, column=1, sticky="w", pady=4)
     shin_league_combo.bind("<<ComboboxSelected>>", refresh_shin_team_options)
     shin_labeled_entry(shin_form, 3, "Сезон:", shin_season_var, 12)
+
+    shin_venue_options = {
+        "Команда 1 дома": msc.VENUE_HOME,
+        "Нейтральное поле": msc.VENUE_NEUTRAL,
+        "Команда 1 в гостях": msc.VENUE_AWAY,
+    }
+    shin_venue_var = tk.StringVar(value="Команда 1 дома")
+    ttk.Label(shin_form, text="Поле:").grid(row=4, column=0, sticky="w", padx=(0, 8), pady=4)
+    ttk.Combobox(
+        shin_form,
+        textvariable=shin_venue_var,
+        values=list(shin_venue_options),
+        state="readonly",
+        width=30,
+    ).grid(row=4, column=1, sticky="w", pady=4)
+
     refresh_shin_team_options()
     teams_show_on_start()
 
@@ -1139,7 +1155,8 @@ def build_app():
             row2["image"] = img2
         shin_odds_tree.insert("", "end", **row2)
         meta_rows = [
-            ("D (целевой матч, для X)", fmt(res.d_market, 1)),
+            ("EffectiveD (с учётом поля)", fmt(res.d_market, 1)),
+            ("Поле", msc.VENUE_LABELS_RU.get(res.venue, res.venue)),
             ("H (домашнее преимущество)", fmt(res.h_used, 1) if res.h_used is not None else "—"),
             ("Источник данных", res.source_label_ru),
             ("Сезон расчёта", res.season_used),
@@ -1147,7 +1164,7 @@ def build_app():
             ("Метод", res.method),
         ]
         if res.d_chain is not None:
-            meta_rows.insert(1, ("D (цепь через соперника)", fmt(res.d_chain, 1)))
+            meta_rows.insert(1, ("D_final (нейтральная база, цепь)", fmt(res.d_chain, 1)))
         if res.common_opponent:
             meta_rows.insert(3, ("Общий соперник", res.common_opponent))
         if res.team1_id:
@@ -1189,6 +1206,7 @@ def build_app():
                 t2_ref,
                 league_key,
                 shin_season_var.get().strip(),
+                venue=shin_venue_options.get(shin_venue_var.get().strip(), msc.VENUE_HOME),
             )
             _fill_shin_result(res)
         except msc.ShinCalculationError as exc:
@@ -1204,8 +1222,9 @@ def build_app():
     ttk.Label(
         tab_shin,
         text=(
-            "Метод Shin: P1/P2 — формула Shin; ничья — draw-модель px(d).\n"
-            "Команды выбираются по id из справочника. Новые команды без матчей в сезоне: R=0.\n"
+            "Метод Shin: D = 400·log₁₀(p1/p2); EffectiveD = D_final ± H по полю.\n"
+            "Ничья: X = |EffectiveD|, px = σ(α + β·X + γ·X²) — логит-калибровка по истории.\n"
+            "P1/P2: s₁ = σ(EffectiveD), p1 = (1−px)·s₁. Новые команды без матчей: R=0.\n"
             "Приоритет: общий соперник → матчи лиги (≥3) → предыдущий сезон."
         ),
         foreground="#555",
@@ -1355,7 +1374,7 @@ def build_app():
                 lines.append(f"  … ещё {len(est.seasons_used) - 5} сезон(ов)")
         lines.append(f"H итог: {est.h_final:.2f}  (x{10 ** (est.h_final / 400):.4f}); {est.confidence}")
         lines.append(
-            f"draw px(d) = clamp({dm.a:.4f} + ({dm.b:.6f})·|d|); "
+            f"draw px = σ({dm.alpha:.4f} + ({dm.beta:.6f})·X + ({dm.gamma:.8f})·X²); "
             f"n={dm.n}, источник={dm.source}"
         )
         hist_stats_var.set("\n".join(lines))
@@ -1419,7 +1438,7 @@ def build_app():
             f"Файл: {hs.season_path(league_key, season)}",
             "",
             f"H_prior: {est.h_prior:.2f}  →  H={est.h_final:.2f} ({est.confidence})",
-            f"draw: px(d)=clamp({dm.a:.4f}+({dm.b:.6f})·|d|), n={dm.n}",
+            f"draw: px=σ({dm.alpha:.4f}+({dm.beta:.6f})·X+({dm.gamma:.8f})·X²), n={dm.n}",
         ]
         hist_stats_var.set("\n".join(lines))
         if select_tree:

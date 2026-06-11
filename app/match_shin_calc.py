@@ -1,8 +1,13 @@
 """
 Расчёт вероятностей матча по методу Shin.
 
-P1/P2 — Shin (de-vig + цепочка сил / рейтинг).
-Draw — отдельная модель px(d) из history_store.
+Схема:
+  D_final     — оценка R(team1) − R(team2) на нейтральной базе
+                (Shin de-vig, D-шкала: D = 400·log₁₀(p1/p2); МНК по матчам).
+  EffectiveD  = D_final + H (team1 дома) / D_final (нейтрально) / D_final − H (в гостях).
+  Ничья:        X = |EffectiveD|;  px = σ(α + β·X + γ·X²)  — логит-модель из history_store.
+  Доли не-ничьи: s1 = σ(EffectiveD) = 10^(D/400)/(1+10^(D/400)),  s2 = 1 − s1.
+  Итог:         p1 = (1 − px)·s1,  p2 = (1 − px)·s2.
 """
 
 from __future__ import annotations
@@ -51,6 +56,25 @@ ERR_DATA = (
 MIN_LEAGUE_MATCHES = 3
 NEW_TEAM_RATING = 0.0  # R для команд без матчей в сезоне (новички лиги)
 
+VENUE_HOME = "home"
+VENUE_NEUTRAL = "neutral"
+VENUE_AWAY = "away"
+VENUES = (VENUE_HOME, VENUE_NEUTRAL, VENUE_AWAY)
+VENUE_LABELS_RU = {
+    VENUE_HOME: "Команда 1 дома",
+    VENUE_NEUTRAL: "нейтральное поле",
+    VENUE_AWAY: "Команда 1 в гостях",
+}
+
+
+def _effective_d(d_neutral: float, h: float, venue: str) -> float:
+    """EffectiveD = D_final ± H в зависимости от места проведения."""
+    if venue == VENUE_HOME:
+        return d_neutral + h
+    if venue == VENUE_AWAY:
+        return d_neutral - h
+    return d_neutral
+
 
 @dataclass(frozen=True)
 class ShinMatchResult:
@@ -71,6 +95,7 @@ class ShinMatchResult:
     d_market: float = 0.0
     h_used: Optional[float] = None
     d_chain: Optional[float] = None
+    venue: str = VENUE_HOME
     details: str = ""
 
     @property
@@ -248,16 +273,6 @@ def _strength_ratio_shin(match: hs.HistoricalMatch, focal: str) -> float:
     raise ValueError(f"Команда {focal} не участвует в матче")
 
 
-def _match_draw_px(
-    draw: hs.DrawModel,
-    d_target: float,
-    s1: float,
-    s2: float,
-) -> Tuple[float, List[str]]:
-    """px(d) с учётом явного фаворита (цепочка s1/s2)."""
-    return draw.forecast_px(d_target, s1, s2)
-
-
 def _resolve_home_advantage(
     team1: str,
     team2: str,
@@ -310,25 +325,23 @@ def _chain_match_lines(
     return lines, rhos
 
 
-def _probs_from_strengths(s1: float, s2: float, px: float) -> Tuple[float, float, float]:
+def _probs_from_d(
+    d_effective: float, px: float
+) -> Tuple[float, float, float, float, float]:
+    """(p1, px, p2, s1, s2): s1 = σ(EffectiveD) — доля team1 в не-ничье."""
     px = max(0.0, min(0.95, px))
-    rem = max(1e-9, 1.0 - px)
-    denom = s1 + s2
-    if denom <= 0:
-        raise ShinCalculationError(ERR_DATA)
-    p1 = (s1 / denom) * rem
-    p2 = (s2 / denom) * rem
-    total = p1 + px + p2
-    return p1 / total, px / total, p2 / total
+    s1 = 1.0 / (1.0 + 10.0 ** (-d_effective / 400.0))
+    s2 = 1.0 - s1
+    rem = 1.0 - px
+    return rem * s1, px, rem * s2, s1, s2
 
 
-def _shin_market_diff(match: tr.MatchOdds) -> Tuple[float, float, float]:
-    p1, px, p2 = ds.shin_devig(match.odds_1, match.odds_x, match.odds_2)
-    e_home = p1 + 0.5 * px
-    e_away = p2 + 0.5 * px
-    if e_home <= 0 or e_away <= 0:
-        raise ValueError("Ожидаемые очки должны быть > 0")
-    return 400.0 * math.log10(e_home / e_away), e_home, e_away
+def _shin_market_diff(match: tr.MatchOdds) -> float:
+    """D матча по Shin de-vig: D = 400·log₁₀(p1/p2), без ожидаемых очков."""
+    p1, _px, p2 = ds.shin_devig(match.odds_1, match.odds_x, match.odds_2)
+    if p1 <= 0 or p2 <= 0:
+        raise ValueError("Вероятности P1/P2 должны быть > 0")
+    return 400.0 * math.log10(p1 / p2)
 
 
 def _target_match_d(
@@ -336,14 +349,14 @@ def _target_match_d(
     team2: str,
     matches: Sequence[hs.HistoricalMatch],
 ) -> Tuple[Optional[float], Optional[float]]:
-    """D целевого матча team1 (дома) vs team2: R1 − R2 + H по Shin-рейтингу сезона."""
+    """(D_final = R1 − R2 на нейтральной базе, H) по Shin-рейтингу сезона."""
     try:
         odds_matches = [m.to_match_odds() for m in matches]
         ranking = build_ranking_shin(odds_matches)
         ratings = {t.team: t.rating for t in ranking.teams}
         if team1 not in ratings or team2 not in ratings:
             return None, None
-        return ratings[team1] - ratings[team2] + ranking.home_advantage, ranking.home_advantage
+        return ratings[team1] - ratings[team2], ranking.home_advantage
     except (ValueError, ZeroDivisionError):
         return None, None
 
@@ -360,7 +373,7 @@ def build_ranking_shin(matches: Sequence[tr.MatchOdds]) -> tr.RankingResult:
     coeffs: List[List[float]] = []
     targets: List[float] = []
     for m in matches:
-        d_market, _eh, _ea = _shin_market_diff(m)
+        d_market = _shin_market_diff(m)
         coeff = [0.0] * p
         coeff[idx[m.home_team]] = 1.0
         coeff[idx[m.away_team]] = -1.0
@@ -401,6 +414,7 @@ def _calc_common_opponent(
     matches: Sequence[hs.HistoricalMatch],
     league_key: str,
     season_used: str,
+    venue: str = VENUE_HOME,
 ) -> ShinMatchResult:
     m1 = [
         m
@@ -449,55 +463,37 @@ def _calc_common_opponent(
     else:
         det.append(f"  ρ̄_{team2[:3]} = {_fmt_p(rho2)}")
     det.append("")
-    det.append("Шаг C. Прогноз team1 дома (ρ̄ → × h на отношение сил)")
+    det.append("Шаг C. D_final на нейтральной базе (через цепочку)")
     r_ab_neutral = rho1 / rho2 if rho2 > 0 else 1.0
-    r_ab = r_ab_neutral * h_coef
-    s1 = math.sqrt(r_ab)
-    s2 = 1.0 / math.sqrt(r_ab) if r_ab > 0 else 1.0
+    chain_d = 400.0 * math.log10(r_ab_neutral) if r_ab_neutral > 0 else 0.0
     det.append(
         f"  ρ_AB (нейтр.) = ρ̄₁/ρ̄₂ = {_fmt_p(rho1)}/{_fmt_p(rho2)} = {_fmt_p(r_ab_neutral)}"
     )
-    det.append(
-        f"  r_AB (прогноз) = ρ_AB × h = {_fmt_p(r_ab_neutral)} × {_fmt_p(h_coef)} = {_fmt_p(r_ab)}"
-    )
-    det.append(f"  s₁ = √r_AB = {_fmt_p(s1)},  s₂ = 1/√r_AB = {_fmt_p(s2)}")
-
-    chain_d = 400.0 * math.log10(s1 / s2) if s2 > 0 else 0.0
-    det.append(f"  D_цепь = 400·log₁₀(s₁/s₂) = {_fmt_d(chain_d)}")
+    det.append(f"  D_final = 400·log₁₀(ρ_AB) = {_fmt_d(chain_d)}")
     det.append("")
-    det.append("Шаг D. D для ничьи (целевой матч, team1 дома)")
-    d_draw, _h_rank = _target_match_d(team1, team2, matches)
-    if d_draw is None:
-        d_draw = chain_d
-        det.append("  Рейтинг сезона недоступен → D_цель = D_цепь")
-        det.append(f"  H = {_fmt_d(h_est)}")
+    det.append(f"Шаг D. EffectiveD (поле: {VENUE_LABELS_RU.get(venue, venue)})")
+    d_eff = _effective_d(chain_d, h_est, venue)
+    if venue == VENUE_HOME:
+        det.append(f"  EffectiveD = D_final + H = {_fmt_d(chain_d)} + {_fmt_d(h_est)} = {_fmt_d(d_eff)}")
+    elif venue == VENUE_AWAY:
+        det.append(f"  EffectiveD = D_final − H = {_fmt_d(chain_d)} − {_fmt_d(h_est)} = {_fmt_d(d_eff)}")
     else:
-        odds_matches = [m.to_match_odds() for m in matches]
-        ranking = build_ranking_shin(odds_matches)
-        ratings = {t.team: t.rating for t in ranking.teams}
-        det.append(
-            f"  R({team1})={_fmt_d(ratings[team1])}, R({team2})={_fmt_d(ratings[team2])}, "
-            f"H={_fmt_d(ranking.home_advantage)}"
-        )
-        det.append(
-            f"  D_цель = R₁ − R₂ + H = {_fmt_d(d_draw)}  (для px(d), не для s₁/s₂)"
-        )
+        det.append(f"  EffectiveD = D_final = {_fmt_d(d_eff)}  (нейтрально, H не применяется)")
 
     det.append("")
-    det.append("Шаг E. Ничья px(d), отдельно от Shin P1/P2")
+    det.append("Шаг E. Ничья: X = |EffectiveD|, px = σ(α + β·X + γ·X²)")
     draw = hs.calibrate_draw_model(league_key)
-    px, px_lines = _match_draw_px(draw, d_draw, s1, s2)
+    px, px_lines = draw.forecast_px(d_eff)
     det.extend(px_lines)
     det.append("")
     det.append("Шаг F. Итоговые вероятности и коэффициенты")
-    p1_raw = (s1 / (s1 + s2)) * (1.0 - px)
-    p2_raw = (s2 / (s1 + s2)) * (1.0 - px)
+    p1, px, p2, s1, s2 = _probs_from_d(d_eff, px)
     det.append(
-        f"  p1' = s₁/(s₁+s₂)·(1−px) = {_fmt_pct(p1_raw)},  "
-        f"p2' = s₂/(s₁+s₂)·(1−px) = {_fmt_pct(p2_raw)},  px = {_fmt_pct(px)}"
+        f"  s₁ = σ(EffectiveD) = {_fmt_p(s1)},  s₂ = 1 − s₁ = {_fmt_p(s2)}"
     )
-    p1, px, p2 = _probs_from_strengths(s1, s2, px)
-    det.append(f"  После нормализации: p1={_fmt_pct(p1)}, px={_fmt_pct(px)}, p2={_fmt_pct(p2)}")
+    det.append(
+        f"  p1 = (1−px)·s₁ = {_fmt_pct(p1)},  px = {_fmt_pct(px)},  p2 = (1−px)·s₂ = {_fmt_pct(p2)}"
+    )
     det.append(
         f"  k = 1/p: {_fmt_odds(1/p1)} / {_fmt_odds(1/px)} / {_fmt_odds(1/p2)}"
     )
@@ -512,9 +508,10 @@ def _calc_common_opponent(
         common_opponent=opponent,
         team1=team1,
         team2=team2,
-        d_market=d_draw,
+        d_market=d_eff,
         h_used=h_est,
         d_chain=chain_d,
+        venue=venue,
         details="\n".join(det),
     )
 
@@ -544,6 +541,7 @@ def _calc_league_ranking(
     team2_new: bool = False,
     team1_id: str = "",
     team2_id: str = "",
+    venue: str = VENUE_HOME,
 ) -> ShinMatchResult:
     odds_matches = [m.to_match_odds() for m in matches]
     ranking = build_ranking_shin(odds_matches)
@@ -551,14 +549,11 @@ def _calc_league_ranking(
     r1 = _rating_for_team(team1, ratings, is_new=team1_new)
     r2 = _rating_for_team(team2, ratings, is_new=team2_new)
 
-    h_coef = ranking.home_advantage_coef
-    s1 = (10.0 ** (r1 / 400.0)) * h_coef
-    s2 = 10.0 ** (r2 / 400.0)
-    d_rating = r1 - r2
-    d_target = d_rating + ranking.home_advantage
+    d_final = r1 - r2
+    d_eff = _effective_d(d_final, ranking.home_advantage, venue)
     draw = hs.calibrate_draw_model(league_key)
-    px, px_lines = _match_draw_px(draw, d_target, s1, s2)
-    p1, px, p2 = _probs_from_strengths(s1, s2, px)
+    px, px_lines = draw.forecast_px(d_eff)
+    p1, px, p2, s1, s2 = _probs_from_d(d_eff, px)
     used = len(matches)
     det = [
         f"Источник: {SOURCE_LABELS_RU[source]}",
@@ -578,16 +573,21 @@ def _calc_league_ranking(
         )
     else:
         det.append(f"  R({team2}) = {_fmt_d(r2)}")
+    if venue == VENUE_HOME:
+        eff_line = f"  EffectiveD = D_final + H = {_fmt_d(d_final)} + {_fmt_d(ranking.home_advantage)} = {_fmt_d(d_eff)}"
+    elif venue == VENUE_AWAY:
+        eff_line = f"  EffectiveD = D_final − H = {_fmt_d(d_final)} − {_fmt_d(ranking.home_advantage)} = {_fmt_d(d_eff)}"
+    else:
+        eff_line = f"  EffectiveD = D_final = {_fmt_d(d_eff)}  (нейтрально, H не применяется)"
     det.extend(
         [
-            f"  H = {_fmt_d(ranking.home_advantage)},  коэф. дома = {_fmt_p(h_coef)}",
+            f"  H = {_fmt_d(ranking.home_advantage)}",
             "",
-            "Шаг B. Силы для целевого матча (team1 дома)",
-            f"  s₁ = 10^(R₁/400)·H^coef = {_fmt_p(s1)}",
-            f"  s₂ = 10^(R₂/400) = {_fmt_p(s2)}",
-            f"  D_цель = R₁ − R₂ + H = {_fmt_d(d_target)}",
+            f"Шаг B. EffectiveD (поле: {VENUE_LABELS_RU.get(venue, venue)})",
+            f"  D_final = R₁ − R₂ = {_fmt_d(d_final)}",
+            eff_line,
             "",
-            "Шаг C. Ничья px(d)",
+            "Шаг C. Ничья: X = |EffectiveD|, px = σ(α + β·X + γ·X²)",
         ]
     )
     det.extend(px_lines)
@@ -595,7 +595,8 @@ def _calc_league_ranking(
         [
             "",
             "Шаг D. Итог",
-            f"  p1={_fmt_pct(p1)}, px={_fmt_pct(px)}, p2={_fmt_pct(p2)}",
+            f"  s₁ = σ(EffectiveD) = {_fmt_p(s1)},  s₂ = 1 − s₁ = {_fmt_p(s2)}",
+            f"  p1 = (1−px)·s₁ = {_fmt_pct(p1)},  px = {_fmt_pct(px)},  p2 = (1−px)·s₂ = {_fmt_pct(p2)}",
             f"  k = {_fmt_odds(1/p1)} / {_fmt_odds(1/px)} / {_fmt_odds(1/p2)}",
         ]
     )
@@ -612,8 +613,9 @@ def _calc_league_ranking(
         team2_id=team2_id,
         team1_new=team1_new,
         team2_new=team2_new,
-        d_market=d_target,
+        d_market=d_eff,
         h_used=ranking.home_advantage,
+        venue=venue,
         details="\n".join(det),
     )
 
@@ -623,11 +625,14 @@ def calculate_shin_match(
     team2: str,
     league: str,
     season: str,
+    venue: str = VENUE_HOME,
 ) -> ShinMatchResult:
     """
     Расчёт P1 / Draw / P2 по методу Shin с приоритетом источников данных.
-    Команда 1 считается хозяином целевого матча.
+    venue: "home" (Команда 1 дома), "neutral", "away" (Команда 1 в гостях).
     """
+    if venue not in VENUES:
+        raise ShinCalculationError(f"Неизвестное поле: {venue!r}. Доступны: {', '.join(VENUES)}")
     try:
         league_key = hs.normalize_league(league)
     except ValueError as exc:
@@ -644,9 +649,14 @@ def calculate_shin_match(
     t1_id, t1, t1_new = resolve_team_ref(league_key, team1, current_matches)
     t2_id, t2, t2_new = resolve_team_ref(league_key, team2, current_matches)
 
+    venue_note = {
+        VENUE_HOME: f"{t1} дома",
+        VENUE_NEUTRAL: "нейтральное поле",
+        VENUE_AWAY: f"{t1} в гостях",
+    }[venue]
     header = [
         "═══ Подробный расчёт Shin ═══",
-        f"Матч: {t1} (дома) — {t2}",
+        f"Матч: {t1} — {t2}  (поле: {venue_note})",
         f"ID: {t1_id} / {t2_id}",
         f"Лига: {hs.league_title(league_key)}, сезон: {season.strip()}",
         "",
@@ -693,7 +703,9 @@ def calculate_shin_match(
         header.extend(cand_lines)
         header.append(f"  → выбран: {opp}")
         header.append("")
-        res = _calc_common_opponent(t1, t2, opp, current_matches, league_key, season.strip())
+        res = _calc_common_opponent(
+            t1, t2, opp, current_matches, league_key, season.strip(), venue=venue
+        )
         return replace(
             res,
             team1_id=t1_id,
@@ -726,6 +738,7 @@ def calculate_shin_match(
             team2_new=t2_new,
             team1_id=t1_id,
             team2_id=t2_id,
+            venue=venue,
         )
         return replace(res, details="\n".join(header) + "\n" + res.details)
 
@@ -749,7 +762,7 @@ def calculate_shin_match(
     if common_prev:
         opp = _pick_best_opponent(t1p, t2p, common_prev, prev_matches)
         res = _calc_common_opponent(
-            t1p, t2p, opp, prev_matches, league_key, prev
+            t1p, t2p, opp, prev_matches, league_key, prev, venue=venue
         )
         return replace(
             res,
@@ -776,5 +789,6 @@ def calculate_shin_match(
         team2_new=t2p_new,
         team1_id=t1p_id,
         team2_id=t2p_id,
+        venue=venue,
     )
     return replace(res, details="\n".join(header) + "\n" + res.details)
