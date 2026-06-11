@@ -8,7 +8,7 @@
   * использовать накопленную историю в дальнейших расчётах:
       - приор домашнего преимущества H (с дисконтом старых сезонов и усадкой
         к приору по мере накопления матчей текущего сезона);
-      - калибровка draw-модели px(d) по фактическим результатам.
+      - калибровка логит-модели ничьей px = σ(α + β·X + γ·X²), X = |D|.
 
 Поддерживаемые лиги (ключи хранилища):
     epl, la_liga, bundesliga, serie_a, ligue_1
@@ -807,162 +807,178 @@ def home_advantage_prior(
     )
 
 
-# Минимальный наклон px(d): при большом |d| ничья должна снижаться.
-_DRAW_SLOPE_FLOOR = -0.0010
+# --------------------------------------------------------------------------- #
+# Draw-модель: логит-регрессия px по X = |D|
+#
+#   X_i = |R_home − R_away + H|   (R, H — Shin-МНК сезона, D-шкала 400·log10)
+#   Y_i = ln(px_i / (1 − px_i)),  px_i — Shin de-vig ничьей матча
+#   МНК:      Y = α + β·X + γ·X²
+#   Прогноз:  px = 1 / (1 + exp(−(α + β·X + γ·X²)))
+# --------------------------------------------------------------------------- #
 
-# Плавный нижний пол px для фаворитов: линейная модель уходит в 6%, рынок — ~12–17%.
-_DRAW_PX_FLOOR_D_START = 100.0
-_DRAW_PX_FLOOR_D_MID = 250.0
-_DRAW_PX_FLOOR_D_FULL = 350.0
-_DRAW_PX_LO_BASE = 0.06
-_DRAW_PX_LO_MID = 0.13
-_DRAW_PX_LO_FULL = 0.15
-
-
-def draw_px_lower_bound(abs_d: float) -> float:
-    """Нижняя граница px при прогнозе: растёт с |D| для явных фаворитов."""
-    ad = abs(abs_d)
-    if ad <= _DRAW_PX_FLOOR_D_START:
-        return _DRAW_PX_LO_BASE
-    if ad <= _DRAW_PX_FLOOR_D_MID:
-        t = (ad - _DRAW_PX_FLOOR_D_START) / (_DRAW_PX_FLOOR_D_MID - _DRAW_PX_FLOOR_D_START)
-        return _DRAW_PX_LO_BASE + t * (_DRAW_PX_LO_MID - _DRAW_PX_LO_BASE)
-    if ad <= _DRAW_PX_FLOOR_D_FULL:
-        t = (ad - _DRAW_PX_FLOOR_D_MID) / (_DRAW_PX_FLOOR_D_FULL - _DRAW_PX_FLOOR_D_MID)
-        return _DRAW_PX_LO_MID + t * (_DRAW_PX_LO_FULL - _DRAW_PX_LO_MID)
-    return _DRAW_PX_LO_FULL
+_DRAW_PX_LO = 0.04
+_DRAW_PX_HI = 0.45
+_DRAW_DEFAULT_ALPHA = -0.8954  # logit(0.29): px ≈ 29 % при X = 0
+_DRAW_DEFAULT_BETA = -0.0028   # на пункт D-шкалы
+_DRAW_DEFAULT_GAMMA = 0.0
+_DRAW_MIN_POINTS = 5
 
 
-def forecast_draw_px(
-    draw: DrawModel,
-    d_target: float,
-    s1: float = 1.0,
-    s2: float = 1.0,
-) -> Tuple[float, List[str]]:
-    """px(d) для прогноза матча: линейная модель + пол по |D| + cap по s1/s2."""
-    lines: List[str] = []
-    dm = draw.for_match_forecast()
-    px_lin = dm.px(d_target)
-    lines.append(
-        f"  px(d) по модели: a={dm.a:.4f}, b={dm.b:.6f}, n={dm.n}, источник={dm.source}"
-    )
-    lines.append(
-        f"  px_mod = a + b·|d| = {dm.a:.4f} + ({dm.b:.6f})·|{abs(d_target):.1f}| "
-        f"→ {px_lin * 100:.2f} %"
-    )
-    lo_eff = draw_px_lower_bound(d_target)
-    lines.append(
-        f"  px_floor(|d|): плавный пол { _DRAW_PX_LO_BASE * 100:.0f}–"
-        f"{_DRAW_PX_LO_FULL * 100:.0f} % → {lo_eff * 100:.2f} %"
-    )
-    px = max(px_lin, lo_eff)
-    if px > px_lin:
-        lines.append(f"  Берём max(px_mod, px_floor) = {px * 100:.2f} %")
-    px_fav: Optional[float] = None
-    if s2 > 1e-12 and s1 > 0:
-        log_ratio = math.log10(s1 / s2)
-        px_fav = max(0.18, min(0.30, 0.265 - 0.06 * abs(log_ratio)))
-        lines.append(
-            f"  px_cap (фаворит по s1/s2) = 0,265 − 0,06·|log₁₀(s₁/s₂)| "
-            f"→ {px_fav * 100:.2f} %"
-        )
-        if px > px_fav:
-            px = px_fav
-            lines.append(f"  Ограничение сверху: px = {px * 100:.2f} %")
-    px = max(lo_eff, min(dm.hi, px))
-    lines.append(f"  Итого px (ничья) = {px * 100:.2f} %")
-    return px, lines
+def _sigmoid(x: float) -> float:
+    if x >= 0:
+        return 1.0 / (1.0 + math.exp(-x))
+    ez = math.exp(x)
+    return ez / (1.0 + ez)
 
 
 @dataclass
 class DrawModel:
-    """Линейная модель ничьей px(d) = clamp(a + b*|d|, lo, hi)."""
+    """Логит-модель ничьей: px = σ(α + β·X + γ·X²), X = |D| (D-шкала)."""
 
-    a: float
-    b: float
-    lo: float = 0.06
-    hi: float = 0.34
+    alpha: float
+    beta: float
+    gamma: float = 0.0
+    x_max: float = 400.0  # кламп X: не экстраполируем квадратику за данные
+    lo: float = _DRAW_PX_LO
+    hi: float = _DRAW_PX_HI
     n: int = 0
-    source: str = "results"  # results | market | default
+    source: str = "market"  # market | default
+
+    def logit(self, d: float) -> float:
+        x = min(abs(d), self.x_max)
+        return self.alpha + self.beta * x + self.gamma * x * x
 
     def px(self, d: float) -> float:
-        val = self.a + self.b * abs(d)
-        return max(self.lo, min(self.hi, val))
+        return max(self.lo, min(self.hi, _sigmoid(self.logit(d))))
 
-    def for_match_forecast(self) -> "DrawModel":
-        """Скорректировать калибровку для прогноза: ничья падает при большом |d|."""
-        if self.source == "default":
-            return self
-        b = self.b if self.b <= _DRAW_SLOPE_FLOOR else _DRAW_SLOPE_FLOOR
-        return DrawModel(
-            a=self.a, b=b, lo=self.lo, hi=self.hi, n=self.n, source=self.source
-        )
+    def forecast_px(
+        self, d_target: float, s1: float = 1.0, s2: float = 1.0
+    ) -> Tuple[float, List[str]]:
+        """px для прогноза + строки расчёта (s1/s2 не используются)."""
+        x_raw = abs(d_target)
+        x = min(x_raw, self.x_max)
+        logit = self.alpha + self.beta * x + self.gamma * x * x
+        raw = _sigmoid(logit)
+        px = max(self.lo, min(self.hi, raw))
 
-    def forecast_px(self, d_target: float, s1: float = 1.0, s2: float = 1.0) -> Tuple[float, List[str]]:
-        """px(d) для прогноза с плавным полом по |D| (см. forecast_draw_px)."""
-        return forecast_draw_px(self, d_target, s1, s2)
+        def _f(value: float, digits: int = 4) -> str:
+            return f"{value:.{digits}f}".replace(".", ",")
+
+        lines = [
+            f"  Логит-модель: α={_f(self.alpha)}, β={_f(self.beta, 6)}, "
+            f"γ={_f(self.gamma, 8)} (n={self.n}, источник={self.source})",
+            f"  X = |EffectiveD| = {_f(x_raw, 1)}"
+            + (f" → кламп до X_max={_f(self.x_max, 0)}" if x_raw > self.x_max else ""),
+            f"  logit = α + β·X + γ·X² = {_f(logit)}",
+            f"  px = 1/(1+e^(−logit)) = {_f(raw * 100, 2)} %",
+        ]
+        if px != raw:
+            lines.append(
+                f"  Кламп [{_f(self.lo * 100, 0)} %; {_f(self.hi * 100, 0)} %] → px = {_f(px * 100, 2)} %"
+            )
+        else:
+            lines.append(f"  Итого px (ничья) = {_f(px * 100, 2)} %")
+        return px, lines
+
+
+def _default_draw_model(n: int = 0) -> DrawModel:
+    return DrawModel(
+        alpha=_DRAW_DEFAULT_ALPHA,
+        beta=_DRAW_DEFAULT_BETA,
+        gamma=_DRAW_DEFAULT_GAMMA,
+        x_max=400.0,
+        n=n,
+        source="default",
+    )
+
+
+def _season_draw_points(matches: Sequence["HistoricalMatch"]) -> List[Tuple[float, float]]:
+    """Точки калибровки сезона: (X = |R_h − R_a + H|, Y = logit(px Shin))."""
+    try:
+        from . import devig_shin as ds
+    except ImportError:  # pragma: no cover
+        import devig_shin as ds
+
+    teams = sorted({m.home_team for m in matches} | {m.away_team for m in matches})
+    if len(teams) < 2:
+        return []
+    idx = {t: i for i, t in enumerate(teams)}
+    p = len(teams) + 1  # + H
+    rows: List[Tuple[List[float], float, float]] = []
+    devigs: List[Tuple["HistoricalMatch", float]] = []
+    for m in matches:
+        try:
+            p1, px, p2 = ds.shin_devig(m.odds_1, m.odds_x, m.odds_2)
+        except ValueError:
+            continue
+        if p1 <= 0 or p2 <= 0 or not (0.0 < px < 1.0):
+            continue
+        d = 400.0 * math.log10(p1 / p2)
+        coeff = [0.0] * p
+        coeff[idx[m.home_team]] = 1.0
+        coeff[idx[m.away_team]] = -1.0
+        coeff[-1] = 1.0
+        rows.append((coeff, d, 1.0))
+        devigs.append((m, px))
+    if len(rows) < 3:
+        return []
+    gauge = [1.0] * len(teams) + [0.0]
+    rows.append((gauge, 0.0, tr.GAUGE_WEIGHT))
+    try:
+        sol = tr._solve_weighted(rows, p)
+    except ValueError:
+        return []
+    h = sol[-1]
+    points: List[Tuple[float, float]] = []
+    for m, px in devigs:
+        d_fit = sol[idx[m.home_team]] - sol[idx[m.away_team]] + h
+        points.append((abs(d_fit), math.log(px / (1.0 - px))))
+    return points
 
 
 def calibrate_draw_model(league: str) -> DrawModel:
-    """Калибровать draw-модель px(|d|) по всей истории лиги.
+    """Логит-калибровка ничьей по истории лиги.
 
-    Предпочтение — по фактическим результатам (доля ничьих в зависимости от
-    |D_market|). Если результатов нет — по de-vig вероятности ничьей.
-    Линейная регрессия y ~ a + b*|d| методом наименьших квадратов.
+    По каждому сезону: Shin-МНК → X_i = |R_home − R_away + H|;
+    Y_i = ln(px_i/(1−px_i)) из Shin de-vig. МНК: Y = α + β·X + γ·X².
     """
     key = normalize_league(league)
-    xs: List[float] = []
-    ys: List[float] = []
-    source = "results"
-    have_results = False
-
+    pts: List[Tuple[float, float]] = []
     for season in list_seasons(key):
         try:
             matches = load_season(key, season)
         except (ValueError, FileNotFoundError):
             continue
-        for m in matches:
-            try:
-                d, _eh, _ea = tr._market_diff_with_scores(m.to_match_odds())
-            except ValueError:
-                continue
-            res = m.derived_result()
-            if res:
-                have_results = True
-                xs.append(abs(d))
-                ys.append(1.0 if res == "D" else 0.0)
+        pts.extend(_season_draw_points(matches))
 
-    if not have_results:
-        # fallback: de-vig px
-        source = "market"
-        xs, ys = [], []
-        for season in list_seasons(key):
-            try:
-                matches = load_season(key, season)
-            except (ValueError, FileNotFoundError):
-                continue
-            for m in matches:
-                mo = m.to_match_odds()
-                try:
-                    d, _eh, _ea = tr._market_diff_with_scores(mo)
-                except ValueError:
-                    continue
-                overround = 1 / mo.odds_1 + 1 / mo.odds_x + 1 / mo.odds_2
-                px = (1 / mo.odds_x) / overround
-                xs.append(abs(d))
-                ys.append(px)
+    n = len(pts)
+    if n < _DRAW_MIN_POINTS:
+        return _default_draw_model(n)
 
-    n = len(xs)
-    if n < 5:
-        return DrawModel(a=0.26, b=-0.0006, n=n, source="default")
+    # МНК Y = α + β·X + γ·X²: нормальные уравнения 3×3.
+    s = [0.0] * 5  # суммы X^0..X^4
+    t = [0.0] * 3  # суммы Y·X^0..X^2
+    for x, y in pts:
+        xp = 1.0
+        for k in range(5):
+            s[k] += xp
+            if k < 3:
+                t[k] += y * xp
+            xp *= x
+    a_mat = [
+        [s[0], s[1], s[2]],
+        [s[1], s[2], s[3]],
+        [s[2], s[3], s[4]],
+    ]
+    try:
+        alpha, beta, gamma = tr._gaussian_solve(a_mat, list(t))
+    except ValueError:
+        return _default_draw_model(n)
 
-    mean_x = sum(xs) / n
-    mean_y = sum(ys) / n
-    sxx = sum((x - mean_x) ** 2 for x in xs)
-    sxy = sum((xs[i] - mean_x) * (ys[i] - mean_y) for i in range(n))
-    b = (sxy / sxx) if sxx > 1e-9 else 0.0
-    a = mean_y - b * mean_x
-    return DrawModel(a=a, b=b, n=n, source=source)
+    if not (0.10 <= _sigmoid(alpha) <= 0.45):
+        return _default_draw_model(n)
+    x_max = max(100.0, max(x for x, _ in pts))
+    return DrawModel(alpha=alpha, beta=beta, gamma=gamma, x_max=x_max, n=n, source="market")
 
 
 # --------------------------------------------------------------------------- #
@@ -1033,7 +1049,10 @@ def _cmd_draw_model(args: argparse.Namespace) -> None:
     dm = calibrate_draw_model(args.league)
     key = normalize_league(args.league)
     print(f"Лига: {league_title(key)} ({key})")
-    print(f"  draw-модель px(d) = clamp({dm.a:.4f} + ({dm.b:.6f})*|d|, {dm.lo}, {dm.hi})")
+    print(
+        f"  draw-модель px = σ({dm.alpha:.4f} + ({dm.beta:.6f})·X + ({dm.gamma:.8f})·X²), "
+        f"X = |D| ≤ {dm.x_max:.0f}, кламп [{dm.lo}; {dm.hi}]"
+    )
     print(f"  источник: {dm.source}, наблюдений: {dm.n}")
     print("  Примеры:")
     for d in (0, 50, 100, 200, 300):

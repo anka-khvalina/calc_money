@@ -38,18 +38,25 @@ def test_epl_arsenal_chelsea():
     arsenal_id = tg.resolve_team_id("epl", "Arsenal")
     chelsea_id = tg.resolve_team_id("epl", "Chelsea")
     res = calculate_shin_match(arsenal_id, chelsea_id, "epl", "2025-26")
-    assert abs(res.p1 + res.px + res.p2 - 1.0) < 1e-5
+    assert abs(res.p1 + res.px + res.p2 - 1.0) < 1e-9
     assert res.k1 > 1 and res.kx > 1 and res.k2 > 1
     assert " / " in res.format_odds()
     assert res.season_used == "2025-26"
     assert res.matches_used > 0
     assert res.source == CalculationSource.COMMON_OPPONENT
     assert res.common_opponent == "Man United"
-    # Chain with neutral ρ + h on forecast (both played MU away in sample data)
-    assert 0.56 < res.p1 < 0.59
-    assert 1.70 < res.k1 < 1.80
+    # Цепочка → D_final (нейтраль) → EffectiveD = D_final + H → σ
+    assert 0.52 < res.p1 < 0.59
+    assert 1.70 < res.k1 < 1.95
     assert "ρ" in res.details or "ρ̄" in res.details
-    assert "× h" in res.details or "× h =" in res.details
+    assert "EffectiveD" in res.details
+    assert "σ" in res.details
+
+    # Поле: нейтраль и в гостях снижают p1 относительно дома
+    res_neutral = calculate_shin_match(arsenal_id, chelsea_id, "epl", "2025-26", venue="neutral")
+    res_away = calculate_shin_match(arsenal_id, chelsea_id, "epl", "2025-26", venue="away")
+    assert res.p1 > res_neutral.p1 > res_away.p1
+    assert abs(res_neutral.d_market - res.d_chain) < 1e-9
 
 
 def test_previous_season_none_for_first():
