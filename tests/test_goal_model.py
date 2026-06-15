@@ -190,6 +190,35 @@ def test_draw_diagnostics_present():
     assert all(r.p_draw_shin > 0 for r in diag)
 
 
+def test_prior_shrinkage_pulls_ratings():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    base, _ = gmt.train_full_model(raw)
+    cfg = gmt.ModelConfig(prior_weight=3.0, prior_alpha=0.5)
+    shrunk, _ = gmt.train_full_model(raw, cfg, prior=base)
+    # сильнейшая команда стягивается к 0.5×prior → модуль рейтинга уменьшается
+    assert abs(shrunk.strength.ratings["Inter"]) < abs(base.strength.ratings["Inter"])
+
+
+def test_promoted_team_fallback():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    model, _ = gmt.train_full_model(raw)
+    pred = gmt.predict_match(model, "Inter", "NewcomerFC")
+    assert abs(pred.markets.p1 + pred.markets.px + pred.markets.p2 - 1.0) < 1e-9
+    # новичок слабый → хозяева фавориты
+    assert pred.markets.p1 > pred.markets.p2
+    # запрет неизвестных команд → ошибка
+    cfg = gmt.ModelConfig(allow_unknown_teams=False)
+    strict, _ = gmt.train_full_model(raw, cfg)
+    raised = False
+    try:
+        gmt.predict_match(strict, "Inter", "NewcomerFC")
+    except ValueError:
+        raised = True
+    assert raised
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

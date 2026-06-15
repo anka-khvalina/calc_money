@@ -95,6 +95,12 @@ class ModelConfig:
     w_1x2_suspicious: float = 0.5
     w_1x2_missing: float = 0.0
 
+    # prior прошлого сезона и новички лиги (§15)
+    prior_alpha: float = 0.70          # стягивание рейтинга прошлого сезона
+    prior_weight: float = 0.0          # вес ridge-привязки к prior (0 = выкл.)
+    promoted_reference_n: int = 3       # сколько слабейших усреднять для новичка
+    allow_unknown_teams: bool = True    # подставлять fallback для новичков
+
     # прогноз
     lambda_epsilon: float = 0.05
     derby_home_advantage_multiplier: float = 1.0
@@ -345,13 +351,26 @@ def _huber_weight(e: float, delta: float) -> float:
     return 1.0 if ae <= delta else delta / ae
 
 
-def fit_strength_ratings(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> StrengthModel:
+def fit_strength_ratings(
+    matches: Sequence[PreparedMatch],
+    cfg: ModelConfig,
+    prior_ratings: Optional[Dict[str, float]] = None,
+) -> StrengthModel:
     used = [m for m in matches if m.diff_goals is not None]
     if len(used) < 2:
         raise ValueError("Недостаточно матчей с восстановленной разницей D_m")
     teams = sorted({m.home_team for m in used} | {m.away_team for m in used})
     idx = {t: i for i, t in enumerate(teams)}
     p = len(teams) + 1  # + H
+
+    # ridge-привязка к prior прошлого сезона: r_t ≈ α·prior_t
+    prior_rows: List[Tuple[List[float], float, float]] = []
+    if prior_ratings and cfg.prior_weight > 0:
+        for t, pr in prior_ratings.items():
+            if t in idx:
+                row = [0.0] * p
+                row[idx[t]] = 1.0
+                prior_rows.append((row, cfg.prior_alpha * pr, cfg.prior_weight))
 
     coeffs: List[List[float]] = []
     targets: List[float] = []
@@ -372,6 +391,7 @@ def fit_strength_ratings(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> 
 
     def solve(weights: Sequence[float]) -> Tuple[List[float], List[float]]:
         rows = [(coeffs[i], targets[i], weights[i]) for i in range(len(used))]
+        rows.extend(prior_rows)
         rows.append((gauge, 0.0, tr.GAUGE_WEIGHT))
         sol = tr._solve_weighted(rows, p)
         resid = [
@@ -416,7 +436,12 @@ class GoalModel:
     n: int = 0
 
 
-def fit_attack_defense(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> GoalModel:
+def fit_attack_defense(
+    matches: Sequence[PreparedMatch],
+    cfg: ModelConfig,
+    prior_attack: Optional[Dict[str, float]] = None,
+    prior_defense: Optional[Dict[str, float]] = None,
+) -> GoalModel:
     used = [m for m in matches if m.lambda_home and m.lambda_away
             and m.lambda_home > 0 and m.lambda_away > 0]
     if len(used) < 2:
@@ -458,8 +483,21 @@ def fit_attack_defense(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> Go
         gauge_a[a_idx[t]] = 1.0
         gauge_d[d_idx[t]] = 1.0
 
+    prior_rows: List[Tuple[List[float], float, float]] = []
+    if cfg.prior_weight > 0:
+        for t in teams:
+            if prior_attack and t in prior_attack:
+                row = [0.0] * p
+                row[a_idx[t]] = 1.0
+                prior_rows.append((row, cfg.prior_alpha * prior_attack[t], cfg.prior_weight))
+            if prior_defense and t in prior_defense:
+                row = [0.0] * p
+                row[d_idx[t]] = 1.0
+                prior_rows.append((row, cfg.prior_alpha * prior_defense[t], cfg.prior_weight))
+
     def solve(weights: Sequence[float]) -> Tuple[List[float], List[float]]:
         wrows = [(rows[i], targets[i], weights[i]) for i in range(len(rows))]
+        wrows.extend(prior_rows)
         wrows.append((gauge_a, 0.0, tr.GAUGE_WEIGHT))
         wrows.append((gauge_d, 0.0, tr.GAUGE_WEIGHT))
         sol = tr._solve_weighted(wrows, p)
@@ -735,12 +773,20 @@ class TrainedModel:
     config: ModelConfig
 
 
-def train_full_model(raw: Sequence[RawMatch], cfg: Optional[ModelConfig] = None) -> Tuple[TrainedModel, List[PreparedMatch]]:
+def train_full_model(
+    raw: Sequence[RawMatch],
+    cfg: Optional[ModelConfig] = None,
+    prior: Optional["TrainedModel"] = None,
+) -> Tuple[TrainedModel, List[PreparedMatch]]:
+    """Обучить модель. prior — модель прошлого сезона для ridge-стягивания (§15)."""
     cfg = cfg or ModelConfig()
     matches = prepare_matches(raw, cfg)
     devig_and_infer(matches, cfg)
-    strength = fit_strength_ratings(matches, cfg)
-    goals = fit_attack_defense(matches, cfg)
+    prior_r = prior.strength.ratings if prior else None
+    prior_a = prior.goals.attack if prior else None
+    prior_d = prior.goals.defense if prior else None
+    strength = fit_strength_ratings(matches, cfg, prior_ratings=prior_r)
+    goals = fit_attack_defense(matches, cfg, prior_attack=prior_a, prior_defense=prior_d)
     calibration = calibrate(matches, strength, goals, cfg)
     draw = fit_draw_model(matches, cfg) if cfg.use_draw_model else _DRAW_DEFAULT
     return TrainedModel(strength, goals, calibration, draw, cfg), matches
@@ -761,6 +807,14 @@ class Prediction:
     draw_diagnostics: Optional[Dict[str, float]] = None
 
 
+def _promoted_rating(values: Dict[str, float], n: int) -> float:
+    """Стартовый рейтинг новичка лиги = среднее n слабейших команд (§15)."""
+    if not values:
+        return 0.0
+    weakest = sorted(values.values())[: max(1, n)]
+    return sum(weakest) / len(weakest)
+
+
 def predict_match(
     model: TrainedModel,
     home_team: str,
@@ -774,12 +828,22 @@ def predict_match(
     i_home = 0 if neutral else 1
     h_mult = cfg.derby_home_advantage_multiplier if derby else 1.0
 
-    if home_team not in s.ratings or away_team not in s.ratings:
-        raise ValueError("Команда не найдена в обученной модели")
+    unknown = [t for t in (home_team, away_team) if t not in s.ratings]
+    if unknown and not cfg.allow_unknown_teams:
+        raise ValueError(f"Команда не найдена в модели: {', '.join(unknown)}")
 
-    d_model = s.ratings[home_team] - s.ratings[away_team] + s.home_advantage * i_home * h_mult
-    lh_ad = math.exp(g.mu + g.attack[home_team] - g.defense[away_team] + g.home_goal_adv * i_home)
-    la_ad = math.exp(g.mu + g.attack[away_team] - g.defense[home_team])
+    def rating(t: str) -> float:
+        return s.ratings[t] if t in s.ratings else _promoted_rating(s.ratings, cfg.promoted_reference_n)
+
+    def attack(t: str) -> float:
+        return g.attack[t] if t in g.attack else _promoted_rating(g.attack, cfg.promoted_reference_n)
+
+    def defense(t: str) -> float:
+        return g.defense[t] if t in g.defense else _promoted_rating(g.defense, cfg.promoted_reference_n)
+
+    d_model = rating(home_team) - rating(away_team) + s.home_advantage * i_home * h_mult
+    lh_ad = math.exp(g.mu + attack(home_team) - defense(away_team) + g.home_goal_adv * i_home)
+    la_ad = math.exp(g.mu + attack(away_team) - defense(home_team))
     s_model = lh_ad + la_ad
 
     d_final = cal.a + cal.b * d_model
