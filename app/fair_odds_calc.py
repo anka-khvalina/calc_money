@@ -1548,6 +1548,202 @@ def build_app():
 
     refresh_history_tree()
 
+    # ======================================================================
+    # TAB 6: Линия (голы) — Poisson / Dixon-Coles из closing-линий
+    # ======================================================================
+    import goal_model as gm
+    import goal_model_train as gmt
+
+    tab_goal = ttk.Frame(notebook, padding=10)
+    notebook.add(tab_goal, text="Линия (голы)")
+
+    goal_state: dict = {"model": None, "raw": None}
+
+    goal_top = ttk.Frame(tab_goal)
+    goal_top.pack(fill="x", anchor="n")
+
+    ttk.Label(
+        goal_top,
+        text=(
+            "Голевая модель: closing-линии (AH + тоталы + 1X2) → скрытые S/D → "
+            "λ_h/λ_a → матрица счетов → все рынки.\n"
+            "CSV-колонки: date, league, home_team, away_team, closing_ah_home, "
+            "closing_total_line, ah_home_odds, ah_away_odds, over_odds, under_odds, "
+            "home_odds, draw_odds, away_odds, neutral_flag, derby_flag, quality_flag."
+        ),
+        foreground="#555",
+        justify="left",
+    ).pack(anchor="w", pady=(0, 8))
+
+    goal_path_var = tk.StringVar(value="Файл истории не загружен")
+    ttk.Label(goal_top, textvariable=goal_path_var, foreground="#1f3ea6").pack(anchor="w")
+
+    goal_controls = ttk.Frame(tab_goal)
+    goal_controls.pack(fill="x", pady=(8, 0))
+
+    goal_home_var = tk.StringVar()
+    goal_away_var = tk.StringVar()
+    ttk.Label(goal_controls, text="Хозяева:").grid(row=0, column=0, sticky="w", padx=(0, 6), pady=4)
+    goal_home_combo = ttk.Combobox(goal_controls, textvariable=goal_home_var, state="readonly", width=24)
+    goal_home_combo.grid(row=0, column=1, sticky="w", pady=4)
+    ttk.Label(goal_controls, text="Гости:").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=4)
+    goal_away_combo = ttk.Combobox(goal_controls, textvariable=goal_away_var, state="readonly", width=24)
+    goal_away_combo.grid(row=1, column=1, sticky="w", pady=4)
+
+    goal_neutral_var = tk.BooleanVar(value=False)
+    goal_derby_var = tk.BooleanVar(value=False)
+    goal_margin_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(goal_controls, text="Нейтральное поле", variable=goal_neutral_var).grid(
+        row=0, column=2, sticky="w", padx=(16, 0)
+    )
+    ttk.Checkbutton(goal_controls, text="Дерби", variable=goal_derby_var).grid(
+        row=1, column=2, sticky="w", padx=(16, 0)
+    )
+    goal_margin_pct = tk.StringVar(value="3")
+    ttk.Checkbutton(goal_controls, text="Маржа, %:", variable=goal_margin_var).grid(
+        row=0, column=3, sticky="w", padx=(16, 0)
+    )
+    ttk.Entry(goal_controls, textvariable=goal_margin_pct, width=6).grid(row=0, column=4, sticky="w")
+
+    goal_meta_var = tk.StringVar(value="Загрузите CSV closing-линий и обучите модель.")
+    ttk.Label(tab_goal, textvariable=goal_meta_var, justify="left").pack(anchor="w", pady=(8, 4))
+
+    goal_out = tk.Text(tab_goal, width=98, height=22, relief="solid", borderwidth=1,
+                       font=("Consolas", 10))
+    goal_out.pack(fill="both", expand=True, pady=(4, 0))
+    goal_out.configure(state="disabled")
+
+    def _goal_set_text(text: str):
+        goal_out.configure(state="normal")
+        goal_out.delete("1.0", "end")
+        goal_out.insert("1.0", text)
+        goal_out.configure(state="disabled")
+
+    def _goal_refresh_teams():
+        model = goal_state["model"]
+        teams = sorted(model.strength.ratings) if model else []
+        goal_home_combo["values"] = teams
+        goal_away_combo["values"] = teams
+        if len(teams) >= 2:
+            goal_home_var.set(teams[0])
+            goal_away_var.set(teams[1])
+
+    def goal_train_from_path(path):
+        try:
+            raw = gmt.load_raw_matches(Path(path))
+            if len(raw) < 2:
+                raise ValueError("В файле меньше 2 матчей.")
+            model, prepared = gmt.train_full_model(raw)
+            goal_state["model"] = model
+            goal_state["raw"] = raw
+            goal_path_var.set(f"Загружено: {path}  ({len(raw)} матчей)")
+            c = model.calibration
+            goal_meta_var.set(
+                f"Команд: {len(model.strength.ratings)}   H(сила)={model.strength.home_advantage:.3f}   "
+                f"RMSE_D={model.strength.rmse:.3f}\n"
+                f"μ={model.goals.mu:.3f}  H_g={model.goals.home_goal_adv:.3f}  "
+                f"RMSE_logλ={model.goals.rmse:.3f}\n"
+                f"Калибровка: a={c.a:.3f} b={c.b:.3f} c={c.c:.3f} d={c.d:.3f} γ={c.gamma:.4f}"
+            )
+            _goal_refresh_teams()
+            lines = ["Рейтинги (сила на нейтрали) / атака / оборона:"]
+            for t, r in sorted(model.strength.ratings.items(), key=lambda kv: kv[1], reverse=True):
+                lines.append(
+                    f"  {t:<22} r={r:+.3f}   A={model.goals.attack[t]:+.3f}   "
+                    f"Df={model.goals.defense[t]:+.3f}"
+                )
+            _goal_set_text("\n".join(lines))
+        except Exception as exc:
+            messagebox.showerror("Линия (голы)", str(exc))
+
+    def goal_load_clicked():
+        path = filedialog.askopenfilename(
+            title="CSV closing-линий",
+            filetypes=[("CSV", "*.csv"), ("Все файлы", "*.*")],
+        )
+        if path:
+            goal_train_from_path(path)
+
+    def goal_predict_clicked():
+        model = goal_state["model"]
+        if model is None:
+            messagebox.showwarning("Линия (голы)", "Сначала загрузите CSV и обучите модель.")
+            return
+        home = goal_home_var.get().strip()
+        away = goal_away_var.get().strip()
+        if not home or not away or home == away:
+            messagebox.showwarning("Линия (голы)", "Выберите разные команды.")
+            return
+        try:
+            pred = gmt.predict_match(
+                model, home, away,
+                neutral=goal_neutral_var.get(), derby=goal_derby_var.get(),
+            )
+        except Exception as exc:
+            messagebox.showerror("Линия (голы)", str(exc))
+            return
+        mk = pred.markets
+        use_margin = goal_margin_var.get()
+        try:
+            margin = float(goal_margin_pct.get().replace(",", ".")) / 100.0
+        except ValueError:
+            margin = 0.0
+
+        def k1x2():
+            if use_margin and margin > 0:
+                return gm.apply_margin_1x2(mk.p1, mk.px, mk.p2, margin)
+            return mk.k1(), mk.kx(), mk.k2()
+
+        def k2way(p_a, p_b, ka, kb):
+            if use_margin and margin > 0:
+                return gm.apply_margin_two_way(p_a, p_b, margin)
+            return ka, kb
+
+        ka1, kax, ka2 = k1x2()
+        L = []
+        tag = " (с маржой)" if use_margin and margin > 0 else " (честные)"
+        L.append(f"=== {home} — {away}{' (нейтраль)' if goal_neutral_var.get() else ''} ===")
+        L.append(f"λ_h={pred.lambda_home:.3f}  λ_a={pred.lambda_away:.3f}   "
+                 f"D_final={pred.d_final:.3f}  S_final={pred.s_final:.3f}")
+        L.append("")
+        L.append(f"Коэффициенты{tag}:")
+        L.append(f"  1X2:  П1={ka1:.2f}  X={kax:.2f}  П2={ka2:.2f}   "
+                 f"(p: {mk.p1*100:.1f}% / {mk.px*100:.1f}% / {mk.p2*100:.1f}%)")
+        t = mk.main_total
+        ot, ut = k2way(1/t.home_or_over_odds, 1/t.away_or_under_odds,
+                       t.home_or_over_odds, t.away_or_under_odds)
+        L.append(f"  Тотал {t.line}:  Over {ot:.2f} / Under {ut:.2f}")
+        a = mk.main_ah
+        ah, aa = k2way(1/a.home_or_over_odds, 1/a.away_or_under_odds,
+                       a.home_or_over_odds, a.away_or_under_odds)
+        L.append(f"  Фора хозяев {a.line:+}:  {ah:.2f} / гости {aa:.2f}")
+        L.append("")
+        L.append("Индивидуальные тоталы (честные O/U):")
+        for ln, ov, un in mk.team_totals_home:
+            L.append(f"  {home} {ln}:  Over {ov:.2f} / Under {un:.2f}")
+        for ln, ov, un in mk.team_totals_away:
+            L.append(f"  {away} {ln}:  Over {ov:.2f} / Under {un:.2f}")
+        L.append("")
+        L.append("Тоталы (честные O/U):")
+        for ml in mk.totals:
+            if 1.0 <= ml.line <= 4.5:
+                L.append(f"  {ml.line}:  Over {ml.home_or_over_odds:.2f} / "
+                         f"Under {ml.away_or_under_odds:.2f}")
+        L.append("")
+        L.append("Топ счетов:")
+        for i, j, p in mk.top_scores[:8]:
+            L.append(f"  {i}:{j}  {p*100:.1f}%")
+        _goal_set_text("\n".join(L))
+
+    goal_btns = ttk.Frame(tab_goal)
+    goal_btns.pack(fill="x", pady=(8, 0), before=goal_out)
+    ttk.Button(goal_btns, text="Загрузить CSV и обучить", command=goal_load_clicked).grid(
+        row=0, column=0, padx=(0, 6)
+    )
+    ttk.Button(goal_btns, text="Рассчитать линию", command=goal_predict_clicked).grid(
+        row=0, column=1
+    )
+
     return root
 
 
