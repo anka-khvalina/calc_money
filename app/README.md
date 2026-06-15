@@ -72,6 +72,12 @@ Walk-forward даёт MAE форы/тотала и сравнение P1/X/П2 �
 
 Пример данных: `docs/examples/closing_lines_serie_a_sample.csv`.
 
+**iOS (Safari):** та же модель портирована в `web/FairOddsCalc_iOS.html` —
+вкладка **«Линия»** (версия `goal-model-v1`): вставка/загрузка CSV, обучение,
+редактируемые α форы/тотала, prior α, q_min/q_max ничьи, флаги «Модель ничьи»
+и «Dixon-Coles», выбор команд (нейтраль/дерби, маржа) и вывод всех рынков.
+Числа совпадают с десктопом (worked-пример Inter–Roma, Inter–Empoli).
+
 ## Что считает
 
 Для каждой строки:
