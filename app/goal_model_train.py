@@ -87,6 +87,14 @@ class ModelConfig:
     # калибровка
     draw_loss_weight: float = 1.5
 
+    # модель ничьей (отдельная) + коррекция диагонали матрицы
+    use_draw_model: bool = True
+    draw_diag_multiplier_min: float = 0.85
+    draw_diag_multiplier_max: float = 1.15
+    w_1x2_normal: float = 1.0
+    w_1x2_suspicious: float = 0.5
+    w_1x2_missing: float = 0.0
+
     # прогноз
     lambda_epsilon: float = 0.05
     derby_home_advantage_multiplier: float = 1.0
@@ -610,11 +618,120 @@ def calibrate(
 # Обучение и прогноз
 # --------------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# Модель ничьей: logit(P_X) = α + β_D·|D| + β_S·S + β_S2·S² + β_DxS·|D|·S
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class DrawModel:
+    alpha: float = 0.0
+    beta_d: float = 0.0
+    beta_s: float = 0.0
+    beta_s2: float = 0.0
+    beta_dxs: float = 0.0
+    n: int = 0
+    source: str = "fitted"  # fitted | default
+
+    def target_px(self, d_final: float, s_final: float) -> float:
+        z = (self.alpha
+             + self.beta_d * abs(d_final)
+             + self.beta_s * s_final
+             + self.beta_s2 * s_final * s_final
+             + self.beta_dxs * abs(d_final) * s_final)
+        # σ(z) с защитой от переполнения
+        if z >= 0:
+            return 1.0 / (1.0 + math.exp(-z))
+        ez = math.exp(z)
+        return ez / (1.0 + ez)
+
+
+_DRAW_DEFAULT = DrawModel(alpha=-0.95, beta_d=-0.55, beta_s=0.0, beta_s2=0.0,
+                          beta_dxs=0.0, n=0, source="default")
+
+
+def w_1x2_weight(m: PreparedMatch, cfg: ModelConfig) -> float:
+    """Вес надёжности рынка 1X2 для обучения ничьей."""
+    r = m.raw
+    if not (r.home_odds and r.draw_odds and r.away_odds):
+        return cfg.w_1x2_missing
+    if m.raw.quality_flag == "suspicious_line":
+        return cfg.w_1x2_suspicious
+    return cfg.w_1x2_normal
+
+
+def fit_draw_model(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> DrawModel:
+    """Взвешенный МНК logit(px_Shin) ~ 1 + |D| + S + S² + |D|·S."""
+    rows: List[Tuple[List[float], float, float]] = []
+    for m in matches:
+        if m.px_shin is None or m.diff_goals is None or m.sum_goals is None:
+            continue
+        px = m.px_shin
+        if px <= 0.0 or px >= 1.0:
+            continue
+        w = (m.w_base * w_1x2_weight(m, cfg))
+        if w <= 0:
+            continue
+        d_abs = abs(m.diff_goals)
+        s = m.sum_goals
+        feats = [1.0, d_abs, s, s * s, d_abs * s]
+        y = math.log(px / (1.0 - px))
+        rows.append((feats, y, w))
+    if len(rows) < 6:
+        return _DRAW_DEFAULT
+    p = 5
+    try:
+        beta = tr._solve_weighted(rows, p)
+    except ValueError:
+        return _DRAW_DEFAULT
+    dm = DrawModel(alpha=beta[0], beta_d=beta[1], beta_s=beta[2],
+                   beta_s2=beta[3], beta_dxs=beta[4], n=len(rows), source="fitted")
+    # Санити: базовая ничья (D=0, S=2.6) в разумных пределах, иначе дефолт.
+    base = dm.target_px(0.0, 2.6)
+    if not (0.10 <= base <= 0.45):
+        return _DRAW_DEFAULT
+    return dm
+
+
+@dataclass
+class DrawDiagnosticRow:
+    date: Optional[date]
+    home_team: str
+    away_team: str
+    s_m: float
+    d_m: float
+    p_draw_shin: float
+    p_draw_model: float
+    error: float
+    w_draw_final: float
+
+
+def draw_diagnostics(
+    model: "TrainedModel", prepared: Sequence[PreparedMatch]
+) -> List[DrawDiagnosticRow]:
+    dm = model.draw
+    cfg = model.config
+    out: List[DrawDiagnosticRow] = []
+    for m in prepared:
+        if m.px_shin is None or m.diff_goals is None or m.sum_goals is None:
+            continue
+        p_model = dm.target_px(m.diff_goals, m.sum_goals)
+        out.append(DrawDiagnosticRow(
+            date=m.raw.date, home_team=m.home_team, away_team=m.away_team,
+            s_m=m.sum_goals, d_m=m.diff_goals,
+            p_draw_shin=m.px_shin, p_draw_model=p_model,
+            error=p_model - m.px_shin,
+            w_draw_final=m.w_base * w_1x2_weight(m, cfg),
+        ))
+    out.sort(key=lambda r: abs(r.error), reverse=True)
+    return out
+
+
 @dataclass
 class TrainedModel:
     strength: StrengthModel
     goals: GoalModel
     calibration: Calibration
+    draw: DrawModel
     config: ModelConfig
 
 
@@ -625,7 +742,8 @@ def train_full_model(raw: Sequence[RawMatch], cfg: Optional[ModelConfig] = None)
     strength = fit_strength_ratings(matches, cfg)
     goals = fit_attack_defense(matches, cfg)
     calibration = calibrate(matches, strength, goals, cfg)
-    return TrainedModel(strength, goals, calibration, cfg), matches
+    draw = fit_draw_model(matches, cfg) if cfg.use_draw_model else _DRAW_DEFAULT
+    return TrainedModel(strength, goals, calibration, draw, cfg), matches
 
 
 @dataclass
@@ -639,6 +757,8 @@ class Prediction:
     d_final: float
     s_final: float
     markets: gm.MatchMarkets
+    draw_target: Optional[float] = None
+    draw_diagnostics: Optional[Dict[str, float]] = None
 
 
 def predict_match(
@@ -668,16 +788,28 @@ def predict_match(
     lambda_home = (s_final + d_final) / 2.0
     lambda_away = (s_final - d_final) / 2.0
 
-    markets = gm.compute_all_markets(
-        lambda_home, lambda_away,
-        gamma=cal.gamma if cfg.use_dixon_coles else 0.0,
-        max_goals=cfg.max_goals,
-    )
+    matrix = gm.build_score_matrix(lambda_home, lambda_away, cfg.max_goals)
+    if cfg.use_dixon_coles and cal.gamma:
+        matrix = gm.apply_dixon_coles(matrix, lambda_home, lambda_away, cal.gamma)
+
+    draw_target = None
+    draw_diag = None
+    if cfg.use_draw_model:
+        draw_target = model.draw.target_px(d_final, s_final)
+        matrix, draw_diag = gm.adjust_matrix_to_draw_target(
+            matrix, draw_target,
+            q_min=cfg.draw_diag_multiplier_min,
+            q_max=cfg.draw_diag_multiplier_max,
+        )
+
+    markets = gm.markets_from_matrix(matrix)
     return Prediction(
         home_team=home_team, away_team=away_team,
         lambda_home=lambda_home, lambda_away=lambda_away,
         d_model=d_model, s_model=s_model, d_final=d_final, s_final=s_final,
         markets=markets,
+        draw_target=draw_target,
+        draw_diagnostics=draw_diag,
     )
 
 

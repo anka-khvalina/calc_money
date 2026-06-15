@@ -1705,6 +1705,13 @@ def build_app():
         L.append(f"=== {home} — {away}{' (нейтраль)' if goal_neutral_var.get() else ''} ===")
         L.append(f"λ_h={pred.lambda_home:.3f}  λ_a={pred.lambda_away:.3f}   "
                  f"D_final={pred.d_final:.3f}  S_final={pred.s_final:.3f}")
+        if pred.draw_target is not None and pred.draw_diagnostics is not None:
+            dd = pred.draw_diagnostics
+            L.append(
+                f"Ничья: модель→{pred.draw_target*100:.1f}%  "
+                f"(матрица {dd['draw_from_matrix']*100:.1f}% → "
+                f"{dd['draw_after_calibration']*100:.1f}%, q={dd['diag_multiplier_used']:.3f})"
+            )
         L.append("")
         L.append(f"Коэффициенты{tag}:")
         L.append(f"  1X2:  П1={ka1:.2f}  X={kax:.2f}  П2={ka2:.2f}   "

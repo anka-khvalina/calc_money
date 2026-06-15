@@ -144,6 +144,52 @@ def test_strength_diagnostics_sorted_by_error():
     assert errs == sorted(errs, reverse=True)
 
 
+def test_adjust_matrix_to_draw_target():
+    m = gm.build_score_matrix(1.6, 1.1)
+    base_draw = gm.draw_probability(m)
+    target = base_draw * 1.10  # +10%, в пределах клампа
+    out, diag = gm.adjust_matrix_to_draw_target(m, target, q_min=0.85, q_max=1.15)
+    # сумма матрицы = 1, диагональ = целевой ничье
+    assert abs(sum(sum(r) for r in out) - 1.0) < 1e-9
+    assert abs(gm.draw_probability(out) - target) < 1e-6
+    assert abs(diag["diag_multiplier_used"] - 1.10) < 1e-6
+
+
+def test_draw_target_clamped():
+    m = gm.build_score_matrix(1.6, 1.1)
+    base = gm.draw_probability(m)
+    # абсурдная цель — должна обрезаться q_max
+    out, diag = gm.adjust_matrix_to_draw_target(m, 0.95, q_min=0.85, q_max=1.15)
+    assert abs(diag["diag_multiplier_used"] - 1.15) < 1e-9
+    assert abs(gm.draw_probability(out) - base * 1.15) < 1e-6
+
+
+def test_draw_model_fit_and_prediction_matches_target():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    model, prepared = gmt.train_full_model(raw)
+    dm = model.draw
+    assert dm.n > 0
+    # базовая ничья при равных командах в разумных пределах
+    assert 0.10 <= dm.target_px(0.0, 2.6) <= 0.45
+    # прогноз: итоговая ничья = целевой (в пределах клампа), 1X2 = 1
+    pred = gmt.predict_match(model, "Inter", "Empoli")
+    assert pred.draw_target is not None
+    assert abs(pred.markets.p1 + pred.markets.px + pred.markets.p2 - 1.0) < 1e-9
+    q = pred.draw_diagnostics["diag_multiplier_used"]
+    if model.config.draw_diag_multiplier_min < q < model.config.draw_diag_multiplier_max:
+        assert abs(pred.markets.px - pred.draw_target) < 1e-3
+
+
+def test_draw_diagnostics_present():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    model, prepared = gmt.train_full_model(raw)
+    diag = gmt.draw_diagnostics(model, prepared)
+    assert len(diag) > 0
+    assert all(r.p_draw_shin > 0 for r in diag)
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

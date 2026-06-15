@@ -415,6 +415,92 @@ def find_main_ah(matrix: List[List[float]], lines: Optional[Sequence[float]] = N
     return best
 
 
+def draw_probability(matrix: List[List[float]]) -> float:
+    return sum(matrix[i][i] for i in range(len(matrix)))
+
+
+def adjust_matrix_to_draw_target(
+    matrix: List[List[float]],
+    p_draw_target: float,
+    *,
+    q_min: float = 0.85,
+    q_max: float = 1.15,
+) -> Tuple[List[List[float]], Dict[str, float]]:
+    """Скорректировать диагональ матрицы под целевую вероятность ничьей.
+
+    Диагональ × q (q клампится в [q_min, q_max]); недиагональ × c так, чтобы
+    сумма осталась 1. Возвращает (новая матрица, диагностика).
+    """
+    p_draw_matrix = draw_probability(matrix)
+    diag: Dict[str, float] = {
+        "draw_from_matrix": p_draw_matrix,
+        "draw_target_model": p_draw_target,
+    }
+    if p_draw_matrix <= _EPS or p_draw_matrix >= 1.0 - _EPS:
+        diag.update(diag_multiplier_raw=1.0, diag_multiplier_used=1.0,
+                    draw_after_calibration=p_draw_matrix, non_diag_multiplier=1.0)
+        return [row[:] for row in matrix], diag
+
+    q_raw = p_draw_target / p_draw_matrix
+    q = min(q_max, max(q_min, q_raw))
+    p_draw_after = q * p_draw_matrix
+    c = (1.0 - p_draw_after) / (1.0 - p_draw_matrix)
+
+    out = [row[:] for row in matrix]
+    n = len(out)
+    for i in range(n):
+        for j in range(n):
+            out[i][j] *= q if i == j else c
+    out = _normalize_matrix(out)
+
+    diag.update(
+        diag_multiplier_raw=q_raw,
+        diag_multiplier_used=q,
+        draw_after_calibration=draw_probability(out),
+        non_diag_multiplier=c,
+    )
+    return out, diag
+
+
+def markets_from_matrix(
+    matrix: List[List[float]],
+    *,
+    total_lines: Optional[Sequence[float]] = None,
+    ah_lines: Optional[Sequence[float]] = None,
+    team_total_lines: Sequence[float] = (0.5, 1.5, 2.5),
+) -> MatchMarkets:
+    """Все рынки из готовой (уже скорректированной) матрицы счетов."""
+    p1, px, p2 = compute_1x2(matrix)
+    total_grid = list(total_lines) if total_lines else _candidate_lines(0.5, 6.0)
+    ah_grid = list(ah_lines) if ah_lines else _candidate_lines(-5.0, 5.0)
+
+    totals = [total_market(matrix, ln) for ln in total_grid]
+    handicaps = [ah_market(matrix, ln) for ln in ah_grid]
+    main_total = min(totals, key=lambda m: abs(m.home_or_over_odds - m.away_or_under_odds))
+    main_ah = min(handicaps, key=lambda m: abs(m.home_or_over_odds - m.away_or_under_odds))
+
+    tt_home = [(ln, *team_total_odds(matrix, ln, home=True)) for ln in team_total_lines]
+    tt_away = [(ln, *team_total_odds(matrix, ln, home=False)) for ln in team_total_lines]
+
+    # λ восстанавливаем как мат.ожидание по матрице (для отображения)
+    n = len(matrix)
+    lam_h = sum(i * sum(matrix[i]) for i in range(n))
+    lam_a = sum(j * sum(matrix[i][j] for i in range(n)) for j in range(n))
+
+    return MatchMarkets(
+        lambda_home=lam_h,
+        lambda_away=lam_a,
+        p1=p1, px=px, p2=p2,
+        main_total=main_total,
+        main_ah=main_ah,
+        totals=totals,
+        handicaps=handicaps,
+        team_totals_home=tt_home,
+        team_totals_away=tt_away,
+        top_scores=top_scorelines(matrix),
+    )
+
+
 def compute_all_markets(
     lambda_home: float,
     lambda_away: float,
