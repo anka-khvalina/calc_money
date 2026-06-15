@@ -1,0 +1,731 @@
+"""
+Обучение голевой модели на исторических closing-линиях и прогноз матча.
+
+Pipeline (см. спецификацию):
+  1. prepare + base weights (сезон/качество/дерби/нейтраль);
+  2. de-vig (two-way для AH/тоталов, Shin для 1X2);
+  3. восстановление S_m, D_m → λ_h, λ_a;
+  4. рейтинг силы r_i, H — robust WLS по D_m;
+  5. attack/defense μ, A_i, Df_i, H_g — robust WLS по log λ;
+  6. калибровка a,b,c,d,γ по 1X2 (Shin) — Nelder–Mead;
+  7. прогноз будущего матча → λ_h,λ_a → матрица → все рынки.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import io
+import math
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from pathlib import Path
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
+
+try:
+    from . import goal_model as gm
+    from . import team_ranking as tr
+except ImportError:  # pragma: no cover
+    import goal_model as gm
+    import team_ranking as tr
+
+
+# --------------------------------------------------------------------------- #
+# Конфиг и веса
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class SeasonWeight:
+    label: str
+    date_from: date
+    date_to: date
+    base_weight: float
+
+
+DEFAULT_QUALITY_WEIGHTS: Dict[str, float] = {
+    "normal": 1.00,
+    "low_motivation": 0.50,
+    "heavy_rotation": 0.50,
+    "suspicious_line": 0.20,
+    "data_error": 0.00,
+    "unknown": 0.80,
+}
+
+
+@dataclass
+class ModelConfig:
+    max_goals: int = gm.MAX_GOALS_DEFAULT
+    use_dixon_coles: bool = True
+    target_margin: float = 0.03
+    add_margin: bool = False
+
+    # веса
+    default_season_weight: float = 1.0
+    season_weights: List[SeasonWeight] = field(default_factory=list)
+    quality_weights: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_QUALITY_WEIGHTS))
+    derby_weight: float = 0.70
+    neutral_weight: float = 1.00
+    exclude_data_errors: bool = True
+
+    # веса по размеру линии
+    alpha_ah: float = 0.25
+    p_ah: float = 2.0
+    min_w_line_ah: float = 0.15
+    max_w_line_ah: float = 1.0
+
+    # robust
+    delta_ah: float = 0.5
+    delta_lambda: float = 0.25
+    max_iter: int = 30
+    tolerance: float = 1e-4
+
+    # калибровка
+    draw_loss_weight: float = 1.5
+
+    # прогноз
+    lambda_epsilon: float = 0.05
+    derby_home_advantage_multiplier: float = 1.0
+
+
+# --------------------------------------------------------------------------- #
+# Историческая запись матча
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class RawMatch:
+    date: Optional[date]
+    league: str
+    home_team: str
+    away_team: str
+    closing_ah_home: Optional[float] = None
+    closing_total_line: Optional[float] = None
+    ah_home_odds: Optional[float] = None
+    ah_away_odds: Optional[float] = None
+    over_odds: Optional[float] = None
+    under_odds: Optional[float] = None
+    home_odds: Optional[float] = None
+    draw_odds: Optional[float] = None
+    away_odds: Optional[float] = None
+    neutral_flag: bool = False
+    derby_flag: bool = False
+    quality_flag: str = "normal"
+
+
+_CSV_ALIASES: Dict[str, str] = {
+    "date": "date", "league": "league",
+    "home_team": "home_team", "home": "home_team", "team_home": "home_team",
+    "away_team": "away_team", "away": "away_team", "team_away": "away_team",
+    "closing_ah_home": "closing_ah_home", "ah_home_line": "closing_ah_home",
+    "ah_line": "closing_ah_home", "handicap": "closing_ah_home",
+    "closing_total_line": "closing_total_line", "total_line": "closing_total_line",
+    "total": "closing_total_line",
+    "ah_home_odds": "ah_home_odds", "ah_away_odds": "ah_away_odds",
+    "over_odds": "over_odds", "under_odds": "under_odds",
+    "home_odds": "home_odds", "odds_1": "home_odds", "p1": "home_odds",
+    "draw_odds": "draw_odds", "odds_x": "draw_odds", "x": "draw_odds",
+    "away_odds": "away_odds", "odds_2": "away_odds", "p2": "away_odds",
+    "neutral_flag": "neutral_flag", "neutral": "neutral_flag",
+    "derby_flag": "derby_flag", "derby": "derby_flag",
+    "quality_flag": "quality_flag", "quality": "quality_flag",
+}
+
+
+def _norm_key(name: str) -> str:
+    return "".join(ch for ch in name.strip().lower() if ch.isalnum() or ch == "_")
+
+
+def _to_float(text: Optional[str]) -> Optional[float]:
+    if text is None:
+        return None
+    t = str(text).strip().replace(",", ".")
+    if not t:
+        return None
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
+def _to_bool(text: Optional[str]) -> bool:
+    return str(text).strip().lower() in ("1", "true", "yes", "y", "да", "истина")
+
+
+def _to_date(text: Optional[str]) -> Optional[date]:
+    if not text:
+        return None
+    t = str(text).strip()
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%Y/%m/%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(t, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def parse_raw_matches(text: str) -> List["RawMatch"]:
+    """CSV (с заголовком) исторических closing-линий → список RawMatch."""
+    reader = csv.reader(io.StringIO(text))
+    rows = [r for r in reader if any(c.strip() for c in r)]
+    if not rows:
+        return []
+    header = [_CSV_ALIASES.get(_norm_key(h), "") for h in rows[0]]
+    out: List[RawMatch] = []
+    for row in rows[1:]:
+        rec: Dict[str, str] = {}
+        for col, val in zip(header, row):
+            if col:
+                rec[col] = val
+        if not rec.get("home_team") or not rec.get("away_team"):
+            continue
+        out.append(RawMatch(
+            date=_to_date(rec.get("date")),
+            league=(rec.get("league") or "").strip(),
+            home_team=rec["home_team"].strip(),
+            away_team=rec["away_team"].strip(),
+            closing_ah_home=_to_float(rec.get("closing_ah_home")),
+            closing_total_line=_to_float(rec.get("closing_total_line")),
+            ah_home_odds=_to_float(rec.get("ah_home_odds")),
+            ah_away_odds=_to_float(rec.get("ah_away_odds")),
+            over_odds=_to_float(rec.get("over_odds")),
+            under_odds=_to_float(rec.get("under_odds")),
+            home_odds=_to_float(rec.get("home_odds")),
+            draw_odds=_to_float(rec.get("draw_odds")),
+            away_odds=_to_float(rec.get("away_odds")),
+            neutral_flag=_to_bool(rec.get("neutral_flag")),
+            derby_flag=_to_bool(rec.get("derby_flag")),
+            quality_flag=(rec.get("quality_flag") or "normal").strip() or "normal",
+        ))
+    return out
+
+
+def load_raw_matches(path: Path) -> List["RawMatch"]:
+    return parse_raw_matches(Path(path).read_text(encoding="utf-8-sig"))
+
+
+@dataclass
+class PreparedMatch:
+    raw: RawMatch
+    home_team: str
+    away_team: str
+    i_home: int
+    w_base: float = 1.0
+    p_over_fair: Optional[float] = None
+    p_ah_home_fair: Optional[float] = None
+    p1_shin: Optional[float] = None
+    px_shin: Optional[float] = None
+    p2_shin: Optional[float] = None
+    sum_goals: Optional[float] = None
+    diff_goals: Optional[float] = None
+    lambda_home: Optional[float] = None
+    lambda_away: Optional[float] = None
+    w_line_ah: float = 1.0
+    w_robust: float = 1.0
+
+
+# --------------------------------------------------------------------------- #
+# Веса
+# --------------------------------------------------------------------------- #
+
+def season_weight(d: Optional[date], cfg: ModelConfig) -> float:
+    if d is None:
+        return cfg.default_season_weight
+    for sw in cfg.season_weights:
+        if sw.date_from <= d <= sw.date_to:
+            return sw.base_weight
+    return cfg.default_season_weight
+
+
+def quality_weight(flag: str, cfg: ModelConfig) -> float:
+    return cfg.quality_weights.get(flag, cfg.quality_weights.get("unknown", 0.8))
+
+
+def base_weight(m: RawMatch, cfg: ModelConfig) -> float:
+    w_s = season_weight(m.date, cfg)
+    w_q = quality_weight(m.quality_flag, cfg)
+    w_d = cfg.derby_weight if m.derby_flag else 1.0
+    w_n = cfg.neutral_weight if m.neutral_flag else 1.0
+    return w_s * w_q * w_d * w_n
+
+
+# --------------------------------------------------------------------------- #
+# Этапы 1–3: подготовка, de-vig, восстановление S/D
+# --------------------------------------------------------------------------- #
+
+def prepare_matches(raw: Sequence[RawMatch], cfg: ModelConfig) -> List[PreparedMatch]:
+    prepared: List[PreparedMatch] = []
+    for r in raw:
+        if r.quality_flag == "data_error" and cfg.exclude_data_errors:
+            continue
+        pm = PreparedMatch(
+            raw=r,
+            home_team=r.home_team.strip(),
+            away_team=r.away_team.strip(),
+            i_home=0 if r.neutral_flag else 1,
+            w_base=base_weight(r, cfg),
+        )
+        prepared.append(pm)
+    return prepared
+
+
+def devig_and_infer(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> None:
+    """Заполняет p_*_fair, Shin, S/D, λ для каждого матча (in place)."""
+    for m in matches:
+        r = m.raw
+        if r.over_odds and r.under_odds:
+            m.p_over_fair, _ = gm.devig_two_way(r.over_odds, r.under_odds)
+        if r.ah_home_odds and r.ah_away_odds:
+            m.p_ah_home_fair, _ = gm.devig_two_way(r.ah_home_odds, r.ah_away_odds)
+        if r.home_odds and r.draw_odds and r.away_odds:
+            m.p1_shin, m.px_shin, m.p2_shin = gm.shin_devig_1x2(
+                r.home_odds, r.draw_odds, r.away_odds
+            )
+
+        # S_m
+        if r.closing_total_line is not None and m.p_over_fair is not None:
+            m.sum_goals = gm.infer_total_sum(
+                r.closing_total_line, m.p_over_fair, max_goals=cfg.max_goals
+            )
+        elif r.closing_total_line is not None:
+            m.sum_goals = r.closing_total_line
+
+        # D_m
+        if m.sum_goals is not None:
+            if r.closing_ah_home is not None and m.p_ah_home_fair is not None:
+                m.diff_goals = gm.infer_goal_diff(
+                    r.closing_ah_home, m.p_ah_home_fair, m.sum_goals,
+                    max_goals=cfg.max_goals, eps=cfg.lambda_epsilon,
+                )
+            elif r.closing_ah_home is not None:
+                m.diff_goals = gm.clamp_goal_diff(-r.closing_ah_home, m.sum_goals, cfg.lambda_epsilon)
+
+        if m.sum_goals is not None and m.diff_goals is not None:
+            m.diff_goals = gm.clamp_goal_diff(m.diff_goals, m.sum_goals, cfg.lambda_epsilon)
+            m.lambda_home = (m.sum_goals + m.diff_goals) / 2.0
+            m.lambda_away = (m.sum_goals - m.diff_goals) / 2.0
+
+
+# --------------------------------------------------------------------------- #
+# Этап 4: рейтинг силы (robust WLS)
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class StrengthModel:
+    ratings: Dict[str, float]
+    home_advantage: float
+    mae: float = 0.0
+    rmse: float = 0.0
+    n: int = 0
+
+
+def _huber_weight(e: float, delta: float) -> float:
+    ae = abs(e)
+    return 1.0 if ae <= delta else delta / ae
+
+
+def fit_strength_ratings(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> StrengthModel:
+    used = [m for m in matches if m.diff_goals is not None]
+    if len(used) < 2:
+        raise ValueError("Недостаточно матчей с восстановленной разницей D_m")
+    teams = sorted({m.home_team for m in used} | {m.away_team for m in used})
+    idx = {t: i for i, t in enumerate(teams)}
+    p = len(teams) + 1  # + H
+
+    coeffs: List[List[float]] = []
+    targets: List[float] = []
+    for m in used:
+        row = [0.0] * p
+        row[idx[m.home_team]] += 1.0
+        row[idx[m.away_team]] -= 1.0
+        row[-1] = float(m.i_home)
+        coeffs.append(row)
+        targets.append(m.diff_goals)
+        m.w_line_ah = min(
+            cfg.max_w_line_ah,
+            max(cfg.min_w_line_ah, 1.0 / (1.0 + cfg.alpha_ah * abs(m.diff_goals) ** cfg.p_ah)),
+        )
+        m.w_robust = 1.0
+
+    gauge = [1.0] * len(teams) + [0.0]
+
+    def solve(weights: Sequence[float]) -> Tuple[List[float], List[float]]:
+        rows = [(coeffs[i], targets[i], weights[i]) for i in range(len(used))]
+        rows.append((gauge, 0.0, tr.GAUGE_WEIGHT))
+        sol = tr._solve_weighted(rows, p)
+        resid = [
+            (sum(coeffs[i][k] * sol[k] for k in range(p)) - targets[i])
+            for i in range(len(used))
+        ]
+        return sol, resid
+
+    weights = [m.w_base * m.w_line_ah for m in used]
+    sol, resid = solve(weights)
+    for _ in range(cfg.max_iter):
+        new_w = []
+        for i, m in enumerate(used):
+            m.w_robust = _huber_weight(resid[i], cfg.delta_ah)
+            new_w.append(m.w_base * m.w_line_ah * m.w_robust)
+        delta = max(abs(new_w[i] - weights[i]) for i in range(len(used)))
+        weights = new_w
+        sol, resid = solve(weights)
+        if delta < cfg.tolerance:
+            break
+
+    ratings = {t: sol[idx[t]] for t in teams}
+    mean_r = sum(ratings.values()) / len(ratings)
+    ratings = {t: r - mean_r for t, r in ratings.items()}
+    mae = sum(abs(e) for e in resid) / len(resid)
+    rmse = math.sqrt(sum(e * e for e in resid) / len(resid))
+    return StrengthModel(ratings=ratings, home_advantage=sol[-1], mae=mae, rmse=rmse, n=len(used))
+
+
+# --------------------------------------------------------------------------- #
+# Этап 5: attack/defense (robust WLS по log λ)
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class GoalModel:
+    mu: float
+    attack: Dict[str, float]
+    defense: Dict[str, float]
+    home_goal_adv: float
+    mae: float = 0.0
+    rmse: float = 0.0
+    n: int = 0
+
+
+def fit_attack_defense(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> GoalModel:
+    used = [m for m in matches if m.lambda_home and m.lambda_away
+            and m.lambda_home > 0 and m.lambda_away > 0]
+    if len(used) < 2:
+        raise ValueError("Недостаточно матчей с восстановленными λ")
+    teams = sorted({m.home_team for m in used} | {m.away_team for m in used})
+    nt = len(teams)
+    a_idx = {t: i for i, t in enumerate(teams)}            # attack
+    d_idx = {t: nt + i for i, t in enumerate(teams)}       # defense
+    mu_col = 2 * nt
+    hg_col = 2 * nt + 1
+    p = 2 * nt + 2
+
+    rows: List[List[float]] = []
+    targets: List[float] = []
+    base_w: List[float] = []
+    for m in used:
+        # строка хозяев: log λ_h = μ + A_home − Df_away + H_g·I_home
+        rh = [0.0] * p
+        rh[a_idx[m.home_team]] += 1.0
+        rh[d_idx[m.away_team]] -= 1.0
+        rh[mu_col] = 1.0
+        rh[hg_col] = float(m.i_home)
+        rows.append(rh)
+        targets.append(math.log(m.lambda_home))
+        base_w.append(m.w_base)
+        # строка гостей: log λ_a = μ + A_away − Df_home
+        ra = [0.0] * p
+        ra[a_idx[m.away_team]] += 1.0
+        ra[d_idx[m.home_team]] -= 1.0
+        ra[mu_col] = 1.0
+        rows.append(ra)
+        targets.append(math.log(m.lambda_away))
+        base_w.append(m.w_base)
+
+    # gauge: Σ A = 0, Σ Df = 0
+    gauge_a = [0.0] * p
+    gauge_d = [0.0] * p
+    for t in teams:
+        gauge_a[a_idx[t]] = 1.0
+        gauge_d[d_idx[t]] = 1.0
+
+    def solve(weights: Sequence[float]) -> Tuple[List[float], List[float]]:
+        wrows = [(rows[i], targets[i], weights[i]) for i in range(len(rows))]
+        wrows.append((gauge_a, 0.0, tr.GAUGE_WEIGHT))
+        wrows.append((gauge_d, 0.0, tr.GAUGE_WEIGHT))
+        sol = tr._solve_weighted(wrows, p)
+        resid = [
+            (sum(rows[i][k] * sol[k] for k in range(p)) - targets[i])
+            for i in range(len(rows))
+        ]
+        return sol, resid
+
+    w_robust = [1.0] * len(rows)
+    weights = list(base_w)
+    sol, resid = solve(weights)
+    for _ in range(cfg.max_iter):
+        new_w = []
+        for i in range(len(rows)):
+            w_robust[i] = _huber_weight(resid[i], cfg.delta_lambda)
+            new_w.append(base_w[i] * w_robust[i])
+        delta = max(abs(new_w[i] - weights[i]) for i in range(len(rows)))
+        weights = new_w
+        sol, resid = solve(weights)
+        if delta < cfg.tolerance:
+            break
+
+    attack = {t: sol[a_idx[t]] for t in teams}
+    defense = {t: sol[d_idx[t]] for t in teams}
+    ma = sum(attack.values()) / nt
+    md = sum(defense.values()) / nt
+    attack = {t: v - ma for t, v in attack.items()}
+    defense = {t: v - md for t, v in defense.items()}
+    mae = sum(abs(e) for e in resid) / len(resid)
+    rmse = math.sqrt(sum(e * e for e in resid) / len(resid))
+    return GoalModel(
+        mu=sol[mu_col] + ma - md,  # μ впитывает сдвиги нормировки атаки/обороны
+        attack=attack,
+        defense=defense,
+        home_goal_adv=sol[hg_col],
+        mae=mae, rmse=rmse, n=len(used),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Этап 6: калибровка a,b,c,d,γ (Nelder–Mead по 1X2 Shin)
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class Calibration:
+    a: float = 0.0
+    b: float = 1.0
+    c: float = 0.0
+    d: float = 1.0
+    gamma: float = 0.0
+    loss: float = 0.0
+
+
+def _model_d_s(m: PreparedMatch, strength: StrengthModel, goals: GoalModel) -> Tuple[float, float]:
+    d_model = (
+        strength.ratings.get(m.home_team, 0.0)
+        - strength.ratings.get(m.away_team, 0.0)
+        + strength.home_advantage * m.i_home
+    )
+    lh = math.exp(goals.mu + goals.attack.get(m.home_team, 0.0)
+                  - goals.defense.get(m.away_team, 0.0) + goals.home_goal_adv * m.i_home)
+    la = math.exp(goals.mu + goals.attack.get(m.away_team, 0.0)
+                  - goals.defense.get(m.home_team, 0.0))
+    return d_model, lh + la
+
+
+def nelder_mead(
+    f: Callable[[List[float]], float],
+    x0: List[float],
+    *,
+    step: float = 0.2,
+    max_iter: int = 400,
+    tol: float = 1e-7,
+) -> List[float]:
+    n = len(x0)
+    simplex = [list(x0)]
+    for i in range(n):
+        pt = list(x0)
+        pt[i] += step if pt[i] == 0 else step * abs(pt[i])
+        simplex.append(pt)
+    fvals = [f(p) for p in simplex]
+    for _ in range(max_iter):
+        order = sorted(range(n + 1), key=lambda k: fvals[k])
+        simplex = [simplex[k] for k in order]
+        fvals = [fvals[k] for k in order]
+        if abs(fvals[-1] - fvals[0]) < tol:
+            break
+        centroid = [sum(simplex[k][i] for k in range(n)) / n for i in range(n)]
+        # reflection
+        xr = [centroid[i] + (centroid[i] - simplex[-1][i]) for i in range(n)]
+        fr = f(xr)
+        if fvals[0] <= fr < fvals[-2]:
+            simplex[-1], fvals[-1] = xr, fr
+        elif fr < fvals[0]:
+            xe = [centroid[i] + 2.0 * (centroid[i] - simplex[-1][i]) for i in range(n)]
+            fe = f(xe)
+            if fe < fr:
+                simplex[-1], fvals[-1] = xe, fe
+            else:
+                simplex[-1], fvals[-1] = xr, fr
+        else:
+            xc = [centroid[i] + 0.5 * (simplex[-1][i] - centroid[i]) for i in range(n)]
+            fc = f(xc)
+            if fc < fvals[-1]:
+                simplex[-1], fvals[-1] = xc, fc
+            else:
+                for k in range(1, n + 1):
+                    simplex[k] = [simplex[0][i] + 0.5 * (simplex[k][i] - simplex[0][i]) for i in range(n)]
+                    fvals[k] = f(simplex[k])
+    best = min(range(n + 1), key=lambda k: fvals[k])
+    return simplex[best]
+
+
+def calibrate(
+    matches: Sequence[PreparedMatch],
+    strength: StrengthModel,
+    goals: GoalModel,
+    cfg: ModelConfig,
+) -> Calibration:
+    used = [m for m in matches if m.p1_shin is not None]
+    if not used:
+        return Calibration()
+    pre = [(m, *_model_d_s(m, strength, goals), m.w_base) for m in used]
+
+    def loss(params: List[float]) -> float:
+        a, b, c, d, gamma = params
+        if d <= 0:
+            return 1e9
+        total = 0.0
+        for m, d_model, s_model, w in pre:
+            s_final = c + d * s_model
+            if s_final <= 0.2:
+                return 1e9
+            d_final = gm.clamp_goal_diff(a + b * d_model, s_final, cfg.lambda_epsilon)
+            lh = (s_final + d_final) / 2.0
+            la = (s_final - d_final) / 2.0
+            if lh <= 0 or la <= 0:
+                return 1e9
+            matrix = gm.build_score_matrix(lh, la, cfg.max_goals)
+            if cfg.use_dixon_coles and gamma:
+                matrix = gm.apply_dixon_coles(matrix, lh, la, gamma)
+            p1, px, p2 = gm.compute_1x2(matrix)
+            total += w * (
+                (p1 - m.p1_shin) ** 2
+                + cfg.draw_loss_weight * (px - m.px_shin) ** 2
+                + (p2 - m.p2_shin) ** 2
+            )
+        return total
+
+    x = nelder_mead(loss, [0.0, 1.0, 0.0, 1.0, 0.0])
+    return Calibration(a=x[0], b=x[1], c=x[2], d=x[3], gamma=x[4], loss=loss(x))
+
+
+# --------------------------------------------------------------------------- #
+# Обучение и прогноз
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class TrainedModel:
+    strength: StrengthModel
+    goals: GoalModel
+    calibration: Calibration
+    config: ModelConfig
+
+
+def train_full_model(raw: Sequence[RawMatch], cfg: Optional[ModelConfig] = None) -> Tuple[TrainedModel, List[PreparedMatch]]:
+    cfg = cfg or ModelConfig()
+    matches = prepare_matches(raw, cfg)
+    devig_and_infer(matches, cfg)
+    strength = fit_strength_ratings(matches, cfg)
+    goals = fit_attack_defense(matches, cfg)
+    calibration = calibrate(matches, strength, goals, cfg)
+    return TrainedModel(strength, goals, calibration, cfg), matches
+
+
+@dataclass
+class Prediction:
+    home_team: str
+    away_team: str
+    lambda_home: float
+    lambda_away: float
+    d_model: float
+    s_model: float
+    d_final: float
+    s_final: float
+    markets: gm.MatchMarkets
+
+
+def predict_match(
+    model: TrainedModel,
+    home_team: str,
+    away_team: str,
+    *,
+    neutral: bool = False,
+    derby: bool = False,
+) -> Prediction:
+    cfg = model.config
+    s, g, cal = model.strength, model.goals, model.calibration
+    i_home = 0 if neutral else 1
+    h_mult = cfg.derby_home_advantage_multiplier if derby else 1.0
+
+    if home_team not in s.ratings or away_team not in s.ratings:
+        raise ValueError("Команда не найдена в обученной модели")
+
+    d_model = s.ratings[home_team] - s.ratings[away_team] + s.home_advantage * i_home * h_mult
+    lh_ad = math.exp(g.mu + g.attack[home_team] - g.defense[away_team] + g.home_goal_adv * i_home)
+    la_ad = math.exp(g.mu + g.attack[away_team] - g.defense[home_team])
+    s_model = lh_ad + la_ad
+
+    d_final = cal.a + cal.b * d_model
+    s_final = cal.c + cal.d * s_model
+    d_final = gm.clamp_goal_diff(d_final, s_final, cfg.lambda_epsilon)
+    lambda_home = (s_final + d_final) / 2.0
+    lambda_away = (s_final - d_final) / 2.0
+
+    markets = gm.compute_all_markets(
+        lambda_home, lambda_away,
+        gamma=cal.gamma if cfg.use_dixon_coles else 0.0,
+        max_goals=cfg.max_goals,
+    )
+    return Prediction(
+        home_team=home_team, away_team=away_team,
+        lambda_home=lambda_home, lambda_away=lambda_away,
+        d_model=d_model, s_model=s_model, d_final=d_final, s_final=s_final,
+        markets=markets,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# CLI
+# --------------------------------------------------------------------------- #
+
+def _fmt(v: float, d: int = 2) -> str:
+    return f"{v:.{d}f}"
+
+
+def _cmd_train(args: argparse.Namespace) -> None:
+    raw = load_raw_matches(Path(args.input))
+    model, _ = train_full_model(raw)
+    print(f"Матчей: {model.strength.n}  команд: {len(model.strength.ratings)}")
+    print(f"H (сила): {_fmt(model.strength.home_advantage,3)}  "
+          f"RMSE_D: {_fmt(model.strength.rmse,4)}")
+    print(f"μ: {_fmt(model.goals.mu,3)}  H_g: {_fmt(model.goals.home_goal_adv,3)}  "
+          f"RMSE_logλ: {_fmt(model.goals.rmse,4)}")
+    c = model.calibration
+    print(f"Калибровка: a={_fmt(c.a,3)} b={_fmt(c.b,3)} c={_fmt(c.c,3)} "
+          f"d={_fmt(c.d,3)} γ={_fmt(c.gamma,4)}  loss={_fmt(c.loss,5)}")
+    print("\nРейтинги (сила, нейтраль):")
+    for t, r in sorted(model.strength.ratings.items(), key=lambda kv: kv[1], reverse=True):
+        print(f"  {t:<20} r={_fmt(r,3):>7}  A={_fmt(model.goals.attack[t],3):>7}  "
+              f"Df={_fmt(model.goals.defense[t],3):>7}")
+    if args.home and args.away:
+        pred = predict_match(model, args.home, args.away,
+                             neutral=args.neutral, derby=args.derby)
+        _print_prediction(pred)
+
+
+def _print_prediction(pred: Prediction) -> None:
+    mk = pred.markets
+    print(f"\n=== Прогноз: {pred.home_team} — {pred.away_team} ===")
+    print(f"λ_h={_fmt(pred.lambda_home,3)}  λ_a={_fmt(pred.lambda_away,3)}  "
+          f"(D_final={_fmt(pred.d_final,3)}, S_final={_fmt(pred.s_final,3)})")
+    print(f"1X2: П1={_fmt(mk.p1*100,1)}% X={_fmt(mk.px*100,1)}% П2={_fmt(mk.p2*100,1)}%  "
+          f"→ {_fmt(mk.k1())} / {_fmt(mk.kx())} / {_fmt(mk.k2())}")
+    t = mk.main_total
+    print(f"Тотал {t.line}: Over {_fmt(t.home_or_over_odds)} / Under {_fmt(t.away_or_under_odds)}")
+    a = mk.main_ah
+    print(f"Фора хозяев {a.line:+}: {_fmt(a.home_or_over_odds)} / гости {_fmt(a.away_or_under_odds)}")
+    print("Топ счетов:", ", ".join(f"{i}:{j} {_fmt(p*100,1)}%" for i, j, p in mk.top_scores[:5]))
+
+
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Голевая модель футбольной линии (closing data).")
+    sub = p.add_subparsers(dest="command", required=True)
+    pt = sub.add_parser("train", help="Обучить модель по CSV и (опц.) спрогнозировать матч.")
+    pt.add_argument("--input", required=True, help="CSV исторических closing-линий.")
+    pt.add_argument("--home", help="Хозяева прогнозируемого матча.")
+    pt.add_argument("--away", help="Гости прогнозируемого матча.")
+    pt.add_argument("--neutral", action="store_true", help="Нейтральное поле.")
+    pt.add_argument("--derby", action="store_true", help="Дерби.")
+    pt.set_defaults(func=_cmd_train)
+    return p.parse_args(argv)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> None:
+    args = parse_args(argv)
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()
