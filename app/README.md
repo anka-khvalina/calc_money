@@ -44,13 +44,26 @@ ah_home_odds,ah_away_odds,over_odds,under_odds,
 home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag
 ```
 
+Веса матча (настраиваются в `ModelConfig`): сезон × качество × дерби × нейтраль
+× размер форы `w_line_AH = 1/(1+α_AH·|D|^p)` × экстремальность тотала
+`w_line_T = 1/(1+α_T·(S−S̄)²)` × robust-Huber (считается на итерациях).
+
 CLI:
 
 ```bash
+# обучить + спрогнозировать матч
 python3 app/goal_model_train.py train \
   --input docs/examples/closing_lines_serie_a_sample.csv \
   --home Inter --away Empoli
+
+# walk-forward валидация (§16): обучение на прошлом, прогноз следующего матча
+python3 app/goal_model_train.py validate \
+  --input docs/examples/closing_lines_serie_a_sample.csv --min-train 12
 ```
+
+Walk-forward даёт MAE форы/тотала и сравнение P1/X/П2 с Shin (плюс смещение
+ничьи). Диагностика рейтинга (`strength_diagnostics`) выдаёт по матчам
+`D_market`, `D_model`, ошибку и веса — для поиска выбросов.
 
 Пример данных: `docs/examples/closing_lines_serie_a_sample.csv`.
 

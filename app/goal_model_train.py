@@ -67,11 +67,16 @@ class ModelConfig:
     neutral_weight: float = 1.00
     exclude_data_errors: bool = True
 
-    # веса по размеру линии
+    # веса по размеру линии (фора)
     alpha_ah: float = 0.25
     p_ah: float = 2.0
     min_w_line_ah: float = 0.15
     max_w_line_ah: float = 1.0
+
+    # веса по экстремальности тотала
+    alpha_t: float = 0.50
+    min_w_line_t: float = 0.30
+    max_w_line_t: float = 1.0
 
     # robust
     delta_ah: float = 0.5
@@ -219,6 +224,7 @@ class PreparedMatch:
     lambda_home: Optional[float] = None
     lambda_away: Optional[float] = None
     w_line_ah: float = 1.0
+    w_line_t: float = 1.0
     w_robust: float = 1.0
 
 
@@ -302,6 +308,15 @@ def devig_and_infer(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> None:
             m.diff_goals = gm.clamp_goal_diff(m.diff_goals, m.sum_goals, cfg.lambda_epsilon)
             m.lambda_home = (m.sum_goals + m.diff_goals) / 2.0
             m.lambda_away = (m.sum_goals - m.diff_goals) / 2.0
+
+    # Вес по экстремальности тотала: w_line_T = 1/(1+alpha_T·(S−S̄)²), clamp.
+    s_vals = [m.sum_goals for m in matches if m.sum_goals is not None]
+    s_mean = sum(s_vals) / len(s_vals) if s_vals else 0.0
+    for m in matches:
+        if m.sum_goals is None:
+            continue
+        w = 1.0 / (1.0 + cfg.alpha_t * (m.sum_goals - s_mean) ** 2)
+        m.w_line_t = min(cfg.max_w_line_t, max(cfg.min_w_line_t, w))
 
 
 # --------------------------------------------------------------------------- #
@@ -418,7 +433,7 @@ def fit_attack_defense(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> Go
         rh[hg_col] = float(m.i_home)
         rows.append(rh)
         targets.append(math.log(m.lambda_home))
-        base_w.append(m.w_base)
+        base_w.append(m.w_base * m.w_line_t)
         # строка гостей: log λ_a = μ + A_away − Df_home
         ra = [0.0] * p
         ra[a_idx[m.away_team]] += 1.0
@@ -426,7 +441,7 @@ def fit_attack_defense(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> Go
         ra[mu_col] = 1.0
         rows.append(ra)
         targets.append(math.log(m.lambda_away))
-        base_w.append(m.w_base)
+        base_w.append(m.w_base * m.w_line_t)
 
     # gauge: Σ A = 0, Σ Df = 0
     gauge_a = [0.0] * p
@@ -667,6 +682,115 @@ def predict_match(
 
 
 # --------------------------------------------------------------------------- #
+# Диагностика рейтинга силы (§17): D_market vs D_model по матчам
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class StrengthDiagnosticRow:
+    date: Optional[date]
+    home_team: str
+    away_team: str
+    d_market: float
+    d_model: float
+    error: float
+    w_base: float
+    w_line_ah: float
+    w_line_t: float
+
+
+def strength_diagnostics(
+    model: TrainedModel, prepared: Sequence[PreparedMatch]
+) -> List[StrengthDiagnosticRow]:
+    s = model.strength
+    out: List[StrengthDiagnosticRow] = []
+    for m in prepared:
+        if m.diff_goals is None:
+            continue
+        if m.home_team not in s.ratings or m.away_team not in s.ratings:
+            continue
+        d_model = s.ratings[m.home_team] - s.ratings[m.away_team] + s.home_advantage * m.i_home
+        out.append(StrengthDiagnosticRow(
+            date=m.raw.date, home_team=m.home_team, away_team=m.away_team,
+            d_market=m.diff_goals, d_model=d_model, error=m.diff_goals - d_model,
+            w_base=m.w_base, w_line_ah=m.w_line_ah, w_line_t=m.w_line_t,
+        ))
+    out.sort(key=lambda r: abs(r.error), reverse=True)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# Walk-forward валидация (§16)
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class WalkForwardMetrics:
+    n_eval: int
+    mae_ah: float       # |центральная фора модели − closing_AH_home|
+    mae_total: float    # |центральный тотал модели − closing_total_line|
+    mae_p1: float       # |P1_model − P1_Shin|
+    mae_px: float       # ничья
+    mae_p2: float
+    bias_px: float      # средн. (px_model − px_shin): систематический сдвиг ничьей
+
+
+def walk_forward_validate(
+    raw: Sequence[RawMatch],
+    cfg: Optional[ModelConfig] = None,
+    *,
+    min_train: int = 12,
+) -> WalkForwardMetrics:
+    """Для каждого матча: обучаем на более ранних, прогнозируем, сравниваем с closing."""
+    cfg = cfg or ModelConfig()
+    dated = [r for r in raw if r.date is not None]
+    dated.sort(key=lambda r: r.date)
+    undated = [r for r in raw if r.date is None]
+    ordered = dated + undated
+
+    ah_err: List[float] = []
+    t_err: List[float] = []
+    p1_err: List[float] = []
+    px_err: List[float] = []
+    p2_err: List[float] = []
+    px_signed: List[float] = []
+
+    for k in range(len(ordered)):
+        if k < min_train:
+            continue
+        target = ordered[k]
+        train = ordered[:k]
+        try:
+            model, _ = train_full_model(train, cfg)
+            pred = predict_match(
+                model, target.home_team, target.away_team,
+                neutral=target.neutral_flag, derby=target.derby_flag,
+            )
+        except (ValueError, ZeroDivisionError):
+            continue
+        mk = pred.markets
+        if target.closing_ah_home is not None:
+            ah_err.append(abs(mk.main_ah.line - target.closing_ah_home))
+        if target.closing_total_line is not None:
+            t_err.append(abs(mk.main_total.line - target.closing_total_line))
+        if target.home_odds and target.draw_odds and target.away_odds:
+            ps1, psx, ps2 = gm.shin_devig_1x2(target.home_odds, target.draw_odds, target.away_odds)
+            p1_err.append(abs(mk.p1 - ps1))
+            px_err.append(abs(mk.px - psx))
+            p2_err.append(abs(mk.p2 - ps2))
+            px_signed.append(mk.px - psx)
+
+    def _mean(xs: List[float]) -> float:
+        return sum(xs) / len(xs) if xs else 0.0
+
+    n_eval = max(len(ah_err), len(t_err), len(p1_err))
+    return WalkForwardMetrics(
+        n_eval=n_eval,
+        mae_ah=_mean(ah_err), mae_total=_mean(t_err),
+        mae_p1=_mean(p1_err), mae_px=_mean(px_err), mae_p2=_mean(p2_err),
+        bias_px=_mean(px_signed),
+    )
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 
@@ -709,6 +833,16 @@ def _print_prediction(pred: Prediction) -> None:
     print("Топ счетов:", ", ".join(f"{i}:{j} {_fmt(p*100,1)}%" for i, j, p in mk.top_scores[:5]))
 
 
+def _cmd_validate(args: argparse.Namespace) -> None:
+    raw = load_raw_matches(Path(args.input))
+    m = walk_forward_validate(raw, min_train=args.min_train)
+    print(f"Walk-forward: оценено матчей = {m.n_eval}")
+    print(f"  MAE форы:   {_fmt(m.mae_ah,3)}")
+    print(f"  MAE тотала: {_fmt(m.mae_total,3)}")
+    print(f"  MAE П1/X/П2 vs Shin: {_fmt(m.mae_p1,4)} / {_fmt(m.mae_px,4)} / {_fmt(m.mae_p2,4)}")
+    print(f"  Смещение ничьи (px_model − px_Shin): {_fmt(m.bias_px,4)}")
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Голевая модель футбольной линии (closing data).")
     sub = p.add_subparsers(dest="command", required=True)
@@ -719,6 +853,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     pt.add_argument("--neutral", action="store_true", help="Нейтральное поле.")
     pt.add_argument("--derby", action="store_true", help="Дерби.")
     pt.set_defaults(func=_cmd_train)
+
+    pv = sub.add_parser("validate", help="Walk-forward валидация модели по CSV.")
+    pv.add_argument("--input", required=True, help="CSV исторических closing-линий.")
+    pv.add_argument("--min-train", type=int, default=12, dest="min_train",
+                    help="Минимум матчей для обучения перед первым прогнозом.")
+    pv.set_defaults(func=_cmd_validate)
     return p.parse_args(argv)
 
 

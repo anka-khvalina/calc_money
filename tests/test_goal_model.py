@@ -111,6 +111,39 @@ def test_margin_increases_overround():
     assert abs(overround - 1.05) < 1e-9
 
 
+def test_total_extremeness_weight_assigned():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    cfg = gmt.ModelConfig()
+    prepared = gmt.prepare_matches(raw, cfg)
+    gmt.devig_and_infer(prepared, cfg)
+    for m in prepared:
+        assert cfg.min_w_line_t <= m.w_line_t <= cfg.max_w_line_t
+    # экстремальные тоталы получают меньший вес, чем средние
+    ws = sorted(prepared, key=lambda m: m.w_line_t)
+    assert ws[0].w_line_t <= ws[-1].w_line_t
+
+
+def test_walk_forward_runs():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    metrics = gmt.walk_forward_validate(raw, min_train=12)
+    assert metrics.n_eval > 0
+    # на самосогласованных данных ошибки малы
+    assert metrics.mae_ah < 0.5
+    assert metrics.mae_p1 < 0.05
+
+
+def test_strength_diagnostics_sorted_by_error():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    model, prepared = gmt.train_full_model(raw)
+    diag = gmt.strength_diagnostics(model, prepared)
+    assert len(diag) > 0
+    errs = [abs(r.error) for r in diag]
+    assert errs == sorted(errs, reverse=True)
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
