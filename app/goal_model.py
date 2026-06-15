@@ -185,12 +185,10 @@ def conditional_win_prob(win_part: float, loss_part: float) -> float:
 # --------------------------------------------------------------------------- #
 
 def devig_two_way(odds_a: float, odds_b: float) -> Tuple[float, float]:
-    """Пропорциональное снятие маржи для двухисходного рынка."""
+    """Снятие маржи для двухисходного рынка по модели Shin."""
     if odds_a <= 1.0 or odds_b <= 1.0:
         raise ValueError("Коэффициенты двухисходного рынка должны быть > 1")
-    qa, qb = 1.0 / odds_a, 1.0 / odds_b
-    s = qa + qb
-    return qa / s, qb / s
+    return ds.shin_devig_two_way(odds_a, odds_b)
 
 
 def shin_devig_1x2(home_odds: float, draw_odds: float, away_odds: float) -> Tuple[float, float, float]:
