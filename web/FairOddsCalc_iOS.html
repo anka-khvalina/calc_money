@@ -89,6 +89,22 @@
     }
     .small{ font-size:12px; color:var(--muted); }
     .hint{ font-size:11px; color:#8a93a0; margin-top:3px; line-height:1.3; }
+    /* --- Справка --- */
+    .help h2{ font-size:17px; margin:18px 0 8px; color:#10204a; }
+    .help h3{ font-size:14px; margin:14px 0 6px; color:#26408b; }
+    .help p{ font-size:13.5px; line-height:1.55; margin:6px 0; color:#222; }
+    .help ul,.help ol{ font-size:13.5px; line-height:1.55; padding-left:22px; margin:6px 0; color:#222; }
+    .help li{ margin:3px 0; }
+    .help-card{ background:#f7f9ff; border:1px solid #dbe3f7; border-radius:12px; padding:12px 14px; margin:10px 0; }
+    .help-flow{ background:#10204a; color:#dce6ff; border-radius:12px; padding:12px 14px; font-size:13px; line-height:1.7; text-align:center; }
+    .help-flow b{ color:#fff; }
+    .formula{ background:#0f172a; color:#e6edff; border-radius:10px; padding:10px 12px; margin:8px 0;
+      font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; font-size:13px; line-height:1.7; overflow-x:auto; white-space:pre; }
+    .formula .c{ color:#7fd1ff; }       /* акцент */
+    .formula .m{ color:#9aa6c2; }       /* комментарий */
+    .help .badge{ display:inline-block; background:var(--accent); color:#fff; border-radius:6px; padding:1px 7px; font-size:12px; font-weight:600; margin-right:6px; }
+    .help table{ margin-top:6px; }
+    .help table td,.help table th{ font-size:12.5px; }
     .table-wrap{ overflow:auto; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
     table{ width:100%; border-collapse:collapse; min-width:560px; background:#fff; }
     th,td{ border-bottom:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; }
@@ -182,6 +198,7 @@
       <button type="button" class="tab-btn" data-tab="shin">Счет кэф</button>
       <button type="button" class="tab-btn" data-tab="goal">Линия</button>
       <button type="button" class="tab-btn" data-tab="hist">История</button>
+      <button type="button" class="tab-btn" data-tab="help">Справка</button>
     </div>
 
     <!-- TAB A -->
@@ -649,6 +666,114 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </table>
       </div>
       <div id="metaHist" class="meta">Загрузите сезон или нажмите «Просмотр истории».</div>
+    </section>
+
+    <!-- TAB HELP -->
+    <section id="tab-help" class="panel help">
+      <h2>FairOddsCalc — как это работает</h2>
+      <p>Приложение строит футбольную линию из <b>исторических закрывающих (closing) коэффициентов</b>.
+      Главная идея — всё считается из <b>одной матрицы счетов</b>, поэтому 1X2, форы и тоталы согласованы между собой.</p>
+      <div class="help-flow">
+        исторические линии → скрытые <b>S, D</b> → <b>λ<sub>h</sub>, λ<sub>a</sub></b> → матрица <b>P(i,j)</b> → коррекция ничьи → <b>вся линия</b>
+      </div>
+      <p class="small">λ<sub>h</sub>, λ<sub>a</sub> — ожидаемые голы хозяев и гостей; S = λ<sub>h</sub>+λ<sub>a</sub> (сумма), D = λ<sub>h</sub>−λ<sub>a</sub> (разница); i — голы хозяев, j — голы гостей.</p>
+
+      <h2>Вкладка «Линия» — быстрый старт</h2>
+      <div class="help-card">
+        <ol>
+          <li><span class="badge">1</span> Вставьте CSV closing-линий (или выберите файл). Заголовок обязателен.</li>
+          <li><span class="badge">2</span> При желании поправьте коэффициенты и таблицы весов (у каждого есть подсказка).</li>
+          <li><span class="badge">3</span> Нажмите <b>«Обучить модель»</b> — внизу появятся рейтинги команд и сводка.</li>
+          <li><span class="badge">4</span> Выберите <b>Хозяев</b> и <b>Гостей</b>, флаги (нейтраль/дерби/маржа) → <b>«Рассчитать линию»</b>.</li>
+        </ol>
+      </div>
+
+      <h3>Формат CSV</h3>
+      <div class="formula">date,league,home_team,away_team,
+closing_ah_home,closing_total_line,
+ah_home_odds,ah_away_odds,over_odds,under_odds,
+home_odds,draw_odds,away_odds,
+neutral_flag,derby_flag,quality_flag</div>
+      <ul>
+        <li><b>closing_ah_home</b> — азиатская фора на хозяев (напр. −0.75), <b>ah_home_odds/ah_away_odds</b> — кэфы на неё.</li>
+        <li><b>closing_total_line</b> — тотал (напр. 2.5), <b>over_odds/under_odds</b> — кэфы Over/Under.</li>
+        <li><b>home_odds/draw_odds/away_odds</b> — 1X2 (нужны для ничьи и калибровки).</li>
+        <li><b>neutral_flag/derby_flag</b> — true/false; <b>quality_flag</b> — normal, low_motivation, heavy_rotation, suspicious_line, data_error, unknown.</li>
+      </ul>
+
+      <h2>Как обучается модель (шаг за шагом)</h2>
+
+      <h3>1. Снятие маржи</h3>
+      <p>Для двухисходных рынков (форы, тоталы) — пропорционально; для 1X2 — методом <b>Shin</b>.</p>
+      <div class="formula"><span class="m"># два исхода</span>
+p<sub>A</sub> = (1/K<sub>A</sub>) / (1/K<sub>A</sub> + 1/K<sub>B</sub>)
+<span class="m"># Over 2.5 @1.91 / Under @1.99  →  P(Over) ≈ 0.510</span></div>
+
+      <h3>2. Восстановление скрытых S и D</h3>
+      <p>Линия ≠ ожидание. Сначала из тотала и Over/Under подбираем <b>S</b> (сумма голов ~ Пуассон):</p>
+      <div class="formula">S = argmin<sub>S</sub> ( P<sub>модель</sub>(Over | S) − P<sup>fair</sup><sub>Over</sub> )²</div>
+      <p>Затем из форы и AH-кэфов (по полной матрице, с учётом возвратов и четвертных линий) подбираем <b>D</b>:</p>
+      <div class="formula">D = argmin<sub>D</sub> ( P<sub>модель</sub>(хозяева покрыли | S, D) − P<sup>fair</sup><sub>AH</sub> )²
+λ<sub>h</sub> = (S + D) / 2 ,   λ<sub>a</sub> = (S − D) / 2</div>
+      <p class="small">Пример (Inter–Roma): тотал 2.5, фора −0.75 → S ≈ 2.716, D ≈ 0.817 → λ<sub>h</sub> ≈ 1.767, λ<sub>a</sub> ≈ 0.949.</p>
+
+      <h3>3. Рейтинг силы команд</h3>
+      <div class="formula">D<sub>m</sub> = r<sub>хозяева</sub> − r<sub>гости</sub> + H·I<sub>дома</sub> + ε
+<span class="m"># взвешенный МНК, нормировка Σ r = 0, H — домашнее преимущество</span></div>
+
+      <h3>4. Атака и оборона (голевая модель)</h3>
+      <div class="formula">log λ<sub>h</sub> = μ + A<sub>хозяева</sub> − Df<sub>гости</sub> + H<sub>g</sub>
+log λ<sub>a</sub> = μ + A<sub>гости</sub> − Df<sub>хозяева</sub>
+<span class="m"># Σ A = 0, Σ Df = 0;  A — атака, Df — оборона, μ — базовый уровень</span></div>
+
+      <h3>5. Калибровка под рынок 1X2</h3>
+      <div class="formula">D<sub>final</sub> = a + b·D<sub>модель</sub>
+S<sub>final</sub> = c + d·S<sub>модель</sub>
+<span class="m"># + поправка Dixon-Coles γ для счетов 0:0, 1:0, 0:1, 1:1</span></div>
+
+      <h3>6. Модель ничьи и коррекция матрицы</h3>
+      <div class="formula">logit(P<sub>X</sub>) = α + β<sub>D</sub>·|D| + β<sub>S</sub>·S + β<sub>S2</sub>·S² + β<sub>D×S</sub>·|D|·S
+P<sub>X</sub><sup>target</sup> = 1 / (1 + e<sup>−logit</sup>)</div>
+      <p>Целевая ничья корректирует диагональ матрицы (с защитным клампом q<sub>min</sub>…q<sub>max</sub>):</p>
+      <div class="formula">q = clamp( P<sub>X</sub><sup>target</sup> / P<sub>X</sub><sup>матрица</sup> , q<sub>min</sub> , q<sub>max</sub> )
+P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма снова = 1</span></div>
+
+      <h3>Веса матча</h3>
+      <div class="formula">W = W<sub>сезон</sub> × W<sub>качество</sub> × W<sub>дерби</sub> × W<sub>нейтраль</sub> × W<sub>размер линии</sub> × W<sub>robust</sub></div>
+      <p>Меньший вес → матч слабее влияет на обучение; 0 — исключён. Свежие матчи обычно весят больше (таблица сезонов).</p>
+
+      <h2>Прогноз и рынки</h2>
+      <div class="formula">P(i,j) = Pois(i; λ<sub>h</sub>) · Pois(j; λ<sub>a</sub>)
+П1 = Σ<sub>i&gt;j</sub> P(i,j) ,  X = Σ<sub>i=j</sub> P(i,j) ,  П2 = Σ<sub>i&lt;j</sub> P(i,j)
+Честный коэффициент:  K = 1 / P</div>
+      <p>«Центральная» фора/тотал — линия, где обе стороны сбалансированы (кэфы ≈ равны). Маржа добавляется опционально:
+      P<sup>book</sup> = P·(1+маржа), K = 1/P<sup>book</sup>.</p>
+
+      <h2>Справочник настроек</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Настройка</th><th>На что влияет</th></tr></thead>
+        <tbody>
+          <tr><td>α форы</td><td>Приглушение матчей с большим перевесом сил при обучении рейтинга. Больше → крупные форы влияют меньше.</td></tr>
+          <tr><td>α тотала</td><td>Приглушение матчей с экстремальным тоталом при обучении атаки/обороны.</td></tr>
+          <tr><td>prior α / prior вес</td><td>Перенос силы прошлого сезона на новый (доля и сила стягивания). Полезно в начале сезона.</td></tr>
+          <tr><td>ничья q_min / q_max</td><td>Предел, насколько модель ничьи может изменить ничью из матрицы (±15% по умолчанию).</td></tr>
+          <tr><td>Модель ничьи</td><td>Вкл — отдельная модель ничьи + коррекция диагонали. Выкл — ничья как из Пуассона.</td></tr>
+          <tr><td>Dixon-Coles</td><td>Поправка вероятностей низких счетов (0:0, 1:0, 0:1, 1:1).</td></tr>
+          <tr><td>W качество/дерби/нейтраль</td><td>Доверие к матчу по типу. Меньше → слабее влияет; 0 — исключить.</td></tr>
+          <tr><td>Веса сезонов</td><td>Вес по диапазону дат: свежие матчи важнее старых.</td></tr>
+          <tr><td>новичок: N слабейших</td><td>Команде без матчей рейтинг = среднее N слабейших команд лиги.</td></tr>
+          <tr><td>Нейтраль / Дерби / Маржа</td><td>Параметры конкретного прогноза: без домашнего преимущества / дерби / кэфы с маржой.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h2>Советы</h2>
+      <ul>
+        <li>Данные хранятся только в этом Safari на устройстве.</li>
+        <li>Чем больше матчей (прошлый сезон + текущий), тем стабильнее рейтинги.</li>
+        <li>Изменили настройки — нажмите «Обучить модель» снова (это и есть пересчёт).</li>
+        <li>Открывайте в Safari напрямую, не во встроенном браузере мессенджера.</li>
+      </ul>
+      <p class="small" style="margin-top:14px">Версия: goal-model-v1</p>
     </section>
   </div>
 
