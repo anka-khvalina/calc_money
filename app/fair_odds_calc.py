@@ -1605,6 +1605,72 @@ def build_app():
     )
     ttk.Entry(goal_controls, textvariable=goal_margin_pct, width=6).grid(row=0, column=4, sticky="w")
 
+    # --- Настройки модели (редактируемые веса и параметры) ---
+    goal_cfg_frame = ttk.LabelFrame(tab_goal, text="Настройки модели", padding=8)
+    goal_cfg_frame.pack(fill="x", pady=(8, 0))
+
+    _gv: dict = {}
+
+    def _cfg_entry(parent, row, col, label, key, default, width=7):
+        ttk.Label(parent, text=label).grid(row=row, column=col * 2, sticky="w", padx=(0, 4), pady=2)
+        var = tk.StringVar(value=str(default))
+        ttk.Entry(parent, textvariable=var, width=width).grid(
+            row=row, column=col * 2 + 1, sticky="w", padx=(0, 12), pady=2
+        )
+        _gv[key] = var
+        return var
+
+    _cfg_entry(goal_cfg_frame, 0, 0, "W качество normal:", "q_normal", 1.0)
+    _cfg_entry(goal_cfg_frame, 0, 1, "low_motivation:", "q_lowmot", 0.5)
+    _cfg_entry(goal_cfg_frame, 0, 2, "heavy_rotation:", "q_rot", 0.5)
+    _cfg_entry(goal_cfg_frame, 1, 0, "suspicious_line:", "q_susp", 0.2)
+    _cfg_entry(goal_cfg_frame, 1, 1, "unknown:", "q_unknown", 0.8)
+    _cfg_entry(goal_cfg_frame, 1, 2, "W дерби:", "w_derby", 0.7)
+    _cfg_entry(goal_cfg_frame, 2, 0, "α форы:", "alpha_ah", 0.25)
+    _cfg_entry(goal_cfg_frame, 2, 1, "α тотала:", "alpha_t", 0.5)
+    _cfg_entry(goal_cfg_frame, 2, 2, "вес ничьи (калибр.):", "draw_loss", 1.5)
+    _cfg_entry(goal_cfg_frame, 3, 0, "prior α:", "prior_alpha", 0.7)
+    _cfg_entry(goal_cfg_frame, 3, 1, "prior вес:", "prior_weight", 0.0)
+    _cfg_entry(goal_cfg_frame, 3, 2, "новичок: N слабейших:", "promoted_n", 3)
+    _cfg_entry(goal_cfg_frame, 4, 0, "ничья q_min:", "q_min", 0.85)
+    _cfg_entry(goal_cfg_frame, 4, 1, "ничья q_max:", "q_max", 1.15)
+
+    goal_use_draw_var = tk.BooleanVar(value=True)
+    goal_use_dc_var = tk.BooleanVar(value=True)
+    ttk.Checkbutton(goal_cfg_frame, text="Модель ничьи", variable=goal_use_draw_var).grid(
+        row=4, column=4, sticky="w", padx=(0, 12)
+    )
+    ttk.Checkbutton(goal_cfg_frame, text="Dixon-Coles", variable=goal_use_dc_var).grid(
+        row=4, column=5, sticky="w"
+    )
+
+    def _goal_cfg():
+        def f(key, default):
+            try:
+                return float(_gv[key].get().replace(",", "."))
+            except (ValueError, KeyError):
+                return default
+        qw = dict(gmt.DEFAULT_QUALITY_WEIGHTS)
+        qw["normal"] = f("q_normal", 1.0)
+        qw["low_motivation"] = f("q_lowmot", 0.5)
+        qw["heavy_rotation"] = f("q_rot", 0.5)
+        qw["suspicious_line"] = f("q_susp", 0.2)
+        qw["unknown"] = f("q_unknown", 0.8)
+        return gmt.ModelConfig(
+            quality_weights=qw,
+            derby_weight=f("w_derby", 0.7),
+            alpha_ah=f("alpha_ah", 0.25),
+            alpha_t=f("alpha_t", 0.5),
+            draw_loss_weight=f("draw_loss", 1.5),
+            prior_alpha=f("prior_alpha", 0.7),
+            prior_weight=f("prior_weight", 0.0),
+            promoted_reference_n=int(f("promoted_n", 3)),
+            draw_diag_multiplier_min=f("q_min", 0.85),
+            draw_diag_multiplier_max=f("q_max", 1.15),
+            use_draw_model=goal_use_draw_var.get(),
+            use_dixon_coles=goal_use_dc_var.get(),
+        )
+
     goal_meta_var = tk.StringVar(value="Загрузите CSV closing-линий и обучите модель.")
     ttk.Label(tab_goal, textvariable=goal_meta_var, justify="left").pack(anchor="w", pady=(8, 4))
 
@@ -1628,15 +1694,20 @@ def build_app():
             goal_home_var.set(teams[0])
             goal_away_var.set(teams[1])
 
+    def _goal_train(raw, path_label):
+        cfg = _goal_cfg()
+        model, prepared = gmt.train_full_model(raw, cfg)
+        goal_state["model"] = model
+        goal_state["raw"] = raw
+        goal_path_var.set(path_label)
+        return model
+
     def goal_train_from_path(path):
         try:
             raw = gmt.load_raw_matches(Path(path))
             if len(raw) < 2:
                 raise ValueError("В файле меньше 2 матчей.")
-            model, prepared = gmt.train_full_model(raw)
-            goal_state["model"] = model
-            goal_state["raw"] = raw
-            goal_path_var.set(f"Загружено: {path}  ({len(raw)} матчей)")
+            model = _goal_train(raw, f"Загружено: {path}  ({len(raw)} матчей)")
             c = model.calibration
             goal_meta_var.set(
                 f"Команд: {len(model.strength.ratings)}   H(сила)={model.strength.home_advantage:.3f}   "
@@ -1663,6 +1734,25 @@ def build_app():
         )
         if path:
             goal_train_from_path(path)
+
+    def goal_recalc_clicked():
+        raw = goal_state.get("raw")
+        if not raw:
+            messagebox.showwarning("Линия (голы)", "Сначала загрузите CSV.")
+            return
+        try:
+            model = _goal_train(raw, f"Пересчитано ({len(raw)} матчей, новые настройки)")
+            c = model.calibration
+            goal_meta_var.set(
+                f"Команд: {len(model.strength.ratings)}   H(сила)={model.strength.home_advantage:.3f}   "
+                f"RMSE_D={model.strength.rmse:.3f}\n"
+                f"μ={model.goals.mu:.3f}  H_g={model.goals.home_goal_adv:.3f}\n"
+                f"Калибровка: a={c.a:.3f} b={c.b:.3f} c={c.c:.3f} d={c.d:.3f} γ={c.gamma:.4f}   "
+                f"Ничья: {model.draw.source}"
+            )
+            _goal_refresh_teams()
+        except Exception as exc:
+            messagebox.showerror("Линия (голы)", str(exc))
 
     def goal_predict_clicked():
         model = goal_state["model"]
@@ -1747,8 +1837,11 @@ def build_app():
     ttk.Button(goal_btns, text="Загрузить CSV и обучить", command=goal_load_clicked).grid(
         row=0, column=0, padx=(0, 6)
     )
+    ttk.Button(goal_btns, text="Пересчитать модель", command=goal_recalc_clicked).grid(
+        row=0, column=1, padx=(0, 6)
+    )
     ttk.Button(goal_btns, text="Рассчитать линию", command=goal_predict_clicked).grid(
-        row=0, column=1
+        row=0, column=2
     )
 
     return root
