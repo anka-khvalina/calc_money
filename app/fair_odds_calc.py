@@ -1567,9 +1567,11 @@ def build_app():
         text=(
             "Голевая модель: closing-линии (AH + тоталы + 1X2) → скрытые S/D → "
             "λ_h/λ_a → матрица счетов → все рынки.\n"
-            "CSV-колонки: date, league, home_team, away_team, closing_ah_home, "
-            "closing_total_line, ah_home_odds, ah_away_odds, over_odds, under_odds, "
-            "home_odds, draw_odds, away_odds, neutral_flag, derby_flag, quality_flag."
+            "Обязательные CSV-колонки: home_team, away_team, closing_ah_home, "
+            "closing_total_line, ah_home_odds, ah_away_odds, over_odds, under_odds "
+            "(+ home_odds, draw_odds, away_odds для ничьи).\n"
+            "Необязательные (по строке матча): date, league, neutral_flag, derby_flag, "
+            "quality_flag — нет столбца → обычный матч (normal, не дерби, не нейтраль)."
         ),
         foreground="#555",
         justify="left",
@@ -1603,7 +1605,11 @@ def build_app():
     ttk.Entry(goal_controls, textvariable=goal_margin_pct, width=6).grid(row=0, column=4, sticky="w")
 
     # --- Настройки модели (редактируемые веса и параметры) ---
-    goal_cfg_frame = ttk.LabelFrame(tab_goal, text="Настройки модели", padding=8)
+    goal_cfg_frame = ttk.LabelFrame(
+        tab_goal,
+        text="Настройки модели (множители обучения по флагам из CSV — не правки отдельного матча)",
+        padding=8,
+    )
     goal_cfg_frame.pack(fill="x", pady=(8, 0))
 
     _gv: dict = {}
@@ -1646,17 +1652,17 @@ def build_app():
         return var
 
     _cfg_entry(goal_cfg_frame, 0, 0, "W качество normal:", "q_normal", 1.0,
-               hint="Вес обычного матча без подозрений. База для остальных весов качества.")
+               hint="Множитель для строк CSV с quality_flag=normal (обычный матч). База для остальных.")
     _cfg_entry(goal_cfg_frame, 0, 1, "low_motivation:", "q_lowmot", 0.5,
-               hint="Вес матча с низкой мотивацией (напр. конец сезона без задач). Меньше → слабее влияет.")
+               hint="Множитель для строк CSV с quality_flag=low_motivation. Меньше → слабее влияет.")
     _cfg_entry(goal_cfg_frame, 0, 2, "heavy_rotation:", "q_rot", 0.5,
-               hint="Вес матча с сильной ротацией состава.")
+               hint="Множитель для строк CSV с quality_flag=heavy_rotation (сильная ротация).")
     _cfg_entry(goal_cfg_frame, 1, 0, "suspicious_line:", "q_susp", 0.2,
-               hint="Вес матча с подозрительной/нестандартной линией. Обычно низкий.")
+               hint="Множитель для строк CSV с quality_flag=suspicious_line (нестандартная линия).")
     _cfg_entry(goal_cfg_frame, 1, 1, "unknown:", "q_unknown", 0.8,
-               hint="Вес, если качество неизвестно. Учитываем с осторожностью.")
+               hint="Множитель для прочих/неизвестных значений quality_flag.")
     _cfg_entry(goal_cfg_frame, 1, 2, "W дерби:", "w_derby", 0.7,
-               hint="Множитель для дерби (derby_flag=true). Дерби нетипичны → обычно меньше 1.")
+               hint="Множитель для строк CSV с derby_flag=true. Дерби нетипичны → обычно меньше 1.")
     _cfg_entry(goal_cfg_frame, 2, 0, "α форы:", "alpha_ah", 0.25,
                hint="Приглушение матчей с большим перевесом сил при обучении рейтинга. Больше α → крупные форы влияют меньше. 0 = все матчи равнозначны.")
     _cfg_entry(goal_cfg_frame, 2, 1, "α тотала:", "alpha_t", 0.5,
@@ -1675,9 +1681,9 @@ def build_app():
                hint="Насколько можно УВЕЛИЧИТЬ ничью из матрицы. 1.15 = максимум +15%.")
 
     _cfg_entry(goal_cfg_frame, 0, 3, "W нейтраль:", "w_neutral", 1.0,
-               hint="Множитель для матчей на нейтральном поле. Домашнее преимущество там и так не применяется.")
+               hint="Множитель для строк CSV с neutral_flag=true. Домашнее преимущество там и так не применяется.")
     _cfg_entry(goal_cfg_frame, 1, 3, "default сезон:", "w_season_def", 1.0,
-               hint="Вес матча, не попавшего ни в один диапазон таблицы сезонов ниже.")
+               hint="Множитель для матча, чья date не попала ни в один диапазон таблицы сезонов ниже (или столбца date нет).")
 
     goal_use_draw_var = tk.BooleanVar(value=True)
     goal_use_dc_var = tk.BooleanVar(value=True)

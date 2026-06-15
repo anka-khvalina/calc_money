@@ -517,7 +517,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <div class="row">
           <input id="goalCsvFile" type="file" accept=".csv,text/csv" />
         </div>
-        <div class="hint">Один матч — одна строка. Нужны закрывающие (closing) форы, тоталы и их кэфы + 1X2. Чем больше матчей (прошлый сезон + текущий), тем точнее.</div>
+        <div class="hint"><b>Обязательно:</b> home_team, away_team, closing_ah_home, closing_total_line, ah_home_odds, ah_away_odds, over_odds, under_odds (и желательно home/draw/away_odds для ничьи).<br>
+        <b>Необязательно (по матчу):</b> date, neutral_flag, derby_flag, quality_flag — если столбца нет, матч считается обычным (date пустая, не дерби, не нейтраль, quality=normal). Признаки матча задавайте прямо в CSV — по строке на матч, грузить по одному не нужно.</div>
       </div>
       <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
         <div class="field" style="min-width:150px;flex:1">
@@ -552,23 +553,24 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </label>
       </div>
       <details style="margin-top:8px;">
-        <summary class="small" style="cursor:pointer;font-weight:600">Таблицы весов (качество / дерби / нейтраль / сезоны)</summary>
-        <div class="hint" style="margin-top:6px">Вес матча = сезон × качество × дерби × нейтраль (× robust). Чем меньше вес, тем слабее матч влияет на обучение. 0 = матч исключён.</div>
+        <summary class="small" style="cursor:pointer;font-weight:600">Множители обучения по флагам из CSV (качество / дерби / нейтраль / сезоны)</summary>
+        <div class="hint" style="margin-top:6px">Это <b>не</b> правки конкретного матча, а <b>словарь множителей</b>: насколько доверять матчу с данным флагом из CSV. Сами флаги (quality_flag, derby_flag, neutral_flag, date) — в столбцах CSV, по строке на матч.<br>
+        Итоговый вес матча = сезон × качество × дерби × нейтраль (× robust). Меньше вес → слабее влияет; 0 = исключён.</div>
         <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-start;margin-top:8px;">
-          <div class="field" style="min-width:120px"><label>normal</label><input id="goalQNormal" value="1.0" /><div class="hint">Обычный матч без подозрений.</div></div>
-          <div class="field" style="min-width:120px"><label>low_motivation</label><input id="goalQLowmot" value="0.5" /><div class="hint">Низкая мотивация (напр. конец сезона без задач).</div></div>
-          <div class="field" style="min-width:120px"><label>heavy_rotation</label><input id="goalQRot" value="0.5" /><div class="hint">Сильная ротация состава.</div></div>
-          <div class="field" style="min-width:120px"><label>suspicious_line</label><input id="goalQSusp" value="0.2" /><div class="hint">Подозрительная/нестандартная линия.</div></div>
-          <div class="field" style="min-width:120px"><label>unknown</label><input id="goalQUnknown" value="0.8" /><div class="hint">Качество неизвестно — учитываем с осторожностью.</div></div>
-          <div class="field" style="min-width:120px"><label>W дерби</label><input id="goalWDerby" value="0.7" /><div class="hint">Множитель для дерби (derby_flag=true). Дерби часто нетипичны → обычно <1.</div></div>
-          <div class="field" style="min-width:120px"><label>W нейтраль</label><input id="goalWNeutral" value="1.0" /><div class="hint">Множитель для матчей на нейтральном поле. Само домашнее преимущество там и так не применяется.</div></div>
-          <div class="field" style="min-width:120px"><label>default сезон</label><input id="goalWSeasonDef" value="1.0" /><div class="hint">Вес матча, не попавшего ни в один диапазон из таблицы сезонов ниже.</div></div>
+          <div class="field" style="min-width:120px"><label>normal</label><input id="goalQNormal" value="1.0" /><div class="hint">Множитель для строк CSV с quality_flag=normal (обычный матч).</div></div>
+          <div class="field" style="min-width:120px"><label>low_motivation</label><input id="goalQLowmot" value="0.5" /><div class="hint">Множитель для quality_flag=low_motivation (низкая мотивация).</div></div>
+          <div class="field" style="min-width:120px"><label>heavy_rotation</label><input id="goalQRot" value="0.5" /><div class="hint">Множитель для quality_flag=heavy_rotation (сильная ротация).</div></div>
+          <div class="field" style="min-width:120px"><label>suspicious_line</label><input id="goalQSusp" value="0.2" /><div class="hint">Множитель для quality_flag=suspicious_line (нестандартная линия).</div></div>
+          <div class="field" style="min-width:120px"><label>unknown</label><input id="goalQUnknown" value="0.8" /><div class="hint">Множитель для прочих/неизвестных значений quality_flag.</div></div>
+          <div class="field" style="min-width:120px"><label>W дерби</label><input id="goalWDerby" value="0.7" /><div class="hint">Множитель для строк с derby_flag=true. Дерби часто нетипичны → обычно <1.</div></div>
+          <div class="field" style="min-width:120px"><label>W нейтраль</label><input id="goalWNeutral" value="1.0" /><div class="hint">Множитель для строк с neutral_flag=true. (Домашнее преимущество там и так не применяется.)</div></div>
+          <div class="field" style="min-width:120px"><label>default сезон</label><input id="goalWSeasonDef" value="1.0" /><div class="hint">Множитель для матча, чья date не попала ни в один диапазон сезонов ниже.</div></div>
         </div>
         <div class="field" style="margin-top:8px;">
           <label>Веса сезонов (по строке: дата_от, дата_до, вес)</label>
           <textarea id="goalSeasonWeights" style="min-height:70px" placeholder="2026-09-01, 2026-12-31, 1.2
 2025-08-01, 2026-06-30, 0.6"></textarea>
-          <div class="hint">Свежие матчи важнее старых: задайте бóльший вес для последних дат. Матч ищет свой диапазон по дате; вне диапазонов — «default сезон».</div>
+          <div class="hint">Множитель по дате матча (столбец date): свежие матчи важнее старых. Матч ищет свой диапазон; вне диапазонов — «default сезон». Без столбца date применяется «default сезон».</div>
         </div>
       </details>
       <div class="row">
@@ -694,12 +696,20 @@ closing_ah_home,closing_total_line,
 ah_home_odds,ah_away_odds,over_odds,under_odds,
 home_odds,draw_odds,away_odds,
 neutral_flag,derby_flag,quality_flag</div>
+      <p><span class="badge">обязательно</span> столбцы рынков:</p>
       <ul>
+        <li><b>home_team, away_team</b> — команды.</li>
         <li><b>closing_ah_home</b> — азиатская фора на хозяев (напр. −0.75), <b>ah_home_odds/ah_away_odds</b> — кэфы на неё.</li>
         <li><b>closing_total_line</b> — тотал (напр. 2.5), <b>over_odds/under_odds</b> — кэфы Over/Under.</li>
         <li><b>home_odds/draw_odds/away_odds</b> — 1X2 (нужны для ничьи и калибровки).</li>
-        <li><b>neutral_flag/derby_flag</b> — true/false; <b>quality_flag</b> — normal, low_motivation, heavy_rotation, suspicious_line, data_error, unknown.</li>
       </ul>
+      <p><span class="badge">необязательно</span> признаки матча (по строке, прямо в CSV — грузить по одному не нужно):</p>
+      <ul>
+        <li><b>date</b> — дата (для весов по сезону). Нет столбца → берётся «default сезон».</li>
+        <li><b>neutral_flag / derby_flag</b> — true/false. Нет → false.</li>
+        <li><b>quality_flag</b> — normal, low_motivation, heavy_rotation, suspicious_line, data_error, unknown. Нет → normal.</li>
+      </ul>
+      <div class="help-card"><p style="margin:0"><b>Важно:</b> «Множители обучения» (качество/дерби/нейтраль/сезоны) — это не правки отдельного матча, а словарь: <i>с каким весом учитывать матч, у которого в CSV стоит такой флаг</i>. Признак матча — в столбце CSV, множитель — один на всю загрузку.</p></div>
 
       <h2>Как обучается модель (шаг за шагом)</h2>
 
