@@ -163,6 +163,7 @@
               panels[j].classList.toggle('active', panels[j].id === panelId);
             }
             if (id === 'hist' && window.refreshHistTable) window.refreshHistTable();
+            if (id === 'goal' && window.refreshGoalTeams) window.refreshGoalTeams();
             if (id === 'teams') {
               if (window.refreshTeamsTable) window.refreshTeamsTable();
               else if (window.__renderTeamsBootstrap) window.__renderTeamsBootstrap();
@@ -580,6 +581,16 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
       <div id="goalMeta" class="meta">Вставьте CSV и нажмите «Обучить модель».</div>
       <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
+        <div class="field" style="min-width:150px">
+          <label>Лига (справочник)</label>
+          <select id="goalLeague">
+            <option value="epl">English Premier League</option>
+            <option value="la_liga">La Liga</option>
+            <option value="bundesliga">Bundesliga</option>
+            <option value="serie_a">Serie A</option>
+            <option value="ligue_1">Ligue 1</option>
+          </select>
+        </div>
         <div class="field" style="min-width:140px;flex:1"><label>Хозяева</label><select id="goalHome"></select></div>
         <div class="field" style="min-width:140px;flex:1"><label>Гости</label><select id="goalAway"></select></div>
         <label style="display:flex;align-items:flex-start;gap:6px;">
@@ -2609,8 +2620,13 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     }
     let gmModel=null;
     function gmFillTeams(){
-      const teams=gmModel?Object.keys(gmModel.st.ratings).sort():[];
-      ['goalHome','goalAway'].forEach((id,k)=>{ const sel=document.getElementById(id); sel.innerHTML=teams.map(t=>`<option>${escapeHtml(t)}</option>`).join(''); if(teams.length>=2) sel.value=teams[k]; });
+      // Команды берём из Справочника команд по выбранной лиге
+      const league=document.getElementById('goalLeague').value;
+      const homeSel=document.getElementById('goalHome'), awaySel=document.getElementById('goalAway');
+      const prevH=homeSel.value, prevA=awaySel.value;
+      fillTeamSelect(homeSel, league, prevH);
+      fillTeamSelect(awaySel, league, prevA);
+      if(!prevA && awaySel.options.length>1) awaySel.selectedIndex=1;
     }
     bindClick('goalSeasonAdd',()=>{
       const from=document.getElementById('goalSeasonFrom').value.trim();
@@ -2627,6 +2643,7 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       if(i>=0){ gmSeasonRows.splice(i,1); gmSaveSeasons(gmSeasonRows); gmRenderSeasons(); }
     });
     gmRenderSeasons();
+    document.getElementById('goalLeague').addEventListener('change', gmFillTeams);
 
     bindClick('goalTrain',()=>{
       try{
@@ -2684,8 +2701,10 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     seedDefaultTeams(false);
     try { refreshTeamsTable('epl'); } catch (e) { console.error(e); }
     try { refreshShinTeamSelects(); } catch (e) { console.error(e); }
+    try { gmFillTeams(); } catch (e) { console.error(e); }
     try { refreshHistTable(); } catch (e) { console.error(e); }
     window.refreshHistTable = refreshHistTable;
+    window.refreshGoalTeams = gmFillTeams;
     setJsStatus('Версия goal-model-v1 — Линия (голы): closing → S/D → λ → матрица → рынки');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
