@@ -249,7 +249,8 @@ class PreparedMatch:
 def season_weight(d: Optional[date], cfg: ModelConfig) -> float:
     if d is None:
         return cfg.default_season_weight
-    for sw in cfg.season_weights:
+    # При пересечении диапазонов применяется добавленный последним (latest entry wins).
+    for sw in reversed(cfg.season_weights):
         if sw.date_from <= d <= sw.date_to:
             return sw.base_weight
     return cfg.default_season_weight

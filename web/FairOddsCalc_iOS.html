@@ -567,10 +567,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <div class="field" style="min-width:120px"><label>default сезон</label><input id="goalWSeasonDef" value="1.0" /><div class="hint">Множитель для матча, чья date не попала ни в один диапазон сезонов ниже.</div></div>
         </div>
         <div class="field" style="margin-top:8px;">
-          <label>Веса сезонов (по строке: дата_от, дата_до, вес)</label>
-          <textarea id="goalSeasonWeights" style="min-height:70px" placeholder="2026-09-01, 2026-12-31, 1.2
-2025-08-01, 2026-06-30, 0.6"></textarea>
-          <div class="hint">Множитель по дате матча (столбец date): свежие матчи важнее старых. Матч ищет свой диапазон; вне диапазонов — «default сезон». Без столбца date применяется «default сезон».</div>
+          <label>Веса сезонов — диапазоны дат с весом</label>
+          <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;">
+            <div class="field" style="min-width:150px"><label class="small">с даты</label><input id="goalSeasonFrom" type="date" /></div>
+            <div class="field" style="min-width:150px"><label class="small">по дату</label><input id="goalSeasonTo" type="date" /></div>
+            <div class="field" style="max-width:100px"><label class="small">вес</label><input id="goalSeasonW" value="1.0" /></div>
+            <button type="button" id="goalSeasonAdd" class="btn">Добавить диапазон</button>
+          </div>
+          <div id="goalSeasonList" style="margin-top:8px"></div>
+          <div class="hint">Множитель по дате матча (столбец date). При <b>пересечении</b> диапазонов применяется <b>добавленный последним</b>. Матч без даты или вне диапазонов → «default сезон».</div>
         </div>
       </details>
       <div class="row">
@@ -2567,16 +2572,21 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       const draw=cfg.useDraw?gmFitDraw(ms,cfg):{alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default'};
       return {st,gl,cal,draw,cfg,nMatches:ms.length};
     }
-    function gmParseSeasonWeights(text){
-      const out=[];
-      (text||'').split(/\r?\n/).forEach(line=>{
-        const s=line.trim(); if(!s||s.startsWith('#')) return;
-        const p=s.split(',').map(x=>x.trim()); if(p.length!==3) return;
-        const w=parseFloat(p[2].replace(',','.')); if(isNaN(w)) return;
-        // даты в ISO YYYY-MM-DD сравниваем строкой
-        out.push({from:p[0], to:p[1], w});
-      });
-      return out;
+    // Веса сезонов: массив диапазонов в порядке добавления (последний при пересечении — главный)
+    const GM_SEASON_KEY='FairOddsCalc_goal_seasons_v1';
+    function gmLoadSeasons(){ try{ const r=localStorage.getItem(GM_SEASON_KEY); const a=r?JSON.parse(r):[]; return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+    function gmSaveSeasons(a){ try{ localStorage.setItem(GM_SEASON_KEY, JSON.stringify(a)); }catch(e){} }
+    let gmSeasonRows = gmLoadSeasons();
+    function gmRangesOverlap(a,b){ return a.from<=b.to && b.from<=a.to; }
+    function gmRenderSeasons(){
+      const box=document.getElementById('goalSeasonList'); if(!box) return;
+      if(!gmSeasonRows.length){ box.innerHTML='<div class="hint">Диапазоны не добавлены — для всех матчей применяется «default сезон».</div>'; return; }
+      box.innerHTML='<div class="table-wrap"><table><thead><tr><th>#</th><th>с даты</th><th>по дату</th><th class="right">вес</th><th></th></tr></thead><tbody>'+
+        gmSeasonRows.map((r,i)=>{
+          const overlap=gmSeasonRows.some((o,j)=>j!==i && gmRangesOverlap(r,o));
+          const note=overlap?' <span class="hint" style="color:#b42318">⚠ пересечение</span>':'';
+          return `<tr><td>${i+1}${note}</td><td>${escapeHtml(r.from)}</td><td>${escapeHtml(r.to)}</td><td class="num">${r.w}</td><td><a href="#" data-del="${i}" style="color:#b42318;text-decoration:none">✕</a></td></tr>`;
+        }).join('')+'</tbody></table></div>';
     }
     function gmCfg(){
       const f=(id,d)=>{ const v=parseFloat((document.getElementById(id).value||'').replace(',','.')); return isNaN(v)?d:v; };
@@ -2587,22 +2597,40 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         alphaT:f('goalAlphaT',0.5), deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
         quality, derby:f('goalWDerby',0.7), neutral:f('goalWNeutral',1.0),
         seasonDefault:f('goalWSeasonDef',1.0),
-        seasonWeights:gmParseSeasonWeights(document.getElementById('goalSeasonWeights').value),
+        seasonWeights:gmSeasonRows.slice(),
         priorAlpha:f('goalPriorAlpha',0.7), promotedN:3, derbyHmult:1.0,
         useDraw:document.getElementById('goalUseDraw').checked, useDc:document.getElementById('goalUseDc').checked,
         qmin:f('goalQmin',0.85), qmax:f('goalQmax',1.15) };
     }
     function gmSeasonWeight(date,cfg){
-      if(!date||!cfg.seasonWeights||!cfg.seasonWeights.length) return cfg.seasonDefault!=null?cfg.seasonDefault:1.0;
+      const def=cfg.seasonDefault!=null?cfg.seasonDefault:1.0;
+      if(!date||!cfg.seasonWeights||!cfg.seasonWeights.length) return def;
       const d=String(date).trim();
-      for(const sw of cfg.seasonWeights){ if(d>=sw.from && d<=sw.to) return sw.w; }
-      return cfg.seasonDefault!=null?cfg.seasonDefault:1.0;
+      // последний добавленный диапазон, в который попадает дата (latest entry wins)
+      for(let i=cfg.seasonWeights.length-1;i>=0;i--){ const sw=cfg.seasonWeights[i]; if(d>=sw.from && d<=sw.to) return sw.w; }
+      return def;
     }
     let gmModel=null;
     function gmFillTeams(){
       const teams=gmModel?Object.keys(gmModel.st.ratings).sort():[];
       ['goalHome','goalAway'].forEach((id,k)=>{ const sel=document.getElementById(id); sel.innerHTML=teams.map(t=>`<option>${escapeHtml(t)}</option>`).join(''); if(teams.length>=2) sel.value=teams[k]; });
     }
+    bindClick('goalSeasonAdd',()=>{
+      const from=document.getElementById('goalSeasonFrom').value.trim();
+      const to=document.getElementById('goalSeasonTo').value.trim();
+      const w=parseFloat((document.getElementById('goalSeasonW').value||'').replace(',','.'));
+      if(!from||!to){ alert('Укажите даты «с» и «по».'); return; }
+      if(from>to){ alert('Дата «с» позже даты «по».'); return; }
+      if(isNaN(w)){ alert('Укажите числовой вес.'); return; }
+      gmSeasonRows.push({from,to,w}); gmSaveSeasons(gmSeasonRows); gmRenderSeasons();
+    });
+    document.getElementById('goalSeasonList').addEventListener('click',e=>{
+      const a=e.target.closest('[data-del]'); if(!a) return;
+      e.preventDefault(); const i=parseInt(a.getAttribute('data-del'),10);
+      if(i>=0){ gmSeasonRows.splice(i,1); gmSaveSeasons(gmSeasonRows); gmRenderSeasons(); }
+    });
+    gmRenderSeasons();
+
     bindClick('goalTrain',()=>{
       try{
         const raw=gmParseCsv(document.getElementById('goalCsv').value);
