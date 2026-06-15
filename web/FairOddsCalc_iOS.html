@@ -192,17 +192,14 @@
     <h1>FairOddsCalc (iOS / Safari)</h1>
     <div id="jsStatus" class="js-status">Инициализация…</div>
     <div class="tabs">
-      <button type="button" class="tab-btn active" data-tab="a">Кальк. A</button>
-      <button type="button" class="tab-btn" data-tab="rank">Рейтинг</button>
+      <button type="button" class="tab-btn active" data-tab="goal">Линия</button>
       <button type="button" class="tab-btn" data-tab="teams">Справочник</button>
-      <button type="button" class="tab-btn" data-tab="shin">Счет кэф</button>
-      <button type="button" class="tab-btn" data-tab="goal">Линия</button>
       <button type="button" class="tab-btn" data-tab="hist">История</button>
       <button type="button" class="tab-btn" data-tab="help">Справка</button>
     </div>
 
     <!-- TAB A -->
-    <section id="tab-a" class="panel active">
+    <section id="tab-a" class="panel">
       <div class="grid">
         <div class="field">
           <label>Коэф дома (по одному в строке)</label>
@@ -506,7 +503,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     </section>
 
     <!-- TAB GOAL (линия из голевой модели) -->
-    <section id="tab-goal" class="panel">
+    <section id="tab-goal" class="panel active">
       <div class="small">
         Голевая модель: closing-линии (азиатские форы + тоталы + 1X2) → скрытые S/D →
         λ_h/λ_a → матрица счетов → все рынки. Ничья: отдельная модель + коррекция диагонали.
