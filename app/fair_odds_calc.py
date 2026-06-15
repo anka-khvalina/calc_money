@@ -1635,6 +1635,9 @@ def build_app():
     _cfg_entry(goal_cfg_frame, 4, 0, "ничья q_min:", "q_min", 0.85)
     _cfg_entry(goal_cfg_frame, 4, 1, "ничья q_max:", "q_max", 1.15)
 
+    _cfg_entry(goal_cfg_frame, 0, 3, "W нейтраль:", "w_neutral", 1.0)
+    _cfg_entry(goal_cfg_frame, 1, 3, "default сезон:", "w_season_def", 1.0)
+
     goal_use_draw_var = tk.BooleanVar(value=True)
     goal_use_dc_var = tk.BooleanVar(value=True)
     ttk.Checkbutton(goal_cfg_frame, text="Модель ничьи", variable=goal_use_draw_var).grid(
@@ -1643,6 +1646,33 @@ def build_app():
     ttk.Checkbutton(goal_cfg_frame, text="Dixon-Coles", variable=goal_use_dc_var).grid(
         row=4, column=5, sticky="w"
     )
+
+    ttk.Label(
+        goal_cfg_frame,
+        text="Веса сезонов (по строке: дата_от, дата_до, вес):",
+    ).grid(row=5, column=0, columnspan=4, sticky="w", pady=(8, 0))
+    goal_season_text = tk.Text(goal_cfg_frame, width=44, height=4, relief="solid", borderwidth=1)
+    goal_season_text.grid(row=6, column=0, columnspan=6, sticky="w", pady=(2, 0))
+    goal_season_text.insert("1.0", "# 2026-09-01, 2026-12-31, 1.2\n# 2025-08-01, 2026-06-30, 0.6\n")
+
+    def _parse_season_weights():
+        out = []
+        from datetime import datetime as _dt
+        for line in goal_season_text.get("1.0", "end").splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            parts = [p.strip() for p in s.split(",")]
+            if len(parts) != 3:
+                continue
+            try:
+                d_from = _dt.strptime(parts[0], "%Y-%m-%d").date()
+                d_to = _dt.strptime(parts[1], "%Y-%m-%d").date()
+                w = float(parts[2].replace(",", "."))
+            except ValueError:
+                continue
+            out.append(gmt.SeasonWeight(label=parts[0], date_from=d_from, date_to=d_to, base_weight=w))
+        return out
 
     def _goal_cfg():
         def f(key, default):
@@ -1659,6 +1689,9 @@ def build_app():
         return gmt.ModelConfig(
             quality_weights=qw,
             derby_weight=f("w_derby", 0.7),
+            neutral_weight=f("w_neutral", 1.0),
+            default_season_weight=f("w_season_def", 1.0),
+            season_weights=_parse_season_weights(),
             alpha_ah=f("alpha_ah", 0.25),
             alpha_t=f("alpha_t", 0.5),
             draw_loss_weight=f("draw_loss", 1.5),

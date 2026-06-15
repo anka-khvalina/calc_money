@@ -513,6 +513,24 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <input id="goalUseDc" type="checkbox" checked style="width:auto" /> <span class="small">Dixon-Coles</span>
         </label>
       </div>
+      <details style="margin-top:8px;">
+        <summary class="small" style="cursor:pointer;font-weight:600">Таблицы весов (качество / дерби / нейтраль / сезоны)</summary>
+        <div class="row" style="flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px;">
+          <div class="field" style="min-width:80px"><label>normal</label><input id="goalQNormal" value="1.0" /></div>
+          <div class="field" style="min-width:80px"><label>low_motivation</label><input id="goalQLowmot" value="0.5" /></div>
+          <div class="field" style="min-width:80px"><label>heavy_rotation</label><input id="goalQRot" value="0.5" /></div>
+          <div class="field" style="min-width:80px"><label>suspicious_line</label><input id="goalQSusp" value="0.2" /></div>
+          <div class="field" style="min-width:80px"><label>unknown</label><input id="goalQUnknown" value="0.8" /></div>
+          <div class="field" style="min-width:80px"><label>W дерби</label><input id="goalWDerby" value="0.7" /></div>
+          <div class="field" style="min-width:80px"><label>W нейтраль</label><input id="goalWNeutral" value="1.0" /></div>
+          <div class="field" style="min-width:80px"><label>default сезон</label><input id="goalWSeasonDef" value="1.0" /></div>
+        </div>
+        <div class="field" style="margin-top:8px;">
+          <label>Веса сезонов (по строке: дата_от, дата_до, вес)</label>
+          <textarea id="goalSeasonWeights" style="min-height:70px" placeholder="2026-09-01, 2026-12-31, 1.2
+2025-08-01, 2026-06-30, 0.6"></textarea>
+        </div>
+      </details>
       <div class="row">
         <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
       </div>
@@ -2246,11 +2264,13 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     }
     function gmPrepare(raw,cfg){
       const ms=[];
+      const qmap=cfg.quality||GM_Q;
       for(const r of raw){
         if(r.q==='data_error') continue;
-        const wq=GM_Q[r.q]!=null?GM_Q[r.q]:0.8;
+        const wq=qmap[r.q]!=null?qmap[r.q]:0.8;
         const wd=r.der?cfg.derby:1.0;
-        const m={raw:r, home:r.home, away:r.away, iHome:r.neu?0:1, wBase:wq*wd*(r.neu?cfg.neutral:1.0)};
+        const ws=gmSeasonWeight(r.date,cfg);
+        const m={raw:r, home:r.home, away:r.away, iHome:r.neu?0:1, wBase:ws*wq*wd*(r.neu?cfg.neutral:1.0)};
         if(r.ovr&&r.und) m.pOver=gmDevig2(r.ovr,r.und)[0];
         if(r.aho&&r.aha) m.pAhHome=gmDevig2(r.aho,r.aha)[0];
         if(r.ho&&r.dо&&r.ao){ const s=shinDevig(r.ho,r.dо,r.ao); m.p1=s[0]; m.px=s[1]; m.p2=s[2]; }
@@ -2386,13 +2406,36 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       const draw=cfg.useDraw?gmFitDraw(ms,cfg):{alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default'};
       return {st,gl,cal,draw,cfg,nMatches:ms.length};
     }
+    function gmParseSeasonWeights(text){
+      const out=[];
+      (text||'').split(/\r?\n/).forEach(line=>{
+        const s=line.trim(); if(!s||s.startsWith('#')) return;
+        const p=s.split(',').map(x=>x.trim()); if(p.length!==3) return;
+        const w=parseFloat(p[2].replace(',','.')); if(isNaN(w)) return;
+        // даты в ISO YYYY-MM-DD сравниваем строкой
+        out.push({from:p[0], to:p[1], w});
+      });
+      return out;
+    }
     function gmCfg(){
       const f=(id,d)=>{ const v=parseFloat((document.getElementById(id).value||'').replace(',','.')); return isNaN(v)?d:v; };
+      const quality={ normal:f('goalQNormal',1.0), low_motivation:f('goalQLowmot',0.5),
+        heavy_rotation:f('goalQRot',0.5), suspicious_line:f('goalQSusp',0.2), data_error:0.0,
+        unknown:f('goalQUnknown',0.8) };
       return { maxGoals:GM_MAX, alphaAh:f('goalAlphaAh',0.25), pAh:2, minWAh:0.15, maxWAh:1,
         alphaT:f('goalAlphaT',0.5), deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
-        derby:0.7, neutral:1.0, priorAlpha:f('goalPriorAlpha',0.7), promotedN:3, derbyHmult:1.0,
+        quality, derby:f('goalWDerby',0.7), neutral:f('goalWNeutral',1.0),
+        seasonDefault:f('goalWSeasonDef',1.0),
+        seasonWeights:gmParseSeasonWeights(document.getElementById('goalSeasonWeights').value),
+        priorAlpha:f('goalPriorAlpha',0.7), promotedN:3, derbyHmult:1.0,
         useDraw:document.getElementById('goalUseDraw').checked, useDc:document.getElementById('goalUseDc').checked,
         qmin:f('goalQmin',0.85), qmax:f('goalQmax',1.15) };
+    }
+    function gmSeasonWeight(date,cfg){
+      if(!date||!cfg.seasonWeights||!cfg.seasonWeights.length) return cfg.seasonDefault!=null?cfg.seasonDefault:1.0;
+      const d=String(date).trim();
+      for(const sw of cfg.seasonWeights){ if(d>=sw.from && d<=sw.to) return sw.w; }
+      return cfg.seasonDefault!=null?cfg.seasonDefault:1.0;
     }
     let gmModel=null;
     function gmFillTeams(){
