@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/team-logos-17b5 team-logos-v5 -->
+  <!-- build: cursor/goal-model-17b5 goal-model-v1 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -179,6 +179,7 @@
       <button type="button" class="tab-btn" data-tab="rank">Рейтинг</button>
       <button type="button" class="tab-btn" data-tab="teams">Справочник</button>
       <button type="button" class="tab-btn" data-tab="shin">Счет кэф</button>
+      <button type="button" class="tab-btn" data-tab="goal">Линия</button>
       <button type="button" class="tab-btn" data-tab="hist">История</button>
     </div>
 
@@ -461,7 +462,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: team-logos-v5</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: goal-model-v1</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -484,6 +485,56 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <div class="small" style="margin-top:10px;font-weight:600">Подробный расчёт</div>
         <pre id="shinDetails" class="shin-details"></pre>
       </div>
+    </section>
+
+    <!-- TAB GOAL (линия из голевой модели) -->
+    <section id="tab-goal" class="panel">
+      <div class="small">
+        Голевая модель: closing-линии (азиатские форы + тоталы + 1X2) → скрытые S/D →
+        λ_h/λ_a → матрица счетов → все рынки. Ничья: отдельная модель + коррекция диагонали.
+      </div>
+      <div class="field" style="margin-top:8px;">
+        <label>CSV closing-линий (с заголовком)</label>
+        <textarea id="goalCsv" style="min-height:120px" placeholder="date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag"></textarea>
+        <div class="row">
+          <input id="goalCsvFile" type="file" accept=".csv,text/csv" />
+        </div>
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end;">
+        <div class="field" style="min-width:90px"><label>α форы</label><input id="goalAlphaAh" value="0.25" /></div>
+        <div class="field" style="min-width:90px"><label>α тотала</label><input id="goalAlphaT" value="0.5" /></div>
+        <div class="field" style="min-width:90px"><label>prior α</label><input id="goalPriorAlpha" value="0.7" /></div>
+        <div class="field" style="min-width:90px"><label>ничья q_min</label><input id="goalQmin" value="0.85" /></div>
+        <div class="field" style="min-width:90px"><label>ничья q_max</label><input id="goalQmax" value="1.15" /></div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:22px;">
+          <input id="goalUseDraw" type="checkbox" checked style="width:auto" /> <span class="small">Модель ничьи</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:22px;">
+          <input id="goalUseDc" type="checkbox" checked style="width:auto" /> <span class="small">Dixon-Coles</span>
+        </label>
+      </div>
+      <div class="row">
+        <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
+      </div>
+      <div id="goalMeta" class="meta">Вставьте CSV и нажмите «Обучить модель».</div>
+      <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end;">
+        <div class="field" style="min-width:140px;flex:1"><label>Хозяева</label><select id="goalHome"></select></div>
+        <div class="field" style="min-width:140px;flex:1"><label>Гости</label><select id="goalAway"></select></div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:22px;">
+          <input id="goalNeutral" type="checkbox" style="width:auto" /> <span class="small">Нейтраль</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:22px;">
+          <input id="goalDerby" type="checkbox" style="width:auto" /> <span class="small">Дерби</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:22px;">
+          <input id="goalMargin" type="checkbox" style="width:auto" /> <span class="small">Маржа %</span>
+        </label>
+        <div class="field" style="max-width:70px"><input id="goalMarginPct" value="3" /></div>
+      </div>
+      <div class="row">
+        <button type="button" id="goalPredict" class="btn primary">Рассчитать линию</button>
+      </div>
+      <pre id="goalOut" class="shin-details"></pre>
     </section>
 
     <!-- TAB HISTORY -->
@@ -2104,12 +2155,309 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     if (!document.getElementById('histText').value.trim() && !listHistSeasons().length){
       document.getElementById('histLoadSample').click();
     }
+    // =================================================================
+    // Голевая модель: closing lines → S/D → λ → матрица → все рынки
+    // =================================================================
+    const GM_MAX = 10;
+    const _gmFact = [1];
+    function gmFact(n){ for(let i=_gmFact.length;i<=n;i++) _gmFact[i]=_gmFact[i-1]*i; return _gmFact[n]; }
+    function gmPois(k, lam){ return Math.exp(-lam)*Math.pow(lam,k)/gmFact(k); }
+    function gmNorm(m){ let s=0; for(const r of m) for(const v of r) s+=v; if(s<=0) throw new Error('матрица вырождена'); return m.map(r=>r.map(v=>v/s)); }
+    function gmMatrix(lh, la, mx=GM_MAX){
+      if(lh<=0||la<=0) throw new Error('λ должны быть > 0');
+      const ph=[], pa=[];
+      for(let i=0;i<=mx;i++){ ph.push(gmPois(i,lh)); pa.push(gmPois(i,la)); }
+      const m=[];
+      for(let i=0;i<=mx;i++){ const row=[]; for(let j=0;j<=mx;j++) row.push(ph[i]*pa[j]); m.push(row); }
+      return gmNorm(m);
+    }
+    function gmDC(m, lh, la, g){
+      if(!g) return gmNorm(m.map(r=>r.slice()));
+      const o=m.map(r=>r.slice());
+      o[0][0]*=1+lh*la*g; o[1][0]*=1-la*g; o[0][1]*=1-lh*g; o[1][1]*=1+g;
+      for(let i=0;i<2;i++) for(let j=0;j<2;j++) if(o[i][j]<0) o[i][j]=0;
+      return gmNorm(o);
+    }
+    function gmComps(line){ const f=Math.round((line-Math.floor(line))*100)/100; return (f===0.25||f===0.75)?[line-0.25,line+0.25]:[line]; }
+    function gmAhHomeS(i,j,l){ const m=(i-j)+l; if(m>1e-12) return [1,0]; if(m<-1e-12) return [0,1]; return [0,0]; }
+    function gmAhHome(i,j,l){ const c=gmComps(l); let w=0,x=0; for(const t of c){ const u=gmAhHomeS(i,j,t); w+=u[0]; x+=u[1]; } return [w/c.length,x/c.length]; }
+    function gmAhAway(i,j,al){ return gmAhHome(j,i,al); }
+    function gmTotS(g,l,side){ const m=g-l; if(Math.abs(m)<=1e-12) return [0,0]; const ov=m>0; return side==='over'?(ov?[1,0]:[0,1]):(ov?[0,1]:[1,0]); }
+    function gmTot(g,l,side){ const c=gmComps(l); let w=0,x=0; for(const t of c){ const u=gmTotS(g,t,side); w+=u[0]; x+=u[1]; } return [w/c.length,x/c.length]; }
+    function gmAccum(m,fn){ let w=0,l=0; for(let i=0;i<m.length;i++) for(let j=0;j<m.length;j++){ const u=fn(i,j); w+=m[i][j]*u[0]; l+=m[i][j]*u[1]; } return [w,l]; }
+    function gmFair(w,l){ return w<=1e-12?Infinity:1+l/w; }
+    function gmCond(w,l){ const d=w+l; return d<=1e-12?0.5:w/d; }
+    function gmDevig2(a,b){ const qa=1/a,qb=1/b,s=qa+qb; return [qa/s,qb/s]; }
+    const GM_G=(Math.sqrt(5)-1)/2;
+    function gmMin(f,lo,hi){ let a=lo,b=hi,c=b-GM_G*(b-a),d=a+GM_G*(b-a),fc=f(c),fd=f(d); for(let k=0;k<200;k++){ if(Math.abs(b-a)<1e-6) break; if(fc<fd){ b=d;d=c;fd=fc;c=b-GM_G*(b-a);fc=f(c);} else { a=c;c=d;fc=fd;d=a+GM_G*(b-a);fd=f(d);} } return 0.5*(a+b); }
+    function gmInferS(line,pOver,mx=GM_MAX){
+      pOver=Math.min(Math.max(pOver,1e-4),1-1e-4);
+      const model=s=>{ let w=0,l=0; for(let g=0;g<=2*mx;g++){ const pg=gmPois(g,s); const u=gmTot(g,line,'over'); w+=pg*u[0]; l+=pg*u[1]; } return gmCond(w,l); };
+      return gmMin(s=>{const e=model(s)-pOver; return e*e;},0.3,7);
+    }
+    function gmInferD(ah,pHome,S,mx=GM_MAX,eps=0.05){
+      pHome=Math.min(Math.max(pHome,1e-4),1-1e-4);
+      const model=d=>{ const lh=(S+d)/2,la=(S-d)/2; if(lh<=0||la<=0) return d>0?1:0; const m=gmMatrix(lh,la,mx); const u=gmAccum(m,(i,j)=>gmAhHome(i,j,ah)); return gmCond(u[0],u[1]); };
+      return gmMin(d=>{const e=model(d)-pHome; return e*e;},-S+eps,S-eps);
+    }
+    function gmClampD(d,S,eps=0.05){ return Math.max(-S+eps,Math.min(d,S-eps)); }
+    const GM_GAUGE=1e6;
+    function gmWls(rows,p){
+      const ATA=Array.from({length:p},()=>Array(p).fill(0)), ATb=Array(p).fill(0);
+      for(const r of rows){ const c=r[0],y=r[1],w=r[2]; for(let i=0;i<p;i++){ if(!c[i]) continue; ATb[i]+=w*c[i]*y; for(let j=0;j<p;j++){ if(!c[j]) continue; ATA[i][j]+=w*c[i]*c[j]; } } }
+      return solve(ATA,ATb);
+    }
+    function gmHuber(e,delta){ const ae=Math.abs(e); return ae<=delta?1:delta/ae; }
+    function gmSig(z){ return z>=0?1/(1+Math.exp(-z)):Math.exp(z)/(1+Math.exp(z)); }
+
+    const GM_Q = { normal:1.0, low_motivation:0.5, heavy_rotation:0.5, suspicious_line:0.2, data_error:0.0, unknown:0.8 };
+    const GM_ALIAS = {
+      date:'date',league:'league',home_team:'home',home:'home',team_home:'home',
+      away_team:'away',away:'away',team_away:'away',
+      closing_ah_home:'ah',ah_home_line:'ah',ah_line:'ah',handicap:'ah',
+      closing_total_line:'tot',total_line:'tot',total:'tot',
+      ah_home_odds:'aho',ah_away_odds:'aha',over_odds:'ovr',under_odds:'und',
+      home_odds:'ho',odds_1:'ho',p1:'ho',draw_odds:'dо',odds_x:'dо',x:'dо',
+      away_odds:'ao',odds_2:'ao',p2:'ao',
+      neutral_flag:'neu',neutral:'neu',derby_flag:'der',derby:'der',
+      quality_flag:'q',quality:'q',
+    };
+    function gmNumKey(s){ return String(s).trim().toLowerCase().replace(/[^a-z0-9_а-я]/gi,''); }
+    function gmF(v){ if(v==null) return null; const t=String(v).trim().replace(',','.'); if(!t) return null; const n=parseFloat(t); return isNaN(n)?null:n; }
+    function gmB(v){ return ['1','true','yes','y','да'].includes(String(v).trim().toLowerCase()); }
+    function gmParseCsv(text){
+      const lines=text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
+      if(!lines.length) return [];
+      const split=r=>r.includes(';')?r.split(';'):r.split(',');
+      const header=split(lines[0]).map(h=>GM_ALIAS[gmNumKey(h)]||'');
+      const out=[];
+      for(let i=1;i<lines.length;i++){
+        const cells=split(lines[i]); const rec={};
+        header.forEach((k,idx)=>{ if(k) rec[k]=cells[idx]; });
+        if(!rec.home||!rec.away) continue;
+        out.push({
+          date:rec.date||'', home:String(rec.home).trim(), away:String(rec.away).trim(),
+          ah:gmF(rec.ah), tot:gmF(rec.tot), aho:gmF(rec.aho), aha:gmF(rec.aha),
+          ovr:gmF(rec.ovr), und:gmF(rec.und), ho:gmF(rec.ho), dо:gmF(rec.dо), ao:gmF(rec.ao),
+          neu:gmB(rec.neu), der:gmB(rec.der), q:(rec.q||'normal').trim()||'normal',
+        });
+      }
+      return out;
+    }
+    function gmPrepare(raw,cfg){
+      const ms=[];
+      for(const r of raw){
+        if(r.q==='data_error') continue;
+        const wq=GM_Q[r.q]!=null?GM_Q[r.q]:0.8;
+        const wd=r.der?cfg.derby:1.0;
+        const m={raw:r, home:r.home, away:r.away, iHome:r.neu?0:1, wBase:wq*wd*(r.neu?cfg.neutral:1.0)};
+        if(r.ovr&&r.und) m.pOver=gmDevig2(r.ovr,r.und)[0];
+        if(r.aho&&r.aha) m.pAhHome=gmDevig2(r.aho,r.aha)[0];
+        if(r.ho&&r.dо&&r.ao){ const s=shinDevig(r.ho,r.dо,r.ao); m.p1=s[0]; m.px=s[1]; m.p2=s[2]; }
+        if(r.tot!=null&&m.pOver!=null) m.S=gmInferS(r.tot,m.pOver); else if(r.tot!=null) m.S=r.tot;
+        if(m.S!=null){
+          if(r.ah!=null&&m.pAhHome!=null) m.D=gmInferD(r.ah,m.pAhHome,m.S);
+          else if(r.ah!=null) m.D=gmClampD(-r.ah,m.S);
+        }
+        if(m.S!=null&&m.D!=null){ m.D=gmClampD(m.D,m.S); m.lh=(m.S+m.D)/2; m.la=(m.S-m.D)/2; }
+        ms.push(m);
+      }
+      const sv=ms.filter(m=>m.S!=null).map(m=>m.S);
+      const sMean=sv.length?sv.reduce((a,b)=>a+b,0)/sv.length:0;
+      for(const m of ms){ if(m.S==null) continue; const w=1/(1+cfg.alphaT*Math.pow(m.S-sMean,2)); m.wLineT=Math.min(1,Math.max(0.3,w)); }
+      return ms;
+    }
+    function gmTeams(ms,pred){ const s=new Set(); ms.forEach(m=>{ if(pred(m)){ s.add(m.home); s.add(m.away); } }); return [...s].sort(); }
+    function gmFitStrength(ms,cfg){
+      const used=ms.filter(m=>m.D!=null);
+      if(used.length<2) throw new Error('Мало матчей с D');
+      const teams=[...new Set(used.flatMap(m=>[m.home,m.away]))].sort();
+      const idx=new Map(teams.map((t,i)=>[t,i])); const p=teams.length+1;
+      const coeffs=[],tg=[];
+      used.forEach(m=>{ const c=Array(p).fill(0); c[idx.get(m.home)]+=1; c[idx.get(m.away)]-=1; c[p-1]=m.iHome; coeffs.push(c); tg.push(m.D);
+        m.wLineAh=Math.min(cfg.maxWAh,Math.max(cfg.minWAh,1/(1+cfg.alphaAh*Math.pow(Math.abs(m.D),cfg.pAh)))); m.wRob=1; });
+      const gauge=[...Array(teams.length).fill(1),0];
+      function run(W){ const rows=used.map((m,i)=>[coeffs[i],tg[i],W[i]]); rows.push([gauge,0,GM_GAUGE]); const sol=gmWls(rows,p);
+        const res=used.map((m,i)=>{ let pr=0; for(let k=0;k<p;k++) pr+=coeffs[i][k]*sol[k]; return pr-tg[i]; }); return [sol,res]; }
+      let W=used.map(m=>m.wBase*m.wLineAh); let [sol,res]=run(W);
+      for(let it=0;it<cfg.maxIter;it++){ const nW=used.map((m,i)=>{ m.wRob=gmHuber(res[i],cfg.deltaAh); return m.wBase*m.wLineAh*m.wRob; });
+        const dl=Math.max(...nW.map((w,i)=>Math.abs(w-W[i]))); W=nW; [sol,res]=run(W); if(dl<cfg.tol) break; }
+      const ratings={}; teams.forEach(t=>ratings[t]=sol[idx.get(t)]); const mr=Object.values(ratings).reduce((a,b)=>a+b,0)/teams.length;
+      teams.forEach(t=>ratings[t]-=mr);
+      const rmse=Math.sqrt(res.reduce((a,e)=>a+e*e,0)/res.length);
+      return {ratings, H:sol[p-1], rmse};
+    }
+    function gmFitAD(ms,cfg){
+      const used=ms.filter(m=>m.lh>0&&m.la>0);
+      if(used.length<2) throw new Error('Мало матчей с λ');
+      const teams=[...new Set(used.flatMap(m=>[m.home,m.away]))].sort(); const nt=teams.length;
+      const ai=new Map(teams.map((t,i)=>[t,i])), di=new Map(teams.map((t,i)=>[t,nt+i])); const mu=2*nt, hg=2*nt+1, p=2*nt+2;
+      const rows=[],tg=[],bw=[];
+      used.forEach(m=>{ const rh=Array(p).fill(0); rh[ai.get(m.home)]+=1; rh[di.get(m.away)]-=1; rh[mu]=1; rh[hg]=m.iHome; rows.push(rh); tg.push(Math.log(m.lh)); bw.push(m.wBase*(m.wLineT||1));
+        const ra=Array(p).fill(0); ra[ai.get(m.away)]+=1; ra[di.get(m.home)]-=1; ra[mu]=1; rows.push(ra); tg.push(Math.log(m.la)); bw.push(m.wBase*(m.wLineT||1)); });
+      const ga=Array(p).fill(0), gd=Array(p).fill(0); teams.forEach(t=>{ ga[ai.get(t)]=1; gd[di.get(t)]=1; });
+      function run(W){ const wr=rows.map((r,i)=>[r,tg[i],W[i]]); wr.push([ga,0,GM_GAUGE]); wr.push([gd,0,GM_GAUGE]); const sol=gmWls(wr,p);
+        const res=rows.map((r,i)=>{ let pr=0; for(let k=0;k<p;k++) pr+=r[k]*sol[k]; return pr-tg[i]; }); return [sol,res]; }
+      let W=bw.slice(),[sol,res]=run(W);
+      for(let it=0;it<cfg.maxIter;it++){ const nW=rows.map((r,i)=>bw[i]*gmHuber(res[i],cfg.deltaLam)); const dl=Math.max(...nW.map((w,i)=>Math.abs(w-W[i]))); W=nW; [sol,res]=run(W); if(dl<cfg.tol) break; }
+      const attack={},defense={}; teams.forEach(t=>{ attack[t]=sol[ai.get(t)]; defense[t]=sol[di.get(t)]; });
+      const ma=Object.values(attack).reduce((a,b)=>a+b,0)/nt, md=Object.values(defense).reduce((a,b)=>a+b,0)/nt;
+      teams.forEach(t=>{ attack[t]-=ma; defense[t]-=md; });
+      return {mu:sol[mu]+ma-md, attack, defense, hg:sol[hg]};
+    }
+    function gmNelder(f,x0){
+      const n=x0.length; let simplex=[x0.slice()]; for(let i=0;i<n;i++){ const pt=x0.slice(); pt[i]+= pt[i]===0?0.2:0.2*Math.abs(pt[i]); simplex.push(pt); }
+      let fv=simplex.map(f);
+      for(let it=0;it<300;it++){ const ord=[...Array(n+1).keys()].sort((a,b)=>fv[a]-fv[b]); simplex=ord.map(k=>simplex[k]); fv=ord.map(k=>fv[k]);
+        if(Math.abs(fv[n]-fv[0])<1e-7) break;
+        const cen=Array(n).fill(0); for(let i=0;i<n;i++) for(let k=0;k<n;k++) cen[i]+=simplex[k][i]/n;
+        const xr=cen.map((c,i)=>c+(c-simplex[n][i])); const fr=f(xr);
+        if(fr>=fv[0]&&fr<fv[n-1]){ simplex[n]=xr; fv[n]=fr; }
+        else if(fr<fv[0]){ const xe=cen.map((c,i)=>c+2*(c-simplex[n][i])); const fe=f(xe); if(fe<fr){simplex[n]=xe;fv[n]=fe;}else{simplex[n]=xr;fv[n]=fr;} }
+        else { const xc=cen.map((c,i)=>c+0.5*(simplex[n][i]-c)); const fc=f(xc); if(fc<fv[n]){simplex[n]=xc;fv[n]=fc;} else { for(let k=1;k<=n;k++){ simplex[k]=simplex[k].map((v,i)=>simplex[0][i]+0.5*(v-simplex[0][i])); fv[k]=f(simplex[k]); } } } }
+      let best=0; for(let k=1;k<=n;k++) if(fv[k]<fv[best]) best=k; return simplex[best];
+    }
+    function gmCalibrate(ms,st,gl,cfg){
+      const used=ms.filter(m=>m.p1!=null);
+      if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0};
+      const pre=used.map(m=>{ const dm=(st.ratings[m.home]||0)-(st.ratings[m.away]||0)+st.H*m.iHome;
+        const lh=Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*m.iHome);
+        const la=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0)); return [m,dm,lh+la,m.wBase]; });
+      function loss(pp){ const [a,b,c,d,g]=pp; if(d<=0) return 1e9; let tot=0;
+        for(const [m,dm,sm,w] of pre){ const sf=c+d*sm; if(sf<=0.2) return 1e9; const df=gmClampD(a+b*dm,sf); const lh=(sf+df)/2,la=(sf-df)/2; if(lh<=0||la<=0) return 1e9;
+          let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&g) mat=gmDC(mat,lh,la,g); const [p1,px,p2]=gm1x2(mat);
+          tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2); }
+        return tot; }
+      const x=gmNelder(loss,[0,1,0,1,0]); return {a:x[0],b:x[1],c:x[2],d:x[3],gamma:x[4]};
+    }
+    function gmFitDraw(ms,cfg){
+      const rows=[];
+      for(const m of ms){ if(m.px==null||m.D==null||m.S==null) continue; const px=m.px; if(px<=0||px>=1) continue;
+        const w1x2=(m.raw.ho&&m.raw.dо&&m.raw.ao)?(m.raw.q==='suspicious_line'?0.5:1.0):0.0; const w=m.wBase*w1x2; if(w<=0) continue;
+        const da=Math.abs(m.D), S=m.S; rows.push([[1,da,S,S*S,da*S],Math.log(px/(1-px)),w]); }
+      const def={alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default'};
+      if(rows.length<6) return def;
+      let beta; try{ beta=gmWls(rows,5); }catch(e){ return def; }
+      const dm={alpha:beta[0],betaD:beta[1],betaS:beta[2],betaS2:beta[3],betaDxS:beta[4],source:'fitted'};
+      const base=gmSig(dm.alpha+dm.betaS*2.6+dm.betaS2*6.76); if(!(base>=0.10&&base<=0.45)) return def; return dm;
+    }
+    function gmDrawTarget(dm,D,S){ return gmSig(dm.alpha+dm.betaD*Math.abs(D)+dm.betaS*S+dm.betaS2*S*S+dm.betaDxS*Math.abs(D)*S); }
+    function gmDrawProb(m){ let s=0; for(let i=0;i<m.length;i++) s+=m[i][i]; return s; }
+    function gmAdjustDraw(m,target,qmin,qmax){
+      const pm=gmDrawProb(m); const diag={drawMatrix:pm,drawTarget:target};
+      if(pm<=1e-12||pm>=1-1e-12){ diag.q=1; diag.drawAfter=pm; return [m.map(r=>r.slice()),diag]; }
+      const qr=target/pm, q=Math.min(qmax,Math.max(qmin,qr)); const pa=q*pm, c=(1-pa)/(1-pm);
+      const o=m.map((r,i)=>r.map((v,j)=>v*(i===j?q:c))); const on=gmNorm(o);
+      diag.qRaw=qr; diag.q=q; diag.drawAfter=gmDrawProb(on); diag.c=c; return [on,diag];
+    }
+    function gm1x2(m){ let p1=0,px=0,p2=0; for(let i=0;i<m.length;i++) for(let j=0;j<m.length;j++){ if(i>j)p1+=m[i][j]; else if(i===j)px+=m[i][j]; else p2+=m[i][j]; } return [p1,px,p2]; }
+    function gmTotMarket(m,l){ const o=gmAccum(m,(i,j)=>gmTot(i+j,l,'over')); const u=gmAccum(m,(i,j)=>gmTot(i+j,l,'under')); return {line:l,over:gmFair(o[0],o[1]),under:gmFair(u[0],u[1])}; }
+    function gmAhMarket(m,l){ const h=gmAccum(m,(i,j)=>gmAhHome(i,j,l)); const a=gmAccum(m,(i,j)=>gmAhAway(i,j,-l)); return {line:l,home:gmFair(h[0],h[1]),away:gmFair(a[0],a[1])}; }
+    function gmTeamTot(m,l,home){ let po=0; for(let i=0;i<m.length;i++) for(let j=0;j<m.length;j++){ const g=home?i:j; if(g>l) po+=m[i][j]; } po=Math.min(Math.max(po,1e-9),1-1e-9); return [1/po,1/(1-po)]; }
+    function gmGrid(lo,hi){ const out=[]; for(let v=lo;v<=hi+1e-9;v+=0.25) out.push(Math.round(v*100)/100); return out; }
+    function gmTop(m,n){ const f=[]; for(let i=0;i<m.length;i++) for(let j=0;j<m.length;j++) f.push([i,j,m[i][j]]); f.sort((a,b)=>b[2]-a[2]); return f.slice(0,n); }
+    function gmMarkets(m){
+      const [p1,px,p2]=gm1x2(m);
+      const tg=gmGrid(0.5,6), ag=gmGrid(-5,5);
+      const tot=tg.map(l=>gmTotMarket(m,l)), ah=ag.map(l=>gmAhMarket(m,l));
+      const mt=tot.reduce((a,b)=>Math.abs(b.over-b.under)<Math.abs(a.over-a.under)?b:a);
+      const ma=ah.reduce((a,b)=>Math.abs(b.home-b.away)<Math.abs(a.home-a.away)?b:a);
+      return {p1,px,p2,mainTotal:mt,mainAh:ma,totals:tot,
+        ttH:[0.5,1.5,2.5].map(l=>[l,...gmTeamTot(m,l,true)]), ttA:[0.5,1.5,2.5].map(l=>[l,...gmTeamTot(m,l,false)]),
+        top:gmTop(m,8)};
+    }
+    function gmPromoted(vals,n){ const arr=Object.values(vals); if(!arr.length) return 0; const w=arr.slice().sort((a,b)=>a-b).slice(0,Math.max(1,n)); return w.reduce((a,b)=>a+b,0)/w.length; }
+    function gmPredict(model,home,away,opt){
+      const {st,gl,cal,draw,cfg}=model; const iHome=opt.neutral?0:1; const hm=opt.derby?cfg.derbyHmult:1;
+      const R=t=>t in st.ratings?st.ratings[t]:gmPromoted(st.ratings,cfg.promotedN);
+      const A=t=>t in gl.attack?gl.attack[t]:gmPromoted(gl.attack,cfg.promotedN);
+      const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
+      const dm=R(home)-R(away)+st.H*iHome*hm;
+      const lhAD=Math.exp(gl.mu+A(home)-Df(away)+gl.hg*iHome), laAD=Math.exp(gl.mu+A(away)-Df(home)); const sm=lhAD+laAD;
+      let df=cal.a+cal.b*dm, sf=cal.c+cal.d*sm; df=gmClampD(df,sf); const lh=(sf+df)/2, la=(sf-df)/2;
+      let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
+      let dtarget=null,diag=null;
+      if(cfg.useDraw){ dtarget=gmDrawTarget(draw,df,sf); [mat,diag]=gmAdjustDraw(mat,dtarget,cfg.qmin,cfg.qmax); }
+      return {lh,la,df,sf,markets:gmMarkets(mat),drawTarget:dtarget,drawDiag:diag};
+    }
+    function gmTrain(raw,cfg){
+      const ms=gmPrepare(raw,cfg);
+      const st=gmFitStrength(ms,cfg), gl=gmFitAD(ms,cfg), cal=gmCalibrate(ms,st,gl,cfg);
+      const draw=cfg.useDraw?gmFitDraw(ms,cfg):{alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default'};
+      return {st,gl,cal,draw,cfg,nMatches:ms.length};
+    }
+    function gmCfg(){
+      const f=(id,d)=>{ const v=parseFloat((document.getElementById(id).value||'').replace(',','.')); return isNaN(v)?d:v; };
+      return { maxGoals:GM_MAX, alphaAh:f('goalAlphaAh',0.25), pAh:2, minWAh:0.15, maxWAh:1,
+        alphaT:f('goalAlphaT',0.5), deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
+        derby:0.7, neutral:1.0, priorAlpha:f('goalPriorAlpha',0.7), promotedN:3, derbyHmult:1.0,
+        useDraw:document.getElementById('goalUseDraw').checked, useDc:document.getElementById('goalUseDc').checked,
+        qmin:f('goalQmin',0.85), qmax:f('goalQmax',1.15) };
+    }
+    let gmModel=null;
+    function gmFillTeams(){
+      const teams=gmModel?Object.keys(gmModel.st.ratings).sort():[];
+      ['goalHome','goalAway'].forEach((id,k)=>{ const sel=document.getElementById(id); sel.innerHTML=teams.map(t=>`<option>${escapeHtml(t)}</option>`).join(''); if(teams.length>=2) sel.value=teams[k]; });
+    }
+    bindClick('goalTrain',()=>{
+      try{
+        const raw=gmParseCsv(document.getElementById('goalCsv').value);
+        if(raw.length<2) throw new Error('Нужно ≥2 матчей в CSV.');
+        const cfg=gmCfg(); gmModel=gmTrain(raw,cfg);
+        const {st,gl,cal,draw}=gmModel;
+        const rk=Object.entries(st.ratings).sort((a,b)=>b[1]-a[1])
+          .map(([t,r])=>`  ${t}: r=${r.toFixed(3)} A=${(gl.attack[t]||0).toFixed(3)} Df=${(gl.defense[t]||0).toFixed(3)}`).join('\n');
+        document.getElementById('goalMeta').textContent=
+          `Матчей: ${gmModel.nMatches}  команд: ${Object.keys(st.ratings).length}  H=${st.H.toFixed(3)}\n`+
+          `μ=${gl.mu.toFixed(3)} H_g=${gl.hg.toFixed(3)}  калибр a=${cal.a.toFixed(3)} b=${cal.b.toFixed(3)} c=${cal.c.toFixed(3)} d=${cal.d.toFixed(3)} γ=${cal.gamma.toFixed(4)}  ничья:${draw.source}`;
+        document.getElementById('goalOut').textContent='Рейтинги (сила / атака / оборона):\n'+rk;
+        gmFillTeams();
+      }catch(e){ alert(e.message||e); }
+    });
+    document.getElementById('goalCsvFile').addEventListener('change',async e=>{
+      const file=e.target.files&&e.target.files[0]; if(!file) return;
+      try{ document.getElementById('goalCsv').value=await file.text(); }catch(err){ alert('Не прочитать файл: '+(err.message||err)); }
+    });
+    bindClick('goalPredict',()=>{
+      if(!gmModel){ alert('Сначала обучите модель.'); return; }
+      const home=document.getElementById('goalHome').value, away=document.getElementById('goalAway').value;
+      if(!home||!away||home===away){ alert('Выберите разные команды.'); return; }
+      try{
+        const neutral=document.getElementById('goalNeutral').checked, derby=document.getElementById('goalDerby').checked;
+        const pred=gmPredict(gmModel,home,away,{neutral,derby});
+        const mk=pred.markets; const useM=document.getElementById('goalMargin').checked;
+        const mg=(parseFloat((document.getElementById('goalMarginPct').value||'3').replace(',','.'))||0)/100;
+        const k1x2=()=> useM&&mg>0?[1/(mk.p1*(1+mg)),1/(mk.px*(1+mg)),1/(mk.p2*(1+mg))]:[1/mk.p1,1/mk.px,1/mk.p2];
+        const k2=(pa,pb,ka,kb)=> useM&&mg>0?[1/(pa*(1+mg)),1/(pb*(1+mg))]:[ka,kb];
+        const [kk1,kkx,kk2]=k1x2(); const tag=useM&&mg>0?' (с маржой)':' (честные)';
+        const L=[];
+        L.push(`=== ${home} — ${away}${neutral?' (нейтраль)':''} ===`);
+        L.push(`λ_h=${pred.lh.toFixed(3)} λ_a=${pred.la.toFixed(3)}  D_final=${pred.df.toFixed(3)} S_final=${pred.sf.toFixed(3)}`);
+        if(pred.drawTarget!=null) L.push(`Ничья: модель→${(pred.drawTarget*100).toFixed(1)}% (матрица ${(pred.drawDiag.drawMatrix*100).toFixed(1)}%→${(pred.drawDiag.drawAfter*100).toFixed(1)}%, q=${pred.drawDiag.q.toFixed(3)})`);
+        L.push('');
+        L.push(`Коэффициенты${tag}:`);
+        L.push(`  1X2: П1=${kk1.toFixed(2)} X=${kkx.toFixed(2)} П2=${kk2.toFixed(2)}  (p ${(mk.p1*100).toFixed(1)}/${(mk.px*100).toFixed(1)}/${(mk.p2*100).toFixed(1)}%)`);
+        const t=mk.mainTotal, [ot,ut]=k2(1/t.over,1/t.under,t.over,t.under);
+        L.push(`  Тотал ${t.line}: Over ${ot.toFixed(2)} / Under ${ut.toFixed(2)}`);
+        const a=mk.mainAh, [ah,aa]=k2(1/a.home,1/a.away,a.home,a.away);
+        L.push(`  Фора хозяев ${a.line>=0?'+':''}${a.line}: ${ah.toFixed(2)} / гости ${aa.toFixed(2)}`);
+        L.push(''); L.push('Индивидуальные тоталы (честные O/U):');
+        mk.ttH.forEach(r=>L.push(`  ${home} ${r[0]}: Over ${r[1].toFixed(2)} / Under ${r[2].toFixed(2)}`));
+        mk.ttA.forEach(r=>L.push(`  ${away} ${r[0]}: Over ${r[1].toFixed(2)} / Under ${r[2].toFixed(2)}`));
+        L.push(''); L.push('Тоталы (честные O/U):');
+        mk.totals.filter(t=>t.line>=1&&t.line<=4.5).forEach(t=>L.push(`  ${t.line}: Over ${t.over.toFixed(2)} / Under ${t.under.toFixed(2)}`));
+        L.push(''); L.push('Топ счетов:');
+        mk.top.forEach(([i,j,p])=>L.push(`  ${i}:${j} ${(p*100).toFixed(1)}%`));
+        document.getElementById('goalOut').textContent=L.join('\n');
+      }catch(e){ alert(e.message||e); }
+    });
+
     seedDefaultTeams(false);
     try { refreshTeamsTable('epl'); } catch (e) { console.error(e); }
     try { refreshShinTeamSelects(); } catch (e) { console.error(e); }
     try { refreshHistTable(); } catch (e) { console.error(e); }
     window.refreshHistTable = refreshHistTable;
-    setJsStatus('Версия team-logos-v5 — откройте в Safari (не HTML Preview)');
+    setJsStatus('Версия goal-model-v1 — Линия (голы): closing → S/D → λ → матрица → рынки');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
       console.error(err);
