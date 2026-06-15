@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/team-logos-17b5 team-logos-v5 -->
+  <!-- build: cursor/goal-model-17b5 goal-model-v1 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -88,6 +88,23 @@
       max-height:420px; overflow:auto; color:#1a1a1a;
     }
     .small{ font-size:12px; color:var(--muted); }
+    .hint{ font-size:11px; color:#8a93a0; margin-top:3px; line-height:1.3; }
+    /* --- Справка --- */
+    .help h2{ font-size:17px; margin:18px 0 8px; color:#10204a; }
+    .help h3{ font-size:14px; margin:14px 0 6px; color:#26408b; }
+    .help p{ font-size:13.5px; line-height:1.55; margin:6px 0; color:#222; }
+    .help ul,.help ol{ font-size:13.5px; line-height:1.55; padding-left:22px; margin:6px 0; color:#222; }
+    .help li{ margin:3px 0; }
+    .help-card{ background:#f7f9ff; border:1px solid #dbe3f7; border-radius:12px; padding:12px 14px; margin:10px 0; }
+    .help-flow{ background:#10204a; color:#dce6ff; border-radius:12px; padding:12px 14px; font-size:13px; line-height:1.7; text-align:center; }
+    .help-flow b{ color:#fff; }
+    .formula{ background:#0f172a; color:#e6edff; border-radius:10px; padding:10px 12px; margin:8px 0;
+      font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; font-size:13px; line-height:1.7; overflow-x:auto; white-space:pre; }
+    .formula .c{ color:#7fd1ff; }       /* акцент */
+    .formula .m{ color:#9aa6c2; }       /* комментарий */
+    .help .badge{ display:inline-block; background:var(--accent); color:#fff; border-radius:6px; padding:1px 7px; font-size:12px; font-weight:600; margin-right:6px; }
+    .help table{ margin-top:6px; }
+    .help table td,.help table th{ font-size:12.5px; }
     .table-wrap{ overflow:auto; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
     table{ width:100%; border-collapse:collapse; min-width:560px; background:#fff; }
     th,td{ border-bottom:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; }
@@ -145,7 +162,11 @@
             for (var j = 0; j < panels.length; j++) {
               panels[j].classList.toggle('active', panels[j].id === panelId);
             }
-            if (id === 'hist' && window.refreshHistTable) window.refreshHistTable();
+            if (id === 'hist' && window.refreshClhTable) window.refreshClhTable();
+            if (id === 'goal') {
+              if (window.refreshGoalTeams) window.refreshGoalTeams();
+              if (window.goalFillSrcSeasons) window.goalFillSrcSeasons();
+            }
             if (id === 'teams') {
               if (window.refreshTeamsTable) window.refreshTeamsTable();
               else if (window.__renderTeamsBootstrap) window.__renderTeamsBootstrap();
@@ -175,15 +196,14 @@
     <h1>FairOddsCalc (iOS / Safari)</h1>
     <div id="jsStatus" class="js-status">Инициализация…</div>
     <div class="tabs">
-      <button type="button" class="tab-btn active" data-tab="a">Кальк. A</button>
-      <button type="button" class="tab-btn" data-tab="rank">Рейтинг</button>
+      <button type="button" class="tab-btn active" data-tab="goal">Линия</button>
       <button type="button" class="tab-btn" data-tab="teams">Справочник</button>
-      <button type="button" class="tab-btn" data-tab="shin">Счет кэф</button>
       <button type="button" class="tab-btn" data-tab="hist">История</button>
+      <button type="button" class="tab-btn" data-tab="help">Справка</button>
     </div>
 
     <!-- TAB A -->
-    <section id="tab-a" class="panel active">
+    <section id="tab-a" class="panel">
       <div class="grid">
         <div class="field">
           <label>Коэф дома (по одному в строке)</label>
@@ -461,7 +481,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="shinEmpty" class="shin-empty">
         Укажите команды, лигу и сезон (данные — вкладка «История»).
       </div>
-      <div class="small" style="margin-top:6px;color:#888">Версия: team-logos-v5</div>
+      <div class="small" style="margin-top:6px;color:#888">Версия: goal-model-v1</div>
       <div id="shinResult" class="shin-result">
         <div id="shinTitle" class="shin-title"></div>
         <div class="table-wrap shin-table-wrap">
@@ -486,8 +506,131 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
     </section>
 
-    <!-- TAB HISTORY -->
-    <section id="tab-hist" class="panel">
+    <!-- TAB GOAL (линия из голевой модели) -->
+    <section id="tab-goal" class="panel active">
+      <div class="small">
+        Голевая модель: closing-линии (азиатские форы + тоталы + 1X2) → скрытые S/D →
+        λ_h/λ_a → матрица счетов → все рынки. Ничья: отдельная модель + коррекция диагонали.
+      </div>
+      <div class="field" style="margin-top:8px;">
+        <label>CSV closing-линий (с заголовком)</label>
+        <textarea id="goalCsv" style="min-height:120px" placeholder="date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag"></textarea>
+        <div class="row">
+          <input id="goalCsvFile" type="file" accept=".csv,text/csv" />
+        </div>
+        <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;background:#f2f6ff;border:1px solid #dbe3f7;border-radius:10px;padding:8px;">
+          <div class="field" style="min-width:150px"><label class="small">Из истории — лига</label>
+            <select id="goalSrcLeague">
+              <option value="epl">English Premier League</option>
+              <option value="la_liga">La Liga</option>
+              <option value="bundesliga">Bundesliga</option>
+              <option value="serie_a">Serie A</option>
+              <option value="ligue_1">Ligue 1</option>
+            </select>
+          </div>
+          <div class="field" style="min-width:150px"><label class="small">сезон</label><select id="goalSrcSeason"></select></div>
+          <button type="button" id="goalLoadHist" class="btn">Загрузить из истории</button>
+        </div>
+        <div class="hint"><b>Обязательно:</b> home_team, away_team, closing_ah_home, closing_total_line, ah_home_odds, ah_away_odds, over_odds, under_odds (и желательно home/draw/away_odds для ничьи).<br>
+        <b>Необязательно (по матчу):</b> date, neutral_flag, derby_flag, quality_flag — если столбца нет, матч считается обычным (date пустая, не дерби, не нейтраль, quality=normal). Признаки матча задавайте прямо в CSV — по строке на матч, грузить по одному не нужно.</div>
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
+        <div class="field" style="min-width:150px;flex:1">
+          <label>α форы</label><input id="goalAlphaAh" value="0.25" />
+          <div class="hint">Приглушение матчей с большим перевесом сил. Больше α → крупные форы меньше влияют на рейтинг. 0 = все матчи равнозначны.</div>
+        </div>
+        <div class="field" style="min-width:150px;flex:1">
+          <label>α тотала</label><input id="goalAlphaT" value="0.5" />
+          <div class="hint">Приглушение матчей с «экстремальным» тоталом (очень мало/много голов) при обучении голевой модели. Больше α → такие матчи слабее влияют.</div>
+        </div>
+        <div class="field" style="min-width:150px;flex:1">
+          <label>prior α</label><input id="goalPriorAlpha" value="0.7" />
+          <div class="hint">Доля силы прошлого сезона, переносимая на старт нового (0.7 = 70%). Работает при наличии модели-prior; влияет на стягивание рейтингов.</div>
+        </div>
+        <div class="field" style="min-width:150px;flex:1">
+          <label>ничья q_min</label><input id="goalQmin" value="0.85" />
+          <div class="hint">Насколько сильно МОЖНО уменьшить ничью из матрицы. 0.85 = максимум −15%. Защита от перекоса модели ничьи.</div>
+        </div>
+        <div class="field" style="min-width:150px;flex:1">
+          <label>ничья q_max</label><input id="goalQmax" value="1.15" />
+          <div class="hint">Насколько сильно МОЖНО увеличить ничью из матрицы. 1.15 = максимум +15%.</div>
+        </div>
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:16px;">
+        <label style="display:flex;align-items:flex-start;gap:6px;">
+          <input id="goalUseDraw" type="checkbox" checked style="width:auto;margin-top:2px" />
+          <span><span class="small">Модель ничьи</span><span class="hint" style="display:block">Считать ничью отдельной моделью и корректировать ею диагональ матрицы. Выкл → ничья как есть из Пуассона.</span></span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:6px;">
+          <input id="goalUseDc" type="checkbox" checked style="width:auto;margin-top:2px" />
+          <span><span class="small">Dixon-Coles</span><span class="hint" style="display:block">Поправка вероятностей низких счетов (0:0, 1:0, 0:1, 1:1) — рынок их оценивает иначе, чем чистый Пуассон.</span></span>
+        </label>
+      </div>
+      <details style="margin-top:8px;">
+        <summary class="small" style="cursor:pointer;font-weight:600">Множители обучения по флагам из CSV (качество / дерби / нейтраль / сезоны)</summary>
+        <div class="hint" style="margin-top:6px">Это <b>не</b> правки конкретного матча, а <b>словарь множителей</b>: насколько доверять матчу с данным флагом из CSV. Сами флаги (quality_flag, derby_flag, neutral_flag, date) — в столбцах CSV, по строке на матч.<br>
+        Итоговый вес матча = сезон × качество × дерби × нейтраль (× robust). Меньше вес → слабее влияет; 0 = исключён.</div>
+        <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-start;margin-top:8px;">
+          <div class="field" style="min-width:120px"><label>normal</label><input id="goalQNormal" value="1.0" /><div class="hint">Множитель для строк CSV с quality_flag=normal (обычный матч).</div></div>
+          <div class="field" style="min-width:120px"><label>low_motivation</label><input id="goalQLowmot" value="0.5" /><div class="hint">Множитель для quality_flag=low_motivation (низкая мотивация).</div></div>
+          <div class="field" style="min-width:120px"><label>heavy_rotation</label><input id="goalQRot" value="0.5" /><div class="hint">Множитель для quality_flag=heavy_rotation (сильная ротация).</div></div>
+          <div class="field" style="min-width:120px"><label>suspicious_line</label><input id="goalQSusp" value="0.2" /><div class="hint">Множитель для quality_flag=suspicious_line (нестандартная линия).</div></div>
+          <div class="field" style="min-width:120px"><label>unknown</label><input id="goalQUnknown" value="0.8" /><div class="hint">Множитель для прочих/неизвестных значений quality_flag.</div></div>
+          <div class="field" style="min-width:120px"><label>W дерби</label><input id="goalWDerby" value="0.7" /><div class="hint">Множитель для строк с derby_flag=true. Дерби часто нетипичны → обычно <1.</div></div>
+          <div class="field" style="min-width:120px"><label>W нейтраль</label><input id="goalWNeutral" value="1.0" /><div class="hint">Множитель для строк с neutral_flag=true. (Домашнее преимущество там и так не применяется.)</div></div>
+          <div class="field" style="min-width:120px"><label>default сезон</label><input id="goalWSeasonDef" value="1.0" /><div class="hint">Множитель для матча, чья date не попала ни в один диапазон сезонов ниже.</div></div>
+        </div>
+        <div class="field" style="margin-top:8px;">
+          <label>Веса сезонов — диапазоны дат с весом</label>
+          <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;">
+            <div class="field" style="min-width:150px"><label class="small">с даты</label><input id="goalSeasonFrom" type="date" /></div>
+            <div class="field" style="min-width:150px"><label class="small">по дату</label><input id="goalSeasonTo" type="date" /></div>
+            <div class="field" style="max-width:100px"><label class="small">вес</label><input id="goalSeasonW" value="1.0" /></div>
+            <button type="button" id="goalSeasonAdd" class="btn">Добавить диапазон</button>
+          </div>
+          <div id="goalSeasonList" style="margin-top:8px"></div>
+          <div class="hint">Множитель по дате матча (столбец date). При <b>пересечении</b> диапазонов применяется <b>добавленный последним</b>. Матч без даты или вне диапазонов → «default сезон».</div>
+        </div>
+      </details>
+      <div class="row">
+        <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
+      </div>
+      <div id="goalMeta" class="meta">Вставьте CSV и нажмите «Обучить модель».</div>
+      <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
+        <div class="field" style="min-width:150px">
+          <label>Лига (справочник)</label>
+          <select id="goalLeague">
+            <option value="epl">English Premier League</option>
+            <option value="la_liga">La Liga</option>
+            <option value="bundesliga">Bundesliga</option>
+            <option value="serie_a">Serie A</option>
+            <option value="ligue_1">Ligue 1</option>
+          </select>
+        </div>
+        <div class="field" style="min-width:140px;flex:1"><label>Хозяева</label><select id="goalHome"></select></div>
+        <div class="field" style="min-width:140px;flex:1"><label>Гости</label><select id="goalAway"></select></div>
+        <label style="display:flex;align-items:flex-start;gap:6px;">
+          <input id="goalNeutral" type="checkbox" style="width:auto;margin-top:2px" />
+          <span><span class="small">Нейтраль</span><span class="hint" style="display:block">Без домашнего преимущества (финалы, нейтральное поле).</span></span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:6px;">
+          <input id="goalDerby" type="checkbox" style="width:auto;margin-top:2px" />
+          <span><span class="small">Дерби</span><span class="hint" style="display:block">Помечает матч как дерби (влияет на вес в обучении; на прогноз — через множитель домашнего преимущества).</span></span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:6px;">
+          <input id="goalMargin" type="checkbox" style="width:auto;margin-top:2px" />
+          <span><span class="small">Маржа %</span><span class="hint" style="display:block">Вкл → кэфы с заданной маржой (как у бука). Выкл → честные (сумма вероятностей 100%).</span></span>
+        </label>
+        <div class="field" style="max-width:80px"><label>%</label><input id="goalMarginPct" value="3" /></div>
+      </div>
+      <div class="row">
+        <button type="button" id="goalPredict" class="btn primary">Рассчитать линию</button>
+      </div>
+      <pre id="goalOut" class="shin-details"></pre>
+    </section>
+
+    <!-- LEGACY HISTORY (скрыто; нужно для старого кода вкладок «Счет кэф») -->
+    <section id="legacy-hist" style="display:none">
       <div class="small">
         Импорт истории сезона (формат Excel): Match Date, Team Home, 1 Odds, X Odds, 2 Odds, Away Team, …
         Все команды должны быть заранее в справочнике лиги.
@@ -554,6 +697,193 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </table>
       </div>
       <div id="metaHist" class="meta">Загрузите сезон или нажмите «Просмотр истории».</div>
+    </section>
+
+    <!-- TAB HISTORY (closing-линии) -->
+    <section id="tab-hist" class="panel">
+      <div class="small">
+        Хранилище <b>closing-линий</b> по лигам и сезонам. Формат CSV — те же столбцы, что на вкладке «Линия».
+        Сохранённые сезоны можно загрузить в «Линию» для обучения.
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <div class="field" style="flex:1;min-width:160px">
+          <label>Лига</label>
+          <select id="clhLeague">
+            <option value="epl">English Premier League</option>
+            <option value="la_liga">La Liga</option>
+            <option value="bundesliga">Bundesliga</option>
+            <option value="serie_a">Serie A</option>
+            <option value="ligue_1">Ligue 1</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:120px">
+          <label>Сезон</label>
+          <input id="clhSeason" value="2025-26" />
+        </div>
+      </div>
+      <div class="field" style="margin-top:8px;">
+        <label>CSV closing-линий (вставка / файл)</label>
+        <textarea id="clhCsv" style="min-height:130px" placeholder="date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag"></textarea>
+        <div class="row">
+          <input id="clhFile" type="file" accept=".csv,text/csv" />
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="clhSaveBtn" class="btn primary">Сохранить в хранилище</button>
+        <button type="button" id="clhViewBtn" class="btn">Просмотр сезона</button>
+        <button type="button" id="clhSampleBtn" class="btn">Пример</button>
+      </div>
+      <div class="small" style="margin-top:8px;">Сохранённые сезоны (тап по строке — загрузить в поле выше):</div>
+      <div class="table-wrap">
+        <table id="clhTable">
+          <thead><tr><th>Лига</th><th>Сезон</th><th class="right">Матчей</th><th>Импорт</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="small" style="margin-top:10px;">Матчи выбранного сезона (closing-линии):</div>
+      <div class="table-wrap">
+        <table id="clhViewTable">
+          <thead><tr>
+            <th>Дата</th><th>Дома</th><th>Гости</th>
+            <th class="right">AH</th><th class="right">Тот</th>
+            <th class="right">AH1</th><th class="right">AH2</th>
+            <th class="right">O</th><th class="right">U</th>
+            <th class="right">1</th><th class="right">X</th><th class="right">2</th>
+            <th>Нейтр</th><th>Дерби</th><th>Кач.</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="clhMeta" class="meta">Сохраните сезон или выберите его в таблице.</div>
+    </section>
+
+    <!-- TAB HELP -->
+    <section id="tab-help" class="panel help">
+      <h2>FairOddsCalc — что это</h2>
+      <p>Приложение строит футбольную линию (1X2, азиатские форы, тоталы, индивидуальные тоталы, точный счёт)
+      из <b>исторических закрывающих (closing) коэффициентов</b>. Всё считается из <b>одной матрицы счетов</b>,
+      поэтому рынки согласованы между собой.</p>
+      <div class="help-flow">
+        история closing-линий → скрытые <b>S, D</b> → <b>λ<sub>h</sub>, λ<sub>a</sub></b> → матрица <b>P(i,j)</b> → коррекция ничьи → <b>вся линия</b>
+      </div>
+      <p class="small">λ<sub>h</sub>, λ<sub>a</sub> — ожидаемые голы хозяев/гостей; S = λ<sub>h</sub>+λ<sub>a</sub>; D = λ<sub>h</sub>−λ<sub>a</sub>; i, j — голы хозяев и гостей.</p>
+
+      <h2>Вкладки</h2>
+      <ul>
+        <li><b>Линия</b> — обучение модели и расчёт линии матча (главная вкладка).</li>
+        <li><b>Справочник</b> — команды по лигам (и логотипы). Списки команд в «Линии» берутся отсюда.</li>
+        <li><b>История</b> — хранилище CSV closing-линий по лигам и сезонам. Отсюда данные грузятся в «Линию».</li>
+        <li><b>Справка</b> — этот раздел.</li>
+      </ul>
+
+      <h2>Порядок работы</h2>
+      <div class="help-card">
+        <ol>
+          <li><span class="badge">1</span> <b>История</b>: выберите лигу и сезон, вставьте CSV closing-линий (или файл) → <b>«Сохранить в хранилище»</b>. Можно нажать <b>«Пример»</b> для образца. Повторите для нужных сезонов/лиг.</li>
+          <li><span class="badge">2</span> <b>Линия</b> → блок «Из истории»: выберите лигу и сезон (или «все сезоны») → <b>«Загрузить из истории»</b>. CSV подставится в поле. (Можно и просто вставить CSV вручную.)</li>
+          <li><span class="badge">3</span> При желании поправьте коэффициенты и множители обучения (у каждого поля есть подсказка) → <b>«Обучить модель»</b>. Внизу появятся рейтинги команд и сводка.</li>
+          <li><span class="badge">4</span> Выберите <b>лигу справочника</b>, <b>Хозяев</b> и <b>Гостей</b>, флаги (нейтраль/дерби/маржа) → <b>«Рассчитать линию»</b>.</li>
+        </ol>
+      </div>
+      <p class="small">Изменили настройки — снова нажмите «Обучить модель» (это и есть пересчёт).</p>
+
+      <h2>Формат CSV</h2>
+      <div class="formula">date,league,home_team,away_team,
+closing_ah_home,closing_total_line,
+ah_home_odds,ah_away_odds,over_odds,under_odds,
+home_odds,draw_odds,away_odds,
+neutral_flag,derby_flag,quality_flag</div>
+      <p><span class="badge">обязательно</span> — рынки:</p>
+      <ul>
+        <li><b>home_team, away_team</b> — команды (имена должны совпадать со Справочником).</li>
+        <li><b>closing_ah_home</b> — фора на хозяев (напр. −0.75) + <b>ah_home_odds / ah_away_odds</b>.</li>
+        <li><b>closing_total_line</b> — тотал (напр. 2.5) + <b>over_odds / under_odds</b>.</li>
+        <li><b>home_odds / draw_odds / away_odds</b> — 1X2 (для ничьи и калибровки).</li>
+      </ul>
+      <p><span class="badge">необязательно</span> — признаки матча (по строке, прямо в CSV; грузить по одному не нужно):</p>
+      <ul>
+        <li><b>date</b> — дата (для весов по сезону). Нет столбца → «default сезон».</li>
+        <li><b>neutral_flag / derby_flag</b> — true/false. Нет → false.</li>
+        <li><b>quality_flag</b> — normal, low_motivation, heavy_rotation, suspicious_line, data_error, unknown. Нет → normal.</li>
+      </ul>
+      <div class="help-card"><p style="margin:0"><b>Не путать:</b> признак матча (дерби/нейтраль/качество/дата) — это <b>столбец CSV</b> у конкретной строки.
+      А «Множители обучения» на вкладке «Линия» — это <b>словарь</b>: с каким весом учитывать матч, у которого стоит такой флаг. Множитель один на всю загрузку.</p></div>
+
+      <h2>Как обучается модель</h2>
+
+      <h3>1. Снятие маржи (везде Shin)</h3>
+      <p>Все рынки — форы, тоталы и 1X2 — очищаются от маржи <b>методом Shin</b>
+      (подбирается параметр z, общий для исходов рынка):</p>
+      <div class="formula">p<sub>i</sub>(z) = ( √(z² + 4(1−z)·q<sub>i</sub>²) − z ) / (2(1−z)) ,  q<sub>i</sub> = 1/K<sub>i</sub>
+<span class="m"># z подбирается так, чтобы Σ p_i = 1 (для 2 и для 3 исходов)</span>
+<span class="m"># Over 2.5 @1.91 / Under @1.99  →  P(Over) ≈ 0.511</span></div>
+
+      <h3>2. Восстановление скрытых S и D</h3>
+      <p>Линия ≠ ожидание. Из тотала и Over/Under подбираем <b>S</b> (сумма голов ~ Пуассон):</p>
+      <div class="formula">S = argmin<sub>S</sub> ( P<sub>модель</sub>(Over | S) − P<sup>fair</sup><sub>Over</sub> )²</div>
+      <p>Из форы и AH-кэфов (по матрице, с учётом возвратов и четвертных линий) подбираем <b>D</b>:</p>
+      <div class="formula">D = argmin<sub>D</sub> ( P<sub>модель</sub>(хозяева покрыли | S, D) − P<sup>fair</sup><sub>AH</sub> )²
+λ<sub>h</sub> = (S + D) / 2 ,   λ<sub>a</sub> = (S − D) / 2</div>
+      <p class="small">Пример (Inter–Roma): тотал 2.5, фора −0.75 → S ≈ 2.716, D ≈ 0.817 → λ<sub>h</sub> ≈ 1.767, λ<sub>a</sub> ≈ 0.949.</p>
+
+      <h3>3. Рейтинг силы команд</h3>
+      <div class="formula">D<sub>m</sub> = r<sub>хозяева</sub> − r<sub>гости</sub> + H·I<sub>дома</sub> + ε
+<span class="m"># взвешенный МНК (Huber), Σ r = 0, H — домашнее преимущество</span></div>
+
+      <h3>4. Атака и оборона</h3>
+      <div class="formula">log λ<sub>h</sub> = μ + A<sub>хозяева</sub> − Df<sub>гости</sub> + H<sub>g</sub>
+log λ<sub>a</sub> = μ + A<sub>гости</sub> − Df<sub>хозяева</sub>
+<span class="m"># Σ A = 0, Σ Df = 0; A — атака, Df — оборона</span></div>
+
+      <h3>5. Калибровка под 1X2</h3>
+      <div class="formula">D<sub>final</sub> = a + b·D<sub>модель</sub>
+S<sub>final</sub> = c + d·S<sub>модель</sub>
+<span class="m"># + Dixon-Coles γ для счетов 0:0, 1:0, 0:1, 1:1</span></div>
+
+      <h3>6. Модель ничьи и коррекция матрицы</h3>
+      <div class="formula">logit(P<sub>X</sub>) = α + β<sub>D</sub>·|D| + β<sub>S</sub>·S + β<sub>S2</sub>·S² + β<sub>D×S</sub>·|D|·S
+P<sub>X</sub><sup>target</sup> = 1 / (1 + e<sup>−logit</sup>)</div>
+      <p>Целевая ничья корректирует диагональ матрицы (кламп q<sub>min</sub>…q<sub>max</sub>):</p>
+      <div class="formula">q = clamp( P<sub>X</sub><sup>target</sup> / P<sub>X</sub><sup>матрица</sup> , q<sub>min</sub> , q<sub>max</sub> )
+P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма снова = 1</span></div>
+
+      <h3>Вес матча при обучении</h3>
+      <div class="formula">W = W<sub>сезон</sub> × W<sub>качество</sub> × W<sub>дерби</sub> × W<sub>нейтраль</sub> × W<sub>размер линии</sub> × W<sub>robust</sub></div>
+      <p>Меньший вес → матч слабее влияет; 0 — исключён. Свежие матчи обычно весят больше.</p>
+
+      <h2>Прогноз и рынки</h2>
+      <div class="formula">P(i,j) = Pois(i; λ<sub>h</sub>) · Pois(j; λ<sub>a</sub>)
+П1 = Σ<sub>i&gt;j</sub> P(i,j) ,  X = Σ<sub>i=j</sub> P(i,j) ,  П2 = Σ<sub>i&lt;j</sub> P(i,j)
+Честный коэффициент:  K = 1 / P</div>
+      <p>«Центральная» фора/тотал — линия, где стороны сбалансированы (кэфы ≈ равны).
+      Маржа (опц.): P<sup>book</sup> = P·(1+маржа), K = 1/P<sup>book</sup>.</p>
+
+      <h2>Справочник настроек («Линия»)</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Настройка</th><th>На что влияет</th></tr></thead>
+        <tbody>
+          <tr><td>α форы</td><td>Приглушение матчей с большим перевесом сил при обучении рейтинга. Больше → крупные форы влияют меньше.</td></tr>
+          <tr><td>α тотала</td><td>Приглушение матчей с экстремальным тоталом при обучении атаки/обороны.</td></tr>
+          <tr><td>prior α / prior вес</td><td>Перенос силы прошлого сезона на новый (доля и сила стягивания). Полезно в начале сезона.</td></tr>
+          <tr><td>ничья q_min / q_max</td><td>Предел изменения ничьи из матрицы (±15% по умолчанию).</td></tr>
+          <tr><td>Модель ничьи</td><td>Вкл — отдельная модель ничьи + коррекция диагонали. Выкл — ничья как из Пуассона.</td></tr>
+          <tr><td>Dixon-Coles</td><td>Поправка низких счетов (0:0, 1:0, 0:1, 1:1).</td></tr>
+          <tr><td>Множители: качество / дерби / нейтраль</td><td>Вес матча по флагу из CSV. Меньше → слабее влияет; 0 — исключить.</td></tr>
+          <tr><td>Веса сезонов (диапазоны дат)</td><td>Вес по дате матча; свежие важнее. При пересечении диапазонов действует добавленный последним.</td></tr>
+          <tr><td>новичок: N слабейших</td><td>Команде без матчей рейтинг = среднее N слабейших команд лиги.</td></tr>
+          <tr><td>Нейтраль / Дерби / Маржа</td><td>Параметры конкретного прогноза: без домашнего преимущества / дерби / кэфы с маржой.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h2>Советы и частые вопросы</h2>
+      <ul>
+        <li><b>Имена команд</b> в CSV должны совпадать со Справочником, иначе команда не найдётся в модели (применится рейтинг новичка).</li>
+        <li>Чем больше матчей (прошлый сезон + текущий), тем стабильнее рейтинги. В «Линии» можно выбрать «все сезоны» лиги.</li>
+        <li>«Нужно ≥2 матчей» — мало строк или не распознан заголовок CSV (проверьте названия колонок и запятые).</li>
+        <li>Все данные хранятся только в этом Safari на устройстве (localStorage).</li>
+        <li>Открывайте в Safari напрямую, не во встроенном браузере мессенджера.</li>
+      </ul>
+      <p class="small" style="margin-top:14px">Версия: goal-model-v1</p>
     </section>
   </div>
 
@@ -2101,15 +2431,460 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 
     document.getElementById('shinLeague').addEventListener('change', refreshShinTeamSelects);
 
-    if (!document.getElementById('histText').value.trim() && !listHistSeasons().length){
-      document.getElementById('histLoadSample').click();
+    // =================================================================
+    // Голевая модель: closing lines → S/D → λ → матрица → все рынки
+    // =================================================================
+    const GM_MAX = 10;
+    const _gmFact = [1];
+    function gmFact(n){ for(let i=_gmFact.length;i<=n;i++) _gmFact[i]=_gmFact[i-1]*i; return _gmFact[n]; }
+    function gmPois(k, lam){ return Math.exp(-lam)*Math.pow(lam,k)/gmFact(k); }
+    function gmNorm(m){ let s=0; for(const r of m) for(const v of r) s+=v; if(s<=0) throw new Error('матрица вырождена'); return m.map(r=>r.map(v=>v/s)); }
+    function gmMatrix(lh, la, mx=GM_MAX){
+      if(lh<=0||la<=0) throw new Error('λ должны быть > 0');
+      const ph=[], pa=[];
+      for(let i=0;i<=mx;i++){ ph.push(gmPois(i,lh)); pa.push(gmPois(i,la)); }
+      const m=[];
+      for(let i=0;i<=mx;i++){ const row=[]; for(let j=0;j<=mx;j++) row.push(ph[i]*pa[j]); m.push(row); }
+      return gmNorm(m);
     }
+    function gmDC(m, lh, la, g){
+      if(!g) return gmNorm(m.map(r=>r.slice()));
+      const o=m.map(r=>r.slice());
+      o[0][0]*=1+lh*la*g; o[1][0]*=1-la*g; o[0][1]*=1-lh*g; o[1][1]*=1+g;
+      for(let i=0;i<2;i++) for(let j=0;j<2;j++) if(o[i][j]<0) o[i][j]=0;
+      return gmNorm(o);
+    }
+    function gmComps(line){ const f=Math.round((line-Math.floor(line))*100)/100; return (f===0.25||f===0.75)?[line-0.25,line+0.25]:[line]; }
+    function gmAhHomeS(i,j,l){ const m=(i-j)+l; if(m>1e-12) return [1,0]; if(m<-1e-12) return [0,1]; return [0,0]; }
+    function gmAhHome(i,j,l){ const c=gmComps(l); let w=0,x=0; for(const t of c){ const u=gmAhHomeS(i,j,t); w+=u[0]; x+=u[1]; } return [w/c.length,x/c.length]; }
+    function gmAhAway(i,j,al){ return gmAhHome(j,i,al); }
+    function gmTotS(g,l,side){ const m=g-l; if(Math.abs(m)<=1e-12) return [0,0]; const ov=m>0; return side==='over'?(ov?[1,0]:[0,1]):(ov?[0,1]:[1,0]); }
+    function gmTot(g,l,side){ const c=gmComps(l); let w=0,x=0; for(const t of c){ const u=gmTotS(g,t,side); w+=u[0]; x+=u[1]; } return [w/c.length,x/c.length]; }
+    function gmAccum(m,fn){ let w=0,l=0; for(let i=0;i<m.length;i++) for(let j=0;j<m.length;j++){ const u=fn(i,j); w+=m[i][j]*u[0]; l+=m[i][j]*u[1]; } return [w,l]; }
+    function gmFair(w,l){ return w<=1e-12?Infinity:1+l/w; }
+    function gmCond(w,l){ const d=w+l; return d<=1e-12?0.5:w/d; }
+    function gmShinProbs(odds){
+      const implied=odds.map(o=>1/o);
+      const excess=z=>implied.reduce((s,p)=>s+shinProb(p,z),0)-1;
+      let lo=0,hi=0.999999;
+      if(excess(lo)<0){ const pr=implied.map(p=>shinProb(p,lo)); const t=pr.reduce((a,b)=>a+b,0); return pr.map(p=>p/t); }
+      for(let i=0;i<80;i++){ const mid=0.5*(lo+hi); if(excess(mid)>0) lo=mid; else hi=mid; }
+      const z=0.5*(lo+hi); const pr=implied.map(p=>shinProb(p,z)); const t=pr.reduce((a,b)=>a+b,0); return pr.map(p=>p/t);
+    }
+    function gmDevig2(a,b){ if(a<=1||b<=1) throw new Error('Коэффициенты должны быть > 1'); return gmShinProbs([a,b]); }
+    const GM_G=(Math.sqrt(5)-1)/2;
+    function gmMin(f,lo,hi){ let a=lo,b=hi,c=b-GM_G*(b-a),d=a+GM_G*(b-a),fc=f(c),fd=f(d); for(let k=0;k<200;k++){ if(Math.abs(b-a)<1e-6) break; if(fc<fd){ b=d;d=c;fd=fc;c=b-GM_G*(b-a);fc=f(c);} else { a=c;c=d;fc=fd;d=a+GM_G*(b-a);fd=f(d);} } return 0.5*(a+b); }
+    function gmInferS(line,pOver,mx=GM_MAX){
+      pOver=Math.min(Math.max(pOver,1e-4),1-1e-4);
+      const model=s=>{ let w=0,l=0; for(let g=0;g<=2*mx;g++){ const pg=gmPois(g,s); const u=gmTot(g,line,'over'); w+=pg*u[0]; l+=pg*u[1]; } return gmCond(w,l); };
+      return gmMin(s=>{const e=model(s)-pOver; return e*e;},0.3,7);
+    }
+    function gmInferD(ah,pHome,S,mx=GM_MAX,eps=0.05){
+      pHome=Math.min(Math.max(pHome,1e-4),1-1e-4);
+      const model=d=>{ const lh=(S+d)/2,la=(S-d)/2; if(lh<=0||la<=0) return d>0?1:0; const m=gmMatrix(lh,la,mx); const u=gmAccum(m,(i,j)=>gmAhHome(i,j,ah)); return gmCond(u[0],u[1]); };
+      return gmMin(d=>{const e=model(d)-pHome; return e*e;},-S+eps,S-eps);
+    }
+    function gmClampD(d,S,eps=0.05){ return Math.max(-S+eps,Math.min(d,S-eps)); }
+    const GM_GAUGE=1e6;
+    function gmWls(rows,p){
+      const ATA=Array.from({length:p},()=>Array(p).fill(0)), ATb=Array(p).fill(0);
+      for(const r of rows){ const c=r[0],y=r[1],w=r[2]; for(let i=0;i<p;i++){ if(!c[i]) continue; ATb[i]+=w*c[i]*y; for(let j=0;j<p;j++){ if(!c[j]) continue; ATA[i][j]+=w*c[i]*c[j]; } } }
+      return solve(ATA,ATb);
+    }
+    function gmHuber(e,delta){ const ae=Math.abs(e); return ae<=delta?1:delta/ae; }
+    function gmSig(z){ return z>=0?1/(1+Math.exp(-z)):Math.exp(z)/(1+Math.exp(z)); }
+
+    const GM_Q = { normal:1.0, low_motivation:0.5, heavy_rotation:0.5, suspicious_line:0.2, data_error:0.0, unknown:0.8 };
+    const GM_ALIAS = {
+      date:'date',league:'league',home_team:'home',home:'home',team_home:'home',
+      away_team:'away',away:'away',team_away:'away',
+      closing_ah_home:'ah',ah_home_line:'ah',ah_line:'ah',handicap:'ah',
+      closing_total_line:'tot',total_line:'tot',total:'tot',
+      ah_home_odds:'aho',ah_away_odds:'aha',over_odds:'ovr',under_odds:'und',
+      home_odds:'ho',odds_1:'ho',p1:'ho',draw_odds:'dо',odds_x:'dо',x:'dо',
+      away_odds:'ao',odds_2:'ao',p2:'ao',
+      neutral_flag:'neu',neutral:'neu',derby_flag:'der',derby:'der',
+      quality_flag:'q',quality:'q',
+    };
+    function gmNumKey(s){ return String(s).trim().toLowerCase().replace(/[^a-z0-9_а-я]/gi,''); }
+    function gmF(v){ if(v==null) return null; const t=String(v).trim().replace(',','.'); if(!t) return null; const n=parseFloat(t); return isNaN(n)?null:n; }
+    function gmB(v){ return ['1','true','yes','y','да'].includes(String(v).trim().toLowerCase()); }
+    function gmParseCsv(text){
+      const lines=text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
+      if(!lines.length) return [];
+      const split=r=>r.includes(';')?r.split(';'):r.split(',');
+      const header=split(lines[0]).map(h=>GM_ALIAS[gmNumKey(h)]||'');
+      const out=[];
+      for(let i=1;i<lines.length;i++){
+        const cells=split(lines[i]); const rec={};
+        header.forEach((k,idx)=>{ if(k) rec[k]=cells[idx]; });
+        if(!rec.home||!rec.away) continue;
+        out.push({
+          date:rec.date||'', home:String(rec.home).trim(), away:String(rec.away).trim(),
+          ah:gmF(rec.ah), tot:gmF(rec.tot), aho:gmF(rec.aho), aha:gmF(rec.aha),
+          ovr:gmF(rec.ovr), und:gmF(rec.und), ho:gmF(rec.ho), dо:gmF(rec.dо), ao:gmF(rec.ao),
+          neu:gmB(rec.neu), der:gmB(rec.der), q:(rec.q||'normal').trim()||'normal',
+        });
+      }
+      return out;
+    }
+    function gmPrepare(raw,cfg){
+      const ms=[];
+      const qmap=cfg.quality||GM_Q;
+      for(const r of raw){
+        if(r.q==='data_error') continue;
+        const wq=qmap[r.q]!=null?qmap[r.q]:0.8;
+        const wd=r.der?cfg.derby:1.0;
+        const ws=gmSeasonWeight(r.date,cfg);
+        const m={raw:r, home:r.home, away:r.away, iHome:r.neu?0:1, wBase:ws*wq*wd*(r.neu?cfg.neutral:1.0)};
+        if(r.ovr&&r.und) m.pOver=gmDevig2(r.ovr,r.und)[0];
+        if(r.aho&&r.aha) m.pAhHome=gmDevig2(r.aho,r.aha)[0];
+        if(r.ho&&r.dо&&r.ao){ const s=shinDevig(r.ho,r.dо,r.ao); m.p1=s[0]; m.px=s[1]; m.p2=s[2]; }
+        if(r.tot!=null&&m.pOver!=null) m.S=gmInferS(r.tot,m.pOver); else if(r.tot!=null) m.S=r.tot;
+        if(m.S!=null){
+          if(r.ah!=null&&m.pAhHome!=null) m.D=gmInferD(r.ah,m.pAhHome,m.S);
+          else if(r.ah!=null) m.D=gmClampD(-r.ah,m.S);
+        }
+        if(m.S!=null&&m.D!=null){ m.D=gmClampD(m.D,m.S); m.lh=(m.S+m.D)/2; m.la=(m.S-m.D)/2; }
+        ms.push(m);
+      }
+      const sv=ms.filter(m=>m.S!=null).map(m=>m.S);
+      const sMean=sv.length?sv.reduce((a,b)=>a+b,0)/sv.length:0;
+      for(const m of ms){ if(m.S==null) continue; const w=1/(1+cfg.alphaT*Math.pow(m.S-sMean,2)); m.wLineT=Math.min(1,Math.max(0.3,w)); }
+      return ms;
+    }
+    function gmTeams(ms,pred){ const s=new Set(); ms.forEach(m=>{ if(pred(m)){ s.add(m.home); s.add(m.away); } }); return [...s].sort(); }
+    function gmFitStrength(ms,cfg){
+      const used=ms.filter(m=>m.D!=null);
+      if(used.length<2) throw new Error('Мало матчей с D');
+      const teams=[...new Set(used.flatMap(m=>[m.home,m.away]))].sort();
+      const idx=new Map(teams.map((t,i)=>[t,i])); const p=teams.length+1;
+      const coeffs=[],tg=[];
+      used.forEach(m=>{ const c=Array(p).fill(0); c[idx.get(m.home)]+=1; c[idx.get(m.away)]-=1; c[p-1]=m.iHome; coeffs.push(c); tg.push(m.D);
+        m.wLineAh=Math.min(cfg.maxWAh,Math.max(cfg.minWAh,1/(1+cfg.alphaAh*Math.pow(Math.abs(m.D),cfg.pAh)))); m.wRob=1; });
+      const gauge=[...Array(teams.length).fill(1),0];
+      function run(W){ const rows=used.map((m,i)=>[coeffs[i],tg[i],W[i]]); rows.push([gauge,0,GM_GAUGE]); const sol=gmWls(rows,p);
+        const res=used.map((m,i)=>{ let pr=0; for(let k=0;k<p;k++) pr+=coeffs[i][k]*sol[k]; return pr-tg[i]; }); return [sol,res]; }
+      let W=used.map(m=>m.wBase*m.wLineAh); let [sol,res]=run(W);
+      for(let it=0;it<cfg.maxIter;it++){ const nW=used.map((m,i)=>{ m.wRob=gmHuber(res[i],cfg.deltaAh); return m.wBase*m.wLineAh*m.wRob; });
+        const dl=Math.max(...nW.map((w,i)=>Math.abs(w-W[i]))); W=nW; [sol,res]=run(W); if(dl<cfg.tol) break; }
+      const ratings={}; teams.forEach(t=>ratings[t]=sol[idx.get(t)]); const mr=Object.values(ratings).reduce((a,b)=>a+b,0)/teams.length;
+      teams.forEach(t=>ratings[t]-=mr);
+      const rmse=Math.sqrt(res.reduce((a,e)=>a+e*e,0)/res.length);
+      return {ratings, H:sol[p-1], rmse};
+    }
+    function gmFitAD(ms,cfg){
+      const used=ms.filter(m=>m.lh>0&&m.la>0);
+      if(used.length<2) throw new Error('Мало матчей с λ');
+      const teams=[...new Set(used.flatMap(m=>[m.home,m.away]))].sort(); const nt=teams.length;
+      const ai=new Map(teams.map((t,i)=>[t,i])), di=new Map(teams.map((t,i)=>[t,nt+i])); const mu=2*nt, hg=2*nt+1, p=2*nt+2;
+      const rows=[],tg=[],bw=[];
+      used.forEach(m=>{ const rh=Array(p).fill(0); rh[ai.get(m.home)]+=1; rh[di.get(m.away)]-=1; rh[mu]=1; rh[hg]=m.iHome; rows.push(rh); tg.push(Math.log(m.lh)); bw.push(m.wBase*(m.wLineT||1));
+        const ra=Array(p).fill(0); ra[ai.get(m.away)]+=1; ra[di.get(m.home)]-=1; ra[mu]=1; rows.push(ra); tg.push(Math.log(m.la)); bw.push(m.wBase*(m.wLineT||1)); });
+      const ga=Array(p).fill(0), gd=Array(p).fill(0); teams.forEach(t=>{ ga[ai.get(t)]=1; gd[di.get(t)]=1; });
+      function run(W){ const wr=rows.map((r,i)=>[r,tg[i],W[i]]); wr.push([ga,0,GM_GAUGE]); wr.push([gd,0,GM_GAUGE]); const sol=gmWls(wr,p);
+        const res=rows.map((r,i)=>{ let pr=0; for(let k=0;k<p;k++) pr+=r[k]*sol[k]; return pr-tg[i]; }); return [sol,res]; }
+      let W=bw.slice(),[sol,res]=run(W);
+      for(let it=0;it<cfg.maxIter;it++){ const nW=rows.map((r,i)=>bw[i]*gmHuber(res[i],cfg.deltaLam)); const dl=Math.max(...nW.map((w,i)=>Math.abs(w-W[i]))); W=nW; [sol,res]=run(W); if(dl<cfg.tol) break; }
+      const attack={},defense={}; teams.forEach(t=>{ attack[t]=sol[ai.get(t)]; defense[t]=sol[di.get(t)]; });
+      const ma=Object.values(attack).reduce((a,b)=>a+b,0)/nt, md=Object.values(defense).reduce((a,b)=>a+b,0)/nt;
+      teams.forEach(t=>{ attack[t]-=ma; defense[t]-=md; });
+      return {mu:sol[mu]+ma-md, attack, defense, hg:sol[hg]};
+    }
+    function gmNelder(f,x0){
+      const n=x0.length; let simplex=[x0.slice()]; for(let i=0;i<n;i++){ const pt=x0.slice(); pt[i]+= pt[i]===0?0.2:0.2*Math.abs(pt[i]); simplex.push(pt); }
+      let fv=simplex.map(f);
+      for(let it=0;it<300;it++){ const ord=[...Array(n+1).keys()].sort((a,b)=>fv[a]-fv[b]); simplex=ord.map(k=>simplex[k]); fv=ord.map(k=>fv[k]);
+        if(Math.abs(fv[n]-fv[0])<1e-7) break;
+        const cen=Array(n).fill(0); for(let i=0;i<n;i++) for(let k=0;k<n;k++) cen[i]+=simplex[k][i]/n;
+        const xr=cen.map((c,i)=>c+(c-simplex[n][i])); const fr=f(xr);
+        if(fr>=fv[0]&&fr<fv[n-1]){ simplex[n]=xr; fv[n]=fr; }
+        else if(fr<fv[0]){ const xe=cen.map((c,i)=>c+2*(c-simplex[n][i])); const fe=f(xe); if(fe<fr){simplex[n]=xe;fv[n]=fe;}else{simplex[n]=xr;fv[n]=fr;} }
+        else { const xc=cen.map((c,i)=>c+0.5*(simplex[n][i]-c)); const fc=f(xc); if(fc<fv[n]){simplex[n]=xc;fv[n]=fc;} else { for(let k=1;k<=n;k++){ simplex[k]=simplex[k].map((v,i)=>simplex[0][i]+0.5*(v-simplex[0][i])); fv[k]=f(simplex[k]); } } } }
+      let best=0; for(let k=1;k<=n;k++) if(fv[k]<fv[best]) best=k; return simplex[best];
+    }
+    function gmCalibrate(ms,st,gl,cfg){
+      const used=ms.filter(m=>m.p1!=null);
+      if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0};
+      const pre=used.map(m=>{ const dm=(st.ratings[m.home]||0)-(st.ratings[m.away]||0)+st.H*m.iHome;
+        const lh=Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*m.iHome);
+        const la=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0)); return [m,dm,lh+la,m.wBase]; });
+      function loss(pp){ const [a,b,c,d,g]=pp; if(d<=0) return 1e9; let tot=0;
+        for(const [m,dm,sm,w] of pre){ const sf=c+d*sm; if(sf<=0.2) return 1e9; const df=gmClampD(a+b*dm,sf); const lh=(sf+df)/2,la=(sf-df)/2; if(lh<=0||la<=0) return 1e9;
+          let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&g) mat=gmDC(mat,lh,la,g); const [p1,px,p2]=gm1x2(mat);
+          tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2); }
+        return tot; }
+      const x=gmNelder(loss,[0,1,0,1,0]); return {a:x[0],b:x[1],c:x[2],d:x[3],gamma:x[4]};
+    }
+    function gmFitDraw(ms,cfg){
+      const rows=[];
+      for(const m of ms){ if(m.px==null||m.D==null||m.S==null) continue; const px=m.px; if(px<=0||px>=1) continue;
+        const w1x2=(m.raw.ho&&m.raw.dо&&m.raw.ao)?(m.raw.q==='suspicious_line'?0.5:1.0):0.0; const w=m.wBase*w1x2; if(w<=0) continue;
+        const da=Math.abs(m.D), S=m.S; rows.push([[1,da,S,S*S,da*S],Math.log(px/(1-px)),w]); }
+      const def={alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default'};
+      if(rows.length<6) return def;
+      let beta; try{ beta=gmWls(rows,5); }catch(e){ return def; }
+      const dm={alpha:beta[0],betaD:beta[1],betaS:beta[2],betaS2:beta[3],betaDxS:beta[4],source:'fitted'};
+      const base=gmSig(dm.alpha+dm.betaS*2.6+dm.betaS2*6.76); if(!(base>=0.10&&base<=0.45)) return def; return dm;
+    }
+    function gmDrawTarget(dm,D,S){ return gmSig(dm.alpha+dm.betaD*Math.abs(D)+dm.betaS*S+dm.betaS2*S*S+dm.betaDxS*Math.abs(D)*S); }
+    function gmDrawProb(m){ let s=0; for(let i=0;i<m.length;i++) s+=m[i][i]; return s; }
+    function gmAdjustDraw(m,target,qmin,qmax){
+      const pm=gmDrawProb(m); const diag={drawMatrix:pm,drawTarget:target};
+      if(pm<=1e-12||pm>=1-1e-12){ diag.q=1; diag.drawAfter=pm; return [m.map(r=>r.slice()),diag]; }
+      const qr=target/pm, q=Math.min(qmax,Math.max(qmin,qr)); const pa=q*pm, c=(1-pa)/(1-pm);
+      const o=m.map((r,i)=>r.map((v,j)=>v*(i===j?q:c))); const on=gmNorm(o);
+      diag.qRaw=qr; diag.q=q; diag.drawAfter=gmDrawProb(on); diag.c=c; return [on,diag];
+    }
+    function gm1x2(m){ let p1=0,px=0,p2=0; for(let i=0;i<m.length;i++) for(let j=0;j<m.length;j++){ if(i>j)p1+=m[i][j]; else if(i===j)px+=m[i][j]; else p2+=m[i][j]; } return [p1,px,p2]; }
+    function gmTotMarket(m,l){ const o=gmAccum(m,(i,j)=>gmTot(i+j,l,'over')); const u=gmAccum(m,(i,j)=>gmTot(i+j,l,'under')); return {line:l,over:gmFair(o[0],o[1]),under:gmFair(u[0],u[1])}; }
+    function gmAhMarket(m,l){ const h=gmAccum(m,(i,j)=>gmAhHome(i,j,l)); const a=gmAccum(m,(i,j)=>gmAhAway(i,j,-l)); return {line:l,home:gmFair(h[0],h[1]),away:gmFair(a[0],a[1])}; }
+    function gmTeamTot(m,l,home){ let po=0; for(let i=0;i<m.length;i++) for(let j=0;j<m.length;j++){ const g=home?i:j; if(g>l) po+=m[i][j]; } po=Math.min(Math.max(po,1e-9),1-1e-9); return [1/po,1/(1-po)]; }
+    function gmGrid(lo,hi){ const out=[]; for(let v=lo;v<=hi+1e-9;v+=0.25) out.push(Math.round(v*100)/100); return out; }
+    function gmTop(m,n){ const f=[]; for(let i=0;i<m.length;i++) for(let j=0;j<m.length;j++) f.push([i,j,m[i][j]]); f.sort((a,b)=>b[2]-a[2]); return f.slice(0,n); }
+    function gmMarkets(m){
+      const [p1,px,p2]=gm1x2(m);
+      const tg=gmGrid(0.5,6), ag=gmGrid(-5,5);
+      const tot=tg.map(l=>gmTotMarket(m,l)), ah=ag.map(l=>gmAhMarket(m,l));
+      const mt=tot.reduce((a,b)=>Math.abs(b.over-b.under)<Math.abs(a.over-a.under)?b:a);
+      const ma=ah.reduce((a,b)=>Math.abs(b.home-b.away)<Math.abs(a.home-a.away)?b:a);
+      return {p1,px,p2,mainTotal:mt,mainAh:ma,totals:tot,
+        ttH:[0.5,1.5,2.5].map(l=>[l,...gmTeamTot(m,l,true)]), ttA:[0.5,1.5,2.5].map(l=>[l,...gmTeamTot(m,l,false)]),
+        top:gmTop(m,8)};
+    }
+    function gmPromoted(vals,n){ const arr=Object.values(vals); if(!arr.length) return 0; const w=arr.slice().sort((a,b)=>a-b).slice(0,Math.max(1,n)); return w.reduce((a,b)=>a+b,0)/w.length; }
+    function gmPredict(model,home,away,opt){
+      const {st,gl,cal,draw,cfg}=model; const iHome=opt.neutral?0:1; const hm=opt.derby?cfg.derbyHmult:1;
+      const R=t=>t in st.ratings?st.ratings[t]:gmPromoted(st.ratings,cfg.promotedN);
+      const A=t=>t in gl.attack?gl.attack[t]:gmPromoted(gl.attack,cfg.promotedN);
+      const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
+      const dm=R(home)-R(away)+st.H*iHome*hm;
+      const lhAD=Math.exp(gl.mu+A(home)-Df(away)+gl.hg*iHome), laAD=Math.exp(gl.mu+A(away)-Df(home)); const sm=lhAD+laAD;
+      let df=cal.a+cal.b*dm, sf=cal.c+cal.d*sm; df=gmClampD(df,sf); const lh=(sf+df)/2, la=(sf-df)/2;
+      let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
+      let dtarget=null,diag=null;
+      if(cfg.useDraw){ dtarget=gmDrawTarget(draw,df,sf); [mat,diag]=gmAdjustDraw(mat,dtarget,cfg.qmin,cfg.qmax); }
+      return {lh,la,df,sf,markets:gmMarkets(mat),drawTarget:dtarget,drawDiag:diag};
+    }
+    function gmTrain(raw,cfg){
+      const ms=gmPrepare(raw,cfg);
+      const st=gmFitStrength(ms,cfg), gl=gmFitAD(ms,cfg), cal=gmCalibrate(ms,st,gl,cfg);
+      const draw=cfg.useDraw?gmFitDraw(ms,cfg):{alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default'};
+      return {st,gl,cal,draw,cfg,nMatches:ms.length};
+    }
+    // Веса сезонов: массив диапазонов в порядке добавления (последний при пересечении — главный)
+    const GM_SEASON_KEY='FairOddsCalc_goal_seasons_v1';
+    function gmLoadSeasons(){ try{ const r=localStorage.getItem(GM_SEASON_KEY); const a=r?JSON.parse(r):[]; return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+    function gmSaveSeasons(a){ try{ localStorage.setItem(GM_SEASON_KEY, JSON.stringify(a)); }catch(e){} }
+    let gmSeasonRows = gmLoadSeasons();
+    function gmRangesOverlap(a,b){ return a.from<=b.to && b.from<=a.to; }
+    function gmRenderSeasons(){
+      const box=document.getElementById('goalSeasonList'); if(!box) return;
+      if(!gmSeasonRows.length){ box.innerHTML='<div class="hint">Диапазоны не добавлены — для всех матчей применяется «default сезон».</div>'; return; }
+      box.innerHTML='<div class="table-wrap"><table><thead><tr><th>#</th><th>с даты</th><th>по дату</th><th class="right">вес</th><th></th></tr></thead><tbody>'+
+        gmSeasonRows.map((r,i)=>{
+          const overlap=gmSeasonRows.some((o,j)=>j!==i && gmRangesOverlap(r,o));
+          const note=overlap?' <span class="hint" style="color:#b42318">⚠ пересечение</span>':'';
+          return `<tr><td>${i+1}${note}</td><td>${escapeHtml(r.from)}</td><td>${escapeHtml(r.to)}</td><td class="num">${r.w}</td><td><a href="#" data-del="${i}" style="color:#b42318;text-decoration:none">✕</a></td></tr>`;
+        }).join('')+'</tbody></table></div>';
+    }
+    function gmCfg(){
+      const f=(id,d)=>{ const v=parseFloat((document.getElementById(id).value||'').replace(',','.')); return isNaN(v)?d:v; };
+      const quality={ normal:f('goalQNormal',1.0), low_motivation:f('goalQLowmot',0.5),
+        heavy_rotation:f('goalQRot',0.5), suspicious_line:f('goalQSusp',0.2), data_error:0.0,
+        unknown:f('goalQUnknown',0.8) };
+      return { maxGoals:GM_MAX, alphaAh:f('goalAlphaAh',0.25), pAh:2, minWAh:0.15, maxWAh:1,
+        alphaT:f('goalAlphaT',0.5), deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
+        quality, derby:f('goalWDerby',0.7), neutral:f('goalWNeutral',1.0),
+        seasonDefault:f('goalWSeasonDef',1.0),
+        seasonWeights:gmSeasonRows.slice(),
+        priorAlpha:f('goalPriorAlpha',0.7), promotedN:3, derbyHmult:1.0,
+        useDraw:document.getElementById('goalUseDraw').checked, useDc:document.getElementById('goalUseDc').checked,
+        qmin:f('goalQmin',0.85), qmax:f('goalQmax',1.15) };
+    }
+    function gmSeasonWeight(date,cfg){
+      const def=cfg.seasonDefault!=null?cfg.seasonDefault:1.0;
+      if(!date||!cfg.seasonWeights||!cfg.seasonWeights.length) return def;
+      const d=String(date).trim();
+      // последний добавленный диапазон, в который попадает дата (latest entry wins)
+      for(let i=cfg.seasonWeights.length-1;i>=0;i--){ const sw=cfg.seasonWeights[i]; if(d>=sw.from && d<=sw.to) return sw.w; }
+      return def;
+    }
+    let gmModel=null;
+    function gmFillTeams(){
+      // Команды берём из Справочника команд по выбранной лиге
+      const league=document.getElementById('goalLeague').value;
+      const homeSel=document.getElementById('goalHome'), awaySel=document.getElementById('goalAway');
+      const prevH=homeSel.value, prevA=awaySel.value;
+      fillTeamSelect(homeSel, league, prevH);
+      fillTeamSelect(awaySel, league, prevA);
+      if(!prevA && awaySel.options.length>1) awaySel.selectedIndex=1;
+    }
+    bindClick('goalSeasonAdd',()=>{
+      const from=document.getElementById('goalSeasonFrom').value.trim();
+      const to=document.getElementById('goalSeasonTo').value.trim();
+      const w=parseFloat((document.getElementById('goalSeasonW').value||'').replace(',','.'));
+      if(!from||!to){ alert('Укажите даты «с» и «по».'); return; }
+      if(from>to){ alert('Дата «с» позже даты «по».'); return; }
+      if(isNaN(w)){ alert('Укажите числовой вес.'); return; }
+      gmSeasonRows.push({from,to,w}); gmSaveSeasons(gmSeasonRows); gmRenderSeasons();
+    });
+    document.getElementById('goalSeasonList').addEventListener('click',e=>{
+      const a=e.target.closest('[data-del]'); if(!a) return;
+      e.preventDefault(); const i=parseInt(a.getAttribute('data-del'),10);
+      if(i>=0){ gmSeasonRows.splice(i,1); gmSaveSeasons(gmSeasonRows); gmRenderSeasons(); }
+    });
+    gmRenderSeasons();
+    document.getElementById('goalLeague').addEventListener('change', gmFillTeams);
+
+    // ---------------- Хранилище closing-линий (вкладка «История») ----------------
+    const CLH_KEY='FairOddsCalc_clhist_v1';
+    const GOAL_SAMPLE_CSV=[
+      'date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag',
+      '2025-09-15,serie_a,Inter,Roma,-0.75,3.0,1.84,2.12,2.01,1.94,1.63,4.55,4.82,false,false,normal',
+      '2025-09-15,serie_a,Inter,Lazio,-1.0,3.0,1.93,2.01,1.98,1.96,1.54,4.77,5.53,false,false,normal',
+      '2025-09-15,serie_a,Inter,Atalanta,-1.0,3.25,2.02,1.93,1.97,1.97,1.6,4.84,4.84,false,false,normal',
+      '2025-09-15,serie_a,Inter,Genoa,-1.75,3.25,1.95,1.99,1.9,2.04,1.25,6.71,10.78,false,false,normal',
+      '2025-09-15,serie_a,Inter,Empoli,-2.0,3.25,2.01,1.93,1.92,2.03,1.2,7.48,13.88,false,false,normal',
+      '2025-09-15,serie_a,Roma,Inter,0.25,2.75,2.08,1.87,1.87,2.08,3.23,4.04,2.07,false,false,normal',
+      '2025-09-15,serie_a,Roma,Lazio,-0.5,3.0,2.05,1.9,2.03,1.91,2.0,4.15,3.34,false,false,normal',
+      '2025-09-15,serie_a,Roma,Atalanta,-0.25,3.25,1.95,2.0,1.97,1.97,2.14,4.3,2.94,false,false,normal',
+      '2025-09-15,serie_a,Roma,Genoa,-1.25,3.25,2.11,1.85,2.09,1.86,1.5,5.01,5.79,false,false,normal',
+      '2025-09-15,serie_a,Roma,Empoli,-1.25,3.0,1.9,2.04,1.89,2.06,1.4,5.36,7.23,false,false,normal',
+      '2025-09-15,serie_a,Lazio,Inter,0.5,2.75,1.98,1.97,1.88,2.07,3.62,4.12,1.92,false,false,normal',
+      '2025-09-15,serie_a,Lazio,Roma,0.0,3.0,1.86,2.1,2.07,1.88,2.38,4.02,2.69,false,false,normal',
+      '2025-09-15,serie_a,Atalanta,Inter,0.25,3.25,1.9,2.04,2.04,1.91,2.9,4.2,2.27,false,false,normal',
+      '2025-09-15,serie_a,Genoa,Roma,0.75,3.0,1.96,1.98,1.93,2.01,4.3,3.85,1.83,false,false,normal',
+      '2025-09-15,serie_a,Empoli,Lazio,0.75,3.0,2.02,1.92,1.95,1.99,4.6,3.8,1.78,false,false,normal',
+    ].join('\n');
+    function clhStore(){ try{ const r=localStorage.getItem(CLH_KEY); const o=r?JSON.parse(r):null; return (o&&o.leagues)?o:{leagues:{}}; }catch(e){ return {leagues:{}}; } }
+    function clhPersist(s){ try{ localStorage.setItem(CLH_KEY, JSON.stringify(s)); }catch(e){} }
+    function clhCount(csv){ try{ return gmParseCsv(csv).length; }catch(e){ return 0; } }
+    function clhSet(lg,se,csv){ const s=clhStore(); s.leagues[lg]=s.leagues[lg]||{}; s.leagues[lg][se]={csv, n:clhCount(csv), at:new Date().toISOString()}; clhPersist(s); }
+    function clhGet(lg,se){ const s=clhStore(); return (s.leagues[lg]||{})[se]||null; }
+    function clhDel(lg,se){ const s=clhStore(); if(s.leagues[lg]){ delete s.leagues[lg][se]; if(!Object.keys(s.leagues[lg]).length) delete s.leagues[lg]; clhPersist(s);} }
+    function clhList(){ const s=clhStore(); const out=[]; Object.keys(s.leagues).forEach(lg=>Object.keys(s.leagues[lg]).forEach(se=>out.push(Object.assign({league:lg,season:se}, s.leagues[lg][se])))); out.sort((a,b)=>a.league.localeCompare(b.league)||a.season.localeCompare(b.season)); return out; }
+    function clhSeasons(lg){ const s=clhStore(); return Object.keys(s.leagues[lg]||{}).sort(); }
+    function clhAllCsv(lg){ const s=clhStore(); const seasons=Object.keys(s.leagues[lg]||{}).sort(); let header=''; const body=[]; seasons.forEach(se=>{ const lines=(s.leagues[lg][se].csv||'').trim().split(/\r?\n/); if(lines.length<2) return; if(!header) header=lines[0]; body.push(...lines.slice(1)); }); return header?header+'\n'+body.join('\n'):''; }
+    function refreshClhTable(){
+      const tb=document.querySelector('#clhTable tbody'); if(!tb) return;
+      const rows=clhList();
+      tb.innerHTML=rows.length?rows.map(r=>`<tr data-lg="${r.league}" data-se="${escapeHtml(r.season)}" style="cursor:pointer"><td>${escapeHtml(LEAGUE_TITLES[r.league]||r.league)}</td><td>${escapeHtml(r.season)}</td><td class="num">${r.n}</td><td>${escapeHtml((r.at||'').replace('T',' ').slice(0,19))}</td><td><a href="#" data-del-lg="${r.league}" data-del-se="${escapeHtml(r.season)}" style="color:#b42318;text-decoration:none">✕</a></td></tr>`).join(''):'<tr><td colspan="5" class="hint">Пусто — сохраните сезон.</td></tr>';
+    }
+    function clhViewSeason(lg,se){
+      const tb=document.querySelector('#clhViewTable tbody'); const meta=document.getElementById('clhMeta');
+      const rec=clhGet(lg,se);
+      if(!rec){ tb.innerHTML=''; meta.textContent='Нет данных по сезону.'; return; }
+      let ms=[]; try{ ms=gmParseCsv(rec.csv); }catch(e){}
+      const f=v=>v==null?'':String(v).replace('.',',');
+      tb.innerHTML=ms.map(m=>`<tr><td>${escapeHtml(m.date||'')}</td><td>${escapeHtml(m.home)}</td><td>${escapeHtml(m.away)}</td><td class="num">${f(m.ah)}</td><td class="num">${f(m.tot)}</td><td class="num">${f(m.aho)}</td><td class="num">${f(m.aha)}</td><td class="num">${f(m.ovr)}</td><td class="num">${f(m.und)}</td><td class="num">${f(m.ho)}</td><td class="num">${f(m.dо)}</td><td class="num">${f(m.ao)}</td><td>${m.neu?'да':''}</td><td>${m.der?'да':''}</td><td>${escapeHtml(m.q||'')}</td></tr>`).join('');
+      meta.textContent=`${LEAGUE_TITLES[lg]||lg} / ${se}: ${ms.length} матчей.`;
+    }
+    bindClick('clhSaveBtn',()=>{
+      const lg=document.getElementById('clhLeague').value;
+      const se=document.getElementById('clhSeason').value.trim().replace('/','-');
+      const csv=document.getElementById('clhCsv').value.trim();
+      if(!se){ alert('Укажите сезон.'); return; }
+      const n=clhCount(csv);
+      if(!n){ alert('CSV пуст или не распознан (нужен заголовок и строки матчей).'); return; }
+      clhSet(lg,se,csv); refreshClhTable(); clhViewSeason(lg,se); goalFillSrcSeasons();
+      document.getElementById('clhMeta').textContent=`Сохранено: ${LEAGUE_TITLES[lg]||lg} / ${se} — ${n} матчей. Теперь можно загрузить в «Линию».`;
+    });
+    bindClick('clhViewBtn',()=>{ clhViewSeason(document.getElementById('clhLeague').value, document.getElementById('clhSeason').value.trim().replace('/','-')); });
+    bindClick('clhSampleBtn',()=>{ document.getElementById('clhCsv').value=GOAL_SAMPLE_CSV; document.getElementById('clhLeague').value='serie_a'; document.getElementById('clhSeason').value='2025-26'; });
+    document.getElementById('clhFile').addEventListener('change',async e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; try{ document.getElementById('clhCsv').value=await f.text(); }catch(err){ alert('Не прочитать файл: '+(err.message||err)); } });
+    document.getElementById('clhTable').addEventListener('click',e=>{
+      const del=e.target.closest('[data-del-lg]');
+      if(del){ e.preventDefault(); clhDel(del.getAttribute('data-del-lg'), del.getAttribute('data-del-se')); refreshClhTable(); goalFillSrcSeasons(); return; }
+      const tr=e.target.closest('tr[data-lg]');
+      if(tr){ const lg=tr.getAttribute('data-lg'), se=tr.getAttribute('data-se'); const rec=clhGet(lg,se); if(rec){ document.getElementById('clhLeague').value=lg; document.getElementById('clhSeason').value=se; document.getElementById('clhCsv').value=rec.csv; clhViewSeason(lg,se); } }
+    });
+
+    // ---------------- «Линия»: загрузка из истории ----------------
+    function goalFillSrcSeasons(){
+      const lg=document.getElementById('goalSrcLeague').value;
+      const sel=document.getElementById('goalSrcSeason'); if(!sel) return;
+      const seasons=clhSeasons(lg);
+      const opts=['<option value="__all__">(все сезоны)</option>'].concat(seasons.map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`));
+      sel.innerHTML=opts.join('');
+    }
+    document.getElementById('goalSrcLeague').addEventListener('change', goalFillSrcSeasons);
+    bindClick('goalLoadHist',()=>{
+      const lg=document.getElementById('goalSrcLeague').value;
+      const se=document.getElementById('goalSrcSeason').value;
+      const csv = se==='__all__' ? clhAllCsv(lg) : (clhGet(lg,se)?clhGet(lg,se).csv:'');
+      if(!csv || !csv.trim()){ alert('В истории нет данных для выбора. Сохраните их на вкладке «История».'); return; }
+      document.getElementById('goalCsv').value=csv;
+      document.getElementById('goalLeague').value=lg;
+      gmFillTeams();
+      const n=clhCount(csv);
+      document.getElementById('goalMeta').textContent=`Загружено из истории: ${LEAGUE_TITLES[lg]||lg}, ${se==='__all__'?'все сезоны':se} — ${n} матчей. Настройте коэффициенты и нажмите «Обучить модель».`;
+    });
+
+    bindClick('goalTrain',()=>{
+      try{
+        const raw=gmParseCsv(document.getElementById('goalCsv').value);
+        if(raw.length<2) throw new Error('Нужно ≥2 матчей в CSV.');
+        const cfg=gmCfg(); gmModel=gmTrain(raw,cfg);
+        const {st,gl,cal,draw}=gmModel;
+        const rk=Object.entries(st.ratings).sort((a,b)=>b[1]-a[1])
+          .map(([t,r])=>`  ${t}: r=${r.toFixed(3)} A=${(gl.attack[t]||0).toFixed(3)} Df=${(gl.defense[t]||0).toFixed(3)}`).join('\n');
+        document.getElementById('goalMeta').textContent=
+          `Матчей: ${gmModel.nMatches}  команд: ${Object.keys(st.ratings).length}  H=${st.H.toFixed(3)}\n`+
+          `μ=${gl.mu.toFixed(3)} H_g=${gl.hg.toFixed(3)}  калибр a=${cal.a.toFixed(3)} b=${cal.b.toFixed(3)} c=${cal.c.toFixed(3)} d=${cal.d.toFixed(3)} γ=${cal.gamma.toFixed(4)}  ничья:${draw.source}`;
+        document.getElementById('goalOut').textContent='Рейтинги (сила / атака / оборона):\n'+rk;
+        gmFillTeams();
+      }catch(e){ alert(e.message||e); }
+    });
+    document.getElementById('goalCsvFile').addEventListener('change',async e=>{
+      const file=e.target.files&&e.target.files[0]; if(!file) return;
+      try{ document.getElementById('goalCsv').value=await file.text(); }catch(err){ alert('Не прочитать файл: '+(err.message||err)); }
+    });
+    bindClick('goalPredict',()=>{
+      if(!gmModel){ alert('Сначала обучите модель.'); return; }
+      const home=document.getElementById('goalHome').value, away=document.getElementById('goalAway').value;
+      if(!home||!away||home===away){ alert('Выберите разные команды.'); return; }
+      try{
+        const neutral=document.getElementById('goalNeutral').checked, derby=document.getElementById('goalDerby').checked;
+        const pred=gmPredict(gmModel,home,away,{neutral,derby});
+        const mk=pred.markets; const useM=document.getElementById('goalMargin').checked;
+        const mg=(parseFloat((document.getElementById('goalMarginPct').value||'3').replace(',','.'))||0)/100;
+        const k1x2=()=> useM&&mg>0?[1/(mk.p1*(1+mg)),1/(mk.px*(1+mg)),1/(mk.p2*(1+mg))]:[1/mk.p1,1/mk.px,1/mk.p2];
+        const k2=(pa,pb,ka,kb)=> useM&&mg>0?[1/(pa*(1+mg)),1/(pb*(1+mg))]:[ka,kb];
+        const [kk1,kkx,kk2]=k1x2(); const tag=useM&&mg>0?' (с маржой)':' (честные)';
+        const L=[];
+        L.push(`=== ${home} — ${away}${neutral?' (нейтраль)':''} ===`);
+        L.push(`λ_h=${pred.lh.toFixed(3)} λ_a=${pred.la.toFixed(3)}  D_final=${pred.df.toFixed(3)} S_final=${pred.sf.toFixed(3)}`);
+        if(pred.drawTarget!=null) L.push(`Ничья: модель→${(pred.drawTarget*100).toFixed(1)}% (матрица ${(pred.drawDiag.drawMatrix*100).toFixed(1)}%→${(pred.drawDiag.drawAfter*100).toFixed(1)}%, q=${pred.drawDiag.q.toFixed(3)})`);
+        L.push('');
+        L.push(`Коэффициенты${tag}:`);
+        L.push(`  1X2: П1=${kk1.toFixed(2)} X=${kkx.toFixed(2)} П2=${kk2.toFixed(2)}  (p ${(mk.p1*100).toFixed(1)}/${(mk.px*100).toFixed(1)}/${(mk.p2*100).toFixed(1)}%)`);
+        const t=mk.mainTotal, [ot,ut]=k2(1/t.over,1/t.under,t.over,t.under);
+        L.push(`  Тотал ${t.line}: Over ${ot.toFixed(2)} / Under ${ut.toFixed(2)}`);
+        const a=mk.mainAh, [ah,aa]=k2(1/a.home,1/a.away,a.home,a.away);
+        L.push(`  Фора хозяев ${a.line>=0?'+':''}${a.line}: ${ah.toFixed(2)} / гости ${aa.toFixed(2)}`);
+        L.push(''); L.push('Индивидуальные тоталы (честные O/U):');
+        mk.ttH.forEach(r=>L.push(`  ${home} ${r[0]}: Over ${r[1].toFixed(2)} / Under ${r[2].toFixed(2)}`));
+        mk.ttA.forEach(r=>L.push(`  ${away} ${r[0]}: Over ${r[1].toFixed(2)} / Under ${r[2].toFixed(2)}`));
+        L.push(''); L.push('Тоталы (честные O/U):');
+        mk.totals.filter(t=>t.line>=1&&t.line<=4.5).forEach(t=>L.push(`  ${t.line}: Over ${t.over.toFixed(2)} / Under ${t.under.toFixed(2)}`));
+        L.push(''); L.push('Топ счетов:');
+        mk.top.forEach(([i,j,p])=>L.push(`  ${i}:${j} ${(p*100).toFixed(1)}%`));
+        document.getElementById('goalOut').textContent=L.join('\n');
+      }catch(e){ alert(e.message||e); }
+    });
+
     seedDefaultTeams(false);
     try { refreshTeamsTable('epl'); } catch (e) { console.error(e); }
     try { refreshShinTeamSelects(); } catch (e) { console.error(e); }
-    try { refreshHistTable(); } catch (e) { console.error(e); }
-    window.refreshHistTable = refreshHistTable;
-    setJsStatus('Версия team-logos-v5 — откройте в Safari (не HTML Preview)');
+    try { gmFillTeams(); } catch (e) { console.error(e); }
+    try { refreshClhTable(); } catch (e) { console.error(e); }
+    try { goalFillSrcSeasons(); } catch (e) { console.error(e); }
+    window.refreshHistTable = refreshClhTable;
+    window.refreshClhTable = refreshClhTable;
+    window.refreshGoalTeams = gmFillTeams;
+    window.goalFillSrcSeasons = goalFillSrcSeasons;
+    setJsStatus('Версия goal-model-v1 — Линия (голы): closing → S/D → λ → матрица → рынки');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
       console.error(err);

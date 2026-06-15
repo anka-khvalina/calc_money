@@ -11,11 +11,14 @@ import math
 from typing import Sequence, Tuple
 
 
-def shin_devig(
-    odds_1: float, odds_x: float, odds_2: float
-) -> Tuple[float, float, float]:
-    """Честные вероятности по модели Shin."""
-    odds = (odds_1, odds_x, odds_2)
+def shin_devig_probs(odds: Sequence[float]) -> Tuple[float, ...]:
+    """Честные вероятности по модели Shin для произвольного числа исходов.
+
+    Подходит и для 2-исходных рынков (Over/Under, азиатская фора), и для 1X2.
+    """
+    odds = tuple(odds)
+    if len(odds) < 2:
+        raise ValueError("Нужно минимум 2 исхода")
     for k in odds:
         if k is None or not math.isfinite(k) or k <= 1.0:
             raise ValueError(f"Коэффициент должен быть > 1, получено: {k}")
@@ -27,6 +30,18 @@ def shin_devig(
     if total <= 0:
         raise ValueError("Shin: нулевая сумма вероятностей")
     return tuple(p / total for p in probs)
+
+
+def shin_devig(
+    odds_1: float, odds_x: float, odds_2: float
+) -> Tuple[float, float, float]:
+    """Честные вероятности по модели Shin для линии 1X2."""
+    return shin_devig_probs((odds_1, odds_x, odds_2))  # type: ignore[return-value]
+
+
+def shin_devig_two_way(odds_a: float, odds_b: float) -> Tuple[float, float]:
+    """Честные вероятности по Shin для двухисходного рынка (A/B)."""
+    return shin_devig_probs((odds_a, odds_b))  # type: ignore[return-value]
 
 
 def _shin_prob(pi: float, z: float) -> float:
