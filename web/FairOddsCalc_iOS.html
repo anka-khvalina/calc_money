@@ -619,6 +619,23 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <button type="button" id="goalPredict" class="btn primary">Рассчитать линию</button>
       </div>
       <pre id="goalOut" class="shin-details"></pre>
+      <div style="margin-top:12px">
+        <div class="small" style="font-weight:600;margin-bottom:6px">История расчётов</div>
+        <div class="table-wrap">
+          <table id="goalHistTable">
+            <thead>
+              <tr>
+                <th>Дата и время</th>
+                <th>Лига</th>
+                <th>Матч</th>
+                <th>Итог</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button type="button" id="goalHistClear" class="btn" style="margin-top:8px">Очистить историю</button>
+      </div>
     </section>
 
     <!-- LEGACY HISTORY (скрыто; нужно для старого кода вкладок «Счет кэф») -->
@@ -2842,32 +2859,71 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       try{
         const neutral=document.getElementById('goalNeutral').checked, derby=document.getElementById('goalDerby').checked;
         const pred=gmPredict(gmModel,home,away,{neutral,derby});
-        const mk=pred.markets; const useM=document.getElementById('goalMargin').checked;
+        const useM=document.getElementById('goalMargin').checked;
         const mg=(parseFloat((document.getElementById('goalMarginPct').value||'3').replace(',','.'))||0)/100;
-        const k1x2=()=> useM&&mg>0?[1/(mk.p1*(1+mg)),1/(mk.px*(1+mg)),1/(mk.p2*(1+mg))]:[1/mk.p1,1/mk.px,1/mk.p2];
-        const k2=(pa,pb,ka,kb)=> useM&&mg>0?[1/(pa*(1+mg)),1/(pb*(1+mg))]:[ka,kb];
-        const [kk1,kkx,kk2]=k1x2(); const tag=useM&&mg>0?' (с маржой)':' (честные)';
-        const L=[];
-        L.push(`=== ${home} — ${away}${neutral?' (нейтраль)':''} ===`);
-        L.push(`λ_h=${pred.lh.toFixed(3)} λ_a=${pred.la.toFixed(3)}  D_final=${pred.df.toFixed(3)} S_final=${pred.sf.toFixed(3)}`);
-        if(pred.drawTarget!=null) L.push(`Ничья: модель→${(pred.drawTarget*100).toFixed(1)}% (матрица ${(pred.drawDiag.drawMatrix*100).toFixed(1)}%→${(pred.drawDiag.drawAfter*100).toFixed(1)}%, q=${pred.drawDiag.q.toFixed(3)})`);
-        L.push('');
-        L.push(`Коэффициенты${tag}:`);
-        L.push(`  1X2: П1=${kk1.toFixed(2)} X=${kkx.toFixed(2)} П2=${kk2.toFixed(2)}  (p ${(mk.p1*100).toFixed(1)}/${(mk.px*100).toFixed(1)}/${(mk.p2*100).toFixed(1)}%)`);
-        const t=mk.mainTotal, [ot,ut]=k2(1/t.over,1/t.under,t.over,t.under);
-        L.push(`  Тотал ${t.line}: Over ${ot.toFixed(2)} / Under ${ut.toFixed(2)}`);
-        const a=mk.mainAh, [ah,aa]=k2(1/a.home,1/a.away,a.home,a.away);
-        L.push(`  Фора хозяев ${a.line>=0?'+':''}${a.line}: ${ah.toFixed(2)} / гости ${aa.toFixed(2)}`);
-        L.push(''); L.push('Индивидуальные тоталы (честные O/U):');
-        mk.ttH.forEach(r=>L.push(`  ${home} ${r[0]}: Over ${r[1].toFixed(2)} / Under ${r[2].toFixed(2)}`));
-        mk.ttA.forEach(r=>L.push(`  ${away} ${r[0]}: Over ${r[1].toFixed(2)} / Under ${r[2].toFixed(2)}`));
-        L.push(''); L.push('Тоталы (честные O/U):');
-        mk.totals.filter(t=>t.line>=1&&t.line<=4.5).forEach(t=>L.push(`  ${t.line}: Over ${t.over.toFixed(2)} / Under ${t.under.toFixed(2)}`));
-        L.push(''); L.push('Топ счетов:');
-        mk.top.forEach(([i,j,p])=>L.push(`  ${i}:${j} ${(p*100).toFixed(1)}%`));
-        document.getElementById('goalOut').textContent=L.join('\n');
+        const {lines,summary}=gmFormatPredict(pred,home,away,neutral,useM,mg);
+        document.getElementById('goalOut').textContent=lines.join('\n');
+        const league=document.getElementById('goalLeague').value;
+        gmAddPredHist({
+          at:gmFormatDt(),
+          league:LEAGUE_TITLES[league]||league,
+          match:`${home} — ${away}`,
+          summary,
+        });
       }catch(e){ alert(e.message||e); }
     });
+
+    const GOAL_PRED_HIST_KEY='FairOddsCalc_goal_pred_history_v1';
+    const GOAL_PRED_HIST_MAX=200;
+    function gmLoadPredHist(){
+      try{ const r=localStorage.getItem(GOAL_PRED_HIST_KEY); const a=r?JSON.parse(r):[]; return Array.isArray(a)?a:[]; }catch(e){ return []; }
+    }
+    function gmSavePredHist(a){ try{ localStorage.setItem(GOAL_PRED_HIST_KEY, JSON.stringify(a)); }catch(e){} }
+    function gmRenderPredHist(){
+      const tbody=document.querySelector('#goalHistTable tbody'); if(!tbody) return;
+      const rows=gmLoadPredHist();
+      if(!rows.length){ tbody.innerHTML='<tr><td colspan="4" class="hint">Пока нет расчётов.</td></tr>'; return; }
+      tbody.innerHTML=rows.map(r=>`<tr><td>${escapeHtml(r.at)}</td><td>${escapeHtml(r.league)}</td><td>${escapeHtml(r.match)}</td><td class="small">${escapeHtml(r.summary)}</td></tr>`).join('');
+    }
+    function gmAddPredHist(entry){
+      const rows=gmLoadPredHist(); rows.unshift(entry);
+      gmSavePredHist(rows.slice(0,GOAL_PRED_HIST_MAX)); gmRenderPredHist();
+    }
+    function gmFormatDt(d=new Date()){
+      const p=n=>String(n).padStart(2,'0');
+      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+    function gmFormatPredict(pred,home,away,neutral,useM,mg){
+      const mk=pred.markets;
+      const k1x2=()=> useM&&mg>0?[1/(mk.p1*(1+mg)),1/(mk.px*(1+mg)),1/(mk.p2*(1+mg))]:[1/mk.p1,1/mk.px,1/mk.p2];
+      const k2=(pa,pb,ka,kb)=> useM&&mg>0?[1/(pa*(1+mg)),1/(pb*(1+mg))]:[ka,kb];
+      const [kk1,kkx,kk2]=k1x2(); const tag=useM&&mg>0?' (с маржой)':' (честные)';
+      const L=[];
+      L.push(`=== ${home} — ${away}${neutral?' (нейтраль)':''} ===`);
+      L.push(`λ_h=${pred.lh.toFixed(3)} λ_a=${pred.la.toFixed(3)}  D_final=${pred.df.toFixed(3)} S_final=${pred.sf.toFixed(3)}`);
+      if(pred.drawTarget!=null) L.push(`Ничья: модель→${(pred.drawTarget*100).toFixed(1)}% (матрица ${(pred.drawDiag.drawMatrix*100).toFixed(1)}%→${(pred.drawDiag.drawAfter*100).toFixed(1)}%, q=${pred.drawDiag.q.toFixed(3)})`);
+      L.push('');
+      L.push(`Коэффициенты${tag}:`);
+      L.push(`  1X2: П1=${kk1.toFixed(2)} X=${kkx.toFixed(2)} П2=${kk2.toFixed(2)}  (p ${(mk.p1*100).toFixed(1)}/${(mk.px*100).toFixed(1)}/${(mk.p2*100).toFixed(1)}%)`);
+      const t=mk.mainTotal, [ot,ut]=k2(1/t.over,1/t.under,t.over,t.under);
+      L.push(`  Тотал ${t.line}: Over ${ot.toFixed(2)} / Under ${ut.toFixed(2)}`);
+      const a=mk.mainAh, [ah,aa]=k2(1/a.home,1/a.away,a.home,a.away);
+      L.push(`  Фора хозяев ${a.line>=0?'+':''}${a.line}: ${ah.toFixed(2)} / гости ${aa.toFixed(2)}`);
+      L.push(''); L.push('Индивидуальные тоталы (честные O/U):');
+      mk.ttH.forEach(r=>L.push(`  ${home} ${r[0]}: Over ${r[1].toFixed(2)} / Under ${r[2].toFixed(2)}`));
+      mk.ttA.forEach(r=>L.push(`  ${away} ${r[0]}: Over ${r[1].toFixed(2)} / Under ${r[2].toFixed(2)}`));
+      L.push(''); L.push('Тоталы (честные O/U):');
+      mk.totals.filter(t=>t.line>=1&&t.line<=4.5).forEach(t=>L.push(`  ${t.line}: Over ${t.over.toFixed(2)} / Under ${t.under.toFixed(2)}`));
+      L.push(''); L.push('Топ счетов:');
+      mk.top.forEach(([i,j,p])=>L.push(`  ${i}:${j} ${(p*100).toFixed(1)}%`));
+      const summary=`1X2 ${kk1.toFixed(2)}/${kkx.toFixed(2)}/${kk2.toFixed(2)} · Тотал ${t.line} ${ot.toFixed(2)}/${ut.toFixed(2)} · Фора ${a.line>=0?'+':''}${a.line} ${ah.toFixed(2)}/${aa.toFixed(2)}`;
+      return {lines:L, summary};
+    }
+    bindClick('goalHistClear',()=>{
+      if(!gmLoadPredHist().length) return;
+      if(confirm('Очистить всю историю расчётов?')){ gmSavePredHist([]); gmRenderPredHist(); }
+    });
+    gmRenderPredHist();
 
     seedDefaultTeams(false);
     try { refreshTeamsTable('epl'); } catch (e) { console.error(e); }

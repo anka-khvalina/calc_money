@@ -1553,11 +1553,14 @@ def build_app():
     # ======================================================================
     import goal_model as gm
     import goal_model_train as gmt
+    import goal_line_history as glh
+    from history_store import LEAGUES, league_title
 
     tab_goal = ttk.Frame(notebook, padding=10)
     notebook.add(tab_goal, text="Линия (голы)")
 
-    goal_state: dict = {"model": None, "raw": None}
+    goal_state: dict = {"model": None, "raw": None, "league": "epl"}
+    goal_history = glh.GoalLineHistory()
 
     goal_top = ttk.Frame(tab_goal)
     goal_top.pack(fill="x", anchor="n")
@@ -1586,24 +1589,34 @@ def build_app():
 
     goal_home_var = tk.StringVar()
     goal_away_var = tk.StringVar()
-    ttk.Label(goal_controls, text="Хозяева:").grid(row=0, column=0, sticky="w", padx=(0, 6), pady=4)
+    goal_league_var = tk.StringVar(value=LEAGUES["epl"])
+    ttk.Label(goal_controls, text="Лига:").grid(row=0, column=0, sticky="w", padx=(0, 6), pady=4)
+    goal_league_combo = ttk.Combobox(
+        goal_controls,
+        textvariable=goal_league_var,
+        values=list(LEAGUES.values()),
+        state="readonly",
+        width=24,
+    )
+    goal_league_combo.grid(row=0, column=1, sticky="w", pady=4)
+    ttk.Label(goal_controls, text="Хозяева:").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=4)
     goal_home_combo = ttk.Combobox(goal_controls, textvariable=goal_home_var, state="readonly", width=24)
-    goal_home_combo.grid(row=0, column=1, sticky="w", pady=4)
-    ttk.Label(goal_controls, text="Гости:").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=4)
+    goal_home_combo.grid(row=1, column=1, sticky="w", pady=4)
+    ttk.Label(goal_controls, text="Гости:").grid(row=2, column=0, sticky="w", padx=(0, 6), pady=4)
     goal_away_combo = ttk.Combobox(goal_controls, textvariable=goal_away_var, state="readonly", width=24)
-    goal_away_combo.grid(row=1, column=1, sticky="w", pady=4)
+    goal_away_combo.grid(row=2, column=1, sticky="w", pady=4)
 
     goal_neutral_var = tk.BooleanVar(value=False)
     goal_derby_var = tk.BooleanVar(value=False)
     goal_margin_var = tk.BooleanVar(value=False)
     _cb_neu = ttk.Checkbutton(goal_controls, text="Нейтральное поле", variable=goal_neutral_var)
-    _cb_neu.grid(row=0, column=2, sticky="w", padx=(16, 0))
+    _cb_neu.grid(row=1, column=2, sticky="w", padx=(16, 0))
     _cb_der = ttk.Checkbutton(goal_controls, text="Дерби", variable=goal_derby_var)
-    _cb_der.grid(row=1, column=2, sticky="w", padx=(16, 0))
+    _cb_der.grid(row=2, column=2, sticky="w", padx=(16, 0))
     goal_margin_pct = tk.StringVar(value="3")
     _cb_mar = ttk.Checkbutton(goal_controls, text="Маржа, %:", variable=goal_margin_var)
-    _cb_mar.grid(row=0, column=3, sticky="w", padx=(16, 0))
-    ttk.Entry(goal_controls, textvariable=goal_margin_pct, width=6).grid(row=0, column=4, sticky="w")
+    _cb_mar.grid(row=0, column=2, sticky="w", padx=(16, 0))
+    ttk.Entry(goal_controls, textvariable=goal_margin_pct, width=6).grid(row=0, column=3, sticky="w")
 
     # --- Настройки модели (редактируемые веса и параметры) ---
     goal_cfg_frame = ttk.LabelFrame(
@@ -1736,16 +1749,62 @@ def build_app():
     goal_meta_var = tk.StringVar(value="Загрузите CSV closing-линий и обучите модель.")
     ttk.Label(tab_goal, textvariable=goal_meta_var, justify="left").pack(anchor="w", pady=(8, 4))
 
-    goal_out = tk.Text(tab_goal, width=98, height=22, relief="solid", borderwidth=1,
+    goal_out = tk.Text(tab_goal, width=98, height=16, relief="solid", borderwidth=1,
                        font=("Consolas", 10))
     goal_out.pack(fill="both", expand=True, pady=(4, 0))
     goal_out.configure(state="disabled")
+
+    goal_hist_frame = ttk.LabelFrame(tab_goal, text="История расчётов", padding=6)
+    goal_hist_frame.pack(fill="x", pady=(8, 0))
+
+    goal_hist_tree = ttk.Treeview(
+        goal_hist_frame,
+        columns=("at", "league", "match", "summary"),
+        show="headings",
+        height=6,
+    )
+    goal_hist_tree.heading("at", text="Дата и время")
+    goal_hist_tree.heading("league", text="Лига")
+    goal_hist_tree.heading("match", text="Матч")
+    goal_hist_tree.heading("summary", text="Итог")
+    goal_hist_tree.column("at", width=120, anchor="w")
+    goal_hist_tree.column("league", width=140, anchor="w")
+    goal_hist_tree.column("match", width=180, anchor="w")
+    goal_hist_tree.column("summary", width=520, anchor="w")
+    goal_hist_tree.pack(fill="x")
+
+    goal_hist_btns = ttk.Frame(goal_hist_frame)
+    goal_hist_btns.pack(fill="x", pady=(6, 0))
 
     def _goal_set_text(text: str):
         goal_out.configure(state="normal")
         goal_out.delete("1.0", "end")
         goal_out.insert("1.0", text)
         goal_out.configure(state="disabled")
+
+    def _goal_league_key() -> str:
+        title = goal_league_var.get().strip()
+        for key, label in LEAGUES.items():
+            if label == title:
+                return key
+        raw = goal_state.get("raw") or []
+        return glh.infer_league_key(raw)
+
+    def _goal_refresh_history():
+        for item in goal_hist_tree.get_children():
+            goal_hist_tree.delete(item)
+        for entry in goal_history.entries():
+            goal_hist_tree.insert(
+                "", "end",
+                values=(entry.at_display, entry.league_label, entry.match_label, entry.summary),
+            )
+
+    def _goal_clear_history():
+        if not goal_history.entries():
+            return
+        if messagebox.askyesno("История расчётов", "Очистить всю историю расчётов?"):
+            goal_history.clear()
+            _goal_refresh_history()
 
     def _goal_refresh_teams():
         model = goal_state["model"]
@@ -1761,6 +1820,8 @@ def build_app():
         model, prepared = gmt.train_full_model(raw, cfg)
         goal_state["model"] = model
         goal_state["raw"] = raw
+        goal_state["league"] = glh.infer_league_key(raw)
+        goal_league_var.set(LEAGUES.get(goal_state["league"], goal_state["league"]))
         goal_path_var.set(path_label)
         return model
 
@@ -1834,65 +1895,25 @@ def build_app():
         except Exception as exc:
             messagebox.showerror("Линия (голы)", str(exc))
             return
-        mk = pred.markets
         use_margin = goal_margin_var.get()
         try:
             margin = float(goal_margin_pct.get().replace(",", ".")) / 100.0
         except ValueError:
             margin = 0.0
-
-        def k1x2():
-            if use_margin and margin > 0:
-                return gm.apply_margin_1x2(mk.p1, mk.px, mk.p2, margin)
-            return mk.k1(), mk.kx(), mk.k2()
-
-        def k2way(p_a, p_b, ka, kb):
-            if use_margin and margin > 0:
-                return gm.apply_margin_two_way(p_a, p_b, margin)
-            return ka, kb
-
-        ka1, kax, ka2 = k1x2()
-        L = []
-        tag = " (с маржой)" if use_margin and margin > 0 else " (честные)"
-        L.append(f"=== {home} — {away}{' (нейтраль)' if goal_neutral_var.get() else ''} ===")
-        L.append(f"λ_h={pred.lambda_home:.3f}  λ_a={pred.lambda_away:.3f}   "
-                 f"D_final={pred.d_final:.3f}  S_final={pred.s_final:.3f}")
-        if pred.draw_target is not None and pred.draw_diagnostics is not None:
-            dd = pred.draw_diagnostics
-            L.append(
-                f"Ничья: модель→{pred.draw_target*100:.1f}%  "
-                f"(матрица {dd['draw_from_matrix']*100:.1f}% → "
-                f"{dd['draw_after_calibration']*100:.1f}%, q={dd['diag_multiplier_used']:.3f})"
-            )
-        L.append("")
-        L.append(f"Коэффициенты{tag}:")
-        L.append(f"  1X2:  П1={ka1:.2f}  X={kax:.2f}  П2={ka2:.2f}   "
-                 f"(p: {mk.p1*100:.1f}% / {mk.px*100:.1f}% / {mk.p2*100:.1f}%)")
-        t = mk.main_total
-        ot, ut = k2way(1/t.home_or_over_odds, 1/t.away_or_under_odds,
-                       t.home_or_over_odds, t.away_or_under_odds)
-        L.append(f"  Тотал {t.line}:  Over {ot:.2f} / Under {ut:.2f}")
-        a = mk.main_ah
-        ah, aa = k2way(1/a.home_or_over_odds, 1/a.away_or_under_odds,
-                       a.home_or_over_odds, a.away_or_under_odds)
-        L.append(f"  Фора хозяев {a.line:+}:  {ah:.2f} / гости {aa:.2f}")
-        L.append("")
-        L.append("Индивидуальные тоталы (честные O/U):")
-        for ln, ov, un in mk.team_totals_home:
-            L.append(f"  {home} {ln}:  Over {ov:.2f} / Under {un:.2f}")
-        for ln, ov, un in mk.team_totals_away:
-            L.append(f"  {away} {ln}:  Over {ov:.2f} / Under {un:.2f}")
-        L.append("")
-        L.append("Тоталы (честные O/U):")
-        for ml in mk.totals:
-            if 1.0 <= ml.line <= 4.5:
-                L.append(f"  {ml.line}:  Over {ml.home_or_over_odds:.2f} / "
-                         f"Under {ml.away_or_under_odds:.2f}")
-        L.append("")
-        L.append("Топ счетов:")
-        for i, j, p in mk.top_scores[:8]:
-            L.append(f"  {i}:{j}  {p*100:.1f}%")
-        _goal_set_text("\n".join(L))
+        lines, summary = glh.format_prediction_report(
+            pred,
+            neutral=goal_neutral_var.get(),
+            use_margin=use_margin,
+            margin=margin,
+        )
+        _goal_set_text("\n".join(lines))
+        goal_history.add(
+            league=_goal_league_key(),
+            home_team=home,
+            away_team=away,
+            summary=summary,
+        )
+        _goal_refresh_history()
 
     goal_btns = ttk.Frame(tab_goal)
     goal_btns.pack(fill="x", pady=(8, 0), before=goal_out)
@@ -1905,6 +1926,10 @@ def build_app():
     ttk.Button(goal_btns, text="Рассчитать линию", command=goal_predict_clicked).grid(
         row=0, column=2
     )
+    ttk.Button(goal_hist_btns, text="Очистить историю", command=_goal_clear_history).pack(
+        anchor="w"
+    )
+    _goal_refresh_history()
 
     return root
 
