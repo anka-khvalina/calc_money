@@ -80,11 +80,15 @@
     }
     #clhViewTable td.hist-col-num{ min-width:68px; }
     #clhViewTable td.hist-col-neutral{ min-width:72px; }
-    #clhViewTable td.hist-col-action{ min-width:104px; white-space:normal; }
+    #clhViewTable td.hist-col-action{ min-width:168px; white-space:normal; }
     .hist-weights-row td{ background:#f8fafc; padding:8px 12px; border-bottom:1px solid var(--line); }
+    .hist-fetch-row td{ background:#f7f9ff; padding:8px 12px; border-bottom:1px solid var(--line); }
+    .hist-fetch-panel{ display:flex; flex-wrap:wrap; gap:8px 12px; align-items:flex-end; }
+    .hist-fetch-panel label{ font-size:11px; color:var(--muted); display:block; margin-bottom:3px; }
+    .hist-fetch-panel input{ min-width:180px; font-size:13px; padding:6px 8px; }
     .hist-weights-panel{ display:flex; flex-wrap:wrap; gap:10px 16px; align-items:flex-end; }
     .hist-weights-field label{ display:block; font-size:11px; color:var(--muted); margin-bottom:3px; }
-    .btn.hist-weights-toggle{ padding:4px 8px; font-size:12px; margin-right:6px; }
+    .btn.hist-fetch-toggle,.btn.hist-weights-toggle{ padding:4px 8px; font-size:12px; margin-right:6px; }
     #clhViewTable td.num .hist-cell-input{ text-align:right; font-variant-numeric:tabular-nums; }
     .hist-row-err{ color:var(--danger); font-size:11px; display:block; margin-top:2px; }
     .hist-row-ok{ color:#16a34a; font-size:11px; display:block; margin-top:2px; }
@@ -2937,6 +2941,140 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       { col:'match_w', label:'Вес матча' },
       { col:'neutr_w', label:'Нейтр. вес' },
     ];
+    const USERBET_ODDS_URL = 'https://userbet.info/user/get_current_lineups_odds/';
+    const USERBET_PREFERRED_B = 70;
+
+    function userbetRoundOdds(v){ return Math.round(Number(v) * 100) / 100; }
+    function userbetNormalizeHandicap(raw){
+      const text = String(raw == null ? '' : raw).trim();
+      if (!text) return null;
+      if (!/^[+-]?\d+(?:\.\d+)?$/.test(text)) return null;
+      const n = parseFloat(text.replace('+', ''));
+      return Number.isFinite(n) ? Math.round(n * 10000) / 10000 : null;
+    }
+    function userbetNormalizeTotal(raw){
+      const text = String(raw == null ? '' : raw).trim();
+      if (!text) return null;
+      if (!/^\d+(?:\.\d+)?$/.test(text)) return null;
+      const n = parseFloat(text);
+      return Number.isFinite(n) ? Math.round(n * 10000) / 10000 : null;
+    }
+    function userbetFilterBookmaker(rows){
+      const hasPreferred = rows.some(r => Number(r.b) === USERBET_PREFERRED_B);
+      return hasPreferred ? rows.filter(r => Number(r.b) === USERBET_PREFERRED_B) : rows;
+    }
+    function userbetGroupMarkets(rows){
+      if (!rows || !rows.length) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
+      const filtered = userbetFilterBookmaker(rows);
+      const byM = {};
+      filtered.forEach(r => {
+        const m = Number(r.m);
+        if (!Number.isFinite(m)) return;
+        (byM[m] = byM[m] || []).push(r);
+      });
+      const unique = Object.keys(byM).map(Number).sort((a,b) => a - b);
+      if (unique.length !== 3) throw new Error('Не удалось определить группы рынков из ответа внешнего сайта');
+      return { x12: byM[unique[0]], total: byM[unique[1]], ah: byM[unique[2]] };
+    }
+    function userbetParse1x2(rows){
+      const out = {};
+      const map = { '1':'home_odds', x:'draw_odds', '2':'away_odds' };
+      rows.forEach(r => {
+        const l = String(r.l || '').trim().toLowerCase();
+        const field = map[l];
+        if (!field || r.v == null) return;
+        out[field] = userbetRoundOdds(r.v);
+      });
+      if (!('home_odds' in out) || !('draw_odds' in out) || !('away_odds' in out)) throw new Error('Не удалось определить коэффициенты 1X2');
+      return out;
+    }
+    function userbetParseTotal(rows){
+      const pairs = {};
+      rows.forEach(r => {
+        const line = userbetNormalizeTotal(r.t);
+        const l = String(r.l || '').trim().toLowerCase();
+        if (line == null || (l !== 'o' && l !== 'u') || r.v == null) return;
+        const key = String(line);
+        pairs[key] = pairs[key] || {};
+        pairs[key][l] = userbetRoundOdds(r.v);
+      });
+      let bestKey = null, bestDiff = Infinity;
+      Object.keys(pairs).forEach(key => {
+        const sides = pairs[key];
+        if (sides.o == null || sides.u == null) return;
+        const diff = Math.abs(sides.o - sides.u);
+        if (diff < bestDiff){ bestDiff = diff; bestKey = key; }
+      });
+      if (!bestKey) throw new Error('Не удалось определить основной тотал');
+      return {
+        closing_total_line: parseFloat(bestKey),
+        over_odds: pairs[bestKey].o,
+        under_odds: pairs[bestKey].u,
+      };
+    }
+    function userbetParseAh(rows){
+      const pairs = {};
+      rows.forEach(r => {
+        const line = userbetNormalizeHandicap(r.h);
+        const l = String(r.l || '').trim().toLowerCase();
+        if (line == null || (l !== '1' && l !== '2') || r.v == null) return;
+        const key = String(line);
+        pairs[key] = pairs[key] || {};
+        pairs[key][l] = userbetRoundOdds(r.v);
+      });
+      let bestKey = null, bestDiff = Infinity;
+      Object.keys(pairs).forEach(key => {
+        const sides = pairs[key];
+        if (sides['1'] == null || sides['2'] == null) return;
+        const diff = Math.abs(sides['1'] - sides['2']);
+        if (diff < bestDiff){ bestDiff = diff; bestKey = key; }
+      });
+      if (!bestKey) throw new Error('Не удалось определить основную фору');
+      return {
+        closing_ah_home: parseFloat(bestKey),
+        ah_home_odds: pairs[bestKey]['1'],
+        ah_away_odds: pairs[bestKey]['2'],
+      };
+    }
+    function userbetParseOddsResponse(rows){
+      if (!Array.isArray(rows)) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
+      const g = userbetGroupMarkets(rows);
+      return Object.assign({}, userbetParse1x2(g.x12), userbetParseTotal(g.total), userbetParseAh(g.ah));
+    }
+    const USERBET_FIELD_TO_UI = {
+      ah_home_odds:'ah1', closing_ah_home:'ah', ah_away_odds:'ah2',
+      over_odds:'over', closing_total_line:'tot', under_odds:'under',
+      home_odds:'o1', draw_odds:'ox', away_odds:'o2',
+    };
+    function userbetOddsToUiEdits(odds){
+      const edits = {};
+      Object.keys(odds).forEach(field => {
+        const col = USERBET_FIELD_TO_UI[field];
+        if (!col) return;
+        edits[col] = String(odds[field]).replace('.', ',');
+      });
+      return edits;
+    }
+    async function userbetFetchOdds(externalId){
+      const extId = String(externalId || '').trim();
+      if (!extId) throw new Error('Введите id матча с сайта неизвестного мужика');
+      let resp;
+      try {
+        resp = await fetch(USERBET_ODDS_URL, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json', Accept:'application/json' },
+          body: JSON.stringify({ id_fixture: extId }),
+        });
+      } catch (_e){
+        throw new Error('Не удалось получить данные с внешнего сайта');
+      }
+      if (!resp.ok) throw new Error('Не удалось получить данные с внешнего сайта');
+      let rows;
+      try { rows = await resp.json(); } catch (_e){
+        throw new Error('Не удалось получить данные с внешнего сайта');
+      }
+      return userbetParseOddsResponse(rows);
+    }
     window.__SB.matchRows = window.__SB.matchRows || {};
 
     function sbFieldFromMatch(m, field){
@@ -2995,7 +3133,11 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     function sbHistRowState(m){
       const mid = Number(m.match_id);
       if (!window.__SB.matchRows[mid]){
-        window.__SB.matchRows[mid] = { original: Object.assign({}, m), edited: {}, isSaving: false, saveError: '', savedMsg: '', weightsOpen: false };
+        window.__SB.matchRows[mid] = {
+          original: Object.assign({}, m), edited: {}, isSaving: false,
+          saveError: '', savedMsg: '', weightsOpen: false, fetchOpen: false,
+          externalMatchId: '', fetchError: '', fetchLoading: false,
+        };
       }
       return window.__SB.matchRows[mid];
     }
@@ -3038,6 +3180,17 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       if (ok) ok.textContent = st.savedMsg || '';
     }
 
+    function sbHistFetchPanel(m, st){
+      const extId = st.externalMatchId != null ? st.externalMatchId : '';
+      const loading = !!st.fetchLoading;
+      return `<div class="hist-fetch-panel">` +
+        `<div><label>id матча с сайта неизвестного мужика</label>` +
+        `<input type="text" data-hist-external-id="${m.match_id}" value="${escapeHtml(extId)}" ${loading ? 'disabled' : ''} /></div>` +
+        `<button type="button" class="btn primary" data-hist-fetch-run="${m.match_id}" ${loading ? 'disabled' : ''}>${loading ? 'Получение...' : 'Получить данные'}</button>` +
+        (st.fetchError ? `<span class="hist-row-err">${escapeHtml(st.fetchError)}</span>` : '') +
+      `</div>`;
+    }
+
     function sbHistWeightsPanel(m, st){
       return `<div class="hist-weights-panel">` +
         SB_HIST_WEIGHT_COLS.map(({ col, label }) =>
@@ -3062,6 +3215,7 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         const st = sbHistRowState(m);
         const dirty = sbHistIsDirty(st);
         const weightsOpen = !!st.weightsOpen;
+        const fetchOpen = !!st.fetchOpen;
         const mainRow = `<tr data-hist-mid="${m.match_id}" class="${dirty ? 'hist-dirty' : ''}">` +
           `<td class="hist-col-date">${escapeHtml(m.match_date || '')}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.home_team || '')}</td>` +
@@ -3077,6 +3231,7 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
           `<td class="num hist-col-num">${sbHistInput('o2', m, st)}</td>` +
           `<td class="hist-col-neutral">${sbHistInput('neutral', m, st)}</td>` +
           `<td class="hist-col-action">` +
+            `<button type="button" class="btn hist-fetch-toggle" data-hist-fetch-toggle="${m.match_id}" aria-expanded="${fetchOpen ? 'true' : 'false'}">${fetchOpen ? '▲ Данные' : '▼ Данные'}</button>` +
             `<button type="button" class="btn hist-weights-toggle" data-hist-weights-toggle="${m.match_id}" aria-expanded="${weightsOpen ? 'true' : 'false'}">${weightsOpen ? '▲ Веса' : '▼ Веса'}</button>` +
             `<button type="button" class="btn hist-save" data-hist-save="${m.match_id}" style="display:${dirty || st.isSaving ? '' : 'none'}">${st.isSaving ? 'Сохранение...' : 'Сохранить'}</button>` +
             `<span class="hist-row-err" data-hist-err>${escapeHtml(st.saveError || '')}</span>` +
@@ -3086,8 +3241,44 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         const weightsRow = `<tr class="hist-weights-row" data-hist-weights-for="${m.match_id}" style="display:${weightsOpen ? '' : 'none'}">` +
           `<td colspan="14">${sbHistWeightsPanel(m, st)}</td>` +
         `</tr>`;
-        return mainRow + weightsRow;
+        const fetchRow = `<tr class="hist-fetch-row" data-hist-fetch-for="${m.match_id}" style="display:${fetchOpen ? '' : 'none'}">` +
+          `<td colspan="14">${sbHistFetchPanel(m, st)}</td>` +
+        `</tr>`;
+        return mainRow + fetchRow + weightsRow;
       }).join('');
+    }
+
+    async function sbHistFetchOdds(mid){
+      const st = window.__SB.matchRows[mid];
+      if (!st || st.fetchLoading) return;
+      const extId = String(st.externalMatchId || '').trim();
+      if (!extId){
+        st.fetchError = 'Введите id матча с сайта неизвестного мужика';
+        renderHistMatchesTable(
+          window.__SB.matchesBySeason[window.__SB.histSelected ? sbSeasonKey(window.__SB.histSelected.selected_league_id, window.__SB.histSelected.selected_season_id) : ''] || [st.original],
+          document.getElementById('clhMeta').textContent
+        );
+        return;
+      }
+      st.fetchLoading = true;
+      st.fetchError = '';
+      renderHistMatchesTable(
+        window.__SB.matchesBySeason[window.__SB.histSelected ? sbSeasonKey(window.__SB.histSelected.selected_league_id, window.__SB.histSelected.selected_season_id) : ''] || [st.original],
+        document.getElementById('clhMeta').textContent
+      );
+      try {
+        const odds = await userbetFetchOdds(extId);
+        Object.assign(st.edited, userbetOddsToUiEdits(odds));
+        st.saveError = '';
+        st.savedMsg = '';
+      } catch (e){
+        st.fetchError = e.message || 'Не удалось получить данные с внешнего сайта';
+      } finally {
+        st.fetchLoading = false;
+        const key = window.__SB.histSelected ? sbSeasonKey(window.__SB.histSelected.selected_league_id, window.__SB.histSelected.selected_season_id) : null;
+        renderHistMatchesTable(window.__SB.matchesBySeason[key] || [st.original], document.getElementById('clhMeta').textContent);
+        sbHistUpdateRowUI(mid);
+      }
     }
 
     async function sbHistSaveRow(mid){
@@ -3124,7 +3315,7 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         renderHistMatchesTable(window.__SB.matchesBySeason[key] || [updated], document.getElementById('clhMeta').textContent);
       } catch (e){
         console.error('PATCH match failed', e);
-        st.saveError = 'Не удалось сохранить изменения';
+        st.saveError = 'Не удалось сохранить коэффициенты в БД';
       } finally {
         st.isSaving = false;
         sbHistUpdateRowUI(mid);
@@ -3132,6 +3323,13 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     }
 
     document.getElementById('clhViewTable').addEventListener('input', e => {
+      const ext = e.target.closest('[data-hist-external-id]');
+      if (ext){
+        const mid = Number(ext.getAttribute('data-hist-external-id'));
+        const st = window.__SB.matchRows[mid];
+        if (st){ st.externalMatchId = ext.value; st.fetchError = ''; }
+        return;
+      }
       const el = e.target.closest('[data-hist-col]');
       if (!el) return;
       const mid = Number(el.getAttribute('data-hist-mid'));
@@ -3156,6 +3354,25 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       sbHistUpdateRowUI(mid);
     });
     document.getElementById('clhViewTable').addEventListener('click', e => {
+      const fetchRun = e.target.closest('[data-hist-fetch-run]');
+      if (fetchRun){
+        e.preventDefault();
+        sbHistFetchOdds(Number(fetchRun.getAttribute('data-hist-fetch-run')));
+        return;
+      }
+      const fetchBtn = e.target.closest('[data-hist-fetch-toggle]');
+      if (fetchBtn){
+        e.preventDefault();
+        const mid = Number(fetchBtn.getAttribute('data-hist-fetch-toggle'));
+        const st = window.__SB.matchRows[mid];
+        if (!st) return;
+        st.fetchOpen = !st.fetchOpen;
+        const detail = document.querySelector(`tr[data-hist-fetch-for="${mid}"]`);
+        if (detail) detail.style.display = st.fetchOpen ? '' : 'none';
+        fetchBtn.textContent = st.fetchOpen ? '▲ Данные' : '▼ Данные';
+        fetchBtn.setAttribute('aria-expanded', st.fetchOpen ? 'true' : 'false');
+        return;
+      }
       const weightsBtn = e.target.closest('[data-hist-weights-toggle]');
       if (weightsBtn){
         e.preventDefault();
