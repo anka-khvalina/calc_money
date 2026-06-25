@@ -168,8 +168,7 @@
               if (window.goalFillSrcSeasons) window.goalFillSrcSeasons();
             }
             if (id === 'teams') {
-              if (window.refreshTeamsTable) window.refreshTeamsTable();
-              else if (window.__renderTeamsBootstrap) window.__renderTeamsBootstrap();
+              if (window.sbInitTeamsTab) window.sbInitTeamsTab();
             }
           }
           var tabsEl = document.querySelector('.tabs');
@@ -324,12 +323,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:10px;">
         <div class="field" style="min-width:180px">
           <label>Лига</label>
-          <select id="teamsLeague">
-            <option value="epl">English Premier League</option>
-            <option value="la_liga">La Liga</option>
-            <option value="bundesliga">Bundesliga</option>
-            <option value="serie_a">Serie A</option>
-            <option value="ligue_1">Ligue 1</option>
+          <select id="teamsLeague" disabled>
+            <option value="">Загрузка лиг…</option>
           </select>
         </div>
       </div>
@@ -358,28 +353,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <th>Команда</th>
             </tr>
           </thead>
-          <tbody>
-            <tr><td></td><td class="right">1</td><td>Arsenal</td></tr>
-            <tr><td></td><td class="right">2</td><td>Aston Villa</td></tr>
-            <tr><td></td><td class="right">3</td><td>Bournemouth</td></tr>
-            <tr><td></td><td class="right">4</td><td>Brentford</td></tr>
-            <tr><td></td><td class="right">5</td><td>Brighton</td></tr>
-            <tr><td></td><td class="right">6</td><td>Burnley</td></tr>
-            <tr><td></td><td class="right">7</td><td>Chelsea</td></tr>
-            <tr><td></td><td class="right">8</td><td>Crystal Palace</td></tr>
-            <tr><td></td><td class="right">9</td><td>Everton</td></tr>
-            <tr><td></td><td class="right">10</td><td>Fulham</td></tr>
-            <tr><td></td><td class="right">11</td><td>Leeds</td></tr>
-            <tr><td></td><td class="right">12</td><td>Liverpool</td></tr>
-            <tr><td></td><td class="right">13</td><td>Man City</td></tr>
-            <tr><td></td><td class="right">14</td><td>Man United</td></tr>
-            <tr><td></td><td class="right">15</td><td>Newcastle</td></tr>
-            <tr><td></td><td class="right">16</td><td>Nott'm Forest</td></tr>
-            <tr><td></td><td class="right">17</td><td>Sunderland</td></tr>
-            <tr><td></td><td class="right">18</td><td>Tottenham</td></tr>
-            <tr><td></td><td class="right">19</td><td>West Ham</td></tr>
-            <tr><td></td><td class="right">20</td><td>Wolves</td></tr>
-          </tbody>
+          <tbody></tbody>
         </table>
       </div>
       <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:10px;align-items:flex-end;">
@@ -391,59 +365,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <button type="button" id="teamsAdd" class="btn">Добавить</button>
         </div>
       </div>
-      <div id="metaTeams" class="meta" style="margin-top:10px">English Premier League — 20 команд</div>
+      <div id="metaTeams" class="meta" style="margin-top:10px">Загрузка…</div>
     </section>
-    <script>
-    (function teamsBootstrap(){
-      var TITLES = {
-        epl:'English Premier League', la_liga:'La Liga', bundesliga:'Bundesliga',
-        serie_a:'Serie A', ligue_1:'Ligue 1'
-      };
-      var SEED = {
-        bundesliga:['Augsburg','Bayern Munich','Dortmund','Ein Frankfurt','FC Koln','Freiburg','Hamburg','Heidenheim','Hoffenheim','Leverkusen',"M'gladbach",'Mainz','RB Leipzig','St Pauli','Stuttgart','Union Berlin','Werder Bremen','Wolfsburg'],
-        epl:['Arsenal','Aston Villa','Bournemouth','Brentford','Brighton','Burnley','Chelsea','Crystal Palace','Everton','Fulham','Leeds','Liverpool','Man City','Man United','Newcastle',"Nott'm Forest",'Sunderland','Tottenham','West Ham','Wolves'],
-        la_liga:['Alaves','Ath Bilbao','Ath Madrid','Barcelona','Betis','Celta','Elche','Espanol','Getafe','Girona','Levante','Mallorca','Osasuna','Oviedo','Real Madrid','Sevilla','Sociedad','Valencia','Vallecano','Villarreal'],
-        ligue_1:['Angers','Auxerre','Brest','Le Havre','Lens','Lille','Lorient','Lyon','Marseille','Metz','Monaco','Nantes','Nice','Paris FC','Paris SG','Rennes','Strasbourg','Toulouse'],
-        serie_a:['Atalanta','Bologna','Cagliari','Como','Cremonese','Fiorentina','Genoa','Inter','Juventus','Lazio','Lecce','Milan','Napoli','Parma','Pisa','Roma','Sassuolo','Torino','Udinese','Verona']
-      };
-      window.__TEAMS_SEED = SEED;
-      window.__renderTeamsBootstrap = function(league){
-        if (window.refreshTeamsTable) {
-          window.refreshTeamsTable(league);
-          return;
-        }
-        var sel = document.getElementById('teamsLeague');
-        var lg = league || (sel && sel.value) || 'epl';
-        var list = SEED[lg] || [];
-        var tbody = document.querySelector('#teamsTable tbody');
-        if (!tbody) return;
-        var html = '';
-        for (var i = 0; i < list.length; i++) {
-          html += '<tr><td></td><td class="right">' + (i+1) + '</td><td>' + list[i].replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td></tr>';
-        }
-        tbody.innerHTML = html;
-        var meta = document.getElementById('metaTeams');
-        if (meta) meta.textContent = (TITLES[lg] || lg) + ' — ' + list.length + ' команд';
-        if (sel && sel.value !== lg) sel.value = lg;
-        if (window.fillLogoTeamSelect) window.fillLogoTeamSelect(lg);
-      };
-      function hookTeamsLeague(){
-        var sel = document.getElementById('teamsLeague');
-        if (!sel || sel.__teamsHooked) return;
-        sel.__teamsHooked = true;
-        sel.addEventListener('change', function(){
-          if (window.refreshTeamsTable) window.refreshTeamsTable(sel.value);
-          else window.__renderTeamsBootstrap(sel.value);
-        });
-      }
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function(){ hookTeamsLeague(); window.__renderTeamsBootstrap('epl'); });
-      } else {
-        hookTeamsLeague();
-        window.__renderTeamsBootstrap('epl');
-      }
-    })();
-    </script>
 
     <!-- TAB SHIN -->
     <section id="tab-shin" class="panel">
@@ -1205,7 +1128,271 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       URL.revokeObjectURL(a.href);
     });
 
-    // ---------------- Team registry (localStorage) ----------------
+    // ---------------- Supabase справочник (вкладка «Справочник») ----------------
+    const SB_URL = 'https://vhoeiyymxghjafyollyg.supabase.co/rest/v1';
+    const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZob2VpeXlteGdoamFmeW9sbHlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNjgwMzMsImV4cCI6MjA5Nzk0NDAzM30.SKnvWB922f84jZzFdpCHV4X5-Z-jC935xqozJENzlP4';
+    const SB_LEAGUE_KEY = 'FairOddsCalc_sb_league_v1';
+    window.__SB = { leagues: [], teamsByLeague: {}, leagueNameById: {}, leaguesLoaded: false };
+
+    async function sbFetch(path, { method='GET', body=null, prefer=null }={}){
+      const headers = {
+        apikey: SB_KEY,
+        Authorization: `Bearer ${SB_KEY}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      };
+      if (prefer) headers.Prefer = prefer;
+      const res = await fetch(`${SB_URL}${path}`, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok){
+        const text = await res.text();
+        const err = new Error(`Supabase HTTP ${res.status}`);
+        err.status = res.status;
+        err.body = text;
+        throw err;
+      }
+      if (res.status === 204) return null;
+      const raw = await res.text();
+      return raw ? JSON.parse(raw) : null;
+    }
+
+    function sbLeagueName(leagueId){
+      return window.__SB.leagueNameById[leagueId] || leagueId;
+    }
+
+    function sbTeams(leagueId){
+      return window.__SB.teamsByLeague[leagueId] || [];
+    }
+
+    function sbTeamName(leagueId, teamId){
+      const hit = sbTeams(leagueId).find(t => String(t.id) === String(teamId));
+      return hit ? hit.name_team : String(teamId);
+    }
+
+    async function sbLoadLeagues(){
+      const rows = await sbFetch('/leagues?select=id,name&order=name.asc');
+      window.__SB.leagues = Array.isArray(rows) ? rows : [];
+      window.__SB.leagueNameById = {};
+      const sel = document.getElementById('teamsLeague');
+      sel.innerHTML = '';
+      if (!window.__SB.leagues.length){
+        sel.disabled = true;
+        const o = document.createElement('option');
+        o.value = '';
+        o.textContent = 'Нет лиг';
+        sel.appendChild(o);
+        throw new Error('Не удалось загрузить список лиг');
+      }
+      window.__SB.leagues.forEach(lg => {
+        window.__SB.leagueNameById[lg.id] = lg.name;
+        const opt = document.createElement('option');
+        opt.value = lg.id;
+        opt.textContent = lg.name;
+        sel.appendChild(opt);
+      });
+      sel.disabled = false;
+      const saved = localStorage.getItem(SB_LEAGUE_KEY);
+      if (saved && window.__SB.leagues.some(l => l.id === saved)) sel.value = saved;
+      window.__SB.leaguesLoaded = true;
+    }
+
+    async function sbLoadTeams(leagueId){
+      const q = `select=id,leagues_id,name_team&leagues_id=eq.${encodeURIComponent(leagueId)}&order=id.asc`;
+      const rows = await sbFetch(`/team?${q}`);
+      window.__SB.teamsByLeague[leagueId] = Array.isArray(rows) ? rows : [];
+      return window.__SB.teamsByLeague[leagueId];
+    }
+
+    async function sbAddTeam(leagueId, nameTeam){
+      const name = String(nameTeam||'').trim();
+      if (!leagueId) throw new Error('Выберите лигу');
+      if (!name) throw new Error('Введите название команды');
+      const existing = sbTeams(leagueId);
+      if (existing.some(t => String(t.name_team).toLowerCase() === name.toLowerCase())){
+        throw new Error('Такая команда уже есть в этой лиге');
+      }
+      try {
+        const rows = await sbFetch('/team?select=id,leagues_id,name_team', {
+          method: 'POST',
+          body: { leagues_id: leagueId, name_team: name },
+          prefer: 'return=representation',
+        });
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        if (!row) throw new Error('Не удалось добавить команду');
+        return row;
+      } catch (e){
+        if (e.status === 409 || (e.body && /duplicate/i.test(e.body))){
+          throw new Error('Такая команда уже есть в этой лиге');
+        }
+        throw new Error('Не удалось добавить команду');
+      }
+    }
+
+    function fillLogoTeamSelect(leagueId, selectedTeamId=null){
+      const sel = document.getElementById('teamsLogoTeam');
+      if (!sel) return '';
+      sel.innerHTML = '';
+      const teams = sbTeams(leagueId);
+      if (!teams.length){
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = '— нет команд в лиге —';
+        sel.appendChild(empty);
+        return '';
+      }
+      teams.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = String(t.id);
+        opt.textContent = `${t.id} — ${t.name_team}`;
+        sel.appendChild(opt);
+      });
+      const sid = selectedTeamId != null ? String(selectedTeamId) : null;
+      if (sid && teams.some(t => String(t.id) === sid)) sel.value = sid;
+      else sel.selectedIndex = 0;
+      return sel.value || '';
+    }
+    window.fillLogoTeamSelect = fillLogoTeamSelect;
+
+    function selectedLogoTeamId(){
+      const sel = document.getElementById('teamsLogoTeam');
+      return sel ? String(sel.value || '').trim() : '';
+    }
+
+    function renderTeamsTable(leagueId){
+      const tbody = document.querySelector('#teamsTable tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      const teams = sbTeams(leagueId);
+      const activeId = selectedLogoTeamId();
+      const leagueName = sbLeagueName(leagueId);
+      teams.forEach((t, i) => {
+        const tid = String(t.id);
+        const tr = document.createElement('tr');
+        tr.dataset.teamId = tid;
+        if (tid === activeId) tr.style.background = '#eef2ff';
+        tr.innerHTML =
+          `<td class="logo-cell">${teamLogoImgHtml(tid)}</td>` +
+          `<td class="right">${i+1}</td>` +
+          `<td>${escapeHtml(t.name_team)} <span class="small" style="color:#888">(id:${escapeHtml(tid)})</span></td>`;
+        tr.addEventListener('click', () => {
+          fillLogoTeamSelect(leagueId, tid);
+          renderTeamsTable(leagueId);
+        });
+        tbody.appendChild(tr);
+      });
+      document.getElementById('metaTeams').textContent = teams.length
+        ? `${leagueName} — ${teams.length} команд`
+        : `${leagueName} — справочник пуст`;
+    }
+
+    async function refreshTeamsTable(leagueId){
+      const lg = leagueId || document.getElementById('teamsLeague').value;
+      if (!lg){
+        renderTeamsTable('');
+        return;
+      }
+      document.getElementById('metaTeams').textContent = 'Загрузка команд…';
+      try {
+        await sbLoadTeams(lg);
+        localStorage.setItem(SB_LEAGUE_KEY, lg);
+      } catch (e){
+        alert('Не удалось загрузить команды выбранной лиги');
+        document.getElementById('metaTeams').textContent = `${sbLeagueName(lg)} — ошибка загрузки`;
+        return;
+      }
+      fillLogoTeamSelect(lg);
+      renderTeamsTable(lg);
+    }
+    window.refreshTeamsTable = refreshTeamsTable;
+
+    async function sbInitTeamsTab(){
+      const meta = document.getElementById('metaTeams');
+      const sel = document.getElementById('teamsLeague');
+      try {
+        if (!window.__SB.leaguesLoaded){
+          if (meta) meta.textContent = 'Загрузка лиг…';
+          if (sel) sel.disabled = true;
+          await sbLoadLeagues();
+        }
+        await refreshTeamsTable(sel.value);
+      } catch (e){
+        alert(e.message || 'Не удалось загрузить список лиг');
+        if (sel) sel.disabled = true;
+        if (meta) meta.textContent = '';
+      }
+    }
+    window.sbInitTeamsTab = sbInitTeamsTab;
+
+    document.getElementById('teamsLeague').addEventListener('change', ()=>{
+      refreshTeamsTable();
+    });
+
+    bindClick('teamsAdd', async ()=>{
+      const btn = document.getElementById('teamsAdd');
+      const leagueId = document.getElementById('teamsLeague').value;
+      const name = document.getElementById('teamsNewName').value;
+      btn.disabled = true;
+      try {
+        const row = await sbAddTeam(leagueId, name);
+        document.getElementById('teamsNewName').value = '';
+        await refreshTeamsTable(leagueId);
+        fillLogoTeamSelect(leagueId, row.id);
+        alert(`Добавлено: ${row.name_team} (${row.id})`);
+      } catch(e){ alert(e.message || e); }
+      finally { btn.disabled = false; }
+    });
+
+    bindClick('teamsLogoUpload', () => {
+      const leagueId = document.getElementById('teamsLeague').value;
+      const teamId = selectedLogoTeamId();
+      const fileInput = document.getElementById('teamsLogoFile');
+      const file = fileInput.files && fileInput.files[0];
+      if (!teamId){
+        alert(`Выберите команду лиги ${sbLeagueName(leagueId) || '—'}.`);
+        return;
+      }
+      if (!file){
+        alert('Выберите файл логотипа (PNG или JPEG).');
+        return;
+      }
+      try {
+        validateLogoFile(file);
+      } catch (e) {
+        alert(e.message);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        setTeamLogoData(teamId, reader.result);
+        renderTeamsTable(leagueId);
+        fileInput.value = '';
+        alert(`Логотип сохранён для ${sbTeamName(leagueId, teamId)}.`);
+      };
+      reader.onerror = () => alert('Не удалось прочитать файл.');
+      reader.readAsDataURL(file);
+    });
+
+    bindClick('teamsLogoRemove', () => {
+      const leagueId = document.getElementById('teamsLeague').value;
+      const teamId = selectedLogoTeamId();
+      if (!teamId){
+        alert(`Выберите команду лиги ${sbLeagueName(leagueId) || '—'}.`);
+        return;
+      }
+      const teamName = sbTeamName(leagueId, teamId);
+      if (!hasTeamLogo(teamId)){
+        alert(`У команды ${teamName} нет загруженного логотипа.`);
+        return;
+      }
+      removeTeamLogoData(teamId);
+      renderTeamsTable(leagueId);
+      alert(`Логотип удалён для ${teamName}.`);
+    });
+
+    // ---------------- Team registry (localStorage) — прочие вкладки ----------------
     const TEAMS_KEY = 'FairOddsCalc_teams_v1';
     const LOGOS_KEY = 'FairOddsCalc_logos_v1';
     const NEW_TEAM_RATING = 0;
@@ -1426,138 +1613,6 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       if (selectedName && teams.some(t => t.name === selectedName)) sel.value = selectedName;
       else if (teams.length) sel.selectedIndex = Math.min(sel.id === 'shinTeam2' ? 1 : 0, teams.length - 1);
     }
-    function fillLogoTeamSelect(league, selectedTeamId=null){
-      const sel = document.getElementById('teamsLogoTeam');
-      if (!sel) return '';
-      sel.innerHTML = '';
-      const teams = listTeams(league);
-      if (!teams.length) {
-        const empty = document.createElement('option');
-        empty.value = '';
-        empty.textContent = '— нет команд в лиге —';
-        sel.appendChild(empty);
-        return '';
-      }
-      teams.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = t.id;
-        const seq = String(t.id).split(':').pop();
-        opt.textContent = `${seq} — ${t.name}`;
-        sel.appendChild(opt);
-      });
-      if (selectedTeamId && teams.some(t => t.id === selectedTeamId)) sel.value = selectedTeamId;
-      else sel.selectedIndex = 0;
-      return sel.value || '';
-    }
-    window.fillLogoTeamSelect = fillLogoTeamSelect;
-    function selectedLogoTeamId(){
-      const sel = document.getElementById('teamsLogoTeam');
-      return sel ? String(sel.value || '').trim() : '';
-    }
-    function renderTeamsTable(league){
-      const tbody = document.querySelector('#teamsTable tbody');
-      tbody.innerHTML = '';
-      const teams = listTeams(league);
-      const activeId = selectedLogoTeamId();
-      teams.forEach((t, i) => {
-        const tr = document.createElement('tr');
-        tr.dataset.teamId = t.id;
-        if (t.id === activeId) tr.style.background = '#eef2ff';
-        tr.innerHTML =
-          `<td class="logo-cell">${teamLogoImgHtml(t.id)}</td>` +
-          `<td class="right">${i+1}</td>` +
-          `<td>${escapeHtml(t.name)} <span class="small" style="color:#888">(${escapeHtml(t.id)})</span></td>`;
-        tr.addEventListener('click', () => {
-          fillLogoTeamSelect(league, t.id);
-          renderTeamsTable(league);
-        });
-        tbody.appendChild(tr);
-      });
-      document.getElementById('metaTeams').textContent = teams.length
-        ? `${LEAGUE_TITLES[league]} — ${teams.length} команд`
-        : `${LEAGUE_TITLES[league]} — справочник пуст`;
-    }
-
-    document.getElementById('teamsLeague').addEventListener('change', ()=>{
-      refreshTeamsTable();
-    });
-
-    function refreshTeamsTable(league){
-      const lg = league || document.getElementById('teamsLeague').value;
-      fillLogoTeamSelect(lg);
-      renderTeamsTable(lg);
-    }
-    window.refreshTeamsTable = refreshTeamsTable;
-
-    bindClick('teamsAdd', ()=>{
-      try {
-        const league = document.getElementById('teamsLeague').value;
-        const name = document.getElementById('teamsNewName').value;
-        const ent = addTeamEntry(league, name);
-        document.getElementById('teamsNewName').value = '';
-        fillLogoTeamSelect(league, ent.id);
-        renderTeamsTable(league);
-        refreshShinTeamSelects();
-        alert(`Добавлено: ${ent.name} (${ent.id})`);
-      } catch(e){ alert(e.message); }
-    });
-
-    bindClick('teamsLogoUpload', () => {
-      const league = document.getElementById('teamsLeague').value;
-      const teamId = selectedLogoTeamId();
-      const fileInput = document.getElementById('teamsLogoFile');
-      const file = fileInput.files && fileInput.files[0];
-      if (!teamId){
-        alert(`Выберите команду лиги ${LEAGUE_TITLES[league] || league}.`);
-        return;
-      }
-      if (!getTeamById(teamId)){
-        alert(`Команда с id «${teamId}» не найдена в справочнике.`);
-        return;
-      }
-      if (!file){
-        alert('Выберите файл логотипа (PNG или JPEG).');
-        return;
-      }
-      try {
-        validateLogoFile(file);
-      } catch (e) {
-        alert(e.message);
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        setTeamLogoData(teamId, reader.result);
-        renderTeamsTable(league);
-        fileInput.value = '';
-        const ent = getTeamById(teamId);
-        alert(`Логотип сохранён для ${ent ? ent.name : teamId}.`);
-      };
-      reader.onerror = () => alert('Не удалось прочитать файл.');
-      reader.readAsDataURL(file);
-    });
-
-    bindClick('teamsLogoRemove', () => {
-      const league = document.getElementById('teamsLeague').value;
-      const teamId = selectedLogoTeamId();
-      if (!teamId){
-        alert(`Выберите команду лиги ${LEAGUE_TITLES[league] || league}.`);
-        return;
-      }
-      const ent = getTeamById(teamId);
-      if (!ent){
-        alert(`Команда с id «${teamId}» не найдена в справочнике.`);
-        return;
-      }
-      if (!hasTeamLogo(teamId)){
-        alert(`У команды ${ent.name} нет загруженного логотипа.`);
-        return;
-      }
-      removeTeamLogoData(teamId);
-      renderTeamsTable(league);
-      alert(`Логотип удалён для ${ent.name}.`);
-    });
-
     function refreshShinTeamSelects(){
       const league = document.getElementById('shinLeague').value;
       fillTeamSelect(document.getElementById('shinTeam1'), league, document.getElementById('shinTeam1').value);
@@ -2926,7 +2981,7 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     gmRenderPredHist();
 
     seedDefaultTeams(false);
-    try { refreshTeamsTable('epl'); } catch (e) { console.error(e); }
+    try { /* Справочник: Supabase загружается при открытии вкладки */ } catch (e) { console.error(e); }
     try { refreshShinTeamSelects(); } catch (e) { console.error(e); }
     try { gmFillTeams(); } catch (e) { console.error(e); }
     try { refreshClhTable(); } catch (e) { console.error(e); }

@@ -493,6 +493,7 @@ def build_app():
     # ======================================================================
     import history_store as hs
     import team_registry as tg
+    import supabase_teams as sb
 
     tab_rank = ttk.Frame(notebook, padding=10)
     notebook.add(tab_rank, text="Рейтинг команд")
@@ -718,16 +719,18 @@ def build_app():
     teams_top = ttk.Frame(tab_teams)
     teams_top.pack(fill="x", anchor="n")
 
-    teams_league_labels = [title for title, _key in hs.format_league_options()]
-    teams_league_keys = {title: key for title, key in hs.format_league_options()}
-    teams_league_var = tk.StringVar(value=teams_league_labels[0])
+    teams_league_var = tk.StringVar(value="")
+    teams_league_ids: dict[str, str] = {}
+    teams_team_names: dict[str, str] = {}
+    teams_cache: list[sb.Team] = []
+    teams_leagues_loaded = False
 
     ttk.Label(teams_top, text="Лига:").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
     teams_league_combo = ttk.Combobox(
         teams_top,
         textvariable=teams_league_var,
-        values=teams_league_labels,
-        state="readonly",
+        values=[],
+        state="disabled",
         width=28,
     )
     teams_league_combo.grid(row=0, column=1, sticky="w", pady=4)
@@ -756,6 +759,8 @@ def build_app():
     teams_status_var = tk.StringVar(value="")
     ttk.Label(teams_add_bar, text="Новая команда:").grid(row=0, column=0, sticky="w", padx=(0, 8))
     ttk.Entry(teams_add_bar, textvariable=teams_name_var, width=32).grid(row=0, column=1, sticky="w")
+    teams_add_btn = ttk.Button(teams_add_bar, text="Добавить")
+    teams_add_btn.grid(row=0, column=2, sticky="w", padx=(12, 0))
 
     teams_tree = ttk.Treeview(
         tab_teams,
@@ -790,17 +795,14 @@ def build_app():
             return None
 
     def refresh_logo_team_options(select_team_id: str | None = None):
-        league_key = _teams_league_key()
-        entries = tg.list_teams(league_key)
         teams_logo_team_labels.clear()
         teams_logo_team_ids.clear()
         labels: list[str] = []
-        for ent in entries:
-            seq = ent.id.split(":", 1)[-1]
-            label = f"{seq} — {ent.name}"
+        for ent in teams_cache:
+            label = f"{ent.id} — {ent.name_team}"
             labels.append(label)
-            teams_logo_team_labels[label] = ent.id
-            teams_logo_team_ids[ent.id] = label
+            teams_logo_team_labels[label] = ent.id_str
+            teams_logo_team_ids[ent.id_str] = label
         teams_logo_team_combo["values"] = labels
         if select_team_id and select_team_id in teams_logo_team_ids:
             teams_logo_team_var.set(teams_logo_team_ids[select_team_id])
@@ -827,50 +829,44 @@ def build_app():
             teams_logo_path_var.set(path)
 
     def upload_team_logo_by_id():
-        league_key = _teams_league_key()
+        league_name = teams_league_var.get().strip()
         team_id = _selected_logo_team_id()
         if not team_id:
             messagebox.showwarning(
                 "Справочник",
-                f"Выберите команду лиги {hs.league_title(league_key)}.",
+                f"Выберите команду лиги {league_name or '—'}.",
             )
             return
-        ent = tg.get_team(team_id)
-        if ent is None:
-            messagebox.showerror("Справочник", f"Команда с id {team_id!r} не найдена в справочнике.")
-            return
+        team_name = teams_team_names.get(team_id, team_id)
         path = teams_logo_path_var.get().strip()
         if not path:
             messagebox.showwarning("Справочник", "Выберите файл логотипа (PNG или JPEG).")
             return
         try:
-            tg.set_team_logo(team_id, path)
+            tg.set_team_logo(team_id, path, require_registry=False)
         except ValueError as exc:
             messagebox.showerror("Справочник", str(exc))
             return
         teams_logo_path_var.set("")
         show_teams_for_league()
-        messagebox.showinfo("Справочник", f"Логотип сохранён для {ent.name} ({team_id}).")
+        messagebox.showinfo("Справочник", f"Логотип сохранён для {team_name} ({team_id}).")
 
     def remove_team_logo_by_id():
-        league_key = _teams_league_key()
+        league_name = teams_league_var.get().strip()
         team_id = _selected_logo_team_id()
         if not team_id:
             messagebox.showwarning(
                 "Справочник",
-                f"Выберите команду лиги {hs.league_title(league_key)}.",
+                f"Выберите команду лиги {league_name or '—'}.",
             )
             return
-        ent = tg.get_team(team_id)
-        if ent is None:
-            messagebox.showerror("Справочник", f"Команда с id {team_id!r} не найдена в справочнике.")
-            return
+        team_name = teams_team_names.get(team_id, team_id)
         if not tg.has_logo(team_id):
-            messagebox.showinfo("Справочник", f"У команды {ent.name} нет логотипа.")
+            messagebox.showinfo("Справочник", f"У команды {team_name} нет логотипа.")
             return
         tg.remove_team_logo(team_id)
         show_teams_for_league()
-        messagebox.showinfo("Справочник", f"Логотип удалён для {ent.name}.")
+        messagebox.showinfo("Справочник", f"Логотип удалён для {team_name}.")
 
     ttk.Label(teams_logo_bar, text="Файл:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=4)
     ttk.Entry(teams_logo_bar, textvariable=teams_logo_path_var, width=48, state="readonly").grid(
@@ -894,12 +890,9 @@ def build_app():
 
     teams_tree.bind("<<TreeviewSelect>>", on_teams_tree_select)
 
-    def _teams_league_key():
-        title = teams_league_var.get().strip()
-        key = teams_league_keys.get(title)
-        if not key:
-            key = hs.normalize_league(title)
-        return key
+    def _teams_league_id() -> str:
+        name = teams_league_var.get().strip()
+        return teams_league_ids.get(name, "")
 
     def clear_teams_tree():
         for item in teams_tree.get_children():
@@ -908,51 +901,101 @@ def build_app():
     def show_teams_for_league():
         clear_teams_tree()
         _teams_logo_photos.clear()
-        league_key = _teams_league_key()
-        entries = tg.list_teams(league_key)
+        league_id = _teams_league_id()
+        league_name = teams_league_var.get().strip()
+        if not league_id:
+            teams_status_var.set("")
+            refresh_logo_team_options()
+            return
+        teams_status_var.set("Загрузка команд…")
+        try:
+            entries = sb.fetch_teams(league_id)
+        except sb.SupabaseError:
+            messagebox.showerror("Справочник", "Не удалось загрузить команды выбранной лиги")
+            teams_status_var.set(f"{league_name} — ошибка загрузки")
+            return
+        teams_cache.clear()
+        teams_cache.extend(entries)
+        teams_team_names.clear()
         for i, ent in enumerate(entries, start=1):
-            img = _load_team_logo_photo(ent.id, _teams_logo_photos)
-            kw: dict = {"values": (i, ent.name)}
+            teams_team_names[ent.id_str] = ent.name_team
+            display = f"{ent.name_team} (id:{ent.id})"
+            img = _load_team_logo_photo(ent.id_str, _teams_logo_photos)
+            kw: dict = {"values": (i, display)}
             if img:
                 kw["image"] = img
-            teams_tree.insert("", "end", iid=ent.id, **kw)
+            teams_tree.insert("", "end", iid=ent.id_str, **kw)
         teams_status_var.set(
-            f"{hs.league_title(league_key)} — {len(entries)} команд"
+            f"{league_name} — {len(entries)} команд"
             if entries
-            else f"{hs.league_title(league_key)} — справочник пуст"
+            else f"{league_name} — справочник пуст"
         )
         refresh_logo_team_options()
 
-    def search_teams():
+    def load_teams_leagues():
+        nonlocal teams_leagues_loaded
+        teams_status_var.set("Загрузка лиг…")
+        teams_league_combo.config(state="disabled")
+        try:
+            leagues = sb.fetch_leagues()
+        except sb.SupabaseError:
+            messagebox.showerror("Справочник", "Не удалось загрузить список лиг")
+            teams_status_var.set("")
+            return
+        teams_league_ids.clear()
+        names: list[str] = []
+        for lg in leagues:
+            names.append(lg.name)
+            teams_league_ids[lg.name] = lg.id
+        teams_league_combo["values"] = names
+        if not names:
+            teams_status_var.set("Список лиг пуст")
+            return
+        teams_league_combo.config(state="readonly")
+        if teams_league_var.get() not in names:
+            teams_league_var.set(names[0])
+        teams_leagues_loaded = True
         show_teams_for_league()
 
     def add_team_entry():
-        league_key = _teams_league_key()
+        league_id = _teams_league_id()
+        if not league_id:
+            messagebox.showwarning("Справочник", "Выберите лигу")
+            return
         name = teams_name_var.get().strip()
         if not name:
-            messagebox.showwarning("Справочник", "Введите название команды.")
+            messagebox.showwarning("Справочник", "Введите название команды")
             return
+        teams_add_btn.config(state="disabled")
         try:
-            ent = tg.add_team(league_key, name)
+            ent = sb.create_team(league_id, name)
         except ValueError as exc:
             messagebox.showerror("Справочник", str(exc))
             return
+        finally:
+            teams_add_btn.config(state="normal")
         teams_name_var.set("")
-        search_teams()
-        messagebox.showinfo("Справочник", f"Добавлено: {ent.name}")
+        show_teams_for_league()
+        refresh_logo_team_options(select_team_id=ent.id_str)
+        messagebox.showinfo("Справочник", f"Добавлено: {ent.name_team}")
 
     teams_league_combo.bind(
         "<<ComboboxSelected>>",
-        lambda _e: (show_teams_for_league(), refresh_logo_team_options()),
+        lambda _e: show_teams_for_league(),
     )
-    ttk.Button(teams_add_bar, text="Добавить", command=add_team_entry).grid(
-        row=0, column=2, sticky="w", padx=(12, 0)
-    )
+    teams_add_btn.config(command=add_team_entry)
     ttk.Label(tab_teams, textvariable=teams_status_var, foreground="#555", justify="left").pack(
         anchor="w", pady=(10, 0)
     )
 
-    teams_show_on_start = show_teams_for_league
+    def on_teams_tab_selected(_event=None):
+        if notebook.tab(notebook.select(), "text") == "Справочник команд":
+            if not teams_leagues_loaded:
+                load_teams_leagues()
+
+    notebook.bind("<<NotebookTabChanged>>", on_teams_tab_selected)
+
+    teams_show_on_start = load_teams_leagues
 
     # ======================================================================
     # TAB 4: Счет кэф (метод Shin)
@@ -1036,7 +1079,6 @@ def build_app():
     shin_league_combo.bind("<<ComboboxSelected>>", refresh_shin_team_options)
     shin_labeled_entry(shin_form, 3, "Сезон:", shin_season_var, 12)
     refresh_shin_team_options()
-    teams_show_on_start()
 
     shin_out = ttk.LabelFrame(tab_shin, text="Результат (метод Shin)", padding=10)
 
