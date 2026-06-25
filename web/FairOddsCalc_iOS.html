@@ -162,7 +162,7 @@
             for (var j = 0; j < panels.length; j++) {
               panels[j].classList.toggle('active', panels[j].id === panelId);
             }
-            if (id === 'hist' && window.refreshClhTable) window.refreshClhTable();
+            if (id === 'hist' && window.sbInitHistTab) window.sbInitHistTab();
             if (id === 'goal') {
               if (window.refreshGoalTeams) window.refreshGoalTeams();
               if (window.goalFillSrcSeasons) window.goalFillSrcSeasons();
@@ -443,13 +443,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </div>
         <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;background:#f2f6ff;border:1px solid #dbe3f7;border-radius:10px;padding:8px;">
           <div class="field" style="min-width:150px"><label class="small">Из истории — лига</label>
-            <select id="goalSrcLeague">
-              <option value="epl">English Premier League</option>
-              <option value="la_liga">La Liga</option>
-              <option value="bundesliga">Bundesliga</option>
-              <option value="serie_a">Serie A</option>
-              <option value="ligue_1">Ligue 1</option>
-            </select>
+            <select id="goalSrcLeague"></select>
           </div>
           <div class="field" style="min-width:150px"><label class="small">сезон</label><select id="goalSrcSeason"></select></div>
           <button type="button" id="goalLoadHist" class="btn">Загрузить из истории</button>
@@ -631,48 +625,19 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="metaHist" class="meta">Загрузите сезон или нажмите «Просмотр истории».</div>
     </section>
 
-    <!-- TAB HISTORY (closing-линии) -->
+    <!-- TAB HISTORY (Supabase) -->
     <section id="tab-hist" class="panel">
       <div class="small">
-        Хранилище <b>closing-линий</b> по лигам и сезонам. Формат CSV — те же столбцы, что на вкладке «Линия».
-        Сохранённые сезоны можно загрузить в «Линию» для обучения.
+        Просмотр сохранённых сезонов и матчей из Supabase. Импорт CSV на этой вкладке не используется.
       </div>
-      <div class="row" style="margin-top:8px;">
-        <div class="field" style="flex:1;min-width:160px">
-          <label>Лига</label>
-          <select id="clhLeague">
-            <option value="epl">English Premier League</option>
-            <option value="la_liga">La Liga</option>
-            <option value="bundesliga">Bundesliga</option>
-            <option value="serie_a">Serie A</option>
-            <option value="ligue_1">Ligue 1</option>
-          </select>
-        </div>
-        <div class="field" style="max-width:120px">
-          <label>Сезон</label>
-          <input id="clhSeason" value="2025-26" />
-        </div>
-      </div>
-      <div class="field" style="margin-top:8px;">
-        <label>CSV closing-линий (вставка / файл)</label>
-        <textarea id="clhCsv" style="min-height:130px" placeholder="date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight"></textarea>
-        <div class="row">
-          <input id="clhFile" type="file" accept=".csv,text/csv" />
-        </div>
-      </div>
-      <div class="row">
-        <button type="button" id="clhSaveBtn" class="btn primary">Сохранить в хранилище</button>
-        <button type="button" id="clhViewBtn" class="btn">Просмотр сезона</button>
-        <button type="button" id="clhSampleBtn" class="btn">Пример</button>
-      </div>
-      <div class="small" style="margin-top:8px;">Сохранённые сезоны (тап по строке — загрузить в поле выше):</div>
+      <div class="small" style="margin-top:10px;font-weight:600;">Сохранённые сезоны</div>
       <div class="table-wrap">
         <table id="clhTable">
-          <thead><tr><th>Лига</th><th>Сезон</th><th class="right">Матчей</th><th>Импорт</th><th></th></tr></thead>
+          <thead><tr><th>Лига</th><th>Сезон</th><th class="right">Матчей</th><th>Импорт</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
-      <div class="small" style="margin-top:10px;">Матчи выбранного сезона (closing-линии):</div>
+      <div class="small" style="margin-top:10px;font-weight:600;">Матчи выбранного сезона</div>
       <div class="table-wrap">
         <table id="clhViewTable">
           <thead><tr>
@@ -686,7 +651,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <tbody></tbody>
         </table>
       </div>
-      <div id="clhMeta" class="meta">Сохраните сезон или выберите его в таблице.</div>
+      <div id="clhMeta" class="meta"></div>
     </section>
 
     <!-- TAB HELP -->
@@ -704,15 +669,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <ul>
         <li><b>Линия</b> — обучение модели и расчёт линии матча (главная вкладка).</li>
         <li><b>Справочник</b> — команды по лигам (и логотипы). Списки команд в «Линии» берутся отсюда.</li>
-        <li><b>История</b> — хранилище CSV closing-линий по лигам и сезонам. Отсюда данные грузятся в «Линию».</li>
+        <li><b>История</b> — просмотр сохранённых сезонов и матчей из Supabase. Отсюда данные можно загрузить в «Линию».</li>
         <li><b>Справка</b> — этот раздел.</li>
       </ul>
 
       <h2>Порядок работы</h2>
       <div class="help-card">
         <ol>
-          <li><span class="badge">1</span> <b>История</b>: выберите лигу и сезон, вставьте CSV closing-линий (или файл) → <b>«Сохранить в хранилище»</b>. Можно нажать <b>«Пример»</b> для образца. Повторите для нужных сезонов/лиг.</li>
-          <li><span class="badge">2</span> <b>Линия</b> → блок «Из истории»: выберите лигу и сезон (или «все сезоны») → <b>«Загрузить из истории»</b>. CSV подставится в поле. (Можно и просто вставить CSV вручную.)</li>
+          <li><span class="badge">1</span> <b>История</b>: откройте вкладку — список сезонов подгрузится из базы. Выберите сезон, чтобы посмотреть матчи.</li>
+          <li><span class="badge">2</span> <b>Линия</b> → блок «Из истории»: выберите лигу и сезон (или «все сезоны») → <b>«Загрузить из истории»</b>. CSV подставится в поле.</li>
           <li><span class="badge">3</span> При желании поправьте параметры модели и веса сезонов → <b>«Обучить модель»</b>. Внизу появятся рейтинги команд и сводка.</li>
           <li><span class="badge">4</span> Выберите <b>лигу справочника</b>, <b>Хозяев</b> и <b>Гостей</b>, флаги (нейтраль/дерби/маржа) → <b>«Рассчитать линию»</b>.</li>
         </ol>
@@ -2837,88 +2802,231 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     gmRenderSeasons();
     document.getElementById('goalLeague').addEventListener('change', gmFillTeams);
 
-    // ---------------- Хранилище closing-линий (вкладка «История») ----------------
-    const CLH_KEY='FairOddsCalc_clhist_v1';
-    const GOAL_SAMPLE_CSV=[
-      'date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag',
-      '2025-09-15,serie_a,Inter,Roma,-0.75,3.0,1.84,2.12,2.01,1.94,1.63,4.55,4.82,false,false,normal',
-      '2025-09-15,serie_a,Inter,Lazio,-1.0,3.0,1.93,2.01,1.98,1.96,1.54,4.77,5.53,false,false,normal',
-      '2025-09-15,serie_a,Inter,Atalanta,-1.0,3.25,2.02,1.93,1.97,1.97,1.6,4.84,4.84,false,false,normal',
-      '2025-09-15,serie_a,Inter,Genoa,-1.75,3.25,1.95,1.99,1.9,2.04,1.25,6.71,10.78,false,false,normal',
-      '2025-09-15,serie_a,Inter,Empoli,-2.0,3.25,2.01,1.93,1.92,2.03,1.2,7.48,13.88,false,false,normal',
-      '2025-09-15,serie_a,Roma,Inter,0.25,2.75,2.08,1.87,1.87,2.08,3.23,4.04,2.07,false,false,normal',
-      '2025-09-15,serie_a,Roma,Lazio,-0.5,3.0,2.05,1.9,2.03,1.91,2.0,4.15,3.34,false,false,normal',
-      '2025-09-15,serie_a,Roma,Atalanta,-0.25,3.25,1.95,2.0,1.97,1.97,2.14,4.3,2.94,false,false,normal',
-      '2025-09-15,serie_a,Roma,Genoa,-1.25,3.25,2.11,1.85,2.09,1.86,1.5,5.01,5.79,false,false,normal',
-      '2025-09-15,serie_a,Roma,Empoli,-1.25,3.0,1.9,2.04,1.89,2.06,1.4,5.36,7.23,false,false,normal',
-      '2025-09-15,serie_a,Lazio,Inter,0.5,2.75,1.98,1.97,1.88,2.07,3.62,4.12,1.92,false,false,normal',
-      '2025-09-15,serie_a,Lazio,Roma,0.0,3.0,1.86,2.1,2.07,1.88,2.38,4.02,2.69,false,false,normal',
-      '2025-09-15,serie_a,Atalanta,Inter,0.25,3.25,1.9,2.04,2.04,1.91,2.9,4.2,2.27,false,false,normal',
-      '2025-09-15,serie_a,Genoa,Roma,0.75,3.0,1.96,1.98,1.93,2.01,4.3,3.85,1.83,false,false,normal',
-      '2025-09-15,serie_a,Empoli,Lazio,0.75,3.0,2.02,1.92,1.95,1.99,4.6,3.8,1.78,false,false,normal',
-    ].join('\n');
-    function clhStore(){ try{ const r=localStorage.getItem(CLH_KEY); const o=r?JSON.parse(r):null; return (o&&o.leagues)?o:{leagues:{}}; }catch(e){ return {leagues:{}}; } }
-    function clhPersist(s){ try{ localStorage.setItem(CLH_KEY, JSON.stringify(s)); }catch(e){} }
-    function clhCount(csv){ try{ return gmParseCsv(csv).length; }catch(e){ return 0; } }
-    function clhSet(lg,se,csv){ const s=clhStore(); s.leagues[lg]=s.leagues[lg]||{}; s.leagues[lg][se]={csv, n:clhCount(csv), at:new Date().toISOString()}; clhPersist(s); }
-    function clhGet(lg,se){ const s=clhStore(); return (s.leagues[lg]||{})[se]||null; }
-    function clhDel(lg,se){ const s=clhStore(); if(s.leagues[lg]){ delete s.leagues[lg][se]; if(!Object.keys(s.leagues[lg]).length) delete s.leagues[lg]; clhPersist(s);} }
-    function clhList(){ const s=clhStore(); const out=[]; Object.keys(s.leagues).forEach(lg=>Object.keys(s.leagues[lg]).forEach(se=>out.push(Object.assign({league:lg,season:se}, s.leagues[lg][se])))); out.sort((a,b)=>a.league.localeCompare(b.league)||a.season.localeCompare(b.season)); return out; }
-    function clhSeasons(lg){ const s=clhStore(); return Object.keys(s.leagues[lg]||{}).sort(); }
-    function clhAllCsv(lg){ const s=clhStore(); const seasons=Object.keys(s.leagues[lg]||{}).sort(); let header=''; const body=[]; seasons.forEach(se=>{ const lines=(s.leagues[lg][se].csv||'').trim().split(/\r?\n/); if(lines.length<2) return; if(!header) header=lines[0]; body.push(...lines.slice(1)); }); return header?header+'\n'+body.join('\n'):''; }
-    function refreshClhTable(){
-      const tb=document.querySelector('#clhTable tbody'); if(!tb) return;
-      const rows=clhList();
-      tb.innerHTML=rows.length?rows.map(r=>`<tr data-lg="${r.league}" data-se="${escapeHtml(r.season)}" style="cursor:pointer"><td>${escapeHtml(LEAGUE_TITLES[r.league]||r.league)}</td><td>${escapeHtml(r.season)}</td><td class="num">${r.n}</td><td>${escapeHtml((r.at||'').replace('T',' ').slice(0,19))}</td><td><a href="#" data-del-lg="${r.league}" data-del-se="${escapeHtml(r.season)}" style="color:#b42318;text-decoration:none">✕</a></td></tr>`).join(''):'<tr><td colspan="5" class="hint">Пусто — сохраните сезон.</td></tr>';
+    // ---------------- История (Supabase) ----------------
+    if (!window.__SB) window.__SB = { leagues: [], teamsByLeague: {}, leagueNameById: {}, leaguesLoaded: false };
+    window.__SB.seasons = window.__SB.seasons || [];
+    window.__SB.matchesBySeason = window.__SB.matchesBySeason || {};
+    window.__SB.histLoaded = window.__SB.histLoaded || false;
+    window.__SB.histSelected = window.__SB.histSelected || null;
+
+    function sbFmtImportedAt(iso){
+      return iso ? String(iso).replace('T', ' ').slice(0, 16) : '';
     }
-    function clhViewSeason(lg,se){
-      const tb=document.querySelector('#clhViewTable tbody'); const meta=document.getElementById('clhMeta');
-      const rec=clhGet(lg,se);
-      if(!rec){ tb.innerHTML=''; meta.textContent='Нет данных по сезону.'; return; }
-      let ms=[]; try{ ms=gmParseCsv(rec.csv); }catch(e){}
-      const f=v=>v==null?'':String(v).replace('.',',');
-      tb.innerHTML=ms.map(m=>`<tr><td>${escapeHtml(m.date||'')}</td><td>${escapeHtml(m.home)}</td><td>${escapeHtml(m.away)}</td><td class="num">${f(m.ah)}</td><td class="num">${f(m.tot)}</td><td class="num">${f(m.aho)}</td><td class="num">${f(m.aha)}</td><td class="num">${f(m.ovr)}</td><td class="num">${f(m.und)}</td><td class="num">${f(m.ho)}</td><td class="num">${f(m.dо)}</td><td class="num">${f(m.ao)}</td><td>${m.neu?'да':''}</td><td>${m.der?'да':''}</td><td>${escapeHtml(m.q||'')}</td></tr>`).join('');
-      meta.textContent=`${LEAGUE_TITLES[lg]||lg} / ${se}: ${ms.length} матчей.`;
+    function sbFmtCell(v, kind='text'){
+      if (v == null || v === '') return '—';
+      if (kind === 'bool') return v ? 'да' : 'нет';
+      if (kind === 'num') return String(v).replace('.', ',');
+      return String(v);
     }
-    bindClick('clhSaveBtn',()=>{
-      const lg=document.getElementById('clhLeague').value;
-      const se=document.getElementById('clhSeason').value.trim().replace('/','-');
-      const csv=document.getElementById('clhCsv').value.trim();
-      if(!se){ alert('Укажите сезон.'); return; }
-      const n=clhCount(csv);
-      if(!n){ alert('CSV пуст или не распознан (нужен заголовок и строки матчей).'); return; }
-      clhSet(lg,se,csv); refreshClhTable(); clhViewSeason(lg,se); goalFillSrcSeasons();
-      document.getElementById('clhMeta').textContent=`Сохранено: ${LEAGUE_TITLES[lg]||lg} / ${se} — ${n} матчей. Теперь можно загрузить в «Линию».`;
-    });
-    bindClick('clhViewBtn',()=>{ clhViewSeason(document.getElementById('clhLeague').value, document.getElementById('clhSeason').value.trim().replace('/','-')); });
-    bindClick('clhSampleBtn',()=>{ document.getElementById('clhCsv').value=GOAL_SAMPLE_CSV; document.getElementById('clhLeague').value='serie_a'; document.getElementById('clhSeason').value='2025-26'; });
-    document.getElementById('clhFile').addEventListener('change',async e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; try{ document.getElementById('clhCsv').value=await f.text(); }catch(err){ alert('Не прочитать файл: '+(err.message||err)); } });
-    document.getElementById('clhTable').addEventListener('click',e=>{
-      const del=e.target.closest('[data-del-lg]');
-      if(del){ e.preventDefault(); clhDel(del.getAttribute('data-del-lg'), del.getAttribute('data-del-se')); refreshClhTable(); goalFillSrcSeasons(); return; }
-      const tr=e.target.closest('tr[data-lg]');
-      if(tr){ const lg=tr.getAttribute('data-lg'), se=tr.getAttribute('data-se'); const rec=clhGet(lg,se); if(rec){ document.getElementById('clhLeague').value=lg; document.getElementById('clhSeason').value=se; document.getElementById('clhCsv').value=rec.csv; clhViewSeason(lg,se); } }
+    function sbSeasonKey(leagueId, seasonId){ return `${leagueId}|${seasonId}`; }
+
+    async function sbLoadSeasonSummary(){
+      const q = 'select=league_id,league_name,season_id,season_label,matches_count,imported_at&matches_count=gt.0&order=league_name.asc,season_label.desc';
+      const rows = await sbFetch(`/v_season_summary?${q}`);
+      window.__SB.seasons = Array.isArray(rows) ? rows : [];
+      return window.__SB.seasons;
+    }
+
+    async function sbLoadSeasonMatches(leagueId, seasonId){
+      const select = [
+        'match_id','match_date','league_id','league_name','season_id','season_label',
+        'home_team_id','home_team','away_team_id','away_team',
+        'closing_ah_home','closing_total_line','ah_home_odds','ah_away_odds',
+        'over_odds','under_odds','home_odds','draw_odds','away_odds',
+        'is_neutral','match_weight','derby_weight','neutral_weight','note',
+      ].join(',');
+      const q = `select=${select}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=eq.${encodeURIComponent(seasonId)}&order=match_date.asc`;
+      const rows = await sbFetch(`/v_matches_full?${q}`);
+      const key = sbSeasonKey(leagueId, seasonId);
+      window.__SB.matchesBySeason[key] = Array.isArray(rows) ? rows : [];
+      return window.__SB.matchesBySeason[key];
+    }
+
+    function sbMatchesToGoalCsv(matches, leagueName=''){
+      const header = 'date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight';
+      const cell = v => (v == null ? '' : String(v));
+      const lg = leagueName;
+      const lines = [header];
+      matches.forEach(m => {
+        const league = lg || m.league_name || '';
+        const derbyFlag = (m.derby_weight != null && Number(m.derby_weight) !== 1);
+        lines.push([
+          cell(m.match_date), cell(league), cell(m.home_team), cell(m.away_team),
+          cell(m.closing_ah_home), cell(m.closing_total_line),
+          cell(m.ah_home_odds), cell(m.ah_away_odds), cell(m.over_odds), cell(m.under_odds),
+          cell(m.home_odds), cell(m.draw_odds), cell(m.away_odds),
+          m.is_neutral ? 'true' : 'false', derbyFlag ? 'true' : 'false', cell(m.note || ''),
+          cell(m.match_weight != null ? m.match_weight : 1),
+          cell(m.derby_weight != null ? m.derby_weight : 1),
+          cell(m.neutral_weight != null ? m.neutral_weight : 1),
+        ].join(','));
+      });
+      return lines.join('\n');
+    }
+
+    function renderHistSeasonsTable(selectedKey=null){
+      const tb = document.querySelector('#clhTable tbody');
+      const meta = document.getElementById('clhMeta');
+      if (!tb) return;
+      const rows = window.__SB.seasons || [];
+      if (!rows.length){
+        tb.innerHTML = '<tr><td colspan="4" class="hint">Пусто — в базе пока нет матчей.</td></tr>';
+        if (meta) meta.textContent = '';
+        return;
+      }
+      tb.innerHTML = rows.map(r => {
+        const key = sbSeasonKey(r.league_id, r.season_id);
+        const sel = key === selectedKey ? ' style="background:#eef2ff"' : '';
+        return `<tr data-lg="${escapeHtml(r.league_id)}" data-sid="${escapeHtml(String(r.season_id))}" data-key="${escapeHtml(key)}" style="cursor:pointer${sel ? ';background:#eef2ff' : ''}">` +
+          `<td>${escapeHtml(r.league_name)}</td>` +
+          `<td>${escapeHtml(r.season_label)}</td>` +
+          `<td class="num">${escapeHtml(String(r.matches_count))}</td>` +
+          `<td>${escapeHtml(sbFmtImportedAt(r.imported_at))}</td></tr>`;
+      }).join('');
+    }
+
+    function renderHistMatchesTable(matches, title=''){
+      const tb = document.querySelector('#clhViewTable tbody');
+      const meta = document.getElementById('clhMeta');
+      if (!tb) return;
+      if (!matches || !matches.length){
+        tb.innerHTML = '';
+        if (meta) meta.textContent = title || 'Нет данных по сезону.';
+        return;
+      }
+      tb.innerHTML = matches.map(m => `<tr>` +
+        `<td>${escapeHtml(m.match_date || '')}</td>` +
+        `<td>${escapeHtml(m.home_team || '')}</td>` +
+        `<td>${escapeHtml(m.away_team || '')}</td>` +
+        `<td class="num">${sbFmtCell(m.closing_ah_home, 'num')}</td>` +
+        `<td class="num">${sbFmtCell(m.closing_total_line, 'num')}</td>` +
+        `<td class="num">${sbFmtCell(m.ah_home_odds, 'num')}</td>` +
+        `<td class="num">${sbFmtCell(m.ah_away_odds, 'num')}</td>` +
+        `<td class="num">${sbFmtCell(m.over_odds, 'num')}</td>` +
+        `<td class="num">${sbFmtCell(m.under_odds, 'num')}</td>` +
+        `<td class="num">${sbFmtCell(m.home_odds, 'num')}</td>` +
+        `<td class="num">${sbFmtCell(m.draw_odds, 'num')}</td>` +
+        `<td class="num">${sbFmtCell(m.away_odds, 'num')}</td>` +
+        `<td>${sbFmtCell(m.is_neutral, 'bool')}</td>` +
+        `<td class="num">${sbFmtCell(m.derby_weight, 'num')}</td>` +
+        `<td class="num">${sbFmtCell(m.match_weight, 'num')}</td>` +
+      `</tr>`).join('');
+      if (meta) meta.textContent = title;
+    }
+
+    async function sbSelectHistSeason(leagueId, seasonId, leagueName='', seasonLabel=''){
+      const key = sbSeasonKey(leagueId, seasonId);
+      window.__SB.histSelected = { league_id: leagueId, season_id: seasonId, league_name: leagueName, season_label: seasonLabel };
+      renderHistSeasonsTable(key);
+      const meta = document.getElementById('clhMeta');
+      if (meta) meta.textContent = `${leagueName || leagueId} / ${seasonLabel || seasonId} — загрузка матчей…`;
+      try {
+        const matches = await sbLoadSeasonMatches(leagueId, seasonId);
+        if (!matches.length){
+          renderHistMatchesTable([], 'Нет данных по сезону.');
+          return;
+        }
+        renderHistMatchesTable(matches, `${leagueName || leagueId} / ${seasonLabel || seasonId} — ${matches.length} матчей`);
+      } catch (e){
+        alert('Не удалось загрузить матчи выбранного сезона.');
+        if (meta) meta.textContent = `${leagueName || leagueId} / ${seasonLabel || seasonId} — ошибка загрузки`;
+      }
+    }
+
+    async function sbInitHistTab(){
+      const meta = document.getElementById('clhMeta');
+      try {
+        await loadSupabaseConfig();
+        if (!window.__SB.histLoaded){
+          if (meta) meta.textContent = 'Загрузка сезонов…';
+          await sbLoadSeasonSummary();
+          window.__SB.histLoaded = true;
+        }
+        const rows = window.__SB.seasons || [];
+        if (!rows.length){
+          renderHistSeasonsTable();
+          renderHistMatchesTable([]);
+          if (meta) meta.textContent = 'Пусто — в базе пока нет матчей.';
+          return;
+        }
+        const first = rows[0];
+        await sbSelectHistSeason(first.league_id, first.season_id, first.league_name, first.season_label);
+        if (window.goalFillSrcSeasons) window.goalFillSrcSeasons();
+      } catch (e){
+        alert(e.message || 'Не удалось загрузить список сезонов.');
+        renderHistSeasonsTable();
+        if (meta) meta.textContent = '';
+      }
+    }
+    window.sbInitHistTab = sbInitHistTab;
+    window.refreshClhTable = sbInitHistTab;
+
+    document.getElementById('clhTable').addEventListener('click', e => {
+      const tr = e.target.closest('tr[data-lg]');
+      if (!tr) return;
+      const leagueId = tr.getAttribute('data-lg');
+      const seasonId = Number(tr.getAttribute('data-sid'));
+      const row = (window.__SB.seasons || []).find(r => r.league_id === leagueId && Number(r.season_id) === seasonId);
+      sbSelectHistSeason(leagueId, seasonId, row ? row.league_name : '', row ? row.season_label : String(seasonId));
     });
 
-    // ---------------- «Линия»: загрузка из истории ----------------
+    // ---------------- «Линия»: загрузка из истории (Supabase) ----------------
     function goalFillSrcSeasons(){
-      const lg=document.getElementById('goalSrcLeague').value;
-      const sel=document.getElementById('goalSrcSeason'); if(!sel) return;
-      const seasons=clhSeasons(lg);
-      const opts=['<option value="__all__">(все сезоны)</option>'].concat(seasons.map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`));
-      sel.innerHTML=opts.join('');
+      const sel = document.getElementById('goalSrcLeague');
+      if (!sel) return;
+      const seasons = window.__SB.seasons || [];
+      const leagues = [];
+      const seen = new Set();
+      seasons.forEach(s => {
+        if (!seen.has(s.league_id)){
+          seen.add(s.league_id);
+          leagues.push({ id: s.league_id, name: s.league_name });
+        }
+      });
+      sel.innerHTML = leagues.length
+        ? leagues.map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.name)}</option>`).join('')
+        : '<option value="">— нет сезонов —</option>';
+      const seasonSel = document.getElementById('goalSrcSeason');
+      if (!seasonSel) return;
+      const lg = sel.value;
+      const opts = ['<option value="__all__">(все сезоны)</option>'].concat(
+        seasons.filter(s => s.league_id === lg).map(s =>
+          `<option value="${escapeHtml(String(s.season_id))}">${escapeHtml(s.season_label)}</option>`
+        )
+      );
+      seasonSel.innerHTML = opts.join('');
     }
     document.getElementById('goalSrcLeague').addEventListener('change', goalFillSrcSeasons);
-    bindClick('goalLoadHist',()=>{
-      const lg=document.getElementById('goalSrcLeague').value;
-      const se=document.getElementById('goalSrcSeason').value;
-      const csv = se==='__all__' ? clhAllCsv(lg) : (clhGet(lg,se)?clhGet(lg,se).csv:'');
-      if(!csv || !csv.trim()){ alert('В истории нет данных для выбора. Сохраните их на вкладке «История».'); return; }
-      document.getElementById('goalCsv').value=csv;
-      document.getElementById('goalLeague').value=lg;
-      gmFillTeams();
-      const n=clhCount(csv);
-      document.getElementById('goalMeta').textContent=`Загружено из истории: ${LEAGUE_TITLES[lg]||lg}, ${se==='__all__'?'все сезоны':se} — ${n} матчей. Настройте коэффициенты и нажмите «Обучить модель».`;
+    bindClick('goalLoadHist', async ()=>{
+      const leagueId = document.getElementById('goalSrcLeague').value;
+      const seasonSel = document.getElementById('goalSrcSeason').value;
+      if (!leagueId){ alert('В истории нет данных для выбора.'); return; }
+      try {
+        await loadSupabaseConfig();
+        if (!window.__SB.seasons || !window.__SB.seasons.length){
+          await sbLoadSeasonSummary();
+        }
+        const league = (window.__SB.seasons || []).find(s => s.league_id === leagueId);
+        const leagueName = league ? league.league_name : leagueId;
+        let matches = [];
+        if (seasonSel === '__all__'){
+          const seasons = (window.__SB.seasons || []).filter(s => s.league_id === leagueId);
+          for (const s of seasons){
+            const part = await sbLoadSeasonMatches(s.league_id, s.season_id);
+            matches = matches.concat(part);
+          }
+        } else {
+          matches = await sbLoadSeasonMatches(leagueId, Number(seasonSel));
+        }
+        if (!matches.length){ alert('В истории нет данных для выбора.'); return; }
+        const csv = sbMatchesToGoalCsv(matches, leagueName);
+        document.getElementById('goalCsv').value = csv;
+        const n = gmParseCsv(csv).length;
+        const seasonLabel = seasonSel === '__all__' ? 'все сезоны' : ((window.__SB.seasons || []).find(s => s.league_id === leagueId && String(s.season_id) === String(seasonSel)) || {}).season_label || seasonSel;
+        document.getElementById('goalMeta').textContent = `Загружено из истории: ${leagueName}, ${seasonLabel} — ${n} матчей. Настройте коэффициенты и нажмите «Обучить модель».`;
+      } catch (e){
+        alert(e.message || 'Не удалось загрузить матчи из истории.');
+      }
     });
 
     bindClick('goalTrain',()=>{
@@ -3017,10 +3125,7 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     try { /* Справочник: Supabase загружается при открытии вкладки */ } catch (e) { console.error(e); }
     try { refreshShinTeamSelects(); } catch (e) { console.error(e); }
     try { gmFillTeams(); } catch (e) { console.error(e); }
-    try { refreshClhTable(); } catch (e) { console.error(e); }
-    try { goalFillSrcSeasons(); } catch (e) { console.error(e); }
-    window.refreshHistTable = refreshClhTable;
-    window.refreshClhTable = refreshClhTable;
+    try { /* История: Supabase загружается при открытии вкладки */ } catch (e) { console.error(e); }
     window.refreshGoalTeams = gmFillTeams;
     window.goalFillSrcSeasons = goalFillSrcSeasons;
     setJsStatus('Версия goal-model-v1 — Линия (голы): closing → S/D → λ → матрица → рынки');
