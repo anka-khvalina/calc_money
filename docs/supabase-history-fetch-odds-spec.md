@@ -30,7 +30,6 @@ id матча с сайта неизвестного мужика: [__________] 
 POST https://userbet.info/user/get_current_lineups_odds/
 Content-Type: application/x-www-form-urlencoded; charset=UTF-8
 X-Requested-With: XMLHttpRequest
-Referer: https://userbet.info/
 Accept: application/json, text/html, */*
 
 id_fixture={external_match_id}

@@ -17,7 +17,6 @@ PREFERRED_BOOKMAKER = 70
 USERBET_REQUEST_HEADERS = {
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
     "X-Requested-With": "XMLHttpRequest",
-    "Referer": "https://userbet.info/",
     "Accept": "application/json, text/html, */*",
 }
 

@@ -30,7 +30,6 @@ Deno.serve(async (req) => {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         "X-Requested-With": "XMLHttpRequest",
-        Referer: "https://userbet.info/",
         Accept: "application/json, text/html, */*",
       },
       body: body.toString(),
