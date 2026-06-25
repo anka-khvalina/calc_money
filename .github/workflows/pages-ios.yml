@@ -11,6 +11,7 @@ on:
       - cursor/build-exe-17b5
       - cursor/supabase-teams-17b5
       - cursor/supabase-history-17b5
+      - cursor/history-edit-17b5
     paths:
       - 'web/**'
       - '.github/workflows/pages-ios.yml'

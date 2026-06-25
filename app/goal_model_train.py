@@ -260,10 +260,10 @@ def _match_weight(flag: bool, weight: Optional[float]) -> float:
 
 def base_weight(m: RawMatch, cfg: ModelConfig) -> float:
     w_s = season_weight(m.date, cfg)
-    w_q = 1.0 if m.quality_match_weight is None else m.quality_match_weight
-    w_d = _match_weight(m.derby_flag, m.derby_match_weight)
-    w_n = _match_weight(m.neutral_flag, m.neutral_match_weight)
-    return w_s * w_q * w_d * w_n
+    w_m = 1.0 if m.quality_match_weight is None else m.quality_match_weight
+    w_d = 1.0 if m.derby_match_weight is None else m.derby_match_weight
+    w_n = 1.0 if m.neutral_match_weight is None else m.neutral_match_weight
+    return w_s * w_m * w_d * w_n
 
 
 # --------------------------------------------------------------------------- #

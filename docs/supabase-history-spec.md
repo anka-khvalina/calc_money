@@ -2,6 +2,8 @@
 
 Вкладка **«История»** — экран просмотра сохранённых сезонов и матчей из Supabase. CSV-импорт на вкладке **не используется**.
 
+Подробнее: [supabase-history-ui-spec.md](supabase-history-ui-spec.md), [supabase-history-edit-spec.md](supabase-history-edit-spec.md).
+
 ## Источники данных
 
 | View | Назначение |
@@ -47,7 +49,13 @@ GET /v_matches_full?select=...&league_id=eq.{league_id}&season_id=eq.{season_id}
 
 ### Матчи выбранного сезона
 
-Дата, Дома, Гости, AH, Тот, AH1, AH2, O, U, 1, X, 2, Нейтр, Дерби, Кач.
+Основная строка:
+
+```text
+Дата, Дома, Гости, AH1, AH, AH2, O, Тот, U, 1, X, 2, Нейтр, Действие
+```
+
+Веса (раскрываемый блок): Дерби, Вес матча, Нейтр. вес.
 
 - `null` → `—`
 - `is_neutral`: `да` / `нет`
