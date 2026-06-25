@@ -1128,6 +1128,23 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       URL.revokeObjectURL(a.href);
     });
 
+    const API_CONFIG_URL = 'api.config.json';
+    let API_BASE = '';
+    let _apiConfigPromise = null;
+
+    async function loadApiConfig(){
+      if (_apiConfigPromise) return _apiConfigPromise;
+      _apiConfigPromise = (async () => {
+        try {
+          const res = await fetch(API_CONFIG_URL);
+          if (!res.ok) return;
+          const cfg = await res.json();
+          API_BASE = String(cfg.api_base_url || '').replace(/\/$/, '');
+        } catch (_e){ /* optional until fetch-odds used */ }
+      })();
+      return _apiConfigPromise;
+    }
+
     // ---------------- Supabase справочник (вкладка «Справочник») ----------------
     const SB_CONFIG_URL = 'supabase.config.json';
     const SB_LEAGUE_KEY = 'FairOddsCalc_sb_league_v1';
@@ -2941,111 +2958,6 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       { col:'match_w', label:'Вес матча' },
       { col:'neutr_w', label:'Нейтр. вес' },
     ];
-    const USERBET_ODDS_URL = 'https://userbet.info/user/get_current_lineups_odds/';
-    const USERBET_PREFERRED_B = 70;
-    const USERBET_UPSTREAM_HEADERS = {
-      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-      'X-Requested-With': 'XMLHttpRequest',
-      Accept: 'application/json, text/html, */*',
-    };
-
-    function userbetRoundOdds(v){ return Math.round(Number(v) * 100) / 100; }
-    function userbetNormalizeHandicap(raw){
-      const text = String(raw == null ? '' : raw).trim();
-      if (!text) return null;
-      if (!/^[+-]?\d+(?:\.\d+)?$/.test(text)) return null;
-      const n = parseFloat(text.replace('+', ''));
-      return Number.isFinite(n) ? Math.round(n * 10000) / 10000 : null;
-    }
-    function userbetNormalizeTotal(raw){
-      const text = String(raw == null ? '' : raw).trim();
-      if (!text) return null;
-      if (!/^\d+(?:\.\d+)?$/.test(text)) return null;
-      const n = parseFloat(text);
-      return Number.isFinite(n) ? Math.round(n * 10000) / 10000 : null;
-    }
-    function userbetFilterBookmaker(rows){
-      const hasPreferred = rows.some(r => Number(r.b) === USERBET_PREFERRED_B);
-      return hasPreferred ? rows.filter(r => Number(r.b) === USERBET_PREFERRED_B) : rows;
-    }
-    function userbetGroupMarkets(rows){
-      if (!rows || !rows.length) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
-      const filtered = userbetFilterBookmaker(rows);
-      const byM = {};
-      filtered.forEach(r => {
-        const m = Number(r.m);
-        if (!Number.isFinite(m)) return;
-        (byM[m] = byM[m] || []).push(r);
-      });
-      const unique = Object.keys(byM).map(Number).sort((a,b) => a - b);
-      if (unique.length !== 3) throw new Error('Не удалось определить группы рынков из ответа внешнего сайта');
-      return { x12: byM[unique[0]], total: byM[unique[1]], ah: byM[unique[2]] };
-    }
-    function userbetParse1x2(rows){
-      const out = {};
-      const map = { '1':'home_odds', x:'draw_odds', '2':'away_odds' };
-      rows.forEach(r => {
-        const l = String(r.l || '').trim().toLowerCase();
-        const field = map[l];
-        if (!field || r.v == null) return;
-        out[field] = userbetRoundOdds(r.v);
-      });
-      if (!('home_odds' in out) || !('draw_odds' in out) || !('away_odds' in out)) throw new Error('Не удалось определить коэффициенты 1X2');
-      return out;
-    }
-    function userbetParseTotal(rows){
-      const pairs = {};
-      rows.forEach(r => {
-        const line = userbetNormalizeTotal(r.t);
-        const l = String(r.l || '').trim().toLowerCase();
-        if (line == null || (l !== 'o' && l !== 'u') || r.v == null) return;
-        const key = String(line);
-        pairs[key] = pairs[key] || {};
-        pairs[key][l] = userbetRoundOdds(r.v);
-      });
-      let bestKey = null, bestDiff = Infinity;
-      Object.keys(pairs).forEach(key => {
-        const sides = pairs[key];
-        if (sides.o == null || sides.u == null) return;
-        const diff = Math.abs(sides.o - sides.u);
-        if (diff < bestDiff){ bestDiff = diff; bestKey = key; }
-      });
-      if (!bestKey) throw new Error('Не удалось определить основной тотал');
-      return {
-        closing_total_line: parseFloat(bestKey),
-        over_odds: pairs[bestKey].o,
-        under_odds: pairs[bestKey].u,
-      };
-    }
-    function userbetParseAh(rows){
-      const pairs = {};
-      rows.forEach(r => {
-        const line = userbetNormalizeHandicap(r.h);
-        const l = String(r.l || '').trim().toLowerCase();
-        if (line == null || (l !== '1' && l !== '2') || r.v == null) return;
-        const key = String(line);
-        pairs[key] = pairs[key] || {};
-        pairs[key][l] = userbetRoundOdds(r.v);
-      });
-      let bestKey = null, bestDiff = Infinity;
-      Object.keys(pairs).forEach(key => {
-        const sides = pairs[key];
-        if (sides['1'] == null || sides['2'] == null) return;
-        const diff = Math.abs(sides['1'] - sides['2']);
-        if (diff < bestDiff){ bestDiff = diff; bestKey = key; }
-      });
-      if (!bestKey) throw new Error('Не удалось определить основную фору');
-      return {
-        closing_ah_home: parseFloat(bestKey),
-        ah_home_odds: pairs[bestKey]['1'],
-        ah_away_odds: pairs[bestKey]['2'],
-      };
-    }
-    function userbetParseOddsResponse(rows){
-      if (!Array.isArray(rows)) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
-      const g = userbetGroupMarkets(rows);
-      return Object.assign({}, userbetParse1x2(g.x12), userbetParseTotal(g.total), userbetParseAh(g.ah));
-    }
     const USERBET_FIELD_TO_UI = {
       ah_home_odds:'ah1', closing_ah_home:'ah', ah_away_odds:'ah2',
       over_odds:'over', closing_total_line:'tot', under_odds:'under',
@@ -3063,26 +2975,28 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     async function userbetFetchOdds(externalId){
       const extId = String(externalId || '').trim();
       if (!extId) throw new Error('Введите id матча с сайта неизвестного мужика');
-
-      const formBody = new URLSearchParams({ id_fixture: extId }).toString();
+      await loadApiConfig();
+      if (!API_BASE) throw new Error('Не задан api_base_url в web/api.config.json');
       let resp;
       try {
-        resp = await fetch(USERBET_ODDS_URL, {
+        resp = await fetch(`${API_BASE}/api/history/fetch-odds`, {
           method:'POST',
-          headers: USERBET_UPSTREAM_HEADERS,
-          body: formBody,
+          headers:{ 'Content-Type':'application/json', Accept:'application/json' },
+          body: JSON.stringify({ id_fixture: extId }),
         });
       } catch (_e){
-        throw new Error('Не удалось получить данные с внешнего сайта (браузер может блокировать cross-origin запрос)');
+        throw new Error('Не удалось связаться с API (проверьте, что бэкенд запущен)');
       }
-      if (!resp.ok) throw new Error('Не удалось получить данные с внешнего сайта');
-      const text = await resp.text();
-      if (!text || !text.trim()) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
-      let rows;
-      try { rows = JSON.parse(text); } catch (_e){
+      let data;
+      try { data = await resp.json(); } catch (_e){
         throw new Error('Не удалось получить данные с внешнего сайта');
       }
-      return userbetParseOddsResponse(rows);
+      if (!resp.ok){
+        const msg = (data && data.detail) ? String(data.detail) : 'Не удалось получить данные с внешнего сайта';
+        throw new Error(msg);
+      }
+      if (!data || !data.odds) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
+      return data.odds;
     }
     window.__SB.matchRows = window.__SB.matchRows || {};
 

@@ -24,19 +24,19 @@ id матча с сайта неизвестного мужика: [__________] 
 
 После получения значения подставляются в строку → строка dirty → зелёная **«Сохранить»** → PATCH.
 
-## Поток данных (без связи внешнего API с БД)
+## Поток данных
 
 ```text
-1. Клиент → POST userbet.info (по id_fixture)
-2. Клиент парсит ответ и кладёт в локальный кэш строки (edited / hist_edited)
-3. UI показывает коэффициенты в полях матча
-4. Пользователь нажимает «Сохранить»
-5. Только тогда PATCH → Supabase matches (только изменённые поля)
+1. Клиент → POST /api/history/fetch-odds  { "id_fixture": "..." }
+2. Бэкенд → userbet.info (form POST), парсит ответ
+3. Клиент кладёт odds в локальный кэш строки (edited / hist_edited)
+4. UI показывает коэффициенты в полях матча
+5. «Сохранить» → PATCH Supabase matches
 ```
 
-Внешний сайт **не** ходит в Supabase. БД используется только на шаге сохранения.
+См. [history-api.md](history-api.md).
 
-## Внешний API
+## Внешний API (бэкенд → userbet)
 
 ```http
 POST https://userbet.info/user/get_current_lineups_odds/
@@ -92,9 +92,10 @@ MVP: если несколько букмекеров `b`, использова�
 
 ## Реализация
 
-- `app/userbet_odds.py` — fetch + parse + `odds_to_ui_edits`
-- Desktop: `app/fair_odds_calc.py`
-- iOS: `userbetParseOdds` + `sbHistFetchOdds` в `web/FairOddsCalc_iOS.html`
+- `app/userbet_odds.py` — fetch + parse userbet
+- `app/history_api.py` — `POST /api/history/fetch-odds`
+- Desktop: `app/fair_odds_calc.py` (прямой `userbet_odds` или через API)
+- iOS: `userbetFetchOdds` → API, затем `userbetOddsToUiEdits` в `web/FairOddsCalc_iOS.html`
 
 ## Открытые вопросы
 
