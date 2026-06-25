@@ -1391,12 +1391,13 @@ def build_app():
         hist_selected.clear()
         hist_selected.update(
             {
-                "league_id": ent.league_id,
-                "league_name": ent.league_name,
-                "season_id": ent.season_id,
-                "season_label": ent.season_label,
+                "selected_league_id": ent.league_id,
+                "selected_league_name": ent.league_name,
+                "selected_season_id": ent.season_id,
+                "selected_season_label": ent.season_label,
             }
         )
+        clear_hist_matches_tree()
         hist_status_var.set(
             f"{ent.league_name} / {ent.season_label} — загрузка матчей…"
         )
@@ -1412,7 +1413,7 @@ def build_app():
         hist_matches_cache.extend(matches)
         if not matches:
             clear_hist_matches_tree()
-            hist_status_var.set(f"{ent.league_name} / {ent.season_label} — нет данных по сезону.")
+            hist_status_var.set(f"{ent.league_name} / {ent.season_label} — Нет данных по сезону.")
             return
         fill_hist_matches_tree(matches)
         hist_status_var.set(

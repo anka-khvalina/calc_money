@@ -2827,15 +2827,16 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       return window.__SB.seasons;
     }
 
+    const SB_MATCH_SELECT = [
+      'match_id','match_date','league_id','league_name','season_id','season_label',
+      'home_team_id','home_team','away_team_id','away_team',
+      'closing_ah_home','closing_total_line','ah_home_odds','ah_away_odds',
+      'over_odds','under_odds','home_odds','draw_odds','away_odds',
+      'is_neutral','match_weight','derby_weight','neutral_weight','note',
+    ].join(',');
+
     async function sbLoadSeasonMatches(leagueId, seasonId){
-      const select = [
-        'match_id','match_date','league_id','league_name','season_id','season_label',
-        'home_team_id','home_team','away_team_id','away_team',
-        'closing_ah_home','closing_total_line','ah_home_odds','ah_away_odds',
-        'over_odds','under_odds','home_odds','draw_odds','away_odds',
-        'is_neutral','match_weight','derby_weight','neutral_weight','note',
-      ].join(',');
-      const q = `select=${select}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=eq.${encodeURIComponent(seasonId)}&order=match_date.asc`;
+      const q = `select=${SB_MATCH_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=eq.${encodeURIComponent(seasonId)}&order=match_date.asc`;
       const rows = await sbFetch(`/v_matches_full?${q}`);
       const key = sbSeasonKey(leagueId, seasonId);
       window.__SB.matchesBySeason[key] = Array.isArray(rows) ? rows : [];
@@ -2876,8 +2877,8 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       }
       tb.innerHTML = rows.map(r => {
         const key = sbSeasonKey(r.league_id, r.season_id);
-        const sel = key === selectedKey ? ' style="background:#eef2ff"' : '';
-        return `<tr data-lg="${escapeHtml(r.league_id)}" data-sid="${escapeHtml(String(r.season_id))}" data-key="${escapeHtml(key)}" style="cursor:pointer${sel ? ';background:#eef2ff' : ''}">` +
+        const active = key === selectedKey;
+        return `<tr data-lg="${escapeHtml(r.league_id)}" data-sid="${escapeHtml(String(r.season_id))}" data-key="${escapeHtml(key)}" style="cursor:pointer${active ? ';background:#eef2ff' : ''}">` +
           `<td>${escapeHtml(r.league_name)}</td>` +
           `<td>${escapeHtml(r.season_label)}</td>` +
           `<td class="num">${escapeHtml(String(r.matches_count))}</td>` +
@@ -2889,9 +2890,9 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       const tb = document.querySelector('#clhViewTable tbody');
       const meta = document.getElementById('clhMeta');
       if (!tb) return;
+      if (meta) meta.textContent = title;
       if (!matches || !matches.length){
         tb.innerHTML = '';
-        if (meta) meta.textContent = title || 'Нет данных по сезону.';
         return;
       }
       tb.innerHTML = matches.map(m => `<tr>` +
@@ -2911,15 +2912,18 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         `<td class="num">${sbFmtCell(m.derby_weight, 'num')}</td>` +
         `<td class="num">${sbFmtCell(m.match_weight, 'num')}</td>` +
       `</tr>`).join('');
-      if (meta) meta.textContent = title;
     }
 
     async function sbSelectHistSeason(leagueId, seasonId, leagueName='', seasonLabel=''){
       const key = sbSeasonKey(leagueId, seasonId);
-      window.__SB.histSelected = { league_id: leagueId, season_id: seasonId, league_name: leagueName, season_label: seasonLabel };
+      window.__SB.histSelected = {
+        selected_league_id: leagueId,
+        selected_league_name: leagueName,
+        selected_season_id: seasonId,
+        selected_season_label: seasonLabel,
+      };
       renderHistSeasonsTable(key);
-      const meta = document.getElementById('clhMeta');
-      if (meta) meta.textContent = `${leagueName || leagueId} / ${seasonLabel || seasonId} — загрузка матчей…`;
+      renderHistMatchesTable([], `${leagueName || leagueId} / ${seasonLabel || seasonId} — загрузка матчей…`);
       try {
         const matches = await sbLoadSeasonMatches(leagueId, seasonId);
         if (!matches.length){
@@ -2929,7 +2933,7 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         renderHistMatchesTable(matches, `${leagueName || leagueId} / ${seasonLabel || seasonId} — ${matches.length} матчей`);
       } catch (e){
         alert('Не удалось загрузить матчи выбранного сезона.');
-        if (meta) meta.textContent = `${leagueName || leagueId} / ${seasonLabel || seasonId} — ошибка загрузки`;
+        renderHistMatchesTable([], `${leagueName || leagueId} / ${seasonLabel || seasonId} — ошибка загрузки`);
       }
     }
 
@@ -2937,7 +2941,8 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       const meta = document.getElementById('clhMeta');
       try {
         await loadSupabaseConfig();
-        if (!window.__SB.histLoaded){
+        const firstLoad = !window.__SB.histLoaded;
+        if (firstLoad){
           if (meta) meta.textContent = 'Загрузка сезонов…';
           await sbLoadSeasonSummary();
           window.__SB.histLoaded = true;
@@ -2949,17 +2954,29 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
           if (meta) meta.textContent = 'Пусто — в базе пока нет матчей.';
           return;
         }
-        const first = rows[0];
-        await sbSelectHistSeason(first.league_id, first.season_id, first.league_name, first.season_label);
+        const sel = window.__SB.histSelected;
+        const selectedKey = sel ? sbSeasonKey(sel.selected_league_id, sel.selected_season_id) : null;
+        renderHistSeasonsTable(selectedKey);
+        if (firstLoad || !sel){
+          const first = rows[0];
+          await sbSelectHistSeason(first.league_id, first.season_id, first.league_name, first.season_label);
+        } else {
+          const key = sbSeasonKey(sel.selected_league_id, sel.selected_season_id);
+          const cached = window.__SB.matchesBySeason[key];
+          if (cached && cached.length){
+            renderHistMatchesTable(cached, `${sel.selected_league_name} / ${sel.selected_season_label} — ${cached.length} матчей`);
+          } else {
+            await sbSelectHistSeason(sel.selected_league_id, sel.selected_season_id, sel.selected_league_name, sel.selected_season_label);
+          }
+        }
         if (window.goalFillSrcSeasons) window.goalFillSrcSeasons();
       } catch (e){
-        alert(e.message || 'Не удалось загрузить список сезонов.');
+        alert('Не удалось загрузить список сезонов.');
         renderHistSeasonsTable();
         if (meta) meta.textContent = '';
       }
     }
     window.sbInitHistTab = sbInitHistTab;
-    window.refreshClhTable = sbInitHistTab;
 
     document.getElementById('clhTable').addEventListener('click', e => {
       const tr = e.target.closest('tr[data-lg]');
