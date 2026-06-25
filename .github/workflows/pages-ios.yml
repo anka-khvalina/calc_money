@@ -9,6 +9,8 @@ on:
       - cursor/team-registry-17b5
       - cursor/team-logos-17b5
       - cursor/build-exe-17b5
+      - cursor/supabase-teams-17b5
+      - cursor/supabase-history-17b5
     paths:
       - 'web/**'
       - '.github/workflows/pages-ios.yml'
