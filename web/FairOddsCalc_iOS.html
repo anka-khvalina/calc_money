@@ -59,37 +59,6 @@
     .js-status.err{ color:var(--danger); border-color:#f5c2c0; background:#fff5f5; }
     .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
     .btn.hist-save{ background:#16a34a; color:#fff; border-color:#16a34a; padding:4px 10px; font-size:12px; }
-    tr.hist-dirty td.hist-col-date,
-    tr.hist-dirty td.hist-col-team,
-    tr.hist-dirty td.hist-col-neutral,
-    tr.hist-dirty td.hist-col-action{ background:#f0fdf4; }
-    tr.hist-dirty td.hist-col-ah{ background:#fef9c3; }
-    tr.hist-dirty td.hist-col-tot{ background:#e0f2fe; }
-    tr.hist-dirty td.hist-col-1x2{ background:#ede9fe; }
-    #clhViewTable th.hist-col-ah,
-    #clhViewTable td.hist-col-ah{
-      background:#fffbeb;
-      border-left:2px solid #fde68a;
-    }
-    #clhViewTable th.hist-col-tot,
-    #clhViewTable td.hist-col-tot{
-      background:#f0f9ff;
-      border-left:2px solid #bae6fd;
-    }
-    #clhViewTable th.hist-col-1x2,
-    #clhViewTable td.hist-col-1x2{
-      background:#f5f3ff;
-      border-left:2px solid #ddd6fe;
-    }
-    #clhViewTable th.hist-col-ah{ background:#fef3c7; }
-    #clhViewTable th.hist-col-tot{ background:#e0f2fe; }
-    #clhViewTable th.hist-col-1x2{ background:#ede9fe; }
-    #clhViewTable td.hist-col-ah .hist-cell-input,
-    #clhViewTable td.hist-col-tot .hist-cell-input,
-    #clhViewTable td.hist-col-1x2 .hist-cell-input{
-      background:rgba(255,255,255,0.78);
-      border-color:rgba(0,0,0,0.08);
-    }
     .hist-cell-input{
       width:100%; min-width:54px; max-width:none;
       font-size:13px; padding:5px 7px; box-sizing:border-box;
@@ -174,6 +143,38 @@
     table{ width:100%; border-collapse:collapse; min-width:560px; background:#fff; }
     th,td{ border-bottom:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; }
     th{ background:#f8fafc; }
+    /* History: цветовые группы линии (после общего th, чтобы не перебивалось) */
+    #clhViewTable th.hist-col-ah,
+    #clhViewTable td.hist-col-ah{
+      background:#fff3cd;
+      border-left:3px solid #ffc107;
+    }
+    #clhViewTable th.hist-col-tot,
+    #clhViewTable td.hist-col-tot{
+      background:#dbeafe;
+      border-left:3px solid #60a5fa;
+    }
+    #clhViewTable th.hist-col-1x2,
+    #clhViewTable td.hist-col-1x2{
+      background:#ede9fe;
+      border-left:3px solid #a78bfa;
+    }
+    #clhViewTable th.hist-col-ah{ background:#ffe69c; }
+    #clhViewTable th.hist-col-tot{ background:#bfdbfe; }
+    #clhViewTable th.hist-col-1x2{ background:#ddd6fe; }
+    #clhViewTable td.hist-col-ah .hist-cell-input,
+    #clhViewTable td.hist-col-tot .hist-cell-input,
+    #clhViewTable td.hist-col-1x2 .hist-cell-input{
+      background:rgba(255,255,255,0.82);
+      border-color:rgba(0,0,0,0.1);
+    }
+    tr.hist-dirty td.hist-col-date,
+    tr.hist-dirty td.hist-col-team,
+    tr.hist-dirty td.hist-col-neutral,
+    tr.hist-dirty td.hist-col-action{ background:#f0fdf4; }
+    tr.hist-dirty td.hist-col-ah{ background:#ffe08a; }
+    tr.hist-dirty td.hist-col-tot{ background:#93c5fd; }
+    tr.hist-dirty td.hist-col-1x2{ background:#c4b5fd; }
     .right{ text-align:right; }
     .logo-cell{ width:42px; text-align:center; vertical-align:middle; }
     .team-logo{
