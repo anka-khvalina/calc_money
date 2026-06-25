@@ -7,10 +7,56 @@ Supabase REST-клиент для вкладки «История» (сезон�
 from __future__ import annotations
 
 import urllib.parse
-from dataclasses import dataclass
-from typing import Any, List, Optional, Union
+from dataclasses import dataclass, replace
+from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Set, Union
 
 from supabase_teams import SupabaseError, _request
+
+PATCH_WHITELIST: FrozenSet[str] = frozenset(
+    {
+        "closing_ah_home",
+        "closing_total_line",
+        "ah_home_odds",
+        "ah_away_odds",
+        "over_odds",
+        "under_odds",
+        "home_odds",
+        "draw_odds",
+        "away_odds",
+        "is_neutral",
+        "derby_weight",
+        "match_weight",
+    }
+)
+
+ODDS_GT_ONE_FIELDS: FrozenSet[str] = frozenset(
+    {
+        "ah_home_odds",
+        "ah_away_odds",
+        "over_odds",
+        "under_odds",
+        "home_odds",
+        "draw_odds",
+        "away_odds",
+    }
+)
+
+UI_COL_TO_FIELD: Dict[str, str] = {
+    "ah": "closing_ah_home",
+    "tot": "closing_total_line",
+    "ah1": "ah_home_odds",
+    "ah2": "ah_away_odds",
+    "over": "over_odds",
+    "under": "under_odds",
+    "o1": "home_odds",
+    "ox": "draw_odds",
+    "o2": "away_odds",
+    "neutral": "is_neutral",
+    "derby": "derby_weight",
+    "quality": "match_weight",
+}
+
+EDITABLE_UI_COLS: FrozenSet[str] = frozenset(UI_COL_TO_FIELD)
 
 
 @dataclass(frozen=True)
@@ -73,6 +119,152 @@ def format_cell(value: Any, *, kind: str = "text") -> str:
             return f"{value:g}"
         return str(value)
     return str(value)
+
+
+def edit_display_value(match: MatchFull, ui_col: str) -> str:
+    field = UI_COL_TO_FIELD.get(ui_col)
+    if not field:
+        return ""
+    if field == "is_neutral":
+        return "да" if match.is_neutral else "нет"
+    val = getattr(match, _match_attr(field), None)
+    if val is None:
+        return ""
+    if isinstance(val, float):
+        return f"{val:g}".replace(".", ",")
+    return str(val)
+
+
+def _match_attr(db_field: str) -> str:
+    mapping = {
+        "closing_ah_home": "closing_ah_home",
+        "closing_total_line": "closing_total_line",
+        "ah_home_odds": "ah_home_odds",
+        "ah_away_odds": "ah_away_odds",
+        "over_odds": "over_odds",
+        "under_odds": "under_odds",
+        "home_odds": "home_odds",
+        "draw_odds": "draw_odds",
+        "away_odds": "away_odds",
+        "is_neutral": "is_neutral",
+        "derby_weight": "derby_weight",
+        "match_weight": "match_weight",
+    }
+    return mapping[db_field]
+
+
+def parse_numeric_input(text: str) -> Optional[float]:
+    raw = str(text or "").strip().replace("\u00a0", " ")
+    if not raw or raw == "—" or raw == "-":
+        return None
+    raw = raw.replace(",", ".")
+    try:
+        return float(raw)
+    except ValueError:
+        raise ValueError("Проверьте значения коэффициентов") from None
+
+
+def parse_bool_input(text: str) -> bool:
+    raw = str(text or "").strip().lower()
+    if raw in ("да", "true", "1", "yes", "y"):
+        return True
+    if raw in ("нет", "false", "0", "no", "n", ""):
+        return False
+    raise ValueError("Проверьте значения коэффициентов")
+
+
+def parse_field_input(ui_col: str, text: str) -> Any:
+    field = UI_COL_TO_FIELD[ui_col]
+    if field == "is_neutral":
+        return parse_bool_input(text)
+    return parse_numeric_input(text)
+
+
+def validate_match_patch(changes: Mapping[str, Any]) -> None:
+    for key, val in changes.items():
+        if key not in PATCH_WHITELIST:
+            raise ValueError(f"Поле {key!r} нельзя изменять")
+        if val is None:
+            continue
+        if key == "is_neutral":
+            if not isinstance(val, bool):
+                raise ValueError("Проверьте значения коэффициентов")
+            continue
+        if not isinstance(val, (int, float)):
+            raise ValueError("Проверьте значения коэффициентов")
+        if key in ODDS_GT_ONE_FIELDS and val <= 1:
+            raise ValueError("Проверьте значения коэффициентов")
+        if key in ("derby_weight", "match_weight") and val < 0:
+            raise ValueError("Проверьте значения коэффициентов")
+
+
+def field_value_from_match(match: MatchFull, db_field: str) -> Any:
+    if db_field == "is_neutral":
+        return match.is_neutral
+    return getattr(match, _match_attr(db_field))
+
+
+def build_dirty_patch(original: MatchFull, edited: Mapping[str, str]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    for ui_col, text in edited.items():
+        if ui_col not in EDITABLE_UI_COLS:
+            continue
+        field = UI_COL_TO_FIELD[ui_col]
+        new_val = parse_field_input(ui_col, text)
+        old_val = field_value_from_match(original, field)
+        if _values_equal(field, old_val, new_val):
+            continue
+        payload[field] = new_val
+    validate_match_patch(payload)
+    return payload
+
+
+def _values_equal(field: str, old: Any, new: Any) -> bool:
+    if old is None and new is None:
+        return True
+    if field == "is_neutral":
+        return bool(old) == bool(new)
+    try:
+        return old is not None and new is not None and abs(float(old) - float(new)) < 1e-9
+    except (TypeError, ValueError):
+        return old == new
+
+
+def patch_match(match_id: int, changes: Mapping[str, Any]) -> MatchFull:
+    if not changes:
+        raise ValueError("Нет изменений для сохранения")
+    payload = dict(changes)
+    extra = set(payload) - PATCH_WHITELIST
+    if extra:
+        raise ValueError(f"Поле {next(iter(extra))!r} нельзя изменять")
+    validate_match_patch(payload)
+    q = urllib.parse.urlencode({"id": f"eq.{int(match_id)}"})
+    rows = _request("PATCH", f"/matches?{q}", body=payload)
+    if isinstance(rows, list) and rows:
+        row = rows[0]
+    elif isinstance(rows, dict):
+        row = rows
+    else:
+        raise SupabaseError("Не удалось сохранить изменения")
+    ent = _parse_match_row(row)
+    if ent is None:
+        raise SupabaseError("Некорректный ответ matches")
+    return ent
+
+
+def apply_patch_to_match(original: MatchFull, changes: Mapping[str, Any]) -> MatchFull:
+    kw: Dict[str, Any] = {}
+    for field, val in changes.items():
+        if field not in PATCH_WHITELIST:
+            continue
+        attr = _match_attr(field)
+        if field == "is_neutral":
+            kw[attr] = bool(val)
+        elif val is None:
+            kw[attr] = None
+        else:
+            kw[attr] = float(val)
+    return replace(original, **kw)
 
 
 def _parse_season_row(row: dict) -> Optional[SeasonSummary]:

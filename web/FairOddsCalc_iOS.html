@@ -57,6 +57,11 @@
     }
     .js-status.err{ color:var(--danger); border-color:#f5c2c0; background:#fff5f5; }
     .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+    .btn.hist-save{ background:#16a34a; color:#fff; border-color:#16a34a; padding:4px 10px; font-size:12px; }
+    tr.hist-dirty{ background:#f0fdf4; }
+    .hist-cell-input{ width:100%; max-width:72px; font-size:12px; padding:4px 6px; box-sizing:border-box; }
+    .hist-row-err{ color:var(--danger); font-size:11px; display:block; margin-top:2px; }
+    .hist-row-ok{ color:#16a34a; font-size:11px; display:block; margin-top:2px; }
     .btn:active{ transform:translateY(1px); }
     .shin-result{ margin-top:14px; display:none; }
     .shin-result.visible{ display:block; }
@@ -628,7 +633,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <!-- TAB HISTORY (Supabase) -->
     <section id="tab-hist" class="panel">
       <div class="small">
-        Просмотр сохранённых сезонов и матчей из Supabase. Импорт CSV на этой вкладке не используется.
+        Просмотр и редактирование матчей из Supabase. Измените коэффициент в ячейке и нажмите «Сохранить».
       </div>
       <div class="small" style="margin-top:10px;font-weight:600;">Сохранённые сезоны</div>
       <div class="table-wrap">
@@ -646,7 +651,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <th class="right">AH1</th><th class="right">AH2</th>
             <th class="right">O</th><th class="right">U</th>
             <th class="right">1</th><th class="right">X</th><th class="right">2</th>
-            <th>Нейтр</th><th>Дерби</th><th>Кач.</th>
+            <th>Нейтр</th><th>Дерби</th><th>Кач.</th><th>Действие</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -2886,6 +2891,120 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       }).join('');
     }
 
+    const SB_PATCH_WHITELIST = new Set([
+      'closing_ah_home','closing_total_line','ah_home_odds','ah_away_odds',
+      'over_odds','under_odds','home_odds','draw_odds','away_odds',
+      'is_neutral','derby_weight','match_weight',
+    ]);
+    const SB_ODDS_GT_ONE = new Set([
+      'ah_home_odds','ah_away_odds','over_odds','under_odds','home_odds','draw_odds','away_odds',
+    ]);
+    const SB_UI_COL_MAP = {
+      ah:'closing_ah_home', tot:'closing_total_line', ah1:'ah_home_odds', ah2:'ah_away_odds',
+      over:'over_odds', under:'under_odds', o1:'home_odds', ox:'draw_odds', o2:'away_odds',
+      neutral:'is_neutral', derby:'derby_weight', quality:'match_weight',
+    };
+    window.__SB.matchRows = window.__SB.matchRows || {};
+
+    function sbFieldFromMatch(m, field){
+      if (field === 'is_neutral') return !!m.is_neutral;
+      const v = m[field];
+      return v == null ? null : Number(v);
+    }
+    function sbEditDisplay(m, col){
+      const field = SB_UI_COL_MAP[col];
+      if (field === 'is_neutral') return m.is_neutral ? 'да' : 'нет';
+      const v = m[field];
+      if (v == null) return '';
+      return String(v).replace('.', ',');
+    }
+    function sbParseNumeric(text){
+      const raw = String(text || '').trim();
+      if (!raw || raw === '—' || raw === '-') return null;
+      const n = parseFloat(raw.replace(',', '.'));
+      if (Number.isNaN(n)) throw new Error('Проверьте значения коэффициентов');
+      return n;
+    }
+    function sbParseBool(text){
+      const raw = String(text || '').trim().toLowerCase();
+      if (['да','true','1','yes','y'].includes(raw)) return true;
+      if (['нет','false','0','no','n',''].includes(raw)) return false;
+      throw new Error('Проверьте значения коэффициентов');
+    }
+    function sbParseField(col, text){
+      const field = SB_UI_COL_MAP[col];
+      return field === 'is_neutral' ? sbParseBool(text) : sbParseNumeric(text);
+    }
+    function sbValuesEqual(field, oldV, newV){
+      if (oldV == null && newV == null) return true;
+      if (field === 'is_neutral') return !!oldV === !!newV;
+      return oldV != null && newV != null && Math.abs(Number(oldV) - Number(newV)) < 1e-9;
+    }
+    function sbBuildDirtyPatch(original, edited){
+      const payload = {};
+      Object.keys(SB_UI_COL_MAP).forEach(col => {
+        const field = SB_UI_COL_MAP[col];
+        const text = edited[col] != null ? edited[col] : sbEditDisplay(original, col);
+        const newV = sbParseField(col, text);
+        const oldV = sbFieldFromMatch(original, field);
+        if (!sbValuesEqual(field, oldV, newV)) payload[field] = newV;
+      });
+      Object.keys(payload).forEach(field => {
+        if (!SB_PATCH_WHITELIST.has(field)) throw new Error('Проверьте значения коэффициентов');
+        const v = payload[field];
+        if (v == null) return;
+        if (field === 'is_neutral' && typeof v !== 'boolean') throw new Error('Проверьте значения коэффициентов');
+        if (SB_ODDS_GT_ONE.has(field) && v <= 1) throw new Error('Проверьте значения коэффициентов');
+        if ((field === 'derby_weight' || field === 'match_weight') && v < 0) throw new Error('Проверьте значения коэффициентов');
+      });
+      return payload;
+    }
+    function sbHistRowState(m){
+      const mid = Number(m.match_id);
+      if (!window.__SB.matchRows[mid]){
+        window.__SB.matchRows[mid] = { original: Object.assign({}, m), edited: {}, isSaving: false, saveError: '', savedMsg: '' };
+      }
+      return window.__SB.matchRows[mid];
+    }
+    function sbHistIsDirty(st){
+      try {
+        return Object.keys(sbBuildDirtyPatch(st.original, st.edited)).length > 0;
+      } catch (_e){
+        return true;
+      }
+    }
+    async function sbPatchMatch(matchId, payload){
+      const q = `id=eq.${encodeURIComponent(matchId)}`;
+      const rows = await sbFetch(`/matches?${q}`, { method: 'PATCH', body: payload });
+      return Array.isArray(rows) ? rows[0] : rows;
+    }
+    function sbHistInput(col, m, st){
+      const val = st.edited[col] != null ? st.edited[col] : sbEditDisplay(m, col);
+      if (col === 'neutral'){
+        return `<select class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}">` +
+          `<option value="нет"${val === 'нет' ? ' selected' : ''}>нет</option>` +
+          `<option value="да"${val === 'да' ? ' selected' : ''}>да</option></select>`;
+      }
+      return `<input class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}" value="${escapeHtml(val)}" />`;
+    }
+    function sbHistUpdateRowUI(mid){
+      const tr = document.querySelector(`#clhViewTable tr[data-hist-mid="${mid}"]`);
+      const st = window.__SB.matchRows[mid];
+      if (!tr || !st) return;
+      const dirty = sbHistIsDirty(st);
+      tr.classList.toggle('hist-dirty', dirty);
+      const act = tr.querySelector('[data-hist-save]');
+      if (act){
+        act.style.display = dirty || st.isSaving ? '' : 'none';
+        act.disabled = !!st.isSaving;
+        act.textContent = st.isSaving ? 'Сохранение...' : 'Сохранить';
+      }
+      const err = tr.querySelector('[data-hist-err]');
+      const ok = tr.querySelector('[data-hist-ok]');
+      if (err) err.textContent = st.saveError || '';
+      if (ok) ok.textContent = st.savedMsg || '';
+    }
+
     function renderHistMatchesTable(matches, title=''){
       const tb = document.querySelector('#clhViewTable tbody');
       const meta = document.getElementById('clhMeta');
@@ -2893,26 +3012,108 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       if (meta) meta.textContent = title;
       if (!matches || !matches.length){
         tb.innerHTML = '';
+        window.__SB.matchRows = {};
         return;
       }
-      tb.innerHTML = matches.map(m => `<tr>` +
-        `<td>${escapeHtml(m.match_date || '')}</td>` +
-        `<td>${escapeHtml(m.home_team || '')}</td>` +
-        `<td>${escapeHtml(m.away_team || '')}</td>` +
-        `<td class="num">${sbFmtCell(m.closing_ah_home, 'num')}</td>` +
-        `<td class="num">${sbFmtCell(m.closing_total_line, 'num')}</td>` +
-        `<td class="num">${sbFmtCell(m.ah_home_odds, 'num')}</td>` +
-        `<td class="num">${sbFmtCell(m.ah_away_odds, 'num')}</td>` +
-        `<td class="num">${sbFmtCell(m.over_odds, 'num')}</td>` +
-        `<td class="num">${sbFmtCell(m.under_odds, 'num')}</td>` +
-        `<td class="num">${sbFmtCell(m.home_odds, 'num')}</td>` +
-        `<td class="num">${sbFmtCell(m.draw_odds, 'num')}</td>` +
-        `<td class="num">${sbFmtCell(m.away_odds, 'num')}</td>` +
-        `<td>${sbFmtCell(m.is_neutral, 'bool')}</td>` +
-        `<td class="num">${sbFmtCell(m.derby_weight, 'num')}</td>` +
-        `<td class="num">${sbFmtCell(m.match_weight, 'num')}</td>` +
-      `</tr>`).join('');
+      const mids = new Set(matches.map(m => Number(m.match_id)));
+      Object.keys(window.__SB.matchRows).forEach(k => { if (!mids.has(Number(k))) delete window.__SB.matchRows[k]; });
+      tb.innerHTML = matches.map(m => {
+        const st = sbHistRowState(m);
+        const dirty = sbHistIsDirty(st);
+        return `<tr data-hist-mid="${m.match_id}" class="${dirty ? 'hist-dirty' : ''}">` +
+          `<td>${escapeHtml(m.match_date || '')}</td>` +
+          `<td>${escapeHtml(m.home_team || '')}</td>` +
+          `<td>${escapeHtml(m.away_team || '')}</td>` +
+          `<td class="num">${sbHistInput('ah', m, st)}</td>` +
+          `<td class="num">${sbHistInput('tot', m, st)}</td>` +
+          `<td class="num">${sbHistInput('ah1', m, st)}</td>` +
+          `<td class="num">${sbHistInput('ah2', m, st)}</td>` +
+          `<td class="num">${sbHistInput('over', m, st)}</td>` +
+          `<td class="num">${sbHistInput('under', m, st)}</td>` +
+          `<td class="num">${sbHistInput('o1', m, st)}</td>` +
+          `<td class="num">${sbHistInput('ox', m, st)}</td>` +
+          `<td class="num">${sbHistInput('o2', m, st)}</td>` +
+          `<td>${sbHistInput('neutral', m, st)}</td>` +
+          `<td class="num">${sbHistInput('derby', m, st)}</td>` +
+          `<td class="num">${sbHistInput('quality', m, st)}</td>` +
+          `<td><button type="button" class="btn hist-save" data-hist-save="${m.match_id}" style="display:${dirty || st.isSaving ? '' : 'none'}">${st.isSaving ? 'Сохранение...' : 'Сохранить'}</button>` +
+          `<span class="hist-row-err" data-hist-err>${escapeHtml(st.saveError || '')}</span>` +
+          `<span class="hist-row-ok" data-hist-ok>${escapeHtml(st.savedMsg || '')}</span></td>` +
+        `</tr>`;
+      }).join('');
     }
+
+    async function sbHistSaveRow(mid){
+      const st = window.__SB.matchRows[mid];
+      if (!st || st.isSaving) return;
+      let payload;
+      try {
+        payload = sbBuildDirtyPatch(st.original, st.edited);
+      } catch (e){
+        st.saveError = e.message || 'Проверьте значения коэффициентов';
+        st.savedMsg = '';
+        sbHistUpdateRowUI(mid);
+        return;
+      }
+      if (!Object.keys(payload).length){
+        st.saveError = '';
+        st.savedMsg = '';
+        sbHistUpdateRowUI(mid);
+        return;
+      }
+      st.isSaving = true;
+      st.saveError = '';
+      st.savedMsg = '';
+      sbHistUpdateRowUI(mid);
+      try {
+        const updated = await sbPatchMatch(mid, payload);
+        st.original = Object.assign({}, updated);
+        st.edited = {};
+        st.savedMsg = 'Сохранено';
+        const key = window.__SB.histSelected ? sbSeasonKey(window.__SB.histSelected.selected_league_id, window.__SB.histSelected.selected_season_id) : null;
+        if (key && window.__SB.matchesBySeason[key]){
+          window.__SB.matchesBySeason[key] = window.__SB.matchesBySeason[key].map(r => Number(r.match_id) === Number(mid) ? updated : r);
+        }
+        renderHistMatchesTable(window.__SB.matchesBySeason[key] || [updated], document.getElementById('clhMeta').textContent);
+      } catch (e){
+        console.error('PATCH match failed', e);
+        st.saveError = 'Не удалось сохранить изменения';
+      } finally {
+        st.isSaving = false;
+        sbHistUpdateRowUI(mid);
+      }
+    }
+
+    document.getElementById('clhViewTable').addEventListener('input', e => {
+      const el = e.target.closest('[data-hist-col]');
+      if (!el) return;
+      const mid = Number(el.getAttribute('data-hist-mid'));
+      const col = el.getAttribute('data-hist-col');
+      const st = window.__SB.matchRows[mid];
+      if (!st) return;
+      st.edited[col] = el.value;
+      st.saveError = '';
+      st.savedMsg = '';
+      sbHistUpdateRowUI(mid);
+    });
+    document.getElementById('clhViewTable').addEventListener('change', e => {
+      const el = e.target.closest('[data-hist-col]');
+      if (!el) return;
+      const mid = Number(el.getAttribute('data-hist-mid'));
+      const col = el.getAttribute('data-hist-col');
+      const st = window.__SB.matchRows[mid];
+      if (!st) return;
+      st.edited[col] = el.value;
+      st.saveError = '';
+      st.savedMsg = '';
+      sbHistUpdateRowUI(mid);
+    });
+    document.getElementById('clhViewTable').addEventListener('click', e => {
+      const btn = e.target.closest('[data-hist-save]');
+      if (!btn) return;
+      e.preventDefault();
+      sbHistSaveRow(Number(btn.getAttribute('data-hist-save')));
+    });
 
     async function sbSelectHistSeason(leagueId, seasonId, leagueName='', seasonLabel=''){
       const key = sbSeasonKey(leagueId, seasonId);

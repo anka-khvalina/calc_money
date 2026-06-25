@@ -1265,7 +1265,7 @@ def build_app():
 
     ttk.Label(
         tab_hist,
-        text="Просмотр сохранённых сезонов и матчей из Supabase. Импорт CSV на этой вкладке не используется.",
+        text="Просмотр и редактирование матчей из Supabase. Двойной клик по ячейке — изменить коэффициент; «Сохранить» — PATCH в matches.",
         justify="left",
     ).pack(anchor="w")
 
@@ -1314,6 +1314,8 @@ def build_app():
             "neutral",
             "derby",
             "quality",
+            "action",
+            "status",
         ),
         show="headings",
         height=14,
@@ -1334,10 +1336,194 @@ def build_app():
         ("neutral", "Нейтр", 52, "center"),
         ("derby", "Дерби", 52, "e"),
         ("quality", "Кач.", 52, "e"),
+        ("action", "Действие", 88, "center"),
+        ("status", "", 120, "w"),
     ]:
         hist_matches_tree.heading(col, text=title)
         hist_matches_tree.column(col, width=w, anchor=anchor)
+    hist_matches_tree.tag_configure("dirty", background="#f0fdf4")
     hist_matches_tree.pack(fill="both", expand=True)
+
+    hist_match_by_id: dict[int, sbh.MatchFull] = {}
+    hist_edited: dict[int, dict[str, str]] = {}
+    hist_row_status: dict[int, str] = {}
+    hist_row_saving: set[int] = set()
+    _hist_edit_entry: tk.Entry | None = None
+    _hist_edit_ctx: tuple[int, str] | None = None
+
+    def _hist_mid(iid: str) -> int:
+        return int(iid)
+
+    def _hist_dirty_fields(mid: int) -> Set[str]:
+        orig = hist_match_by_id.get(mid)
+        if orig is None:
+            return set()
+        edits = hist_edited.get(mid, {})
+        dirty: Set[str] = set()
+        for ui_col in sbh.EDITABLE_UI_COLS:
+            text = edits.get(ui_col, sbh.edit_display_value(orig, ui_col))
+            field = sbh.UI_COL_TO_FIELD[ui_col]
+            try:
+                new_val = sbh.parse_field_input(ui_col, text)
+            except ValueError:
+                dirty.add(field)
+                continue
+            old_val = sbh.field_value_from_match(orig, field)
+            if not sbh._values_equal(field, old_val, new_val):
+                dirty.add(field)
+        return dirty
+
+    def _hist_row_values(mid: int) -> tuple:
+        m = hist_match_by_id[mid]
+        edits = hist_edited.get(mid, {})
+        dirty = _hist_dirty_fields(mid)
+        saving = mid in hist_row_saving
+
+        def cell(ui_col: str) -> str:
+            if ui_col in edits:
+                return edits[ui_col]
+            return sbh.edit_display_value(m, ui_col)
+
+        action = ""
+        if saving:
+            action = "Сохранение..."
+        elif dirty:
+            action = "Сохранить"
+
+        return (
+            m.match_date,
+            m.home_team,
+            m.away_team,
+            cell("ah"),
+            cell("tot"),
+            cell("ah1"),
+            cell("ah2"),
+            cell("over"),
+            cell("under"),
+            cell("o1"),
+            cell("ox"),
+            cell("o2"),
+            cell("neutral"),
+            cell("derby"),
+            cell("quality"),
+            action,
+            hist_row_status.get(mid, ""),
+        )
+
+    def _hist_refresh_row(mid: int):
+        iid = str(mid)
+        if not hist_matches_tree.exists(iid):
+            return
+        tags = ("dirty",) if _hist_dirty_fields(mid) else ()
+        hist_matches_tree.item(iid, values=_hist_row_values(mid), tags=tags)
+
+    def _hist_destroy_edit_entry():
+        nonlocal _hist_edit_entry, _hist_edit_ctx
+        if _hist_edit_entry is not None:
+            _hist_edit_entry.destroy()
+            _hist_edit_entry = None
+            _hist_edit_ctx = None
+
+    def _hist_begin_edit(mid: int, ui_col: str):
+        _hist_destroy_edit_entry()
+        if mid in hist_row_saving:
+            return
+        m = hist_match_by_id.get(mid)
+        if m is None:
+            return
+        bbox = hist_matches_tree.bbox(str(mid), ui_col)
+        if not bbox:
+            return
+        x, y, w, h = bbox
+        initial = hist_edited.get(mid, {}).get(ui_col, sbh.edit_display_value(m, ui_col))
+        entry = tk.Entry(hist_matches_frame, width=max(4, w // 8))
+        entry.insert(0, initial)
+        entry.place(in_=hist_matches_tree, x=x, y=y, width=w, height=h)
+        entry.focus_set()
+        entry.select_range(0, "end")
+
+        def commit(_event=None):
+            nonlocal _hist_edit_entry, _hist_edit_ctx
+            if _hist_edit_entry is None:
+                return
+            val = entry.get()
+            edits = hist_edited.setdefault(mid, {})
+            edits[ui_col] = val
+            hist_row_status.pop(mid, None)
+            _hist_destroy_edit_entry()
+            _hist_refresh_row(mid)
+
+        entry.bind("<Return>", commit)
+        entry.bind("<FocusOut>", commit)
+        _hist_edit_entry = entry
+        _hist_edit_ctx = (mid, ui_col)
+
+    def _hist_save_row(mid: int):
+        if mid in hist_row_saving:
+            return
+        orig = hist_match_by_id.get(mid)
+        if orig is None:
+            return
+        edits = hist_edited.get(mid, {})
+        try:
+            payload = sbh.build_dirty_patch(orig, edits)
+        except ValueError as exc:
+            hist_row_status[mid] = str(exc)
+            _hist_refresh_row(mid)
+            return
+        if not payload:
+            hist_edited.pop(mid, None)
+            hist_row_status.pop(mid, None)
+            _hist_refresh_row(mid)
+            return
+        hist_row_saving.add(mid)
+        hist_row_status[mid] = ""
+        _hist_refresh_row(mid)
+        try:
+            updated = sbh.patch_match(mid, payload)
+        except sb.SupabaseError:
+            hist_row_status[mid] = "Не удалось сохранить изменения"
+        except ValueError as exc:
+            hist_row_status[mid] = str(exc)
+        else:
+            hist_match_by_id[mid] = updated
+            for i, ent in enumerate(hist_matches_cache):
+                if ent.match_id == mid:
+                    hist_matches_cache[i] = updated
+                    break
+            hist_edited.pop(mid, None)
+            hist_row_status[mid] = "Сохранено"
+        finally:
+            hist_row_saving.discard(mid)
+            _hist_refresh_row(mid)
+
+    def _hist_on_matches_click(event):
+        region = hist_matches_tree.identify_region(event.x, event.y)
+        if region != "cell":
+            return
+        col = hist_matches_tree.identify_column(event.x)
+        iid = hist_matches_tree.identify_row(event.y)
+        if not iid:
+            return
+        col_id = hist_matches_tree["columns"][int(col.replace("#", "")) - 1]
+        mid = _hist_mid(iid)
+        if col_id == "action" and _hist_dirty_fields(mid) and mid not in hist_row_saving:
+            _hist_save_row(mid)
+
+    def _hist_on_matches_dblclick(event):
+        region = hist_matches_tree.identify_region(event.x, event.y)
+        if region != "cell":
+            return
+        col = hist_matches_tree.identify_column(event.x)
+        iid = hist_matches_tree.identify_row(event.y)
+        if not iid:
+            return
+        col_id = hist_matches_tree["columns"][int(col.replace("#", "")) - 1]
+        if col_id in sbh.EDITABLE_UI_COLS:
+            _hist_begin_edit(_hist_mid(iid), col_id)
+
+    hist_matches_tree.bind("<Button-1>", _hist_on_matches_click)
+    hist_matches_tree.bind("<Double-1>", _hist_on_matches_dblclick)
 
     hist_seasons_cache: list[sbh.SeasonSummary] = []
     hist_matches_cache: list[sbh.MatchFull] = []
@@ -1349,32 +1535,23 @@ def build_app():
             hist_tree.delete(item)
 
     def clear_hist_matches_tree():
+        _hist_destroy_edit_entry()
+        hist_match_by_id.clear()
+        hist_edited.clear()
+        hist_row_status.clear()
+        hist_row_saving.clear()
         for item in hist_matches_tree.get_children():
             hist_matches_tree.delete(item)
 
     def fill_hist_matches_tree(matches: list[sbh.MatchFull]):
         clear_hist_matches_tree()
         for m in matches:
+            hist_match_by_id[m.match_id] = m
             hist_matches_tree.insert(
                 "",
                 "end",
-                values=(
-                    m.match_date,
-                    m.home_team,
-                    m.away_team,
-                    sbh.format_cell(m.closing_ah_home, kind="num"),
-                    sbh.format_cell(m.closing_total_line, kind="num"),
-                    sbh.format_cell(m.ah_home_odds, kind="num"),
-                    sbh.format_cell(m.ah_away_odds, kind="num"),
-                    sbh.format_cell(m.over_odds, kind="num"),
-                    sbh.format_cell(m.under_odds, kind="num"),
-                    sbh.format_cell(m.home_odds, kind="num"),
-                    sbh.format_cell(m.draw_odds, kind="num"),
-                    sbh.format_cell(m.away_odds, kind="num"),
-                    sbh.format_cell(m.is_neutral, kind="bool"),
-                    sbh.format_cell(m.derby_weight, kind="num"),
-                    sbh.format_cell(m.match_weight, kind="num"),
-                ),
+                iid=str(m.match_id),
+                values=_hist_row_values(m.match_id),
             )
 
     def selected_season_summary() -> sbh.SeasonSummary | None:

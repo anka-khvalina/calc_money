@@ -90,6 +90,90 @@ def test_fetch_matches_filters_by_league_and_season():
     assert sbh.format_cell(matches[0].is_neutral, kind="bool") == "нет"
 
 
+def test_build_dirty_patch_only_changed():
+    m = sbh.MatchFull(
+        match_id=1,
+        match_date="2025-08-15",
+        league_id="uuid",
+        league_name="PL",
+        season_id=4,
+        season_label="2025-26",
+        home_team_id=1,
+        home_team="Arsenal",
+        away_team_id=2,
+        away_team="Chelsea",
+        closing_ah_home=None,
+        closing_total_line=2.5,
+        ah_home_odds=None,
+        ah_away_odds=None,
+        over_odds=1.9,
+        under_odds=2.0,
+        home_odds=1.3,
+        draw_odds=6.0,
+        away_odds=9.0,
+        is_neutral=False,
+        match_weight=1.0,
+        derby_weight=1.0,
+        neutral_weight=1.0,
+        note=None,
+    )
+    payload = sbh.build_dirty_patch(m, {"o1": "1,27", "ox": "6,0"})
+    assert payload == {"home_odds": 1.27}
+
+
+def test_build_dirty_patch_rejects_bad_odds():
+    m = sbh.MatchFull(
+        match_id=1,
+        match_date="2025-08-15",
+        league_id="uuid",
+        league_name="PL",
+        season_id=4,
+        season_label="2025-26",
+        home_team_id=1,
+        home_team="A",
+        away_team_id=2,
+        away_team="B",
+        closing_ah_home=None,
+        closing_total_line=None,
+        ah_home_odds=None,
+        ah_away_odds=None,
+        over_odds=None,
+        under_odds=None,
+        home_odds=1.3,
+        draw_odds=6.0,
+        away_odds=9.0,
+        is_neutral=False,
+        match_weight=1.0,
+        derby_weight=1.0,
+        neutral_weight=1.0,
+        note=None,
+    )
+    try:
+        sbh.build_dirty_patch(m, {"o1": "0,95"})
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "Проверьте" in str(exc)
+
+
+def test_patch_match_sends_whitelist_only():
+    import json
+    from unittest.mock import patch
+
+    captured = {}
+
+    def side_effect(method, path, *, body=None, prefer=None, timeout=30.0):
+        captured["method"] = method
+        captured["path"] = path
+        captured["body"] = body
+        return [{"match_id": 1, "home_odds": 1.27, "home_team": "A", "away_team": "B", "match_date": "2025-08-15", "league_id": "u", "league_name": "L", "season_id": 4, "season_label": "25-26", "is_neutral": False, "match_weight": 1, "derby_weight": 1, "neutral_weight": 1}]
+
+    with patch("supabase_history._request", side_effect=side_effect):
+        sbh.patch_match(1, {"home_odds": 1.27})
+    assert captured["method"] == "PATCH"
+    assert "id=eq.1" in captured["path"]
+    assert captured["body"] == {"home_odds": 1.27}
+
+
 def test_matches_to_goal_csv():
     m = sbh.MatchFull(
         match_id=1,
