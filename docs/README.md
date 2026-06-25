@@ -14,6 +14,7 @@
 6. [ui-spec.md](ui-spec.md) — экраны десктопа MVP.
 7. [mvp-scope.md](mvp-scope.md) — границы первой версии кода.
 8. [open-questions.md](open-questions.md) — нерешённое и принятые допущения.
+9. [db-er-closing-lines.md](db-er-closing-lines.md) — **ER-диаграмма БД** для closing-линий (вкладка «История»).
 
 ## Карта зависимостей
 
