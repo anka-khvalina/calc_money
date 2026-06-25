@@ -6,7 +6,7 @@
 2. **Рейтинг команд** — расчёт рейтинга команд и коэффициента силы по коэффициентам `1/X/2`.
 3. **Справочник команд** — лиги и команды из Supabase (`config/supabase.json`), логотипы локально. См. `docs/supabase-teams-spec.md`.
 4. **Счет кэф** — Shin-модель P1/X/P2.
-5. **История сезонов** — импорт и хранение CSV прошлых сезонов по пяти основным лигам.
+5. **История** — просмотр сохранённых сезонов и матчей из Supabase (`v_season_summary`, `v_matches_full`). См. `docs/supabase-history-spec.md`.
 6. **Линия (голы)** — голевая модель Poisson / Dixon-Coles: из исторических
    closing-линий (азиатские форы + тоталы + 1X2) строит матрицу счетов и весь
    набор рынков. См. ниже.
@@ -329,8 +329,14 @@ python3 app/history_store.py draw-model --league EPL
 
 | Способ | URL |
 |--------|-----|
-| HTML Preview (сразу) | https://htmlpreview.github.io/?https://raw.githubusercontent.com/anka-khvalina/calc_money/cursor/history-store-17b5/web/FairOddsCalc_iOS.html |
-| GitHub Pages | https://anka-khvalina.github.io/calc_money/FairOddsCalc_iOS.html |
+| Способ | Ссылка |
+|--------|--------|
+| **GitHub Pages** (нужно включить в Settings → Pages) | https://anka-khvalina.github.io/calc_money/FairOddsCalc_iOS.html |
+| Корень Pages | https://anka-khvalina.github.io/calc_money/ |
+
+> Репозиторий **приватный**: `htmlpreview` и `raw.githubusercontent.com` **не работают** (ошибка 400/404).
+> Pages тоже 404, пока не включены: **Settings → Pages → Source: GitHub Actions** (или branch `gh-pages` / root).
+| Локально | `cd web && python3 -m http.server 8080` → http://localhost:8080/FairOddsCalc_iOS.html |
 | Файл из Releases | скачать → **Файлы** → открыть в Safari |
 
 1. Откройте одну из ссылок в **Safari** (не Telegram/WhatsApp).
