@@ -59,7 +59,37 @@
     .js-status.err{ color:var(--danger); border-color:#f5c2c0; background:#fff5f5; }
     .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
     .btn.hist-save{ background:#16a34a; color:#fff; border-color:#16a34a; padding:4px 10px; font-size:12px; }
-    tr.hist-dirty{ background:#f0fdf4; }
+    tr.hist-dirty td.hist-col-date,
+    tr.hist-dirty td.hist-col-team,
+    tr.hist-dirty td.hist-col-neutral,
+    tr.hist-dirty td.hist-col-action{ background:#f0fdf4; }
+    tr.hist-dirty td.hist-col-ah{ background:#fef9c3; }
+    tr.hist-dirty td.hist-col-tot{ background:#e0f2fe; }
+    tr.hist-dirty td.hist-col-1x2{ background:#ede9fe; }
+    #clhViewTable th.hist-col-ah,
+    #clhViewTable td.hist-col-ah{
+      background:#fffbeb;
+      border-left:2px solid #fde68a;
+    }
+    #clhViewTable th.hist-col-tot,
+    #clhViewTable td.hist-col-tot{
+      background:#f0f9ff;
+      border-left:2px solid #bae6fd;
+    }
+    #clhViewTable th.hist-col-1x2,
+    #clhViewTable td.hist-col-1x2{
+      background:#f5f3ff;
+      border-left:2px solid #ddd6fe;
+    }
+    #clhViewTable th.hist-col-ah{ background:#fef3c7; }
+    #clhViewTable th.hist-col-tot{ background:#e0f2fe; }
+    #clhViewTable th.hist-col-1x2{ background:#ede9fe; }
+    #clhViewTable td.hist-col-ah .hist-cell-input,
+    #clhViewTable td.hist-col-tot .hist-cell-input,
+    #clhViewTable td.hist-col-1x2 .hist-cell-input{
+      background:rgba(255,255,255,0.78);
+      border-color:rgba(0,0,0,0.08);
+    }
     .hist-cell-input{
       width:100%; min-width:54px; max-width:none;
       font-size:13px; padding:5px 7px; box-sizing:border-box;
@@ -678,9 +708,9 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <table id="clhViewTable">
           <thead><tr>
             <th>Дата</th><th>Дома</th><th>Гости</th>
-            <th class="right">AH1</th><th class="right">AH</th><th class="right">AH2</th>
-            <th class="right">O</th><th class="right">Тот</th><th class="right">U</th>
-            <th class="right">1</th><th class="right">X</th><th class="right">2</th>
+            <th class="right hist-col-ah">AH1</th><th class="right hist-col-ah">AH</th><th class="right hist-col-ah">AH2</th>
+            <th class="right hist-col-tot">O</th><th class="right hist-col-tot">Тот</th><th class="right hist-col-tot">U</th>
+            <th class="right hist-col-1x2">1</th><th class="right hist-col-1x2">X</th><th class="right hist-col-1x2">2</th>
             <th>Нейтр</th><th>Действие</th>
           </tr></thead>
           <tbody></tbody>
@@ -3149,15 +3179,15 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
           `<td class="hist-col-date">${escapeHtml(m.match_date || '')}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.home_team || '')}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.away_team || '')}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ah1', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ah', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ah2', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('over', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('tot', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('under', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('o1', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ox', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('o2', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah1', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah2', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-tot">${sbHistInput('over', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-tot">${sbHistInput('tot', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-tot">${sbHistInput('under', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o1', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-1x2">${sbHistInput('ox', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o2', m, st)}</td>` +
           `<td class="hist-col-neutral">${sbHistInput('neutral', m, st)}</td>` +
           `<td class="hist-col-action">` +
             `<button type="button" class="btn hist-fetch-toggle" data-hist-fetch-toggle="${m.match_id}" aria-expanded="${fetchOpen ? 'true' : 'false'}">${fetchOpen ? '▲ Данные' : '▼ Данные'}</button>` +
