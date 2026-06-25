@@ -17,6 +17,7 @@
       background:var(--bg); color:var(--text);
     }
     .wrap{ max-width:980px; margin:0 auto; padding:14px 12px 24px; }
+    body.tab-hist-wide .wrap{ max-width:min(1520px, 98vw); padding-left:10px; padding-right:10px; }
     h1{ font-size:20px; margin:8px 0 12px; }
     .tabs{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
     .tab-btn{
@@ -59,7 +60,28 @@
     .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
     .btn.hist-save{ background:#16a34a; color:#fff; border-color:#16a34a; padding:4px 10px; font-size:12px; }
     tr.hist-dirty{ background:#f0fdf4; }
-    .hist-cell-input{ width:100%; max-width:72px; font-size:12px; padding:4px 6px; box-sizing:border-box; }
+    .hist-cell-input{
+      width:100%; min-width:54px; max-width:none;
+      font-size:13px; padding:5px 7px; box-sizing:border-box;
+    }
+    #tab-hist .hist-matches-wrap{
+      overflow-x:auto; -webkit-overflow-scrolling:touch;
+      margin-left:-6px; margin-right:-6px;
+    }
+    #clhViewTable{
+      min-width:1380px; table-layout:auto;
+    }
+    #clhViewTable th, #clhViewTable td{
+      padding:7px 9px; font-size:12.5px; vertical-align:middle;
+    }
+    #clhViewTable td.hist-col-date{ min-width:92px; white-space:nowrap; }
+    #clhViewTable td.hist-col-team{
+      min-width:112px; max-width:168px; white-space:normal; line-height:1.25;
+    }
+    #clhViewTable td.hist-col-num{ min-width:68px; }
+    #clhViewTable td.hist-col-neutral{ min-width:72px; }
+    #clhViewTable td.hist-col-action{ min-width:104px; white-space:normal; }
+    #clhViewTable td.num .hist-cell-input{ text-align:right; font-variant-numeric:tabular-nums; }
     .hist-row-err{ color:var(--danger); font-size:11px; display:block; margin-top:2px; }
     .hist-row-ok{ color:#16a34a; font-size:11px; display:block; margin-top:2px; }
     .btn:active{ transform:translateY(1px); }
@@ -167,6 +189,7 @@
             for (var j = 0; j < panels.length; j++) {
               panels[j].classList.toggle('active', panels[j].id === panelId);
             }
+            document.body.classList.toggle('tab-hist-wide', id === 'hist');
             if (id === 'hist' && window.sbInitHistTab) window.sbInitHistTab();
             if (id === 'goal') {
               if (window.refreshGoalTeams) window.refreshGoalTeams();
@@ -643,7 +666,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </table>
       </div>
       <div class="small" style="margin-top:10px;font-weight:600;">Матчи выбранного сезона</div>
-      <div class="table-wrap">
+      <div class="table-wrap hist-matches-wrap">
         <table id="clhViewTable">
           <thead><tr>
             <th>Дата</th><th>Дома</th><th>Гости</th>
@@ -3021,22 +3044,22 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         const st = sbHistRowState(m);
         const dirty = sbHistIsDirty(st);
         return `<tr data-hist-mid="${m.match_id}" class="${dirty ? 'hist-dirty' : ''}">` +
-          `<td>${escapeHtml(m.match_date || '')}</td>` +
-          `<td>${escapeHtml(m.home_team || '')}</td>` +
-          `<td>${escapeHtml(m.away_team || '')}</td>` +
-          `<td class="num">${sbHistInput('ah', m, st)}</td>` +
-          `<td class="num">${sbHistInput('tot', m, st)}</td>` +
-          `<td class="num">${sbHistInput('ah1', m, st)}</td>` +
-          `<td class="num">${sbHistInput('ah2', m, st)}</td>` +
-          `<td class="num">${sbHistInput('over', m, st)}</td>` +
-          `<td class="num">${sbHistInput('under', m, st)}</td>` +
-          `<td class="num">${sbHistInput('o1', m, st)}</td>` +
-          `<td class="num">${sbHistInput('ox', m, st)}</td>` +
-          `<td class="num">${sbHistInput('o2', m, st)}</td>` +
-          `<td>${sbHistInput('neutral', m, st)}</td>` +
-          `<td class="num">${sbHistInput('derby', m, st)}</td>` +
-          `<td class="num">${sbHistInput('quality', m, st)}</td>` +
-          `<td><button type="button" class="btn hist-save" data-hist-save="${m.match_id}" style="display:${dirty || st.isSaving ? '' : 'none'}">${st.isSaving ? 'Сохранение...' : 'Сохранить'}</button>` +
+          `<td class="hist-col-date">${escapeHtml(m.match_date || '')}</td>` +
+          `<td class="hist-col-team">${escapeHtml(m.home_team || '')}</td>` +
+          `<td class="hist-col-team">${escapeHtml(m.away_team || '')}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('ah', m, st)}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('tot', m, st)}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('ah1', m, st)}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('ah2', m, st)}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('over', m, st)}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('under', m, st)}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('o1', m, st)}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('ox', m, st)}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('o2', m, st)}</td>` +
+          `<td class="hist-col-neutral">${sbHistInput('neutral', m, st)}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('derby', m, st)}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('quality', m, st)}</td>` +
+          `<td class="hist-col-action"><button type="button" class="btn hist-save" data-hist-save="${m.match_id}" style="display:${dirty || st.isSaving ? '' : 'none'}">${st.isSaving ? 'Сохранение...' : 'Сохранить'}</button>` +
           `<span class="hist-row-err" data-hist-err>${escapeHtml(st.saveError || '')}</span>` +
           `<span class="hist-row-ok" data-hist-ok>${escapeHtml(st.savedMsg || '')}</span></td>` +
         `</tr>`;
