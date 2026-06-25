@@ -14,18 +14,19 @@ from supabase_teams import SupabaseError, _request
 
 PATCH_WHITELIST: FrozenSet[str] = frozenset(
     {
-        "closing_ah_home",
-        "closing_total_line",
         "ah_home_odds",
+        "closing_ah_home",
         "ah_away_odds",
         "over_odds",
+        "closing_total_line",
         "under_odds",
         "home_odds",
         "draw_odds",
         "away_odds",
         "is_neutral",
-        "derby_weight",
         "match_weight",
+        "derby_weight",
+        "neutral_weight",
     }
 )
 
@@ -42,19 +43,26 @@ ODDS_GT_ONE_FIELDS: FrozenSet[str] = frozenset(
 )
 
 UI_COL_TO_FIELD: Dict[str, str] = {
-    "ah": "closing_ah_home",
-    "tot": "closing_total_line",
     "ah1": "ah_home_odds",
+    "ah": "closing_ah_home",
     "ah2": "ah_away_odds",
     "over": "over_odds",
+    "tot": "closing_total_line",
     "under": "under_odds",
     "o1": "home_odds",
     "ox": "draw_odds",
     "o2": "away_odds",
     "neutral": "is_neutral",
     "derby": "derby_weight",
-    "quality": "match_weight",
+    "match_w": "match_weight",
+    "neutr_w": "neutral_weight",
 }
+
+# Порядок столбцов линии в UI (AH1 → AH → AH2 → O → Тот → U)
+HIST_LINE_UI_COLS: tuple[str, ...] = ("ah1", "ah", "ah2", "over", "tot", "under")
+
+# Поля весов в раскрываемом блоке
+HIST_WEIGHT_UI_COLS: tuple[str, ...] = ("derby", "match_w", "neutr_w")
 
 EDITABLE_UI_COLS: FrozenSet[str] = frozenset(UI_COL_TO_FIELD)
 
@@ -149,6 +157,7 @@ def _match_attr(db_field: str) -> str:
         "is_neutral": "is_neutral",
         "derby_weight": "derby_weight",
         "match_weight": "match_weight",
+        "neutral_weight": "neutral_weight",
     }
     return mapping[db_field]
 
@@ -194,7 +203,7 @@ def validate_match_patch(changes: Mapping[str, Any]) -> None:
             raise ValueError("Проверьте значения коэффициентов")
         if key in ODDS_GT_ONE_FIELDS and val <= 1:
             raise ValueError("Проверьте значения коэффициентов")
-        if key in ("derby_weight", "match_weight") and val < 0:
+        if key in ("derby_weight", "match_weight", "neutral_weight") and val < 0:
             raise ValueError("Проверьте значения коэффициентов")
 
 

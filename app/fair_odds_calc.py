@@ -1302,18 +1302,17 @@ def build_app():
             "date",
             "home",
             "away",
-            "ah",
             "ah1",
+            "ah",
             "ah2",
-            "tot",
             "over",
+            "tot",
             "under",
             "o1",
             "ox",
             "o2",
             "neutral",
-            "derby",
-            "quality",
+            "weights",
             "action",
             "status",
         ),
@@ -1324,18 +1323,17 @@ def build_app():
         ("date", "Дата", 92, "w"),
         ("home", "Дома", 132, "w"),
         ("away", "Гости", 132, "w"),
-        ("ah", "AH", 56, "e"),
         ("ah1", "AH1", 56, "e"),
+        ("ah", "AH", 56, "e"),
         ("ah2", "AH2", 56, "e"),
-        ("tot", "Тот", 56, "e"),
         ("over", "O", 56, "e"),
+        ("tot", "Тот", 56, "e"),
         ("under", "U", 56, "e"),
         ("o1", "1", 56, "e"),
         ("ox", "X", 56, "e"),
         ("o2", "2", 56, "e"),
         ("neutral", "Нейтр", 60, "center"),
-        ("derby", "Дерби", 56, "e"),
-        ("quality", "Кач.", 56, "e"),
+        ("weights", "Веса", 52, "center"),
         ("action", "Действие", 96, "center"),
         ("status", "", 132, "w"),
     ]:
@@ -1394,18 +1392,17 @@ def build_app():
             m.match_date,
             m.home_team,
             m.away_team,
-            cell("ah"),
             cell("ah1"),
+            cell("ah"),
             cell("ah2"),
-            cell("tot"),
             cell("over"),
+            cell("tot"),
             cell("under"),
             cell("o1"),
             cell("ox"),
             cell("o2"),
             cell("neutral"),
-            cell("derby"),
-            cell("quality"),
+            "⚙",
             action,
             hist_row_status.get(mid, ""),
         )
@@ -1497,6 +1494,45 @@ def build_app():
             hist_row_saving.discard(mid)
             _hist_refresh_row(mid)
 
+    def _hist_show_weights_dialog(mid: int):
+        _hist_destroy_edit_entry()
+        if mid in hist_row_saving:
+            return
+        m = hist_match_by_id.get(mid)
+        if m is None:
+            return
+        dlg = tk.Toplevel(hist_matches_frame)
+        dlg.title("Веса матча")
+        dlg.transient(hist_matches_frame.winfo_toplevel())
+        dlg.grab_set()
+        edits = hist_edited.setdefault(mid, {})
+        vars_by_col: dict[str, tk.StringVar] = {}
+        for row_i, (ui_col, label) in enumerate(
+            (
+                ("derby", "Дерби"),
+                ("match_w", "Вес матча"),
+                ("neutr_w", "Нейтр. вес"),
+            )
+        ):
+            ttk.Label(dlg, text=f"{label}:").grid(row=row_i, column=0, sticky="w", padx=8, pady=6)
+            initial = edits.get(ui_col, sbh.edit_display_value(m, ui_col))
+            var = tk.StringVar(value=initial)
+            vars_by_col[ui_col] = var
+            ttk.Entry(dlg, textvariable=var, width=12).grid(row=row_i, column=1, sticky="w", padx=8, pady=6)
+
+        def apply_and_close():
+            for ui_col, var in vars_by_col.items():
+                edits[ui_col] = var.get()
+            hist_row_status.pop(mid, None)
+            dlg.destroy()
+            _hist_refresh_row(mid)
+
+        btns = ttk.Frame(dlg)
+        btns.grid(row=3, column=0, columnspan=2, pady=(4, 10))
+        ttk.Button(btns, text="Готово", command=apply_and_close).pack(side="left", padx=6)
+        ttk.Button(btns, text="Отмена", command=dlg.destroy).pack(side="left", padx=6)
+        dlg.bind("<Escape>", lambda _e: dlg.destroy())
+
     def _hist_on_matches_click(event):
         region = hist_matches_tree.identify_region(event.x, event.y)
         if region != "cell":
@@ -1507,6 +1543,9 @@ def build_app():
             return
         col_id = hist_matches_tree["columns"][int(col.replace("#", "")) - 1]
         mid = _hist_mid(iid)
+        if col_id == "weights":
+            _hist_show_weights_dialog(mid)
+            return
         if col_id == "action" and _hist_dirty_fields(mid) and mid not in hist_row_saving:
             _hist_save_row(mid)
 

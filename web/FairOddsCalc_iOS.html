@@ -69,7 +69,7 @@
       margin-left:-6px; margin-right:-6px;
     }
     #clhViewTable{
-      min-width:1380px; table-layout:auto;
+      min-width:1180px; table-layout:auto;
     }
     #clhViewTable th, #clhViewTable td{
       padding:7px 9px; font-size:12.5px; vertical-align:middle;
@@ -81,6 +81,10 @@
     #clhViewTable td.hist-col-num{ min-width:68px; }
     #clhViewTable td.hist-col-neutral{ min-width:72px; }
     #clhViewTable td.hist-col-action{ min-width:104px; white-space:normal; }
+    .hist-weights-row td{ background:#f8fafc; padding:8px 12px; border-bottom:1px solid var(--line); }
+    .hist-weights-panel{ display:flex; flex-wrap:wrap; gap:10px 16px; align-items:flex-end; }
+    .hist-weights-field label{ display:block; font-size:11px; color:var(--muted); margin-bottom:3px; }
+    .btn.hist-weights-toggle{ padding:4px 8px; font-size:12px; margin-right:6px; }
     #clhViewTable td.num .hist-cell-input{ text-align:right; font-variant-numeric:tabular-nums; }
     .hist-row-err{ color:var(--danger); font-size:11px; display:block; margin-top:2px; }
     .hist-row-ok{ color:#16a34a; font-size:11px; display:block; margin-top:2px; }
@@ -670,12 +674,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <table id="clhViewTable">
           <thead><tr>
             <th>Дата</th><th>Дома</th><th>Гости</th>
-            <th class="right">AH</th>
-            <th class="right">AH1</th><th class="right">AH2</th>
-            <th class="right">Тот</th>
-            <th class="right">O</th><th class="right">U</th>
+            <th class="right">AH1</th><th class="right">AH</th><th class="right">AH2</th>
+            <th class="right">O</th><th class="right">Тот</th><th class="right">U</th>
             <th class="right">1</th><th class="right">X</th><th class="right">2</th>
-            <th>Нейтр</th><th>Дерби</th><th>Кач.</th><th>Действие</th>
+            <th>Нейтр</th><th>Действие</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -2916,18 +2918,25 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     }
 
     const SB_PATCH_WHITELIST = new Set([
-      'closing_ah_home','closing_total_line','ah_home_odds','ah_away_odds',
-      'over_odds','under_odds','home_odds','draw_odds','away_odds',
-      'is_neutral','derby_weight','match_weight',
+      'ah_home_odds','closing_ah_home','ah_away_odds',
+      'over_odds','closing_total_line','under_odds',
+      'home_odds','draw_odds','away_odds',
+      'is_neutral','match_weight','derby_weight','neutral_weight',
     ]);
     const SB_ODDS_GT_ONE = new Set([
       'ah_home_odds','ah_away_odds','over_odds','under_odds','home_odds','draw_odds','away_odds',
     ]);
     const SB_UI_COL_MAP = {
-      ah:'closing_ah_home', tot:'closing_total_line', ah1:'ah_home_odds', ah2:'ah_away_odds',
-      over:'over_odds', under:'under_odds', o1:'home_odds', ox:'draw_odds', o2:'away_odds',
-      neutral:'is_neutral', derby:'derby_weight', quality:'match_weight',
+      ah1:'ah_home_odds', ah:'closing_ah_home', ah2:'ah_away_odds',
+      over:'over_odds', tot:'closing_total_line', under:'under_odds',
+      o1:'home_odds', ox:'draw_odds', o2:'away_odds',
+      neutral:'is_neutral', derby:'derby_weight', match_w:'match_weight', neutr_w:'neutral_weight',
     };
+    const SB_HIST_WEIGHT_COLS = [
+      { col:'derby', label:'Дерби' },
+      { col:'match_w', label:'Вес матча' },
+      { col:'neutr_w', label:'Нейтр. вес' },
+    ];
     window.__SB.matchRows = window.__SB.matchRows || {};
 
     function sbFieldFromMatch(m, field){
@@ -2979,14 +2988,14 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         if (v == null) return;
         if (field === 'is_neutral' && typeof v !== 'boolean') throw new Error('Проверьте значения коэффициентов');
         if (SB_ODDS_GT_ONE.has(field) && v <= 1) throw new Error('Проверьте значения коэффициентов');
-        if ((field === 'derby_weight' || field === 'match_weight') && v < 0) throw new Error('Проверьте значения коэффициентов');
+        if ((field === 'derby_weight' || field === 'match_weight' || field === 'neutral_weight') && v < 0) throw new Error('Проверьте значения коэффициентов');
       });
       return payload;
     }
     function sbHistRowState(m){
       const mid = Number(m.match_id);
       if (!window.__SB.matchRows[mid]){
-        window.__SB.matchRows[mid] = { original: Object.assign({}, m), edited: {}, isSaving: false, saveError: '', savedMsg: '' };
+        window.__SB.matchRows[mid] = { original: Object.assign({}, m), edited: {}, isSaving: false, saveError: '', savedMsg: '', weightsOpen: false };
       }
       return window.__SB.matchRows[mid];
     }
@@ -3029,6 +3038,14 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       if (ok) ok.textContent = st.savedMsg || '';
     }
 
+    function sbHistWeightsPanel(m, st){
+      return `<div class="hist-weights-panel">` +
+        SB_HIST_WEIGHT_COLS.map(({ col, label }) =>
+          `<div class="hist-weights-field"><label>${label}</label>${sbHistInput(col, m, st)}</div>`
+        ).join('') +
+      `</div>`;
+    }
+
     function renderHistMatchesTable(matches, title=''){
       const tb = document.querySelector('#clhViewTable tbody');
       const meta = document.getElementById('clhMeta');
@@ -3044,26 +3061,32 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       tb.innerHTML = matches.map(m => {
         const st = sbHistRowState(m);
         const dirty = sbHistIsDirty(st);
-        return `<tr data-hist-mid="${m.match_id}" class="${dirty ? 'hist-dirty' : ''}">` +
+        const weightsOpen = !!st.weightsOpen;
+        const mainRow = `<tr data-hist-mid="${m.match_id}" class="${dirty ? 'hist-dirty' : ''}">` +
           `<td class="hist-col-date">${escapeHtml(m.match_date || '')}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.home_team || '')}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.away_team || '')}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ah', m, st)}</td>` +
           `<td class="num hist-col-num">${sbHistInput('ah1', m, st)}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('ah', m, st)}</td>` +
           `<td class="num hist-col-num">${sbHistInput('ah2', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('tot', m, st)}</td>` +
           `<td class="num hist-col-num">${sbHistInput('over', m, st)}</td>` +
+          `<td class="num hist-col-num">${sbHistInput('tot', m, st)}</td>` +
           `<td class="num hist-col-num">${sbHistInput('under', m, st)}</td>` +
           `<td class="num hist-col-num">${sbHistInput('o1', m, st)}</td>` +
           `<td class="num hist-col-num">${sbHistInput('ox', m, st)}</td>` +
           `<td class="num hist-col-num">${sbHistInput('o2', m, st)}</td>` +
           `<td class="hist-col-neutral">${sbHistInput('neutral', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('derby', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('quality', m, st)}</td>` +
-          `<td class="hist-col-action"><button type="button" class="btn hist-save" data-hist-save="${m.match_id}" style="display:${dirty || st.isSaving ? '' : 'none'}">${st.isSaving ? 'Сохранение...' : 'Сохранить'}</button>` +
-          `<span class="hist-row-err" data-hist-err>${escapeHtml(st.saveError || '')}</span>` +
-          `<span class="hist-row-ok" data-hist-ok>${escapeHtml(st.savedMsg || '')}</span></td>` +
+          `<td class="hist-col-action">` +
+            `<button type="button" class="btn hist-weights-toggle" data-hist-weights-toggle="${m.match_id}" aria-expanded="${weightsOpen ? 'true' : 'false'}">${weightsOpen ? '▲ Веса' : '▼ Веса'}</button>` +
+            `<button type="button" class="btn hist-save" data-hist-save="${m.match_id}" style="display:${dirty || st.isSaving ? '' : 'none'}">${st.isSaving ? 'Сохранение...' : 'Сохранить'}</button>` +
+            `<span class="hist-row-err" data-hist-err>${escapeHtml(st.saveError || '')}</span>` +
+            `<span class="hist-row-ok" data-hist-ok>${escapeHtml(st.savedMsg || '')}</span>` +
+          `</td>` +
         `</tr>`;
+        const weightsRow = `<tr class="hist-weights-row" data-hist-weights-for="${m.match_id}" style="display:${weightsOpen ? '' : 'none'}">` +
+          `<td colspan="14">${sbHistWeightsPanel(m, st)}</td>` +
+        `</tr>`;
+        return mainRow + weightsRow;
       }).join('');
     }
 
@@ -3133,6 +3156,19 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       sbHistUpdateRowUI(mid);
     });
     document.getElementById('clhViewTable').addEventListener('click', e => {
+      const weightsBtn = e.target.closest('[data-hist-weights-toggle]');
+      if (weightsBtn){
+        e.preventDefault();
+        const mid = Number(weightsBtn.getAttribute('data-hist-weights-toggle'));
+        const st = window.__SB.matchRows[mid];
+        if (!st) return;
+        st.weightsOpen = !st.weightsOpen;
+        const detail = document.querySelector(`tr[data-hist-weights-for="${mid}"]`);
+        if (detail) detail.style.display = st.weightsOpen ? '' : 'none';
+        weightsBtn.textContent = st.weightsOpen ? '▲ Веса' : '▼ Веса';
+        weightsBtn.setAttribute('aria-expanded', st.weightsOpen ? 'true' : 'false');
+        return;
+      }
       const btn = e.target.closest('[data-hist-save]');
       if (!btn) return;
       e.preventDefault();
