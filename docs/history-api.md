@@ -2,34 +2,30 @@
 
 Обход CORS: браузер → **наш бэкенд** → userbet.info.
 
-## Запуск
+## Запуск (Mac)
 
-Из **корня репозитория** `calc_money` (не из `~`):
-
-```bash
-cd ~/путь/к/calc_money
-git checkout cursor/history-api-17b5   # если ещё не на этой ветке
-python3 -m pip install -r requirements-api.txt
-python3 -m uvicorn history_api:app --app-dir app --host 0.0.0.0 --port 8765
-```
-
-Или одной командой:
+Из корня репозитория `calc_money`:
 
 ```bash
-cd ~/путь/к/calc_money
+cd ~/calc_money
 bash scripts/run_history_api.sh
 ```
 
-Проверка:
+Скрипт сам создаст `.venv-api` и установит зависимости.
+
+Вручную (без скрипта):
 
 ```bash
-curl http://127.0.0.1:8765/health
-curl -X POST http://127.0.0.1:8765/api/history/fetch-odds \
-  -H 'Content-Type: application/json' \
-  -d '{"id_fixture":"1611253099"}'
+cd ~/calc_money
+python3 -m venv .venv-api
+source .venv-api/bin/activate
+python -m pip install -r requirements-api.txt
+python -m uvicorn history_api:app --app-dir app --host 0.0.0.0 --port 8765
 ```
 
-На Mac команда `pip` часто отсутствует — используйте **`python3 -m pip`**.
+**Не** `python3 -m pip3` — правильно: `python3 -m pip` или в venv просто `python -m pip`.
+
+Проверка:
 
 ## Endpoint
 

@@ -3,13 +3,23 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-PY="${PYTHON:-python3}"
-if ! "$PY" -c "import uvicorn" 2>/dev/null; then
-  echo "Устанавливаю зависимости..."
-  "$PY" -m pip install -r requirements-api.txt
+
+VENV="$ROOT/.venv-api"
+if [[ ! -d "$VENV" ]]; then
+  echo "Создаю виртуальное окружение .venv-api ..."
+  python3 -m venv "$VENV"
 fi
+# shellcheck disable=SC1091
+source "$VENV/bin/activate"
+
+echo "Устанавливаю зависимости..."
+python -m pip install -q --upgrade pip
+python -m pip install -q -r requirements-api.txt
+
 HOST="${HISTORY_API_HOST:-0.0.0.0}"
 PORT="${HISTORY_API_PORT:-8765}"
+echo ""
 echo "History API: http://127.0.0.1:${PORT}"
-echo "Проверка: curl http://127.0.0.1:${PORT}/health"
-exec "$PY" -m uvicorn history_api:app --app-dir app --host "$HOST" --port "$PORT"
+echo "Проверка:    curl http://127.0.0.1:${PORT}/health"
+echo ""
+exec python -m uvicorn history_api:app --app-dir app --host "$HOST" --port "$PORT"
