@@ -108,10 +108,11 @@ def set_team_logo(
     source_path: os.PathLike[str] | str,
     *,
     path: Optional[Path] = None,
+    require_registry: bool = True,
 ) -> Path:
     """Скопировать/конвертировать файл логотипа для команды."""
     tid = str(team_id).strip()
-    if get_team(tid, path=path) is None:
+    if require_registry and get_team(tid, path=path) is None:
         raise ValueError(f"Команда {tid!r} не найдена в справочнике.")
     src = Path(source_path)
     if not src.is_file():
