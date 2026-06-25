@@ -4,19 +4,32 @@
 
 ## Запуск
 
+Из **корня репозитория** `calc_money` (не из `~`):
+
 ```bash
-pip install -r requirements-api.txt
+cd ~/путь/к/calc_money
+git checkout cursor/history-api-17b5   # если ещё не на этой ветке
+python3 -m pip install -r requirements-api.txt
 python3 -m uvicorn history_api:app --app-dir app --host 0.0.0.0 --port 8765
+```
+
+Или одной командой:
+
+```bash
+cd ~/путь/к/calc_money
+bash scripts/run_history_api.sh
 ```
 
 Проверка:
 
 ```bash
-curl -s http://localhost:8765/health
-curl -s -X POST http://localhost:8765/api/history/fetch-odds \
+curl http://127.0.0.1:8765/health
+curl -X POST http://127.0.0.1:8765/api/history/fetch-odds \
   -H 'Content-Type: application/json' \
   -d '{"id_fixture":"1611253099"}'
 ```
+
+На Mac команда `pip` часто отсутствует — используйте **`python3 -m pip`**.
 
 ## Endpoint
 
