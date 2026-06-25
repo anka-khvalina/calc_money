@@ -239,7 +239,7 @@ def _values_equal(field: str, old: Any, new: Any) -> bool:
         return old == new
 
 
-def patch_match(match_id: int, changes: Mapping[str, Any]) -> MatchFull:
+def patch_match(match_id: int, changes: Mapping[str, Any], *, original: MatchFull) -> MatchFull:
     if not changes:
         raise ValueError("Нет изменений для сохранения")
     payload = dict(changes)
@@ -249,16 +249,9 @@ def patch_match(match_id: int, changes: Mapping[str, Any]) -> MatchFull:
     validate_match_patch(payload)
     q = urllib.parse.urlencode({"id": f"eq.{int(match_id)}"})
     rows = _request("PATCH", f"/matches?{q}", body=payload)
-    if isinstance(rows, list) and rows:
-        row = rows[0]
-    elif isinstance(rows, dict):
-        row = rows
-    else:
+    if not (isinstance(rows, list) and rows) and not isinstance(rows, dict):
         raise SupabaseError("Не удалось сохранить изменения")
-    ent = _parse_match_row(row)
-    if ent is None:
-        raise SupabaseError("Некорректный ответ matches")
-    return ent
+    return apply_patch_to_match(original, payload)
 
 
 def apply_patch_to_match(original: MatchFull, changes: Mapping[str, Any]) -> MatchFull:

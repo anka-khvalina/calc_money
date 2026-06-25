@@ -191,18 +191,47 @@ def test_patch_match_sends_whitelist_only():
     from unittest.mock import patch
 
     captured = {}
+    original = sbh.MatchFull(
+        match_id=1,
+        match_date="2025-08-15",
+        league_id="uuid",
+        league_name="PL",
+        season_id=4,
+        season_label="2025-26",
+        home_team_id=1,
+        home_team="Liverpool",
+        away_team_id=2,
+        away_team="Bournemouth",
+        closing_ah_home=None,
+        closing_total_line=None,
+        ah_home_odds=None,
+        ah_away_odds=None,
+        over_odds=None,
+        under_odds=None,
+        home_odds=1.3,
+        draw_odds=6.0,
+        away_odds=9.0,
+        is_neutral=False,
+        match_weight=1.0,
+        derby_weight=1.0,
+        neutral_weight=1.0,
+        note=None,
+    )
 
     def side_effect(method, path, *, body=None, prefer=None, timeout=30.0):
         captured["method"] = method
         captured["path"] = path
         captured["body"] = body
-        return [{"match_id": 1, "home_odds": 1.27, "home_team": "A", "away_team": "B", "match_date": "2025-08-15", "league_id": "u", "league_name": "L", "season_id": 4, "season_label": "25-26", "is_neutral": False, "match_weight": 1, "derby_weight": 1, "neutral_weight": 1}]
+        return [{"match_id": 1, "home_odds": 1.27}]
 
     with patch("supabase_history._request", side_effect=side_effect):
-        sbh.patch_match(1, {"home_odds": 1.27})
+        updated = sbh.patch_match(1, {"home_odds": 1.27}, original=original)
     assert captured["method"] == "PATCH"
     assert "id=eq.1" in captured["path"]
     assert captured["body"] == {"home_odds": 1.27}
+    assert updated.home_team == "Liverpool"
+    assert updated.away_team == "Bournemouth"
+    assert updated.home_odds == 1.27
 
 
 def test_matches_to_goal_csv():

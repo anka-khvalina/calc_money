@@ -3074,7 +3074,13 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     async function sbPatchMatch(matchId, payload){
       const q = `id=eq.${encodeURIComponent(matchId)}`;
       const rows = await sbFetch(`/matches?${q}`, { method: 'PATCH', body: payload });
-      return Array.isArray(rows) ? rows[0] : rows;
+      if (!(Array.isArray(rows) ? rows.length : rows)) throw new Error('PATCH failed');
+      return rows;
+    }
+    function sbApplyPatchToMatch(original, payload){
+      const updated = Object.assign({}, original);
+      Object.keys(payload).forEach(field => { updated[field] = payload[field]; });
+      return updated;
     }
     function sbHistInput(col, m, st){
       const val = st.edited[col] != null ? st.edited[col] : sbEditDisplay(m, col);
@@ -3227,7 +3233,8 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       st.savedMsg = '';
       sbHistUpdateRowUI(mid);
       try {
-        const updated = await sbPatchMatch(mid, payload);
+        await sbPatchMatch(mid, payload);
+        const updated = sbApplyPatchToMatch(st.original, payload);
         st.original = Object.assign({}, updated);
         st.edited = {};
         st.savedMsg = 'Сохранено';
