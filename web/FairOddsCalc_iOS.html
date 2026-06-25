@@ -3058,22 +3058,49 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     async function userbetFetchOdds(externalId){
       const extId = String(externalId || '').trim();
       if (!extId) throw new Error('Введите id матча с сайта неизвестного мужика');
+
+      async function parseHttpResponse(resp){
+        if (!resp.ok) throw new Error('Не удалось получить данные с внешнего сайта');
+        const text = await resp.text();
+        if (!text || !text.trim()) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
+        let rows;
+        try { rows = JSON.parse(text); } catch (_e){
+          throw new Error('Не удалось получить данные с внешнего сайта');
+        }
+        return userbetParseOddsResponse(rows);
+      }
+
+      await loadSupabaseConfig();
+      const fnBase = SB_URL.replace(/\/rest\/v1$/i, '');
+      try {
+        const resp = await fetch(`${fnBase}/functions/v1/userbet-odds`, {
+          method:'POST',
+          headers:{
+            apikey: SB_KEY,
+            Authorization: `Bearer ${SB_KEY}`,
+            'Content-Type':'application/json',
+          },
+          body: JSON.stringify({ id_fixture: extId }),
+        });
+        if (resp.ok) return await parseHttpResponse(resp);
+      } catch (_proxyErr){ /* fallback to direct */ }
+
+      const formBody = new URLSearchParams({ id_fixture: extId }).toString();
       let resp;
       try {
         resp = await fetch(USERBET_ODDS_URL, {
           method:'POST',
-          headers:{ 'Content-Type':'application/json', Accept:'application/json' },
-          body: JSON.stringify({ id_fixture: extId }),
+          headers:{
+            'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With':'XMLHttpRequest',
+            Accept:'application/json, text/html, */*',
+          },
+          body: formBody,
         });
       } catch (_e){
-        throw new Error('Не удалось получить данные с внешнего сайта');
+        throw new Error('Не удалось получить данные с внешнего сайта. В web-превью нужен Supabase proxy: functions deploy userbet-odds');
       }
-      if (!resp.ok) throw new Error('Не удалось получить данные с внешнего сайта');
-      let rows;
-      try { rows = await resp.json(); } catch (_e){
-        throw new Error('Не удалось получить данные с внешнего сайта');
-      }
-      return userbetParseOddsResponse(rows);
+      return await parseHttpResponse(resp);
     }
     window.__SB.matchRows = window.__SB.matchRows || {};
 

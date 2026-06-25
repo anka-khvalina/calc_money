@@ -28,10 +28,23 @@ id матча с сайта неизвестного мужика: [__________] 
 
 ```http
 POST https://userbet.info/user/get_current_lineups_odds/
-Content-Type: application/json
+Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+X-Requested-With: XMLHttpRequest
 
-{"id_fixture": "{external_match_id}"}
+id_fixture={external_match_id}
 ```
+
+**Не JSON.** Тело — form-urlencoded, как на сайте userbet.info.
+
+### iOS web и CORS
+
+Браузер блокирует прямой запрос с htmlpreview/GitHub Pages. Решение — Supabase Edge Function:
+
+```bash
+supabase functions deploy userbet-odds
+```
+
+iOS сначала вызывает `{project}/functions/v1/userbet-odds`, затем fallback на прямой POST (desktop).
 
 ## Разбор ответа
 
@@ -82,5 +95,5 @@ MVP: если несколько букмекеров `b`, использова�
 
 ## Открытые вопросы
 
-1. Точный body POST (зафиксирован placeholder `id_fixture`).
+1. ~~Точный body POST~~ — подтверждено: `application/x-www-form-urlencoded`, поле `id_fixture`.
 2. Правило выбора букмекера при нескольких `b` (MVP: `b = 70`).

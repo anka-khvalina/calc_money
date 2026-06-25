@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
@@ -224,24 +225,35 @@ def odds_to_ui_edits(odds: Mapping[str, float]) -> Dict[str, str]:
     return edits
 
 
+def _decode_response_payload(raw: bytes) -> Any:
+    text = raw.decode("utf-8", errors="replace").strip()
+    if not text:
+        raise UserbetError("Внешний сайт не вернул коэффициенты по матчу")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        raise UserbetError("Не удалось получить данные с внешнего сайта") from None
+
+
 def fetch_odds(external_match_id: str, *, timeout: float = 30.0) -> Dict[str, float]:
     ext_id = str(external_match_id or "").strip()
     if not ext_id:
         raise UserbetError("Введите id матча с сайта неизвестного мужика")
-    body = json.dumps({"id_fixture": ext_id}).encode("utf-8")
+    body = urllib.parse.urlencode({"id_fixture": ext_id}).encode("utf-8")
     req = urllib.request.Request(
         USERBET_ODDS_URL,
         data=body,
         method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": "https://userbet.info/",
+            "Accept": "application/json, text/html, */*",
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
     except (urllib.error.URLError, TimeoutError):
         raise UserbetError("Не удалось получить данные с внешнего сайта") from None
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise UserbetError("Не удалось получить данные с внешнего сайта") from None
-    return parse_odds_response(payload)
+    return parse_odds_response(_decode_response_payload(raw))
