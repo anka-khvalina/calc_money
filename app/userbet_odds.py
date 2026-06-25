@@ -14,6 +14,13 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 USERBET_ODDS_URL = "https://userbet.info/user/get_current_lineups_odds/"
 PREFERRED_BOOKMAKER = 70
 
+USERBET_REQUEST_HEADERS = {
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "X-Requested-With": "XMLHttpRequest",
+    "Referer": "https://userbet.info/",
+    "Accept": "application/json, text/html, */*",
+}
+
 ODDS_PATCH_FIELDS = frozenset(
     {
         "ah_home_odds",
@@ -244,12 +251,7 @@ def fetch_odds(external_match_id: str, *, timeout: float = 30.0) -> Dict[str, fl
         USERBET_ODDS_URL,
         data=body,
         method="POST",
-        headers={
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "X-Requested-With": "XMLHttpRequest",
-            "Referer": "https://userbet.info/",
-            "Accept": "application/json, text/html, */*",
-        },
+        headers=dict(USERBET_REQUEST_HEADERS),
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:

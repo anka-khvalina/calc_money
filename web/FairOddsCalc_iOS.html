@@ -2943,6 +2943,12 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     ];
     const USERBET_ODDS_URL = 'https://userbet.info/user/get_current_lineups_odds/';
     const USERBET_PREFERRED_B = 70;
+    const USERBET_UPSTREAM_HEADERS = {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+      Referer: 'https://userbet.info/',
+      Accept: 'application/json, text/html, */*',
+    };
 
     function userbetRoundOdds(v){ return Math.round(Number(v) * 100) / 100; }
     function userbetNormalizeHandicap(raw){
@@ -3090,11 +3096,7 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       try {
         resp = await fetch(USERBET_ODDS_URL, {
           method:'POST',
-          headers:{
-            'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With':'XMLHttpRequest',
-            Accept:'application/json, text/html, */*',
-          },
+          headers: USERBET_UPSTREAM_HEADERS,
           body: formBody,
         });
       } catch (_e){

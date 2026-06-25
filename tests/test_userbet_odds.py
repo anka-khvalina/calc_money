@@ -81,6 +81,32 @@ def test_fetch_odds_requires_external_id():
         assert "Введите id" in str(exc)
 
 
+def test_fetch_odds_sends_required_headers():
+    captured = {}
+
+    class FakeResp:
+        def read(self):
+            return b"[]"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(req, timeout=30.0):
+        captured["headers"] = dict(req.header_items())
+        return FakeResp()
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        try:
+            ubo.fetch_odds("123")
+        except ubo.UserbetError:
+            pass
+    assert captured["headers"].get("X-requested-with") == "XMLHttpRequest"
+    assert "application/x-www-form-urlencoded" in captured["headers"].get("Content-type", "")
+
+
 def test_fetch_odds_parses_http_response():
     payload = json.dumps(EXAMPLE_RESPONSE).encode()
 
