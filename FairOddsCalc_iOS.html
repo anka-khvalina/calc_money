@@ -59,7 +59,6 @@
     .js-status.err{ color:var(--danger); border-color:#f5c2c0; background:#fff5f5; }
     .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
     .btn.hist-save{ background:#16a34a; color:#fff; border-color:#16a34a; padding:4px 10px; font-size:12px; }
-    tr.hist-dirty{ background:#f0fdf4; }
     .hist-cell-input{
       width:100%; min-width:54px; max-width:none;
       font-size:13px; padding:5px 7px; box-sizing:border-box;
@@ -80,11 +79,15 @@
     }
     #clhViewTable td.hist-col-num{ min-width:68px; }
     #clhViewTable td.hist-col-neutral{ min-width:72px; }
-    #clhViewTable td.hist-col-action{ min-width:104px; white-space:normal; }
+    #clhViewTable td.hist-col-action{ min-width:168px; white-space:normal; }
     .hist-weights-row td{ background:#f8fafc; padding:8px 12px; border-bottom:1px solid var(--line); }
+    .hist-fetch-row td{ background:#f7f9ff; padding:8px 12px; border-bottom:1px solid var(--line); }
+    .hist-fetch-panel{ display:flex; flex-wrap:wrap; gap:8px 12px; align-items:flex-end; }
+    .hist-fetch-panel label{ font-size:11px; color:var(--muted); display:block; margin-bottom:3px; }
+    .hist-fetch-panel input{ min-width:180px; font-size:13px; padding:6px 8px; }
     .hist-weights-panel{ display:flex; flex-wrap:wrap; gap:10px 16px; align-items:flex-end; }
     .hist-weights-field label{ display:block; font-size:11px; color:var(--muted); margin-bottom:3px; }
-    .btn.hist-weights-toggle{ padding:4px 8px; font-size:12px; margin-right:6px; }
+    .btn.hist-fetch-toggle,.btn.hist-weights-toggle{ padding:4px 8px; font-size:12px; margin-right:6px; }
     #clhViewTable td.num .hist-cell-input{ text-align:right; font-variant-numeric:tabular-nums; }
     .hist-row-err{ color:var(--danger); font-size:11px; display:block; margin-top:2px; }
     .hist-row-ok{ color:#16a34a; font-size:11px; display:block; margin-top:2px; }
@@ -140,6 +143,38 @@
     table{ width:100%; border-collapse:collapse; min-width:560px; background:#fff; }
     th,td{ border-bottom:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; }
     th{ background:#f8fafc; }
+    /* History: цветовые группы линии (после общего th, чтобы не перебивалось) */
+    #clhViewTable th.hist-col-ah,
+    #clhViewTable td.hist-col-ah{
+      background:#fff3cd;
+      border-left:3px solid #ffc107;
+    }
+    #clhViewTable th.hist-col-tot,
+    #clhViewTable td.hist-col-tot{
+      background:#dbeafe;
+      border-left:3px solid #60a5fa;
+    }
+    #clhViewTable th.hist-col-1x2,
+    #clhViewTable td.hist-col-1x2{
+      background:#ede9fe;
+      border-left:3px solid #a78bfa;
+    }
+    #clhViewTable th.hist-col-ah{ background:#ffe69c; }
+    #clhViewTable th.hist-col-tot{ background:#bfdbfe; }
+    #clhViewTable th.hist-col-1x2{ background:#ddd6fe; }
+    #clhViewTable td.hist-col-ah .hist-cell-input,
+    #clhViewTable td.hist-col-tot .hist-cell-input,
+    #clhViewTable td.hist-col-1x2 .hist-cell-input{
+      background:rgba(255,255,255,0.82);
+      border-color:rgba(0,0,0,0.1);
+    }
+    tr.hist-dirty td.hist-col-date,
+    tr.hist-dirty td.hist-col-team,
+    tr.hist-dirty td.hist-col-neutral,
+    tr.hist-dirty td.hist-col-action{ background:#f0fdf4; }
+    tr.hist-dirty td.hist-col-ah{ background:#ffe08a; }
+    tr.hist-dirty td.hist-col-tot{ background:#93c5fd; }
+    tr.hist-dirty td.hist-col-1x2{ background:#c4b5fd; }
     .right{ text-align:right; }
     .logo-cell{ width:42px; text-align:center; vertical-align:middle; }
     .team-logo{
@@ -674,9 +709,9 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <table id="clhViewTable">
           <thead><tr>
             <th>Дата</th><th>Дома</th><th>Гости</th>
-            <th class="right">AH1</th><th class="right">AH</th><th class="right">AH2</th>
-            <th class="right">O</th><th class="right">Тот</th><th class="right">U</th>
-            <th class="right">1</th><th class="right">X</th><th class="right">2</th>
+            <th class="right hist-col-ah">AH1</th><th class="right hist-col-ah">AH</th><th class="right hist-col-ah">AH2</th>
+            <th class="right hist-col-tot">O</th><th class="right hist-col-tot">Тот</th><th class="right hist-col-tot">U</th>
+            <th class="right hist-col-1x2">1</th><th class="right hist-col-1x2">X</th><th class="right hist-col-1x2">2</th>
             <th>Нейтр</th><th>Действие</th>
           </tr></thead>
           <tbody></tbody>
@@ -1123,6 +1158,23 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       a.click();
       URL.revokeObjectURL(a.href);
     });
+
+    const API_CONFIG_URL = 'api.config.json';
+    let API_BASE = '';
+    let _apiConfigPromise = null;
+
+    async function loadApiConfig(){
+      if (_apiConfigPromise) return _apiConfigPromise;
+      _apiConfigPromise = (async () => {
+        try {
+          const res = await fetch(API_CONFIG_URL);
+          if (!res.ok) return;
+          const cfg = await res.json();
+          API_BASE = String(cfg.api_base_url || '').replace(/\/$/, '');
+        } catch (_e){ /* optional until fetch-odds used */ }
+      })();
+      return _apiConfigPromise;
+    }
 
     // ---------------- Supabase справочник (вкладка «Справочник») ----------------
     const SB_CONFIG_URL = 'supabase.config.json';
@@ -2937,6 +2989,46 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       { col:'match_w', label:'Вес матча' },
       { col:'neutr_w', label:'Нейтр. вес' },
     ];
+    const USERBET_FIELD_TO_UI = {
+      ah_home_odds:'ah1', closing_ah_home:'ah', ah_away_odds:'ah2',
+      over_odds:'over', closing_total_line:'tot', under_odds:'under',
+      home_odds:'o1', draw_odds:'ox', away_odds:'o2',
+    };
+    function userbetOddsToUiEdits(odds){
+      const edits = {};
+      Object.keys(odds).forEach(field => {
+        const col = USERBET_FIELD_TO_UI[field];
+        if (!col) return;
+        edits[col] = String(odds[field]).replace('.', ',');
+      });
+      return edits;
+    }
+    async function userbetFetchOdds(externalId){
+      const extId = String(externalId || '').trim();
+      if (!extId) throw new Error('Введите id матча с сайта неизвестного мужика');
+      await loadApiConfig();
+      if (!API_BASE) throw new Error('Не задан api_base_url в web/api.config.json');
+      let resp;
+      try {
+        resp = await fetch(`${API_BASE}/api/history/fetch-odds`, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json', Accept:'application/json' },
+          body: JSON.stringify({ id_fixture: extId }),
+        });
+      } catch (_e){
+        throw new Error('Не удалось связаться с API (проверьте, что бэкенд запущен)');
+      }
+      let data;
+      try { data = await resp.json(); } catch (_e){
+        throw new Error('Не удалось получить данные с внешнего сайта');
+      }
+      if (!resp.ok){
+        const msg = (data && data.detail) ? String(data.detail) : 'Не удалось получить данные с внешнего сайта';
+        throw new Error(msg);
+      }
+      if (!data || !data.odds) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
+      return data.odds;
+    }
     window.__SB.matchRows = window.__SB.matchRows || {};
 
     function sbFieldFromMatch(m, field){
@@ -2995,7 +3087,11 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     function sbHistRowState(m){
       const mid = Number(m.match_id);
       if (!window.__SB.matchRows[mid]){
-        window.__SB.matchRows[mid] = { original: Object.assign({}, m), edited: {}, isSaving: false, saveError: '', savedMsg: '', weightsOpen: false };
+        window.__SB.matchRows[mid] = {
+          original: Object.assign({}, m), edited: {}, isSaving: false,
+          saveError: '', savedMsg: '', weightsOpen: false, fetchOpen: false,
+          externalMatchId: '', fetchError: '', fetchLoading: false,
+        };
       }
       return window.__SB.matchRows[mid];
     }
@@ -3009,7 +3105,13 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     async function sbPatchMatch(matchId, payload){
       const q = `id=eq.${encodeURIComponent(matchId)}`;
       const rows = await sbFetch(`/matches?${q}`, { method: 'PATCH', body: payload });
-      return Array.isArray(rows) ? rows[0] : rows;
+      if (!(Array.isArray(rows) ? rows.length : rows)) throw new Error('PATCH failed');
+      return rows;
+    }
+    function sbApplyPatchToMatch(original, payload){
+      const updated = Object.assign({}, original);
+      Object.keys(payload).forEach(field => { updated[field] = payload[field]; });
+      return updated;
     }
     function sbHistInput(col, m, st){
       const val = st.edited[col] != null ? st.edited[col] : sbEditDisplay(m, col);
@@ -3038,6 +3140,17 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       if (ok) ok.textContent = st.savedMsg || '';
     }
 
+    function sbHistFetchPanel(m, st){
+      const extId = st.externalMatchId != null ? st.externalMatchId : '';
+      const loading = !!st.fetchLoading;
+      return `<div class="hist-fetch-panel">` +
+        `<div><label>id матча с сайта неизвестного мужика</label>` +
+        `<input type="text" data-hist-external-id="${m.match_id}" value="${escapeHtml(extId)}" ${loading ? 'disabled' : ''} /></div>` +
+        `<button type="button" class="btn primary" data-hist-fetch-run="${m.match_id}" ${loading ? 'disabled' : ''}>${loading ? 'Получение...' : 'Получить данные'}</button>` +
+        (st.fetchError ? `<span class="hist-row-err">${escapeHtml(st.fetchError)}</span>` : '') +
+      `</div>`;
+    }
+
     function sbHistWeightsPanel(m, st){
       return `<div class="hist-weights-panel">` +
         SB_HIST_WEIGHT_COLS.map(({ col, label }) =>
@@ -3062,21 +3175,23 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         const st = sbHistRowState(m);
         const dirty = sbHistIsDirty(st);
         const weightsOpen = !!st.weightsOpen;
+        const fetchOpen = !!st.fetchOpen;
         const mainRow = `<tr data-hist-mid="${m.match_id}" class="${dirty ? 'hist-dirty' : ''}">` +
           `<td class="hist-col-date">${escapeHtml(m.match_date || '')}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.home_team || '')}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.away_team || '')}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ah1', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ah', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ah2', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('over', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('tot', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('under', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('o1', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ox', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('o2', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah1', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah2', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-tot">${sbHistInput('over', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-tot">${sbHistInput('tot', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-tot">${sbHistInput('under', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o1', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-1x2">${sbHistInput('ox', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o2', m, st)}</td>` +
           `<td class="hist-col-neutral">${sbHistInput('neutral', m, st)}</td>` +
           `<td class="hist-col-action">` +
+            `<button type="button" class="btn hist-fetch-toggle" data-hist-fetch-toggle="${m.match_id}" aria-expanded="${fetchOpen ? 'true' : 'false'}">${fetchOpen ? '▲ Данные' : '▼ Данные'}</button>` +
             `<button type="button" class="btn hist-weights-toggle" data-hist-weights-toggle="${m.match_id}" aria-expanded="${weightsOpen ? 'true' : 'false'}">${weightsOpen ? '▲ Веса' : '▼ Веса'}</button>` +
             `<button type="button" class="btn hist-save" data-hist-save="${m.match_id}" style="display:${dirty || st.isSaving ? '' : 'none'}">${st.isSaving ? 'Сохранение...' : 'Сохранить'}</button>` +
             `<span class="hist-row-err" data-hist-err>${escapeHtml(st.saveError || '')}</span>` +
@@ -3086,8 +3201,44 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         const weightsRow = `<tr class="hist-weights-row" data-hist-weights-for="${m.match_id}" style="display:${weightsOpen ? '' : 'none'}">` +
           `<td colspan="14">${sbHistWeightsPanel(m, st)}</td>` +
         `</tr>`;
-        return mainRow + weightsRow;
+        const fetchRow = `<tr class="hist-fetch-row" data-hist-fetch-for="${m.match_id}" style="display:${fetchOpen ? '' : 'none'}">` +
+          `<td colspan="14">${sbHistFetchPanel(m, st)}</td>` +
+        `</tr>`;
+        return mainRow + fetchRow + weightsRow;
       }).join('');
+    }
+
+    async function sbHistFetchOdds(mid){
+      const st = window.__SB.matchRows[mid];
+      if (!st || st.fetchLoading) return;
+      const extId = String(st.externalMatchId || '').trim();
+      if (!extId){
+        st.fetchError = 'Введите id матча с сайта неизвестного мужика';
+        renderHistMatchesTable(
+          window.__SB.matchesBySeason[window.__SB.histSelected ? sbSeasonKey(window.__SB.histSelected.selected_league_id, window.__SB.histSelected.selected_season_id) : ''] || [st.original],
+          document.getElementById('clhMeta').textContent
+        );
+        return;
+      }
+      st.fetchLoading = true;
+      st.fetchError = '';
+      renderHistMatchesTable(
+        window.__SB.matchesBySeason[window.__SB.histSelected ? sbSeasonKey(window.__SB.histSelected.selected_league_id, window.__SB.histSelected.selected_season_id) : ''] || [st.original],
+        document.getElementById('clhMeta').textContent
+      );
+      try {
+        const odds = await userbetFetchOdds(extId);
+        Object.assign(st.edited, userbetOddsToUiEdits(odds));
+        st.saveError = '';
+        st.savedMsg = '';
+      } catch (e){
+        st.fetchError = e.message || 'Не удалось получить данные с внешнего сайта';
+      } finally {
+        st.fetchLoading = false;
+        const key = window.__SB.histSelected ? sbSeasonKey(window.__SB.histSelected.selected_league_id, window.__SB.histSelected.selected_season_id) : null;
+        renderHistMatchesTable(window.__SB.matchesBySeason[key] || [st.original], document.getElementById('clhMeta').textContent);
+        sbHistUpdateRowUI(mid);
+      }
     }
 
     async function sbHistSaveRow(mid){
@@ -3113,7 +3264,8 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       st.savedMsg = '';
       sbHistUpdateRowUI(mid);
       try {
-        const updated = await sbPatchMatch(mid, payload);
+        await sbPatchMatch(mid, payload);
+        const updated = sbApplyPatchToMatch(st.original, payload);
         st.original = Object.assign({}, updated);
         st.edited = {};
         st.savedMsg = 'Сохранено';
@@ -3124,7 +3276,7 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         renderHistMatchesTable(window.__SB.matchesBySeason[key] || [updated], document.getElementById('clhMeta').textContent);
       } catch (e){
         console.error('PATCH match failed', e);
-        st.saveError = 'Не удалось сохранить изменения';
+        st.saveError = 'Не удалось сохранить коэффициенты в БД';
       } finally {
         st.isSaving = false;
         sbHistUpdateRowUI(mid);
@@ -3132,6 +3284,13 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     }
 
     document.getElementById('clhViewTable').addEventListener('input', e => {
+      const ext = e.target.closest('[data-hist-external-id]');
+      if (ext){
+        const mid = Number(ext.getAttribute('data-hist-external-id'));
+        const st = window.__SB.matchRows[mid];
+        if (st){ st.externalMatchId = ext.value; st.fetchError = ''; }
+        return;
+      }
       const el = e.target.closest('[data-hist-col]');
       if (!el) return;
       const mid = Number(el.getAttribute('data-hist-mid'));
@@ -3156,6 +3315,25 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       sbHistUpdateRowUI(mid);
     });
     document.getElementById('clhViewTable').addEventListener('click', e => {
+      const fetchRun = e.target.closest('[data-hist-fetch-run]');
+      if (fetchRun){
+        e.preventDefault();
+        sbHistFetchOdds(Number(fetchRun.getAttribute('data-hist-fetch-run')));
+        return;
+      }
+      const fetchBtn = e.target.closest('[data-hist-fetch-toggle]');
+      if (fetchBtn){
+        e.preventDefault();
+        const mid = Number(fetchBtn.getAttribute('data-hist-fetch-toggle'));
+        const st = window.__SB.matchRows[mid];
+        if (!st) return;
+        st.fetchOpen = !st.fetchOpen;
+        const detail = document.querySelector(`tr[data-hist-fetch-for="${mid}"]`);
+        if (detail) detail.style.display = st.fetchOpen ? '' : 'none';
+        fetchBtn.textContent = st.fetchOpen ? '▲ Данные' : '▼ Данные';
+        fetchBtn.setAttribute('aria-expanded', st.fetchOpen ? 'true' : 'false');
+        return;
+      }
       const weightsBtn = e.target.closest('[data-hist-weights-toggle]');
       if (weightsBtn){
         e.preventDefault();
