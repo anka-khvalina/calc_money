@@ -74,8 +74,10 @@
       padding:7px 9px; font-size:12.5px; vertical-align:middle;
     }
     #clhViewTable td.hist-col-date{ min-width:92px; white-space:nowrap; }
+    #clhViewTable th.hist-col-team,
     #clhViewTable td.hist-col-team{
       min-width:112px; max-width:168px; white-space:normal; line-height:1.25;
+      font-weight:600;
     }
     #clhViewTable td.hist-col-num{ min-width:68px; }
     #clhViewTable td.hist-col-neutral{ min-width:72px; }
@@ -147,17 +149,14 @@
     #clhViewTable th.hist-col-ah,
     #clhViewTable td.hist-col-ah{
       background:#fff3cd;
-      border-left:3px solid #ffc107;
     }
     #clhViewTable th.hist-col-tot,
     #clhViewTable td.hist-col-tot{
       background:#dbeafe;
-      border-left:3px solid #60a5fa;
     }
     #clhViewTable th.hist-col-1x2,
     #clhViewTable td.hist-col-1x2{
       background:#ede9fe;
-      border-left:3px solid #a78bfa;
     }
     #clhViewTable th.hist-col-ah{ background:#ffe69c; }
     #clhViewTable th.hist-col-tot{ background:#bfdbfe; }
@@ -708,7 +707,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div class="table-wrap hist-matches-wrap">
         <table id="clhViewTable">
           <thead><tr>
-            <th>Дата</th><th>Дома</th><th>Гости</th>
+            <th>Дата</th><th class="hist-col-team">Дома</th><th class="hist-col-team">Гости</th>
             <th class="right hist-col-ah">AH1</th><th class="right hist-col-ah">AH</th><th class="right hist-col-ah">AH2</th>
             <th class="right hist-col-tot">O</th><th class="right hist-col-tot">Тот</th><th class="right hist-col-tot">U</th>
             <th class="right hist-col-1x2">1</th><th class="right hist-col-1x2">X</th><th class="right hist-col-1x2">2</th>
