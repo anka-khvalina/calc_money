@@ -24,6 +24,18 @@ id матча с сайта неизвестного мужика: [__________] 
 
 После получения значения подставляются в строку → строка dirty → зелёная **«Сохранить»** → PATCH.
 
+## Поток данных (без связи внешнего API с БД)
+
+```text
+1. Клиент → POST userbet.info (по id_fixture)
+2. Клиент парсит ответ и кладёт в локальный кэш строки (edited / hist_edited)
+3. UI показывает коэффициенты в полях матча
+4. Пользователь нажимает «Сохранить»
+5. Только тогда PATCH → Supabase matches (только изменённые поля)
+```
+
+Внешний сайт **не** ходит в Supabase. БД используется только на шаге сохранения.
+
 ## Внешний API
 
 ```http
@@ -36,16 +48,6 @@ id_fixture={external_match_id}
 ```
 
 **Не JSON.** Тело — form-urlencoded, как на сайте userbet.info.
-
-### iOS web и CORS
-
-Браузер блокирует прямой запрос с htmlpreview/GitHub Pages. Решение — Supabase Edge Function:
-
-```bash
-supabase functions deploy userbet-odds
-```
-
-iOS сначала вызывает `{project}/functions/v1/userbet-odds`, затем fallback на прямой POST (desktop).
 
 ## Разбор ответа
 

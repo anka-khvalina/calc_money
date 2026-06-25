@@ -1,5 +1,0 @@
-# Supabase project: vhoeiyymxghjafyollyg
-project_id = "vhoeiyymxghjafyollyg"
-
-[functions.userbet-odds]
-verify_jwt = false
