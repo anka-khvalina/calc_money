@@ -60,16 +60,19 @@ erDiagram
         decimal home_odds "1X2 П1"
         decimal draw_odds "1X2 X"
         decimal away_odds "1X2 П2"
-        boolean neutral_flag
-        boolean derby_flag
-        string quality_flag "опц."
-        decimal quality_weight "value, опц., default 1"
-        decimal derby_weight "опц., default 1"
-        decimal neutral_weight "опц., default 1"
+        boolean is_neutral "нейтральное поле — влияет на модель"
+        decimal match_weight "value, default 1"
+        decimal derby_weight "default 1"
+        decimal neutral_weight "default 1"
+        string note "опц. комментарий: low_motivation, …"
         datetime created_at
         datetime updated_at
     }
 ```
+
+> **Флаги `neutral_flag` / `derby_flag` / `quality_flag` в CSV — наследие UI.**
+> Для БД достаточно весов + одного структурного признака `is_neutral`.
+> Подробнее: [§7. Флаги vs веса](#7-флаги-vs-веса-нужны-ли-флаги).
 
 ---
 
@@ -94,12 +97,12 @@ erDiagram
 | `home_odds` | `home_odds` | `MATCH` | |
 | `draw_odds` | `draw_odds` | `MATCH` | |
 | `away_odds` | `away_odds` | `MATCH` | |
-| `neutral_flag` | `neutral_flag` | `MATCH` | |
-| `derby_flag` | `derby_flag` | `MATCH` | |
-| `quality_flag` | `quality_flag` | `MATCH` | |
-| `value` | `quality_weight` | `MATCH` | |
-| `derby_weight` | `derby_weight` | `MATCH` | |
-| `neutral_weight` | `neutral_weight` | `MATCH` | |
+| `neutral_flag` | `is_neutral` | `MATCH` | см. §7 |
+| `value` | `match_weight` | `MATCH` | default `1` |
+| `derby_weight` | `derby_weight` | `MATCH` | default `1` |
+| `neutral_weight` | `neutral_weight` | `MATCH` | default `1` |
+| `quality_flag` | `note` | `MATCH` | только метка, не логика |
+| ~~`derby_flag`~~ | — | — | **не нужен** в БД (см. §7) |
 
 \* Обязательны для обучения голевой модели (рынки AH + тотал); 1X2 желательны для ничьи.
 
@@ -171,12 +174,11 @@ erDiagram
 | `home_odds` | `NUMERIC(6,3)` | | |
 | `draw_odds` | `NUMERIC(6,3)` | | |
 | `away_odds` | `NUMERIC(6,3)` | | |
-| `neutral_flag` | `BOOLEAN` | | default `false` |
-| `derby_flag` | `BOOLEAN` | | default `false` |
-| `quality_flag` | `VARCHAR(32)` | | `normal`, `low_motivation`, … |
-| `quality_weight` | `NUMERIC(4,3)` | | CSV `value`, default `1.0` |
-| `derby_weight` | `NUMERIC(4,3)` | | default `1.0` |
-| `neutral_weight` | `NUMERIC(4,3)` | | default `1.0` |
+| `is_neutral` | `BOOLEAN` | | Нейтральное поле → без домашнего преимущества в модели |
+| `match_weight` | `NUMERIC(4,3)` | | Общий множитель обучения (CSV `value`), default `1.0` |
+| `derby_weight` | `NUMERIC(4,3)` | | Множитель для дерби, default `1.0` |
+| `neutral_weight` | `NUMERIC(4,3)` | | Множитель для нейтрального матча, default `1.0` |
+| `note` | `VARCHAR(128)` | | Произвольная метка (`low_motivation`, …), **не влияет на расчёт** |
 | `created_at` | `TIMESTAMPTZ` | | |
 | `updated_at` | `TIMESTAMPTZ` | | |
 
@@ -223,17 +225,93 @@ erDiagram
         decimal home_odds
         decimal draw_odds
         decimal away_odds
-        boolean neutral_flag
-        boolean derby_flag
-        string quality_flag
-        decimal quality_weight
+        boolean is_neutral
+        decimal match_weight
         decimal derby_weight
         decimal neutral_weight
+        string note
     }
 ```
 
 **Рекомендация:** вариант с таблицей `SEASON` (раздел 1) — он точнее отражает UI «История»
 (сохранение пачки матчей по паре лига+сезон) и упрощает перезапись сезона целиком.
+
+---
+
+## 5. Флаги vs веса: нужны ли флаги?
+
+Короткий ответ: **для весов обучения — нет, флаги избыточны.**
+Для **нейтрального поля** — нужен один булев признак, но это не «флаг для словаря», а **режим матча**.
+
+### Что сейчас делают флаги в коде
+
+| Поле CSV | Зачем было | Можно заменить? |
+|----------|------------|-----------------|
+| `value` | множитель веса матча | **это и есть вес** → `match_weight` |
+| `derby_weight` | множитель, если дерби | **да** — пишешь `0.7` прямо в строке |
+| `neutral_weight` | множитель, если нейтраль | **да** — пишешь значение прямо |
+| `derby_flag` | «включить» `derby_weight` | **не нужен** — если вес ≠ 1, дерби учтено |
+| `quality_flag` | метка + `data_error` / `suspicious_line` | **частично** — см. ниже |
+| `neutral_flag` | **отключить домашнее преимущество** (`i_home=0`) | **нельзя заменить весом** — меняется формула, не только вес |
+
+### Правило для БД
+
+```
+W_обучения = W_сезон × match_weight × derby_weight × neutral_weight × …
+```
+
+- Все три веса **default = 1.0** — обычный матч, ничего писать не надо.
+- `derby_weight = 0.7` — матч учитывается как дерби **без** `derby_flag=true`.
+- `match_weight = 0` — матч не влияет на обучение (аналог исключения).
+- `match_weight = 0` + не импортировать строку — аналог `quality_flag=data_error`.
+
+### Единственный обязательный «флаг»
+
+**`is_neutral`** (бывший `neutral_flag`) — не про вес, а про **геометрию модели**:
+на нейтральном поле не применяется домашнее преимущество `H` при восстановлении `D` и в прогнозе.
+`neutral_weight` при этом — отдельно: «насколько доверять этому нетипичному матчу при обучении».
+
+### `quality_flag` — только заметка
+
+Строковые метки (`low_motivation`, `heavy_rotation`) в БД → поле **`note`** для человека.
+На расчёт не влияют, если уже задан `match_weight`.
+
+Исключения из текущего кода, которые при переходе на «только числа» нужно явно описать:
+
+| Было | Станет в БД |
+|------|-------------|
+| `quality_flag=data_error` | не импортировать / `match_weight=0` |
+| `quality_flag=suspicious_line` → ослабление 1X2 при обучении ничьей | отдельный столбец `weight_1x2` (опц.) или то же `match_weight` |
+
+### Итоговая схема `MATCH` (без лишних флагов)
+
+```mermaid
+erDiagram
+    MATCH {
+        string match_id PK
+        string season_id FK
+        date match_date
+        string home_team_id FK
+        string away_team_id FK
+        decimal closing_ah_home
+        decimal closing_total_line
+        decimal ah_home_odds
+        decimal ah_away_odds
+        decimal over_odds
+        decimal under_odds
+        decimal home_odds
+        decimal draw_odds
+        decimal away_odds
+        boolean is_neutral
+        decimal match_weight
+        decimal derby_weight
+        decimal neutral_weight
+        string note
+    }
+```
+
+**Убрать из целевой БД:** `derby_flag`, `quality_flag` как поля логики.
+**Оставить:** `is_neutral` + три числовых веса + опциональный `note`.
 
 ---
 
