@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "app"))
 
 import goal_model as gm  # noqa: E402
 import goal_model_train as gmt  # noqa: E402
+import goal_line_history as glh  # noqa: E402
 
 
 def test_poisson_and_matrix_normalized():
@@ -218,6 +219,43 @@ Roma,Lazio,-0.5,3.0,2.05,1.9,2.03,1.91,2.0,4.15,3.34,,,
     assert gmt.base_weight(m1, cfg) == 1.0
 
 
+def test_goal_line_history_summary_format():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    model, _ = gmt.train_full_model(raw)
+    pred = gmt.predict_match(model, "Inter", "Empoli")
+    lines, summary = glh.format_prediction_report(pred)
+    assert any("1X2:" in line for line in lines)
+    assert "1X2" in summary and "Тотал" in summary and "Фора" in summary
+
+
+def test_goal_line_history_store():
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "hist.json"
+        store = glh.GoalLineHistory(path=path)
+        store.add(league="serie_a", home_team="Inter", away_team="Empoli", summary="1X2 1.20/7.00/13.00")
+        assert len(store.entries()) == 1
+        assert store.entries()[0].match_label == "Inter — Empoli"
+        store2 = glh.GoalLineHistory(path=path)
+        assert len(store2.entries()) == 1
+        store2.clear()
+        assert store2.entries() == []
+
+
+def test_infer_league_key_from_raw():
+    csv = (
+        "home_team,away_team,league,closing_ah_home,closing_total_line,"
+        "ah_home_odds,ah_away_odds,over_odds,under_odds\n"
+        "A,B,serie_a,-0.5,2.5,1.9,1.9,1.9,1.9\n"
+        "C,D,serie_a,-0.5,2.5,1.9,1.9,1.9,1.9\n"
+        "E,F,epl,-0.5,2.5,1.9,1.9,1.9,1.9\n"
+    )
+    raw = gmt.parse_raw_matches(csv)
+    assert glh.infer_league_key(raw) == "serie_a"
+
+
+def test_promoted_team_fallback():
     csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
     raw = gmt.load_raw_matches(csv_path)
     model, _ = gmt.train_full_model(raw)
