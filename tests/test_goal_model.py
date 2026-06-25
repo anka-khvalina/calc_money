@@ -200,7 +200,24 @@ def test_prior_shrinkage_pulls_ratings():
     assert abs(shrunk.strength.ratings["Inter"]) < abs(base.strength.ratings["Inter"])
 
 
-def test_promoted_team_fallback():
+def test_per_match_weights_from_csv():
+    csv = """home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,quality_flag,value,derby_flag,derby_weight
+Inter,Empoli,-2.0,3.25,2.01,1.93,1.92,2.03,1.2,7.48,13.88,low_motivation,0.5,true,0.7
+Roma,Lazio,-0.5,3.0,2.05,1.9,2.03,1.91,2.0,4.15,3.34,,,
+"""
+    raw = gmt.parse_raw_matches(csv)
+    assert len(raw) == 2
+    m0, m1 = raw
+    assert m0.quality_flag == "low_motivation"
+    assert m0.quality_match_weight == 0.5
+    assert m0.derby_match_weight == 0.7
+    assert m1.quality_flag is None
+    assert m1.quality_match_weight is None
+    cfg = gmt.ModelConfig(default_season_weight=1.0)
+    assert gmt.base_weight(m0, cfg) == 0.5 * 0.7
+    assert gmt.base_weight(m1, cfg) == 1.0
+
+
     csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
     raw = gmt.load_raw_matches(csv_path)
     model, _ = gmt.train_full_model(raw)

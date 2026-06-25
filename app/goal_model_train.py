@@ -42,16 +42,6 @@ class SeasonWeight:
     base_weight: float
 
 
-DEFAULT_QUALITY_WEIGHTS: Dict[str, float] = {
-    "normal": 1.00,
-    "low_motivation": 0.50,
-    "heavy_rotation": 0.50,
-    "suspicious_line": 0.20,
-    "data_error": 0.00,
-    "unknown": 0.80,
-}
-
-
 @dataclass
 class ModelConfig:
     max_goals: int = gm.MAX_GOALS_DEFAULT
@@ -62,9 +52,6 @@ class ModelConfig:
     # веса
     default_season_weight: float = 1.0
     season_weights: List[SeasonWeight] = field(default_factory=list)
-    quality_weights: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_QUALITY_WEIGHTS))
-    derby_weight: float = 0.70
-    neutral_weight: float = 1.00
     exclude_data_errors: bool = True
 
     # веса по размеру линии (фора)
@@ -127,7 +114,10 @@ class RawMatch:
     away_odds: Optional[float] = None
     neutral_flag: bool = False
     derby_flag: bool = False
-    quality_flag: str = "normal"
+    quality_flag: Optional[str] = None
+    quality_match_weight: Optional[float] = None
+    derby_match_weight: Optional[float] = None
+    neutral_match_weight: Optional[float] = None
 
 
 _CSV_ALIASES: Dict[str, str] = {
@@ -146,6 +136,9 @@ _CSV_ALIASES: Dict[str, str] = {
     "neutral_flag": "neutral_flag", "neutral": "neutral_flag",
     "derby_flag": "derby_flag", "derby": "derby_flag",
     "quality_flag": "quality_flag", "quality": "quality_flag",
+    "value": "value", "quality_value": "value", "quality_weight": "value",
+    "derby_weight": "derby_weight", "derby_value": "derby_weight",
+    "neutral_weight": "neutral_weight", "neutral_value": "neutral_weight",
 }
 
 
@@ -212,7 +205,10 @@ def parse_raw_matches(text: str) -> List["RawMatch"]:
             away_odds=_to_float(rec.get("away_odds")),
             neutral_flag=_to_bool(rec.get("neutral_flag")),
             derby_flag=_to_bool(rec.get("derby_flag")),
-            quality_flag=(rec.get("quality_flag") or "normal").strip() or "normal",
+            quality_flag=(rec.get("quality_flag") or "").strip() or None,
+            quality_match_weight=_to_float(rec.get("value")),
+            derby_match_weight=_to_float(rec.get("derby_weight")),
+            neutral_match_weight=_to_float(rec.get("neutral_weight")),
         ))
     return out
 
@@ -256,15 +252,17 @@ def season_weight(d: Optional[date], cfg: ModelConfig) -> float:
     return cfg.default_season_weight
 
 
-def quality_weight(flag: str, cfg: ModelConfig) -> float:
-    return cfg.quality_weights.get(flag, cfg.quality_weights.get("unknown", 0.8))
+def _match_weight(flag: bool, weight: Optional[float]) -> float:
+    if not flag:
+        return 1.0
+    return 1.0 if weight is None else weight
 
 
 def base_weight(m: RawMatch, cfg: ModelConfig) -> float:
     w_s = season_weight(m.date, cfg)
-    w_q = quality_weight(m.quality_flag, cfg)
-    w_d = cfg.derby_weight if m.derby_flag else 1.0
-    w_n = cfg.neutral_weight if m.neutral_flag else 1.0
+    w_q = 1.0 if m.quality_match_weight is None else m.quality_match_weight
+    w_d = _match_weight(m.derby_flag, m.derby_match_weight)
+    w_n = _match_weight(m.neutral_flag, m.neutral_match_weight)
     return w_s * w_q * w_d * w_n
 
 

@@ -46,11 +46,11 @@ CSV-формат (заголовок, алиасы поддерживаются)
 ```
 date,league,home_team,away_team,closing_ah_home,closing_total_line,
 ah_home_odds,ah_away_odds,over_odds,under_odds,
-home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag
+home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight
 ```
 
-Веса матча (настраиваются в `ModelConfig`): сезон × качество × дерби × нейтраль
-× размер форы `w_line_AH = 1/(1+α_AH·|D|^p)` × экстремальность тотала
+Веса матча: сезон (настройки программы) × **value** × **derby_weight** × **neutral_weight**
+(столбцы CSV, по умолчанию 1.0) × размер форы `w_line_AH = 1/(1+α_AH·|D|^p)` × экстремальность тотала
 `w_line_T = 1/(1+α_T·(S−S̄)²)` × robust-Huber (считается на итерациях).
 
 CLI:
@@ -72,14 +72,14 @@ Walk-forward даёт MAE форы/тотала и сравнение P1/X/П2 �
 
 Пример данных: `docs/examples/closing_lines_serie_a_sample.csv`.
 
-Редактируемые **таблицы весов** (§3/§18) — и на десктопе, и на iOS:
-качество (normal/low_motivation/heavy_rotation/suspicious_line/unknown), дерби,
-нейтраль, **сезоны** (строки `дата_от, дата_до, вес` + default), плюс кнопка
-**«Пересчитать»**. Сезонный вес ищется по диапазону дат матча.
+Редактируемые **веса сезонов** (§3/§18) — и на десктопе, и на iOS:
+строки `дата_от, дата_до, вес` + default, плюс кнопка **«Пересчитать»**.
+Множители качества/дерби/нейтраль задаются **в CSV** (столбцы `value`, `derby_weight`,
+`neutral_weight`). Сезонный вес ищется по диапазону дат матча.
 
 **iOS (Safari):** та же модель портирована в `web/FairOddsCalc_iOS.html` —
 вкладка **«Линия»** (версия `goal-model-v1`): вставка/загрузка CSV, обучение,
-редактируемые α форы/тотала, prior α, q_min/q_max ничьи, таблицы весов, флаги
+редактируемые α форы/тотала, prior α, q_min/q_max ничьи, веса сезонов, флаги
 «Модель ничьи»/«Dixon-Coles», выбор команд (нейтраль/дерби, маржа), все рынки.
 Числа совпадают с десктопом (worked-пример Inter–Roma, Inter–Empoli).
 

@@ -1571,7 +1571,8 @@ def build_app():
             "closing_total_line, ah_home_odds, ah_away_odds, over_odds, under_odds "
             "(+ home_odds, draw_odds, away_odds для ничьи).\n"
             "Необязательные (по строке матча): date, league, neutral_flag, derby_flag, "
-            "quality_flag — нет столбца → обычный матч (normal, не дерби, не нейтраль)."
+            "quality_flag, value (множитель качества), derby_weight, neutral_weight — "
+            "нет столбца → вес 1.0; флаги false; quality_flag пустой."
         ),
         foreground="#555",
         justify="left",
@@ -1607,7 +1608,7 @@ def build_app():
     # --- Настройки модели (редактируемые веса и параметры) ---
     goal_cfg_frame = ttk.LabelFrame(
         tab_goal,
-        text="Настройки модели (множители обучения по флагам из CSV — не правки отдельного матча)",
+        text="Настройки модели",
         padding=8,
     )
     goal_cfg_frame.pack(fill="x", pady=(8, 0))
@@ -1651,60 +1652,45 @@ def build_app():
         _gv[key] = var
         return var
 
-    _cfg_entry(goal_cfg_frame, 0, 0, "W качество normal:", "q_normal", 1.0,
-               hint="Множитель для строк CSV с quality_flag=normal (обычный матч). База для остальных.")
-    _cfg_entry(goal_cfg_frame, 0, 1, "low_motivation:", "q_lowmot", 0.5,
-               hint="Множитель для строк CSV с quality_flag=low_motivation. Меньше → слабее влияет.")
-    _cfg_entry(goal_cfg_frame, 0, 2, "heavy_rotation:", "q_rot", 0.5,
-               hint="Множитель для строк CSV с quality_flag=heavy_rotation (сильная ротация).")
-    _cfg_entry(goal_cfg_frame, 1, 0, "suspicious_line:", "q_susp", 0.2,
-               hint="Множитель для строк CSV с quality_flag=suspicious_line (нестандартная линия).")
-    _cfg_entry(goal_cfg_frame, 1, 1, "unknown:", "q_unknown", 0.8,
-               hint="Множитель для прочих/неизвестных значений quality_flag.")
-    _cfg_entry(goal_cfg_frame, 1, 2, "W дерби:", "w_derby", 0.7,
-               hint="Множитель для строк CSV с derby_flag=true. Дерби нетипичны → обычно меньше 1.")
-    _cfg_entry(goal_cfg_frame, 2, 0, "α форы:", "alpha_ah", 0.25,
+    _cfg_entry(goal_cfg_frame, 0, 0, "α форы:", "alpha_ah", 0.25,
                hint="Приглушение матчей с большим перевесом сил при обучении рейтинга. Больше α → крупные форы влияют меньше. 0 = все матчи равнозначны.")
-    _cfg_entry(goal_cfg_frame, 2, 1, "α тотала:", "alpha_t", 0.5,
+    _cfg_entry(goal_cfg_frame, 0, 1, "α тотала:", "alpha_t", 0.5,
                hint="Приглушение матчей с экстремальным тоталом при обучении голевой модели (атака/оборона). Больше α → такие матчи влияют слабее.")
-    _cfg_entry(goal_cfg_frame, 2, 2, "вес ничьи (калибр.):", "draw_loss", 1.5,
+    _cfg_entry(goal_cfg_frame, 0, 2, "вес ничьи (калибр.):", "draw_loss", 1.5,
                hint="Насколько важна ничья при калибровке матрицы под рынок 1X2. Больше → точнее ничья, но П1/П2 чуть грубее.")
-    _cfg_entry(goal_cfg_frame, 3, 0, "prior α:", "prior_alpha", 0.7,
+    _cfg_entry(goal_cfg_frame, 1, 0, "prior α:", "prior_alpha", 0.7,
                hint="Доля силы прошлого сезона, переносимая на новый (0.7 = 70%). Действует при prior весе > 0.")
-    _cfg_entry(goal_cfg_frame, 3, 1, "prior вес:", "prior_weight", 0.0,
+    _cfg_entry(goal_cfg_frame, 1, 1, "prior вес:", "prior_weight", 0.0,
                hint="Сила стягивания рейтингов к прошлому сезону. 0 = выкл. Больше → сильнее держим прошлогоднюю оценку (полезно в начале сезона).")
-    _cfg_entry(goal_cfg_frame, 3, 2, "новичок: N слабейших:", "promoted_n", 3,
+    _cfg_entry(goal_cfg_frame, 1, 2, "новичок: N слабейших:", "promoted_n", 3,
                hint="Команде без матчей (новичок лиги) рейтинг = среднее N слабейших команд.")
-    _cfg_entry(goal_cfg_frame, 4, 0, "ничья q_min:", "q_min", 0.85,
+    _cfg_entry(goal_cfg_frame, 2, 0, "ничья q_min:", "q_min", 0.85,
                hint="Насколько можно УМЕНЬШИТЬ ничью из матрицы. 0.85 = максимум −15%. Защита от перекоса модели ничьи.")
-    _cfg_entry(goal_cfg_frame, 4, 1, "ничья q_max:", "q_max", 1.15,
+    _cfg_entry(goal_cfg_frame, 2, 1, "ничья q_max:", "q_max", 1.15,
                hint="Насколько можно УВЕЛИЧИТЬ ничью из матрицы. 1.15 = максимум +15%.")
-
-    _cfg_entry(goal_cfg_frame, 0, 3, "W нейтраль:", "w_neutral", 1.0,
-               hint="Множитель для строк CSV с neutral_flag=true. Домашнее преимущество там и так не применяется.")
-    _cfg_entry(goal_cfg_frame, 1, 3, "default сезон:", "w_season_def", 1.0,
+    _cfg_entry(goal_cfg_frame, 2, 2, "default сезон:", "w_season_def", 1.0,
                hint="Множитель для матча, чья date не попала ни в один диапазон таблицы сезонов ниже (или столбца date нет).")
 
     goal_use_draw_var = tk.BooleanVar(value=True)
     goal_use_dc_var = tk.BooleanVar(value=True)
     _cb_draw = ttk.Checkbutton(goal_cfg_frame, text="Модель ничьи", variable=goal_use_draw_var)
-    _cb_draw.grid(row=4, column=4, sticky="w", padx=(0, 12))
+    _cb_draw.grid(row=3, column=3, sticky="w", padx=(0, 12))
     _attach_tip(_cb_draw, "Считать ничью отдельной моделью и ею корректировать диагональ матрицы. Выкл → ничья как есть из Пуассона.")
     _cb_dc = ttk.Checkbutton(goal_cfg_frame, text="Dixon-Coles", variable=goal_use_dc_var)
-    _cb_dc.grid(row=4, column=5, sticky="w")
+    _cb_dc.grid(row=3, column=4, sticky="w")
     _attach_tip(_cb_dc, "Поправка вероятностей низких счетов (0:0, 1:0, 0:1, 1:1) — рынок оценивает их иначе, чем чистый Пуассон.")
 
     _season_lbl = ttk.Label(
         goal_cfg_frame,
         text="Веса сезонов (по строке: дата_от, дата_до, вес):",
     )
-    _season_lbl.grid(row=5, column=0, columnspan=4, sticky="w", pady=(8, 0))
+    _season_lbl.grid(row=4, column=0, columnspan=4, sticky="w", pady=(8, 0))
     _attach_tip(_season_lbl, "Свежие матчи важнее старых: задайте больший вес для последних дат. Матч ищет свой диапазон по дате; при пересечении применяется добавленный последним (нижняя строка). Вне диапазонов — «default сезон». Строки с # игнорируются.")
     _attach_tip(_cb_neu, "Прогноз без домашнего преимущества (финал, нейтральное поле).")
     _attach_tip(_cb_der, "Матч-дерби: на прогноз влияет через множитель домашнего преимущества.")
     _attach_tip(_cb_mar, "Вкл → коэффициенты с заданной маржой (как у бука). Выкл → честные (сумма вероятностей 100%).")
     goal_season_text = tk.Text(goal_cfg_frame, width=44, height=4, relief="solid", borderwidth=1)
-    goal_season_text.grid(row=6, column=0, columnspan=6, sticky="w", pady=(2, 0))
+    goal_season_text.grid(row=5, column=0, columnspan=6, sticky="w", pady=(2, 0))
     goal_season_text.insert("1.0", "# 2026-09-01, 2026-12-31, 1.2\n# 2025-08-01, 2026-06-30, 0.6\n")
 
     def _parse_season_weights():
@@ -1732,16 +1718,7 @@ def build_app():
                 return float(_gv[key].get().replace(",", "."))
             except (ValueError, KeyError):
                 return default
-        qw = dict(gmt.DEFAULT_QUALITY_WEIGHTS)
-        qw["normal"] = f("q_normal", 1.0)
-        qw["low_motivation"] = f("q_lowmot", 0.5)
-        qw["heavy_rotation"] = f("q_rot", 0.5)
-        qw["suspicious_line"] = f("q_susp", 0.2)
-        qw["unknown"] = f("q_unknown", 0.8)
         return gmt.ModelConfig(
-            quality_weights=qw,
-            derby_weight=f("w_derby", 0.7),
-            neutral_weight=f("w_neutral", 1.0),
             default_season_weight=f("w_season_def", 1.0),
             season_weights=_parse_season_weights(),
             alpha_ah=f("alpha_ah", 0.25),

@@ -514,7 +514,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
       <div class="field" style="margin-top:8px;">
         <label>CSV closing-линий (с заголовком)</label>
-        <textarea id="goalCsv" style="min-height:120px" placeholder="date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag"></textarea>
+        <textarea id="goalCsv" style="min-height:120px" placeholder="date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight"></textarea>
         <div class="row">
           <input id="goalCsvFile" type="file" accept=".csv,text/csv" />
         </div>
@@ -532,7 +532,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <button type="button" id="goalLoadHist" class="btn">Загрузить из истории</button>
         </div>
         <div class="hint"><b>Обязательно:</b> home_team, away_team, closing_ah_home, closing_total_line, ah_home_odds, ah_away_odds, over_odds, under_odds (и желательно home/draw/away_odds для ничьи).<br>
-        <b>Необязательно (по матчу):</b> date, neutral_flag, derby_flag, quality_flag — если столбца нет, матч считается обычным (date пустая, не дерби, не нейтраль, quality=normal). Признаки матча задавайте прямо в CSV — по строке на матч, грузить по одному не нужно.</div>
+        <b>Необязательно (по матчу):</b> date, neutral_flag, derby_flag, quality_flag, <b>value</b> (множитель качества), derby_weight, neutral_weight — нет столбца → вес 1.0; флаги false. Множители задаются <b>в каждой строке CSV</b>, не в настройках программы.</div>
       </div>
       <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
         <div class="field" style="min-width:150px;flex:1">
@@ -567,17 +567,9 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </label>
       </div>
       <details style="margin-top:8px;">
-        <summary class="small" style="cursor:pointer;font-weight:600">Множители обучения по флагам из CSV (качество / дерби / нейтраль / сезоны)</summary>
-        <div class="hint" style="margin-top:6px">Это <b>не</b> правки конкретного матча, а <b>словарь множителей</b>: насколько доверять матчу с данным флагом из CSV. Сами флаги (quality_flag, derby_flag, neutral_flag, date) — в столбцах CSV, по строке на матч.<br>
-        Итоговый вес матча = сезон × качество × дерби × нейтраль (× robust). Меньше вес → слабее влияет; 0 = исключён.</div>
+        <summary class="small" style="cursor:pointer;font-weight:600">Веса сезонов (по дате матча)</summary>
+        <div class="hint" style="margin-top:6px">Итоговый вес матча = сезон × value × derby_weight × neutral_weight (× robust). Множители качества/дерби/нейтраль — в столбцах CSV; здесь только диапазоны дат.</div>
         <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-start;margin-top:8px;">
-          <div class="field" style="min-width:120px"><label>normal</label><input id="goalQNormal" value="1.0" /><div class="hint">Множитель для строк CSV с quality_flag=normal (обычный матч).</div></div>
-          <div class="field" style="min-width:120px"><label>low_motivation</label><input id="goalQLowmot" value="0.5" /><div class="hint">Множитель для quality_flag=low_motivation (низкая мотивация).</div></div>
-          <div class="field" style="min-width:120px"><label>heavy_rotation</label><input id="goalQRot" value="0.5" /><div class="hint">Множитель для quality_flag=heavy_rotation (сильная ротация).</div></div>
-          <div class="field" style="min-width:120px"><label>suspicious_line</label><input id="goalQSusp" value="0.2" /><div class="hint">Множитель для quality_flag=suspicious_line (нестандартная линия).</div></div>
-          <div class="field" style="min-width:120px"><label>unknown</label><input id="goalQUnknown" value="0.8" /><div class="hint">Множитель для прочих/неизвестных значений quality_flag.</div></div>
-          <div class="field" style="min-width:120px"><label>W дерби</label><input id="goalWDerby" value="0.7" /><div class="hint">Множитель для строк с derby_flag=true. Дерби часто нетипичны → обычно <1.</div></div>
-          <div class="field" style="min-width:120px"><label>W нейтраль</label><input id="goalWNeutral" value="1.0" /><div class="hint">Множитель для строк с neutral_flag=true. (Домашнее преимущество там и так не применяется.)</div></div>
           <div class="field" style="min-width:120px"><label>default сезон</label><input id="goalWSeasonDef" value="1.0" /><div class="hint">Множитель для матча, чья date не попала ни в один диапазон сезонов ниже.</div></div>
         </div>
         <div class="field" style="margin-top:8px;">
@@ -723,7 +715,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
       <div class="field" style="margin-top:8px;">
         <label>CSV closing-линий (вставка / файл)</label>
-        <textarea id="clhCsv" style="min-height:130px" placeholder="date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag"></textarea>
+        <textarea id="clhCsv" style="min-height:130px" placeholder="date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight"></textarea>
         <div class="row">
           <input id="clhFile" type="file" accept=".csv,text/csv" />
         </div>
@@ -781,7 +773,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <ol>
           <li><span class="badge">1</span> <b>История</b>: выберите лигу и сезон, вставьте CSV closing-линий (или файл) → <b>«Сохранить в хранилище»</b>. Можно нажать <b>«Пример»</b> для образца. Повторите для нужных сезонов/лиг.</li>
           <li><span class="badge">2</span> <b>Линия</b> → блок «Из истории»: выберите лигу и сезон (или «все сезоны») → <b>«Загрузить из истории»</b>. CSV подставится в поле. (Можно и просто вставить CSV вручную.)</li>
-          <li><span class="badge">3</span> При желании поправьте коэффициенты и множители обучения (у каждого поля есть подсказка) → <b>«Обучить модель»</b>. Внизу появятся рейтинги команд и сводка.</li>
+          <li><span class="badge">3</span> При желании поправьте параметры модели и веса сезонов → <b>«Обучить модель»</b>. Внизу появятся рейтинги команд и сводка.</li>
           <li><span class="badge">4</span> Выберите <b>лигу справочника</b>, <b>Хозяев</b> и <b>Гостей</b>, флаги (нейтраль/дерби/маржа) → <b>«Рассчитать линию»</b>.</li>
         </ol>
       </div>
@@ -792,7 +784,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 closing_ah_home,closing_total_line,
 ah_home_odds,ah_away_odds,over_odds,under_odds,
 home_odds,draw_odds,away_odds,
-neutral_flag,derby_flag,quality_flag</div>
+neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight</div>
       <p><span class="badge">обязательно</span> — рынки:</p>
       <ul>
         <li><b>home_team, away_team</b> — команды (имена должны совпадать со Справочником).</li>
@@ -804,10 +796,11 @@ neutral_flag,derby_flag,quality_flag</div>
       <ul>
         <li><b>date</b> — дата (для весов по сезону). Нет столбца → «default сезон».</li>
         <li><b>neutral_flag / derby_flag</b> — true/false. Нет → false.</li>
-        <li><b>quality_flag</b> — normal, low_motivation, heavy_rotation, suspicious_line, data_error, unknown. Нет → normal.</li>
+        <li><b>quality_flag</b> — метка матча (normal, low_motivation, heavy_rotation, suspicious_line, data_error и т.д.). Нет → пусто.</li>
+        <li><b>value</b> — множитель веса для этой строки (качество/мотивация). Нет → 1.0.</li>
+        <li><b>derby_weight / neutral_weight</b> — множители, если derby_flag / neutral_flag = true. Нет → 1.0.</li>
       </ul>
-      <div class="help-card"><p style="margin:0"><b>Не путать:</b> признак матча (дерби/нейтраль/качество/дата) — это <b>столбец CSV</b> у конкретной строки.
-      А «Множители обучения» на вкладке «Линия» — это <b>словарь</b>: с каким весом учитывать матч, у которого стоит такой флаг. Множитель один на всю загрузку.</p></div>
+      <div class="help-card"><p style="margin:0"><b>Важно:</b> множители качества, дерби и нейтраль задаются <b>в CSV по каждому матчу</b> (столбцы value, derby_weight, neutral_weight), а не в настройках программы. Вкладка «Линия» оставляет только веса сезонов по дате.</p></div>
 
       <h2>Как обучается модель</h2>
 
@@ -848,7 +841,7 @@ P<sub>X</sub><sup>target</sup> = 1 / (1 + e<sup>−logit</sup>)</div>
 P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма снова = 1</span></div>
 
       <h3>Вес матча при обучении</h3>
-      <div class="formula">W = W<sub>сезон</sub> × W<sub>качество</sub> × W<sub>дерби</sub> × W<sub>нейтраль</sub> × W<sub>размер линии</sub> × W<sub>robust</sub></div>
+      <div class="formula">W = W<sub>сезон</sub> × value × derby_weight × neutral_weight × W<sub>размер линии</sub> × W<sub>robust</sub></div>
       <p>Меньший вес → матч слабее влияет; 0 — исключён. Свежие матчи обычно весят больше.</p>
 
       <h2>Прогноз и рынки</h2>
@@ -2494,7 +2487,6 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     function gmHuber(e,delta){ const ae=Math.abs(e); return ae<=delta?1:delta/ae; }
     function gmSig(z){ return z>=0?1/(1+Math.exp(-z)):Math.exp(z)/(1+Math.exp(z)); }
 
-    const GM_Q = { normal:1.0, low_motivation:0.5, heavy_rotation:0.5, suspicious_line:0.2, data_error:0.0, unknown:0.8 };
     const GM_ALIAS = {
       date:'date',league:'league',home_team:'home',home:'home',team_home:'home',
       away_team:'away',away:'away',team_away:'away',
@@ -2505,6 +2497,9 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       away_odds:'ao',odds_2:'ao',p2:'ao',
       neutral_flag:'neu',neutral:'neu',derby_flag:'der',derby:'der',
       quality_flag:'q',quality:'q',
+      value:'val',quality_value:'val',quality_weight:'val',
+      derby_weight:'derw',derby_value:'derw',
+      neutral_weight:'neuw',neutral_value:'neuw',
     };
     function gmNumKey(s){ return String(s).trim().toLowerCase().replace(/[^a-z0-9_а-я]/gi,''); }
     function gmF(v){ if(v==null) return null; const t=String(v).trim().replace(',','.'); if(!t) return null; const n=parseFloat(t); return isNaN(n)?null:n; }
@@ -2523,20 +2518,24 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
           date:rec.date||'', home:String(rec.home).trim(), away:String(rec.away).trim(),
           ah:gmF(rec.ah), tot:gmF(rec.tot), aho:gmF(rec.aho), aha:gmF(rec.aha),
           ovr:gmF(rec.ovr), und:gmF(rec.und), ho:gmF(rec.ho), dо:gmF(rec.dо), ao:gmF(rec.ao),
-          neu:gmB(rec.neu), der:gmB(rec.der), q:(rec.q||'normal').trim()||'normal',
+          neu:gmB(rec.neu), der:gmB(rec.der), q:(rec.q||'').trim()||'',
+          val:gmF(rec.val), derw:gmF(rec.derw), neuw:gmF(rec.neuw),
         });
       }
       return out;
     }
+    function gmMatchWeight(r, cfg){
+      const wq=r.val!=null?r.val:1.0;
+      const wd=r.der?(r.derw!=null?r.derw:1.0):1.0;
+      const wn=r.neu?(r.neuw!=null?r.neuw:1.0):1.0;
+      const ws=gmSeasonWeight(r.date,cfg);
+      return ws*wq*wd*wn;
+    }
     function gmPrepare(raw,cfg){
       const ms=[];
-      const qmap=cfg.quality||GM_Q;
       for(const r of raw){
         if(r.q==='data_error') continue;
-        const wq=qmap[r.q]!=null?qmap[r.q]:0.8;
-        const wd=r.der?cfg.derby:1.0;
-        const ws=gmSeasonWeight(r.date,cfg);
-        const m={raw:r, home:r.home, away:r.away, iHome:r.neu?0:1, wBase:ws*wq*wd*(r.neu?cfg.neutral:1.0)};
+        const m={raw:r, home:r.home, away:r.away, iHome:r.neu?0:1, wBase:gmMatchWeight(r,cfg)};
         if(r.ovr&&r.und) m.pOver=gmDevig2(r.ovr,r.und)[0];
         if(r.aho&&r.aha) m.pAhHome=gmDevig2(r.aho,r.aha)[0];
         if(r.ho&&r.dо&&r.ao){ const s=shinDevig(r.ho,r.dо,r.ao); m.p1=s[0]; m.px=s[1]; m.p2=s[2]; }
@@ -2690,12 +2689,8 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     }
     function gmCfg(){
       const f=(id,d)=>{ const v=parseFloat((document.getElementById(id).value||'').replace(',','.')); return isNaN(v)?d:v; };
-      const quality={ normal:f('goalQNormal',1.0), low_motivation:f('goalQLowmot',0.5),
-        heavy_rotation:f('goalQRot',0.5), suspicious_line:f('goalQSusp',0.2), data_error:0.0,
-        unknown:f('goalQUnknown',0.8) };
       return { maxGoals:GM_MAX, alphaAh:f('goalAlphaAh',0.25), pAh:2, minWAh:0.15, maxWAh:1,
         alphaT:f('goalAlphaT',0.5), deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
-        quality, derby:f('goalWDerby',0.7), neutral:f('goalWNeutral',1.0),
         seasonDefault:f('goalWSeasonDef',1.0),
         seasonWeights:gmSeasonRows.slice(),
         priorAlpha:f('goalPriorAlpha',0.7), promotedN:3, derbyHmult:1.0,
