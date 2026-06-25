@@ -1,29 +1,19 @@
 """
 Supabase REST-клиент для справочника лиг и команд (вкладка «Справочник»).
 
-MVP: только anon key, без service_role.
+MVP: только anon key из config/supabase.json (или env), без service_role.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-
-SUPABASE_REST_URL = os.environ.get(
-    "SUPABASE_REST_URL",
-    "https://vhoeiyymxghjafyollyg.supabase.co/rest/v1",
-).rstrip("/")
-
-SUPABASE_ANON_KEY = os.environ.get(
-    "SUPABASE_ANON_KEY",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZob2VpeXlteGdoamFmeW9sbHlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNjgwMzMsImV4cCI6MjA5Nzk0NDAzM30.SKnvWB922f84jZzFdpCHV4X5-Z-jC935xqozJENzlP4",
-)
+from supabase_config import SupabaseConfigError, SupabaseSettings, load_supabase_settings
 
 
 class SupabaseError(RuntimeError):
@@ -50,10 +40,30 @@ class Team:
         return str(self.id)
 
 
-def _headers(*, prefer: Optional[str] = None) -> Dict[str, str]:
+_SETTINGS: Optional[SupabaseSettings] = None
+_MUTATING_METHODS = frozenset({"POST", "PATCH", "PUT", "DELETE"})
+
+
+def _settings() -> SupabaseSettings:
+    global _SETTINGS
+    if _SETTINGS is None:
+        try:
+            _SETTINGS = load_supabase_settings()
+        except SupabaseConfigError as exc:
+            raise SupabaseError(str(exc)) from exc
+    return _SETTINGS
+
+
+def reset_settings_cache() -> None:
+    """Сброс кэша (для тестов)."""
+    global _SETTINGS
+    _SETTINGS = None
+
+
+def _headers(settings: SupabaseSettings, *, prefer: Optional[str] = None) -> Dict[str, str]:
     h = {
-        "apikey": SUPABASE_ANON_KEY,
-        "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+        "apikey": settings.anon_key,
+        "Authorization": f"Bearer {settings.anon_key}",
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
@@ -70,9 +80,18 @@ def _request(
     prefer: Optional[str] = None,
     timeout: float = 30.0,
 ) -> Any:
-    url = f"{SUPABASE_REST_URL}/{path.lstrip('/')}"
+    settings = _settings()
+    method_u = method.upper()
+    if prefer is None and method_u in _MUTATING_METHODS:
+        prefer = "return=representation"
+    url = f"{settings.rest_url}/{path.lstrip('/')}"
     data = json.dumps(body).encode("utf-8") if body is not None else None
-    req = urllib.request.Request(url, data=data, headers=_headers(prefer=prefer), method=method)
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers=_headers(settings, prefer=prefer),
+        method=method_u,
+    )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8")
@@ -149,7 +168,6 @@ def create_team(league_id: str, name_team: str) -> Team:
             "POST",
             "/team?select=id,leagues_id,name_team",
             body={"leagues_id": lid, "name_team": name},
-            prefer="return=representation",
         )
     except SupabaseError as exc:
         if exc.status in (409, 422) or "duplicate" in (exc.body or "").lower():

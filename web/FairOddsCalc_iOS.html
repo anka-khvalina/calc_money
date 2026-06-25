@@ -1129,12 +1129,42 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     });
 
     // ---------------- Supabase справочник (вкладка «Справочник») ----------------
-    const SB_URL = 'https://vhoeiyymxghjafyollyg.supabase.co/rest/v1';
-    const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZob2VpeXlteGdoamFmeW9sbHlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNjgwMzMsImV4cCI6MjA5Nzk0NDAzM30.SKnvWB922f84jZzFdpCHV4X5-Z-jC935xqozJENzlP4';
+    const SB_CONFIG_URL = 'supabase.config.json';
     const SB_LEAGUE_KEY = 'FairOddsCalc_sb_league_v1';
+    let SB_URL = '';
+    let SB_KEY = '';
+    let _sbConfigPromise = null;
     window.__SB = { leagues: [], teamsByLeague: {}, leagueNameById: {}, leaguesLoaded: false };
 
+    function sbJwtRole(token){
+      try {
+        const payload = token.split('.')[1];
+        const pad = '='.repeat((4 - payload.length % 4) % 4);
+        const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/') + pad);
+        const data = JSON.parse(json);
+        return data.role || null;
+      } catch (_e){ return null; }
+    }
+
+    async function loadSupabaseConfig(){
+      if (_sbConfigPromise) return _sbConfigPromise;
+      _sbConfigPromise = (async () => {
+        const res = await fetch(SB_CONFIG_URL);
+        if (!res.ok) throw new Error('Не удалось загрузить конфигурацию Supabase');
+        const cfg = await res.json();
+        SB_URL = String(cfg.rest_url || '').replace(/\/$/, '');
+        SB_KEY = String(cfg.anon_key || '').trim();
+        if (!SB_URL || !SB_KEY) throw new Error('В supabase.config.json не заданы rest_url и anon_key');
+        if (sbJwtRole(SB_KEY) === 'service_role'){
+          throw new Error('В конфигурации указан service_role key. Разрешён только anon key.');
+        }
+      })();
+      return _sbConfigPromise;
+    }
+
     async function sbFetch(path, { method='GET', body=null, prefer=null }={}){
+      await loadSupabaseConfig();
+      const methodU = method.toUpperCase();
       const headers = {
         apikey: SB_KEY,
         Authorization: `Bearer ${SB_KEY}`,
@@ -1142,8 +1172,11 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         Accept: 'application/json',
       };
       if (prefer) headers.Prefer = prefer;
+      else if (methodU === 'POST' || methodU === 'PATCH' || methodU === 'DELETE'){
+        headers.Prefer = 'return=representation';
+      }
       const res = await fetch(`${SB_URL}${path}`, {
-        method,
+        method: methodU,
         headers,
         body: body ? JSON.stringify(body) : undefined,
       });

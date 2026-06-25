@@ -11,8 +11,28 @@
 
 ## Авторизация (MVP)
 
-- Base URL: `https://vhoeiyymxghjafyollyg.supabase.co/rest/v1`
-- Только **anon key** в клиенте; `service_role` запрещён
+Конфигурация (не в исходном коде):
+
+- Desktop: `config/supabase.json`
+- iOS/web: `web/supabase.config.json`
+- Переопределение env: `SUPABASE_REST_URL`, `SUPABASE_ANON_KEY`
+
+Заголовки всех REST-запросов:
+
+```http
+apikey: <SUPABASE_ANON_KEY>
+Authorization: Bearer <SUPABASE_ANON_KEY>
+Content-Type: application/json
+Accept: application/json
+```
+
+Для `POST`, `PATCH`, `DELETE` дополнительно:
+
+```http
+Prefer: return=representation
+```
+
+Запрещено в клиенте: `service_role key`, database password, secret key.
 
 ## REST-запросы
 
@@ -67,6 +87,6 @@ Prefer: return=representation
 
 ## Реализация в репозитории
 
-- Desktop: `app/supabase_teams.py`, вкладка в `app/fair_odds_calc.py`
-- iOS/web: блок `sbInitTeamsTab` в `web/FairOddsCalc_iOS.html`
-- Переменные окружения (desktop): `SUPABASE_REST_URL`, `SUPABASE_ANON_KEY`
+- Desktop: `app/supabase_teams.py`, `app/supabase_config.py`, вкладка в `app/fair_odds_calc.py`
+- iOS/web: `sbInitTeamsTab` + `web/supabase.config.json` в `web/FairOddsCalc_iOS.html`
+- Шаблоны: `config/supabase.example.json`, `web/supabase.config.example.json`

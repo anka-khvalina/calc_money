@@ -10,6 +10,78 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 
 import supabase_teams as sb  # noqa: E402
+import supabase_config as sc  # noqa: E402
+
+
+def setup_function():
+    sb.reset_settings_cache()
+
+
+def test_get_request_includes_auth_headers():
+    payload = json.dumps([]).encode()
+    with patch("urllib.request.urlopen", return_value=_mock_urlopen(payload)) as opener:
+        sb.fetch_leagues()
+    req = opener.call_args[0][0]
+    hdr = {k.lower(): v for k, v in req.header_items()}
+    assert hdr.get("apikey")
+    assert hdr.get("authorization", "").startswith("Bearer ")
+    assert hdr.get("content-type") == "application/json"
+    assert hdr.get("accept") == "application/json"
+    assert hdr.get("prefer") is None
+
+
+def test_config_from_env():
+    import os
+
+    old_url = os.environ.get("SUPABASE_REST_URL")
+    old_key = os.environ.get("SUPABASE_ANON_KEY")
+    try:
+        os.environ["SUPABASE_REST_URL"] = "https://test.supabase.co/rest/v1"
+        os.environ["SUPABASE_ANON_KEY"] = "test-anon-key"
+        sb.reset_settings_cache()
+        settings = sc.load_supabase_settings()
+        assert settings.rest_url == "https://test.supabase.co/rest/v1"
+        assert settings.anon_key == "test-anon-key"
+    finally:
+        if old_url is None:
+            os.environ.pop("SUPABASE_REST_URL", None)
+        else:
+            os.environ["SUPABASE_REST_URL"] = old_url
+        if old_key is None:
+            os.environ.pop("SUPABASE_ANON_KEY", None)
+        else:
+            os.environ["SUPABASE_ANON_KEY"] = old_key
+        sb.reset_settings_cache()
+
+
+def test_service_role_key_rejected():
+    import os
+
+    old_url = os.environ.get("SUPABASE_REST_URL")
+    old_key = os.environ.get("SUPABASE_ANON_KEY")
+    try:
+        os.environ["SUPABASE_REST_URL"] = "https://example.supabase.co/rest/v1"
+        os.environ["SUPABASE_ANON_KEY"] = (
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+            "eyJyb2xlIjoic2VydmljZV9yb2xlIn0."
+            "sig"
+        )
+        sb.reset_settings_cache()
+        try:
+            sb.fetch_leagues()
+            assert False, "expected SupabaseError"
+        except sb.SupabaseError as exc:
+            assert "service_role" in str(exc)
+    finally:
+        if old_url is None:
+            os.environ.pop("SUPABASE_REST_URL", None)
+        else:
+            os.environ["SUPABASE_REST_URL"] = old_url
+        if old_key is None:
+            os.environ.pop("SUPABASE_ANON_KEY", None)
+        else:
+            os.environ["SUPABASE_ANON_KEY"] = old_key
+        sb.reset_settings_cache()
 
 
 def _mock_urlopen(response_body: bytes, *, status: int = 200):
