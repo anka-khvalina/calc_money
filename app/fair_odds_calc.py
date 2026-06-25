@@ -495,6 +495,7 @@ def build_app():
     import team_registry as tg
     import supabase_teams as sb
     import supabase_history as sbh
+    import userbet_odds as ubo
 
     tab_rank = ttk.Frame(notebook, padding=10)
     notebook.add(tab_rank, text="Рейтинг команд")
@@ -1313,6 +1314,7 @@ def build_app():
             "o2",
             "neutral",
             "weights",
+            "fetch",
             "action",
             "status",
         ),
@@ -1334,7 +1336,8 @@ def build_app():
         ("o2", "2", 56, "e"),
         ("neutral", "Нейтр", 60, "center"),
         ("weights", "Веса", 52, "center"),
-        ("action", "Действие", 96, "center"),
+        ("fetch", "Данные", 56, "center"),
+        ("action", "Действие", 88, "center"),
         ("status", "", 132, "w"),
     ]:
         hist_matches_tree.heading(col, text=title)
@@ -1342,10 +1345,77 @@ def build_app():
     hist_matches_tree.tag_configure("dirty", background="#f0fdf4")
     hist_matches_tree.pack(fill="both", expand=True)
 
+    hist_fetch_bar = ttk.LabelFrame(hist_matches_frame, text="Получить данные", padding=8)
+    hist_fetch_match_lbl = ttk.Label(hist_fetch_bar, text="")
+    hist_fetch_match_lbl.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
+    ttk.Label(hist_fetch_bar, text="id матча с сайта неизвестного мужика:").grid(
+        row=1, column=0, sticky="w", padx=(0, 8)
+    )
+    hist_fetch_var = tk.StringVar()
+    hist_fetch_entry = ttk.Entry(hist_fetch_bar, textvariable=hist_fetch_var, width=28)
+    hist_fetch_entry.grid(row=1, column=1, sticky="w")
+    hist_fetch_err = tk.StringVar()
+    ttk.Label(hist_fetch_bar, textvariable=hist_fetch_err, foreground="#b42318").grid(
+        row=2, column=0, columnspan=3, sticky="w", pady=(6, 0)
+    )
+
+    def _hist_hide_fetch_bar():
+        nonlocal hist_fetch_mid
+        hist_fetch_mid = None
+        hist_fetch_bar.pack_forget()
+        for item in hist_matches_tree.get_children():
+            _hist_refresh_row(int(item))
+
+    def _hist_show_fetch_bar(mid: int):
+        nonlocal hist_fetch_mid
+        m = hist_match_by_id.get(mid)
+        if m is None:
+            return
+        if hist_fetch_mid == mid:
+            _hist_hide_fetch_bar()
+            return
+        hist_fetch_mid = mid
+        hist_fetch_match_lbl.config(text=f"{m.match_date}  {m.home_team} — {m.away_team}")
+        hist_fetch_var.set(hist_external_ids.get(mid, ""))
+        hist_fetch_err.set("")
+        hist_fetch_bar.pack(fill="x", pady=(6, 0))
+        for item in hist_matches_tree.get_children():
+            _hist_refresh_row(int(item))
+
+    def _hist_do_fetch_odds():
+        if hist_fetch_mid is None:
+            return
+        mid = hist_fetch_mid
+        ext_id = hist_fetch_var.get().strip()
+        if not ext_id:
+            hist_fetch_err.set("Введите id матча с сайта неизвестного мужика")
+            return
+        hist_external_ids[mid] = ext_id
+        hist_fetch_btn.config(state="disabled", text="Получение...")
+        hist_fetch_err.set("")
+        hist_matches_frame.update_idletasks()
+        try:
+            odds = ubo.fetch_odds(ext_id)
+        except ubo.UserbetError as exc:
+            hist_fetch_err.set(str(exc))
+        else:
+            edits = hist_edited.setdefault(mid, {})
+            edits.update(ubo.odds_to_ui_edits(odds))
+            hist_row_status.pop(mid, None)
+            _hist_refresh_row(mid)
+        finally:
+            hist_fetch_btn.config(state="normal", text="Получить данные")
+
+    hist_fetch_btn = ttk.Button(hist_fetch_bar, text="Получить данные", command=_hist_do_fetch_odds)
+    hist_fetch_btn.grid(row=1, column=2, sticky="w", padx=(8, 0))
+    hist_fetch_bar.pack_forget()
+
     hist_match_by_id: dict[int, sbh.MatchFull] = {}
     hist_edited: dict[int, dict[str, str]] = {}
     hist_row_status: dict[int, str] = {}
     hist_row_saving: set[int] = set()
+    hist_fetch_mid: int | None = None
+    hist_external_ids: dict[int, str] = {}
     _hist_edit_entry: tk.Entry | None = None
     _hist_edit_ctx: tuple[int, str] | None = None
 
@@ -1388,6 +1458,7 @@ def build_app():
         elif dirty:
             action = "Сохранить"
 
+        fetch_mark = "▲" if hist_fetch_mid == mid else "▼"
         return (
             m.match_date,
             m.home_team,
@@ -1403,6 +1474,7 @@ def build_app():
             cell("o2"),
             cell("neutral"),
             "⚙",
+            fetch_mark,
             action,
             hist_row_status.get(mid, ""),
         )
@@ -1479,7 +1551,7 @@ def build_app():
         try:
             updated = sbh.patch_match(mid, payload)
         except sb.SupabaseError:
-            hist_row_status[mid] = "Не удалось сохранить изменения"
+            hist_row_status[mid] = "Не удалось сохранить коэффициенты в БД"
         except ValueError as exc:
             hist_row_status[mid] = str(exc)
         else:
@@ -1546,6 +1618,9 @@ def build_app():
         if col_id == "weights":
             _hist_show_weights_dialog(mid)
             return
+        if col_id == "fetch":
+            _hist_show_fetch_bar(mid)
+            return
         if col_id == "action" and _hist_dirty_fields(mid) and mid not in hist_row_saving:
             _hist_save_row(mid)
 
@@ -1574,11 +1649,14 @@ def build_app():
             hist_tree.delete(item)
 
     def clear_hist_matches_tree():
+        nonlocal hist_fetch_mid
         _hist_destroy_edit_entry()
         hist_match_by_id.clear()
         hist_edited.clear()
         hist_row_status.clear()
         hist_row_saving.clear()
+        hist_fetch_mid = None
+        hist_fetch_bar.pack_forget()
         for item in hist_matches_tree.get_children():
             hist_matches_tree.delete(item)
 

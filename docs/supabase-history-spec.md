@@ -2,7 +2,7 @@
 
 Вкладка **«История»** — экран просмотра сохранённых сезонов и матчей из Supabase. CSV-импорт на вкладке **не используется**.
 
-Подробнее: [supabase-history-ui-spec.md](supabase-history-ui-spec.md), [supabase-history-edit-spec.md](supabase-history-edit-spec.md).
+Подробнее: [supabase-history-ui-spec.md](supabase-history-ui-spec.md), [supabase-history-edit-spec.md](supabase-history-edit-spec.md), [supabase-history-fetch-odds-spec.md](supabase-history-fetch-odds-spec.md).
 
 ## Источники данных
 
