@@ -47,7 +47,7 @@ GET /v_matches_full?select=...&league_id=eq.{league_id}&season_id=eq.{season_id}
 
 ### Матчи выбранного сезона
 
-Дата, Дома, Гости, AH, Тот, AH1, AH2, O, U, 1, X, 2, Нейтр, Дерби, Кач.
+Дата, Дома, Гости, AH, AH1, AH2, Тот, O, U, 1, X, 2, Нейтр, Дерби, Кач.
 
 - `null` → `—`
 - `is_neutral`: `да` / `нет`
