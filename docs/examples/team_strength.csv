@@ -1,0 +1,9 @@
+team_id,season_id,market_weight
+team_a,s2024,1.20
+team_b,s2024,0.90
+team_c,s2024,1.00
+team_x,s2024,0.85
+team_y,s2024,0.95
+team_z,s2023,0.80
+team_a,s2023,1.15
+team_b,s2023,0.88
