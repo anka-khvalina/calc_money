@@ -60,7 +60,7 @@ def test_team_logo_save_and_remove(tmp_path):
         b"\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82"
     )
     assert not tg.has_logo(ent.id, path=logos)
-    saved = tg.set_team_logo(ent.id, png, path=logos)
+    saved = tg.set_team_logo(ent.id, png, path=logos, require_registry=False)
     assert saved.is_file()
     assert tg.has_logo(ent.id, path=logos)
     assert tg.logo_path(ent.id, path=logos) == logos / "epl_1.png"
