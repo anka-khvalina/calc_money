@@ -118,6 +118,7 @@ start_servers() {
     start_tmux_session "fair-odds-web" "$ROOT" \
       "python3 scripts/serve_lan.py --port ${WEB_PORT}"
     echo "  Остановить: tmux kill-session -t fair-odds-api; tmux kill-session -t fair-odds-web"
+    echo "  Логи tmux:  tmux attach -t fair-odds-api   |   bash scripts/logs.sh (файлы .run/)"
   else
     echo ">> tmux не найден — запуск в фоне (nohup, каталог .run/)..."
     start_background "fair-odds-api" env HISTORY_API_HOST=127.0.0.1 bash scripts/run_history_api.sh
@@ -129,7 +130,7 @@ start_servers() {
     done
     start_background "fair-odds-web" python3 scripts/serve_lan.py --port "${WEB_PORT}"
     echo "  Остановить: bash scripts/stop_servers.sh"
-    echo "  Логи:       tail -f .run/fair-odds-api.log .run/fair-odds-web.log"
+    echo "  Логи:       bash scripts/logs.sh -f"
   fi
 }
 

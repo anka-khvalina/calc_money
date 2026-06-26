@@ -81,6 +81,16 @@ bash scripts/stop_servers.sh
 
 `tmux` не обязателен — скрипт `update_and_serve.sh --start` запустит серверы через `nohup` в каталог `.run/`.
 
+**Логи в терминале:**
+
+```bash
+bash scripts/logs.sh          # статус + последние строки
+bash scripts/logs.sh -f       # смотреть онлайн (как tail -f)
+bash scripts/logs.sh -f --api # только History API / userbet
+```
+
+Файлы: `.run/fair-odds-api.log`, `.run/fair-odds-web.log`.
+
 Только обновить конфиг без автозапуска:
 
 ```bash
