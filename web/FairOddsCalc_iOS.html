@@ -78,7 +78,7 @@
     }
     #clhViewTable td.hist-col-date{ min-width:92px; white-space:nowrap; }
     #goalSeasonWeightsTable .goal-season-w{
-      width:100%; max-width:56px; text-align:right; padding:4px 6px; font-size:12px;
+      width:100%; max-width:100%; box-sizing:border-box; text-align:right; padding:4px 6px; font-size:12px;
     }
     .goal-src-panel{
       display:flex; flex-direction:column; gap:12px;
@@ -86,18 +86,19 @@
       border:1px solid #dbe3f7;
       border-radius:10px;
       padding:12px 14px;
-      margin-top:8px;
-      width:fit-content;
-      max-width:100%;
+      margin-top:0;
+      width:100%;
+      box-sizing:border-box;
     }
     .goal-src-panel label.block-label{
       display:block; font-size:12px; color:var(--muted); margin-bottom:5px; font-weight:600;
     }
-    .goal-src-row{ display:flex; flex-wrap:wrap; gap:12px 16px; align-items:flex-start; }
-    .goal-src-row--action{ padding-top:2px; }
-    .goal-src-league{ flex:0 0 168px; max-width:100%; }
-    .goal-src-league select{ font-size:13px; width:100%; }
-    .goal-src-seasons{ flex:0 0 200px; max-width:100%; }
+    .goal-src-row{ display:flex; flex-wrap:wrap; gap:10px 12px; align-items:flex-start; }
+    .goal-src-row--pick{ flex-direction:column; }
+    .goal-src-row--action{ padding-top:0; }
+    .goal-src-league{ flex:1 1 100%; width:100%; }
+    .goal-src-league select{ font-size:13px; width:100%; box-sizing:border-box; }
+    .goal-src-seasons{ flex:1 1 100%; width:100%; }
     .goal-src-seasons select#goalSrcSeasons{
       display:block; width:100%; box-sizing:border-box;
       font-size:12px; padding:3px 5px; line-height:1.35;
@@ -107,12 +108,12 @@
     }
     .goal-src-seasons .goal-all-seasons input{ width:auto; margin:0; }
     .goal-src-seasons .goal-seasons-hint{ margin-top:2px; font-size:10px; color:var(--muted); }
-    .goal-src-weights{ flex:0 0 auto; width:auto; }
+    .goal-src-weights{ flex:1 1 100%; width:100%; }
     .goal-src-weights .table-wrap{
-      margin-top:0; border-radius:8px; overflow:visible; width:fit-content;
+      margin-top:0; border-radius:8px; overflow:visible; width:100%; box-sizing:border-box;
     }
     .goal-src-weights table.goal-sw-table{
-      width:auto; min-width:0; table-layout:auto; border-collapse:collapse;
+      width:100%; min-width:0; table-layout:fixed; border-collapse:collapse;
       background:#fff;
     }
     .goal-src-weights .goal-sw-table th,
@@ -121,13 +122,17 @@
     }
     .goal-src-weights .goal-sw-table th{ white-space:nowrap; font-size:11px; }
     .goal-src-weights .goal-sw-table .goal-sw-season{
-      min-width:5.5rem; max-width:11rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      width:42%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
     }
-    .goal-src-weights .goal-sw-table .goal-sw-n{ text-align:right; white-space:nowrap; min-width:2.75rem; padding-left:12px; }
-    .goal-src-weights .goal-sw-table .goal-sw-w{ text-align:right; min-width:3.25rem; }
+    .goal-src-weights .goal-sw-table .goal-sw-n{ width:28%; text-align:right; white-space:nowrap; }
+    .goal-src-weights .goal-sw-table .goal-sw-w{ width:30%; text-align:right; }
     .goal-src-weights td.num{ text-align:right; font-variant-numeric:tabular-nums; }
+    .goal-src-action{ width:100%; }
     .goal-src-action .btn{
-      min-width:148px; padding:9px 16px; font-size:13px;
+      width:100%; box-sizing:border-box; padding:9px 16px; font-size:13px;
+    }
+    @media (max-width:720px){
+      .goal-train-layout{ grid-template-columns:1fr; }
     }
     @media (max-width:480px){
       .goal-src-panel{ max-width:none; }
@@ -204,16 +209,16 @@
     .goal-chip.ok{ background:#dcfce7; color:#166534; }
     .goal-chip.warn{ background:#fef3c7; color:#92400e; }
     .goal-train-layout{
-      display:flex; flex-wrap:wrap; gap:16px 20px; align-items:flex-start; margin-top:8px;
+      display:grid; grid-template-columns:1fr 1fr; gap:16px;
+      align-items:start; margin-top:8px;
     }
+    .goal-train-col--data,
     .goal-train-col--profile{
-      flex:0 0 272px; max-width:100%; min-width:240px;
-    }
-    .goal-train-col--data{
-      flex:1 1 300px; min-width:0; max-width:100%;
+      min-width:0; width:100%;
     }
     .goal-config-card{
       background:#fff; border:1px solid #dbe3f7; border-radius:10px; padding:12px 14px;
+      width:100%; box-sizing:border-box;
     }
     .goal-profile-bar{
       display:flex; flex-direction:column; align-items:stretch; gap:6px; margin:0 0 10px;
@@ -224,7 +229,8 @@
       display:flex; flex-direction:column; gap:10px; margin:0;
     }
     .goal-main-settings .field{ min-width:0; width:100%; flex:none; margin:0; }
-    .goal-main-settings .hint{ font-size:10px; line-height:1.3; }
+    .goal-main-settings .field input,
+    .goal-main-settings .field select{ width:100%; box-sizing:border-box; }
     .goal-train-col--profile .goal-train-actions{ margin-top:10px; flex-direction:column; align-items:stretch; }
     .goal-train-col--profile .goal-train-actions .btn{ width:100%; }
     .goal-train-col--profile .goal-train-chips{ margin-top:6px; }
@@ -233,7 +239,7 @@
       display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; padding-bottom:2px;
     }
     .goal-dc-row > label{ display:flex; align-items:center; gap:6px; margin:0; }
-    .goal-gamma-inline{ min-width:88px; max-width:100px; margin:0; }
+    .goal-gamma-inline{ flex:1; min-width:72px; max-width:none; margin:0; }
     .goal-gamma-inline input{ width:100%; }
     .goal-exp-panel{
       margin-top:12px; border:1px solid #dbe3f7; border-radius:10px; background:#fafbff;
@@ -648,10 +654,42 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div class="goal-section goal-section--train">
         <h3>Обучение модели</h3>
         <div class="small">
-          Загрузите closing-линии из БД → настройте профиль слева → обучите модель.
+          Загрузите данные слева → профиль справа → обучите модель.
         </div>
 
       <div class="goal-train-layout">
+        <div class="goal-train-col goal-train-col--data">
+          <div class="goal-src-panel">
+            <div class="goal-src-row goal-src-row--pick">
+              <div class="goal-src-league">
+                <label class="block-label" for="goalSrcLeague">Лига</label>
+                <select id="goalSrcLeague"><option value="">Загрузка…</option></select>
+              </div>
+              <div class="goal-src-seasons">
+                <label class="block-label" for="goalSrcSeasons">Сезоны</label>
+                <select id="goalSrcSeasons" multiple size="3"></select>
+                <label class="goal-all-seasons">
+                  <input id="goalSrcAllSeasons" type="checkbox" />
+                  <span>Все сезоны</span>
+                </label>
+                <div class="goal-seasons-hint">Ctrl/Cmd + клик · несколько сезонов</div>
+              </div>
+            </div>
+            <div class="goal-src-row goal-src-row--weights">
+              <div class="goal-src-weights">
+                <label class="block-label">Веса сезонов</label>
+                <div id="goalSeasonWeightsTable"></div>
+              </div>
+            </div>
+            <div class="goal-src-row goal-src-row--action goal-src-action">
+              <button type="button" id="goalLoadHist" class="btn primary">Загрузить из БД</button>
+            </div>
+          </div>
+          <div class="hint" style="margin-top:6px">
+            Supabase → closing-линии. Вес: <b>сезон × match_weight × neutral</b>.
+          </div>
+        </div>
+
         <div class="goal-train-col goal-train-col--profile">
           <div class="goal-config-card">
             <div class="goal-profile-bar">
@@ -732,38 +770,6 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
             <div id="goalTrainChips" class="goal-train-chips" aria-live="polite"></div>
           </div>
-        </div>
-
-        <div class="goal-train-col goal-train-col--data">
-      <div class="goal-src-panel">
-        <div class="goal-src-row goal-src-row--pick">
-          <div class="goal-src-league">
-            <label class="block-label" for="goalSrcLeague">Лига</label>
-            <select id="goalSrcLeague"><option value="">Загрузка…</option></select>
-          </div>
-          <div class="goal-src-seasons">
-            <label class="block-label" for="goalSrcSeasons">Сезоны</label>
-            <select id="goalSrcSeasons" multiple size="3"></select>
-            <label class="goal-all-seasons">
-              <input id="goalSrcAllSeasons" type="checkbox" />
-              <span>Все сезоны</span>
-            </label>
-            <div class="goal-seasons-hint">Ctrl/Cmd + клик · несколько сезонов</div>
-          </div>
-        </div>
-        <div class="goal-src-row goal-src-row--weights">
-          <div class="goal-src-weights">
-            <label class="block-label">Веса сезонов</label>
-            <div id="goalSeasonWeightsTable"></div>
-          </div>
-        </div>
-        <div class="goal-src-row goal-src-row--action goal-src-action">
-          <button type="button" id="goalLoadHist" class="btn primary">Загрузить из БД</button>
-        </div>
-      </div>
-      <div class="hint" style="margin-top:6px">
-        Supabase → closing-линии. Вес матча: <b>сезон × match_weight × neutral</b>. Дерби → только H.
-      </div>
         </div>
       </div>
 
