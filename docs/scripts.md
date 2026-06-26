@@ -30,6 +30,7 @@ bash scripts/update_and_serve.sh --start
 | `stop_servers.sh` | остановка фоновых процессов |
 | `logs.sh` | логи (`.run/fair-odds-api.log`, `.run/fair-odds-web.log`) |
 | `check_lan_api.sh` | проверка `/health` по LAN |
+| `reset_derby_flags.py` | сброс `derby_weight=0` для всех матчей в Supabase |
 
 ## Команды
 
@@ -53,6 +54,10 @@ bash scripts/stop_servers.sh
 
 # проверка с другого ПК
 curl http://192.168.x.x:8080/health
+
+# сброс дерби: все матчи → не дерби (derby_weight=0)
+python3 scripts/reset_derby_flags.py --dry-run
+python3 scripts/reset_derby_flags.py
 ```
 
 ## Переменные окружения

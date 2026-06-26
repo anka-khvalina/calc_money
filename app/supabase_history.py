@@ -12,7 +12,7 @@ from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Set, Union
 
 from supabase_teams import SupabaseError, _request
 
-# Поле derby_weight в БД — булев флаг: 1 = дерби, 0 = не дерби (null → не дерби).
+# Поле derby_weight в БД — булев флаг: 1 = дерби, 0 = не дерби (default).
 # Вес дерби (поправка H) считается при обучении, в БД не хранится.
 DERBY_FLAG_YES: float = 1.0
 DERBY_FLAG_NO: float = 0.0
@@ -123,6 +123,48 @@ def is_derby_match(match: MatchFull) -> bool:
 
 def derby_weight_from_bool(is_derby: bool) -> float:
     return DERBY_FLAG_YES if is_derby else DERBY_FLAG_NO
+
+
+def normalized_derby_weight(raw: Optional[float]) -> float:
+    """0 = не дерби; null и legacy-значения → 0."""
+    if raw is None:
+        return DERBY_FLAG_NO
+    if abs(float(raw) - DERBY_FLAG_YES) < 1e-9:
+        return DERBY_FLAG_YES
+    return DERBY_FLAG_NO
+
+
+def count_matches_for_derby_reset() -> int:
+    """Сколько строк в matches ещё не derby_weight=0."""
+    rows = _request("GET", "/matches?select=id,derby_weight")
+    if not isinstance(rows, list):
+        raise SupabaseError("Некорректный ответ matches")
+    n = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        w = _opt_float(row.get("derby_weight"))
+        if w is None or abs(w - DERBY_FLAG_NO) >= 1e-9:
+            n += 1
+    return n
+
+
+def reset_all_derby_flags(*, dry_run: bool = False) -> int:
+    """
+    Проставить derby_weight=0 всем матчам в matches.
+    Возвращает число строк, которые ещё не были 0 (оценка до PATCH).
+    """
+    pending = count_matches_for_derby_reset()
+    if dry_run or pending == 0:
+        return pending
+    q = urllib.parse.urlencode({"id": "gte.1"})
+    _request(
+        "PATCH",
+        f"/matches?{q}",
+        body={"derby_weight": DERBY_FLAG_NO},
+        prefer="return=minimal",
+    )
+    return pending
 
 
 def format_imported_at(iso: Optional[str]) -> str:
@@ -383,7 +425,7 @@ def _parse_match_row(row: dict) -> Optional[MatchFull]:
             away_odds=_opt_float(row.get("away_odds")),
             is_neutral=bool(row.get("is_neutral")),
             match_weight=_opt_float(row.get("match_weight")),
-            derby_weight=_opt_float(row.get("derby_weight")),
+            derby_weight=normalized_derby_weight(_opt_float(row.get("derby_weight"))),
             neutral_weight=_opt_float(row.get("neutral_weight")),
             note=str(row["note"]).strip() if row.get("note") not in (None, "") else None,
         )

@@ -232,6 +232,41 @@ def test_is_derby_default_not_derby():
     assert sbh.is_derby_match(replace(m, derby_weight=sbh.DERBY_FLAG_YES))
 
 
+def test_normalized_derby_weight():
+    assert sbh.normalized_derby_weight(None) == sbh.DERBY_FLAG_NO
+    assert sbh.normalized_derby_weight(0) == sbh.DERBY_FLAG_NO
+    assert sbh.normalized_derby_weight(0.7) == sbh.DERBY_FLAG_NO
+    assert sbh.normalized_derby_weight(1) == sbh.DERBY_FLAG_YES
+
+
+def test_reset_all_derby_flags_dry_run():
+    payload = json.dumps(
+        [
+            {"id": 1, "derby_weight": None},
+            {"id": 2, "derby_weight": 1},
+            {"id": 3, "derby_weight": 0},
+        ]
+    ).encode()
+    with patch("urllib.request.urlopen", return_value=_mock_urlopen(payload)):
+        assert sbh.reset_all_derby_flags(dry_run=True) == 2
+
+
+def test_reset_all_derby_flags_patch():
+    get_payload = json.dumps([{"id": 1, "derby_weight": 1}]).encode()
+
+    def fake_urlopen(req, timeout=30.0):
+        url = getattr(req, "full_url", None) or req.get_full_url()
+        if req.method == "GET":
+            return _mock_urlopen(get_payload)
+        if req.method == "PATCH":
+            assert "derby_weight" in req.data.decode()
+            return _mock_urlopen(b"")
+        raise AssertionError(f"unexpected {req.method} {url}")
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        assert sbh.reset_all_derby_flags(dry_run=False) == 1
+
+
 def test_build_dirty_patch_match_and_neutral_weights():
     m = sbh.MatchFull(
         match_id=1,

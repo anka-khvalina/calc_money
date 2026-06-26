@@ -174,7 +174,7 @@ erDiagram
 | `away_odds` | `NUMERIC(6,3)` | | |
 | `is_neutral` | `BOOLEAN` | | Нейтральное поле → без домашнего преимущества в модели |
 | `match_weight` | `NUMERIC(4,3)` | | Общий множитель обучения (CSV `value`), default `1.0` |
-| `derby_weight` | `NUMERIC(4,3)` | | Флаг дерби: **1** = да, **0** = нет; поправка **H** при обучении |
+| `derby_weight` | `NUMERIC(4,3)` | default `0` | Флаг дерби: **1** = да, **0** = нет; поправка **H** при обучении |
 | `neutral_weight` | `NUMERIC(4,3)` | | Ослабление веса при `is_neutral`, default `1.0` |
 | `note` | `VARCHAR(128)` | | Произвольная метка (`low_motivation`, …), **не влияет на расчёт** |
 | `created_at` | `TIMESTAMPTZ` | | |
