@@ -1,0 +1,3 @@
+rule_id,condition,coefficient
+team_win,team_win,1.03
+team_loss,team_loss,1.03
