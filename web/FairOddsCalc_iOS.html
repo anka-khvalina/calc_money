@@ -176,7 +176,37 @@
       border-radius:10px; background:#f7f9ff;
     }
     .goal-train-card h4{ margin:0 0 8px; font-size:13px; color:#10204a; }
-    .goal-train-actions{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px; }
+    .goal-train-actions{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:12px; }
+    .goal-train-chips{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex:1; min-width:0; }
+    .goal-chip{
+      font-size:11px; padding:4px 10px; border-radius:999px; background:#e2e8f0; color:#334155;
+      white-space:nowrap; font-variant-numeric:tabular-nums;
+    }
+    .goal-chip.ok{ background:#dcfce7; color:#166534; }
+    .goal-chip.warn{ background:#fef3c7; color:#92400e; }
+    .goal-profile-bar{
+      display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:12px 0 8px;
+    }
+    .goal-profile-bar select{ min-width:180px; }
+    .goal-main-settings{ margin-top:4px; }
+    .goal-dc-row{
+      display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; padding-bottom:2px;
+    }
+    .goal-dc-row > label{ display:flex; align-items:center; gap:6px; margin:0; }
+    .goal-gamma-inline{ min-width:88px; max-width:100px; margin:0; }
+    .goal-gamma-inline input{ width:100%; }
+    .goal-exp-panel{
+      margin-top:12px; border:1px solid #dbe3f7; border-radius:10px; background:#fafbff;
+      padding:0 12px 12px;
+    }
+    .goal-exp-panel summary{
+      cursor:pointer; font-weight:600; font-size:13px; color:#10204a;
+      padding:10px 0; list-style:none;
+    }
+    .goal-exp-panel summary::-webkit-details-marker{ display:none; }
+    .goal-exp-panel summary::before{ content:'▸ '; color:var(--muted); }
+    .goal-exp-panel[open] summary::before{ content:'▾ '; }
+    .goal-exp-body{ padding-top:4px; }
     .goal-section{
       margin-top:18px; padding:14px 14px 16px;
       border:1px solid var(--line); border-radius:12px; background:#fff;
@@ -578,8 +608,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div class="goal-section goal-section--train">
         <h3>Обучение модели</h3>
         <div class="small">
-          Голевая модель: closing-линии (азиатские форы + тоталы + 1X2) → скрытые S/D →
-          λ_h/λ_a → матрица счетов → все рынки. Ничья: отдельная модель + коррекция диагонали.
+          Closing-линии → S/D → λ → матрица → рынки. Рабочий профиль: <b>рыночный baseline</b> (S из OU, DC on, draw off).
         </div>
       <div class="goal-src-panel">
         <div class="goal-src-league">
@@ -607,85 +636,91 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         Данные из Supabase (<code>v_matches_full</code>). Вес матча:
         <b>вес сезона × match_weight × neutral_weight</b> (дерби влияет на <b>H</b>, не на вес).
       </div>
-      <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
-        <div class="field" style="min-width:150px;flex:1">
+
+      <div class="goal-profile-bar">
+        <label class="block-label" for="goalModelProfile" style="margin:0">Профиль модели</label>
+        <select id="goalModelProfile">
+          <option value="baseline" selected>Рыночный baseline</option>
+          <option value="custom">Свои настройки</option>
+        </select>
+        <span class="hint" style="margin:0">S cal off · DC on · draw off</span>
+      </div>
+
+      <div class="row goal-main-settings" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
+        <div class="field" style="min-width:120px;flex:1">
           <label>α форы</label><input id="goalAlphaAh" value="0.25" />
-          <div class="hint">Приглушение матчей с большим перевесом сил. Больше α → крупные форы меньше влияют на рейтинг. 0 = все матчи равнозначны.</div>
+          <div class="hint">Крупные форы слабее влияют на рейтинг силы.</div>
         </div>
-        <div class="field" style="min-width:150px;flex:1">
+        <div class="field" style="min-width:120px;flex:1">
           <label>α тотала</label><input id="goalAlphaT" value="0.5" />
-          <div class="hint">Приглушение матчей с «экстремальным» тоталом (очень мало/много голов) при обучении голевой модели. Больше α → такие матчи слабее влияют.</div>
+          <div class="hint">Экстремальные тоталы слабее влияют на attack/defense.</div>
         </div>
-        <div class="field" style="min-width:150px;flex:1">
-          <label>prior α</label><input id="goalPriorAlpha" value="0.7" />
-          <div class="hint">При повторном обучении стягивает r, A, Df к предыдущей модели (0.7 = 70%). Первое обучение — без prior.</div>
-        </div>
-        <div class="field" style="min-width:150px;flex:1">
+        <div class="field" style="min-width:120px;flex:1">
           <label>λ A / Df</label><input id="goalRegLambdaAD" value="0.10" />
-          <div class="hint">L2-штраф на атаку и оборону: Loss += λ·ΣA² + λ·ΣDf². Сдерживает «сильная атака + дырявая оборона» от шума тотала. 0 = выкл.</div>
+          <div class="hint">L2 на атаку и оборону (0 = выкл).</div>
         </div>
-        <div class="field" style="min-width:150px;flex:1">
-          <label>дерби H×</label><input id="goalDerbyHDefault" value="0.7" />
-          <div class="hint">Если в обучении &lt;3 дерби: H_eff = этот коэфф. × H. 0.7 — default; 0.4 — сильное ослабление дома.</div>
-        </div>
-        <div class="field" style="min-width:150px;flex:1">
-          <label>ничья q_min</label><input id="goalQmin" value="0.95" />
-          <div class="hint">Насколько сильно МОЖНО уменьшить ничью из матрицы. 0.95 = максимум −5%. Рабочий режим вместе с DC.</div>
-        </div>
-        <div class="field" style="min-width:150px;flex:1">
-          <label>ничья q_max</label><input id="goalQmax" value="1.05" />
-          <div class="hint">Насколько сильно МОЖНО увеличить ничью из матрицы. 1.05 = максимум +5%.</div>
-        </div>
-        <div class="field" style="min-width:150px;flex:1">
-          <label>калибр. S</label>
-          <select id="goalSCalMode">
-            <option value="off" selected>off</option>
-            <option value="soft">soft</option>
-          </select>
-          <div class="hint">off: c=0,d=1 (S из OU, рабочий режим). soft: штраф c,d + |ΔS|≤лимит.</div>
-        </div>
-        <div class="field" style="min-width:120px;flex:1" id="goalSCalFreeWrap" hidden>
-          <label>калибр. S (эксп.)</label>
-          <select id="goalSCalModeExp">
-            <option value="free">free</option>
-          </select>
-          <div class="hint">free: без ограничений — только для экспериментов.</div>
-        </div>
-        <div class="field" style="min-width:120px;flex:1">
-          <label>max |ΔS|</label><input id="goalSCalMaxDelta" value="0.15" />
-          <div class="hint">Лимит сдвига тотала при soft-калибровке (голы на матч).</div>
-        </div>
-        <div class="field" style="min-width:120px;flex:1">
-          <label>γ max</label><input id="goalGammaMax" value="0.20" />
-          <div class="hint">Dixon–Coles: |γ| не выше (±). 0.20 — рабочий потолок.</div>
+        <div class="goal-dc-row">
+          <label>
+            <input id="goalUseDc" type="checkbox" checked style="width:auto;margin:0" />
+            <span class="small">Dixon-Coles</span>
+          </label>
+          <div class="field goal-gamma-inline">
+            <label>γ max</label><input id="goalGammaMax" value="0.20" />
+          </div>
         </div>
       </div>
-      <div class="row" style="flex-wrap:wrap;gap:16px;">
-        <label style="display:flex;align-items:flex-start;gap:6px;" id="goalUseDrawWrap" hidden>
-          <input id="goalUseDraw" type="checkbox" style="width:auto;margin-top:2px" />
-          <span><span class="small">Модель ничьи (эксп.)</span><span class="hint" style="display:block">Рабочий baseline: выкл. Residual — узкая поправка после DC.</span></span>
-        </label>
-        <label style="display:flex;align-items:flex-start;gap:6px;">
-          <input id="goalUseDc" type="checkbox" checked style="width:auto;margin-top:2px" />
-          <span><span class="small">Dixon-Coles</span><span class="hint" style="display:block">Поправка вероятностей низких счетов (0:0, 1:0, 0:1, 1:1) — рынок их оценивает иначе, чем чистый Пуассон.</span></span>
-        </label>
-        <div class="field" style="min-width:150px;flex:1" id="goalDrawModeWrap" hidden>
-          <label>режим ничьи (эксп.)</label>
-          <select id="goalDrawMode">
-            <option value="residual_dc" selected>residual (после DC)</option>
-            <option value="legacy">legacy (абс. P_X)</option>
-          </select>
-          <div class="hint">residual: q = P_X^рынок / P_X^DC, q ∈ [0.98, 1.03]. legacy — старый режим.</div>
-        </div>
-        <label style="display:flex;align-items:flex-start;gap:6px;">
-          <input id="goalExperimental" type="checkbox" style="width:auto;margin-top:2px" />
-          <span><span class="small">Экспериментальные режимы</span><span class="hint" style="display:block">Модель ничьи, legacy draw, S cal free — не для рабочего baseline.</span></span>
-        </label>
-      </div>
+
       <div class="goal-train-actions">
         <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
+        <div id="goalTrainChips" class="goal-train-chips" aria-live="polite"></div>
       </div>
       <div id="goalTrainBanner" class="goal-train-banner idle">Загрузите матчи из БД и обучите модель.</div>
+
+      <details id="goalExperimentalPanel" class="goal-exp-panel">
+        <summary>Экспериментально</summary>
+        <div class="goal-exp-body row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
+          <div class="field" style="min-width:120px;flex:1">
+            <label>prior α</label><input id="goalPriorAlpha" value="0.7" />
+            <div class="hint">Стягивание к прошлой модели при переобучении.</div>
+          </div>
+          <div class="field" style="min-width:120px;flex:1">
+            <label>дерби H×</label><input id="goalDerbyHDefault" value="0.7" />
+            <div class="hint">H_eff при малом числе дерби в выборке.</div>
+          </div>
+          <div class="field" style="min-width:130px;flex:1">
+            <label>калибр. S</label>
+            <select id="goalSCalMode">
+              <option value="off" selected>off</option>
+              <option value="soft">soft</option>
+              <option value="free">free</option>
+            </select>
+            <div class="hint">off = S из OU. free — без ограничений.</div>
+          </div>
+          <div class="field" style="min-width:100px;flex:1">
+            <label>max |ΔS|</label><input id="goalSCalMaxDelta" value="0.15" />
+            <div class="hint">Лимит при soft-калибровке.</div>
+          </div>
+          <label style="display:flex;align-items:flex-start;gap:6px;min-width:140px">
+            <input id="goalUseDraw" type="checkbox" style="width:auto;margin-top:2px" />
+            <span><span class="small">Модель ничьи</span><span class="hint" style="display:block">Residual после DC (эксп.).</span></span>
+          </label>
+          <div class="field" style="min-width:150px;flex:1" id="goalDrawModeWrap" hidden>
+            <label>режим ничьи</label>
+            <select id="goalDrawMode">
+              <option value="residual_dc" selected>residual (после DC)</option>
+              <option value="legacy">legacy (абс. P_X)</option>
+            </select>
+          </div>
+          <div class="field" style="min-width:100px;flex:1" id="goalQBoundsWrap" hidden>
+            <label>q_min</label><input id="goalQmin" value="0.95" />
+            <div class="hint">legacy: 0.95. residual: 0.98 (в коде).</div>
+          </div>
+          <div class="field" style="min-width:100px;flex:1" id="goalQBoundsMaxWrap" hidden>
+            <label>q_max</label><input id="goalQmax" value="1.05" />
+            <div class="hint">legacy: 1.05. residual: 1.03 (в коде).</div>
+          </div>
+        </div>
+      </details>
       <div id="goalTrainDataCard" class="goal-train-card" style="display:none">
         <h4>Данные обучения</h4>
         <div id="goalTrainDataBody"></div>
@@ -3197,23 +3232,39 @@ bash scripts/update_and_serve.sh --start</div>
       if(mode==='residual_dc') return [cfg.qResMin!=null?cfg.qResMin:0.98, cfg.qResMax!=null?cfg.qResMax:1.03];
       return [cfg.qmin, cfg.qmax];
     }
-    function gmResolvedSCalMode(){
-      const exp=document.getElementById('goalExperimental')&&document.getElementById('goalExperimental').checked;
-      const base=(document.getElementById('goalSCalMode')||{}).value||'off';
-      if(exp){
-        const free=(document.getElementById('goalSCalModeExp')||{}).value;
-        if(free==='free') return 'free';
-      }
-      return base;
+    function gmIsExperimentalOpen(){
+      const p=document.getElementById('goalExperimentalPanel');
+      return !!(p && p.open);
     }
-    function gmToggleExperimentalUi(){
-      const exp=!!(document.getElementById('goalExperimental')&&document.getElementById('goalExperimental').checked);
-      ['goalUseDrawWrap','goalDrawModeWrap','goalSCalFreeWrap'].forEach(id=>{
-        const el=document.getElementById(id); if(el) el.hidden=!exp;
+    function gmModelProfile(){
+      return (document.getElementById('goalModelProfile')||{}).value||'baseline';
+    }
+    function gmResolvedSCalMode(){
+      if(gmModelProfile()==='baseline') return 'off';
+      return (document.getElementById('goalSCalMode')||{}).value||'off';
+    }
+    function gmToggleDrawQUi(){
+      const drawOn=gmIsExperimentalOpen()&&!!(document.getElementById('goalUseDraw')&&document.getElementById('goalUseDraw').checked);
+      const mode=(document.getElementById('goalDrawMode')||{}).value||'residual_dc';
+      const showQ=drawOn;
+      ['goalDrawModeWrap','goalQBoundsWrap','goalQBoundsMaxWrap'].forEach(id=>{
+        const el=document.getElementById(id); if(!el) return;
+        if(id==='goalDrawModeWrap') el.hidden=!drawOn;
+        else el.hidden=!showQ;
       });
-      if(!exp){
-        const draw=document.getElementById('goalUseDraw'); if(draw) draw.checked=false;
-      }
+    }
+    function goalApplyModelProfile(){
+      const p=gmModelProfile();
+      if(p!=='baseline') return;
+      const dc=document.getElementById('goalUseDc'); if(dc) dc.checked=true;
+      const draw=document.getElementById('goalUseDraw'); if(draw) draw.checked=false;
+      const sc=document.getElementById('goalSCalMode'); if(sc) sc.value='off';
+      const panel=document.getElementById('goalExperimentalPanel'); if(panel) panel.open=false;
+      gmToggleDrawQUi();
+    }
+    function goalMarkCustomProfile(){
+      const sel=document.getElementById('goalModelProfile');
+      if(sel && sel.value==='baseline') sel.value='custom';
     }
     function gmFitDraw(ms,cfg){
       const rows=[];
@@ -3560,8 +3611,9 @@ bash scripts/update_and_serve.sh --start</div>
         regLambda:0.1, regLambdaAttack:f('goalRegLambdaAD',0.1), regLambdaDefense:f('goalRegLambdaAD',0.1),
         dClampLowTeam:3, dClampEarlyFraction:0.25,
         derbyShrinkTau:30, derbyHDefault:f('goalDerbyHDefault',0.7), derbyMinMatches:3,
-        useDraw:document.getElementById('goalExperimental')&&document.getElementById('goalExperimental').checked&&document.getElementById('goalUseDraw').checked,
+        useDraw:gmModelProfile()!=='baseline'&&gmIsExperimentalOpen()&&document.getElementById('goalUseDraw').checked,
         useDc:document.getElementById('goalUseDc').checked,
+        modelProfile:gmModelProfile(),
         drawMode:(document.getElementById('goalDrawMode')||{}).value||'residual_dc',
         qmin:f('goalQmin',0.95), qmax:f('goalQmax',1.05),
         qResMin:0.98, qResMax:1.03,
@@ -4368,18 +4420,24 @@ bash scripts/update_and_serve.sh --start</div>
       }
       html += '<div class="small" style="margin-top:8px;font-weight:600">Параметры обучения (вход)</div>'
         + goalRenderTrainTable([
+          ['Профиль', cfg.modelProfile==='custom'?'свои настройки':'рыночный baseline', ''],
           ['α форы', goalFmtTrainNum(cfg.alphaAh, 2), 'num'],
           ['α тотала', goalFmtTrainNum(cfg.alphaT, 2), 'num'],
           ['λ A / Df', goalFmtTrainNum(cfg.regLambdaAttack, 2), 'num'],
-          ['дерби H×', goalFmtTrainNum(cfg.derbyHDefault, 2), 'num'],
-          ['Модель ничьи', cfg.useDraw ? (`вкл (${cfg.drawMode || 'residual_dc'}, эксп.)`) : 'выкл (baseline)', ''],
           ['Dixon-Coles', cfg.useDc ? 'вкл' : 'выкл', ''],
-          ['калибр. S', cfg.sCalMode || 'off', cfg.sCalMode === 'free' ? 'warn' : ''],
-          ['max |ΔS|', goalFmtTrainNum(cfg.sCalMaxDelta, 2), 'num'],
           ['γ max', goalFmtTrainNum(cfg.gammaMax, 2), 'num'],
-          ['Вес ничьи (loss)', goalFmtTrainNum(cfg.drawLoss, 2), 'num'],
-          ['q_min / q_max', `${goalFmtTrainNum(cfg.qmin, 2)} / ${goalFmtTrainNum(cfg.qmax, 2)}`, 'num'],
         ]);
+      if (cfg.modelProfile === 'custom' || cfg.useDraw || cfg.sCalMode !== 'off'){
+        html += '<div class="small" style="margin-top:8px;font-weight:600">Экспериментальные параметры</div>'
+          + goalRenderTrainTable([
+            ['дерби H×', goalFmtTrainNum(cfg.derbyHDefault, 2), 'num'],
+            ['prior α', goalFmtTrainNum(cfg.priorAlpha, 2), 'num'],
+            ['калибр. S', cfg.sCalMode || 'off', cfg.sCalMode === 'free' ? 'warn' : ''],
+            ['max |ΔS|', goalFmtTrainNum(cfg.sCalMaxDelta, 2), 'num'],
+            ['Модель ничьи', cfg.useDraw ? (`вкл (${cfg.drawMode || 'residual_dc'})`) : 'выкл', ''],
+            ...(cfg.useDraw ? [['q_min / q_max', `${goalFmtTrainNum(cfg.qmin, 2)} / ${goalFmtTrainNum(cfg.qmax, 2)}`, 'num']] : []),
+          ]);
+      }
       box.innerHTML = html;
       card.style.display = '';
     }
@@ -4518,12 +4576,50 @@ bash scripts/update_and_serve.sh --start</div>
       return { tier: 'ok', short: 'Достаточно данных',
         detail: `${n} матч. — достаточно для рейтинга и attack/defense.` };
     }
+    function goalRenderTrainChips(n, hasData, hasModel, qual){
+      const el=document.getElementById('goalTrainChips');
+      if(!el) return;
+      if(!hasData){ el.innerHTML=''; return; }
+      const chips=[];
+      chips.push(`<span class="goal-chip">${n} матч.</span>`);
+      if(!hasModel){
+        if(qual && qual.tier==='warn') chips.push(`<span class="goal-chip warn">${escapeHtml(qual.short)}</span>`);
+        el.innerHTML=chips.join('');
+        return;
+      }
+      const sd=gmModel.sdDiag;
+      const harm=gmModel.drawHarmDiag;
+      const cal=gmModel.cal;
+      const clamp=gmModel.dClamp;
+      const deltaS=sd?sd.avgDeltaS:0;
+      const sOk=Math.abs(deltaS)<0.01;
+      chips.push(`<span class="goal-chip ${sOk?'ok':''}">${sOk?'S stable':('ΔS '+goalFmtTrainNum(deltaS,3))}</span>`);
+      if(harm && harm.nMatches>0){
+        const pxChip=`PX: ${goalFmtTrainNum(harm.meanErrPxPoisson,3)} → ${goalFmtTrainNum(harm.meanErrPxFinal,3)}`;
+        chips.push(`<span class="goal-chip ${harm.harmsWorseThanAfterDc?'warn':''}">${pxChip}</span>`);
+      }
+      if(gmModel.cfg && gmModel.cfg.useDc){
+        chips.push(`<span class="goal-chip">DC γ=${goalFmtTrainNum(cal.gamma,3)}</span>`);
+      }
+      if(clamp){
+        const cw=clamp.nHit>0||(clamp.nSensitive>0);
+        chips.push(`<span class="goal-chip ${cw?'warn':''}">D clamp ${clamp.nHit}/${clamp.nTotal}</span>`);
+      }
+      if(harm && harm.harmsWorseThanAfterDc){
+        chips.push('<span class="goal-chip warn">draw harms DC</span>');
+      }
+      if(gmModel.calDiag && !gmModel.calDiag.stable){
+        chips.push('<span class="goal-chip warn">калибр. 1X2</span>');
+      }
+      el.innerHTML=chips.join('');
+    }
     function goalUpdateTrainUI(){
       const banner = document.getElementById('goalTrainBanner');
       const hasData = !!(goalLoadedRaw && goalLoadedRaw.length);
       const hasModel = !!gmModel;
       const n = hasData ? goalLoadedRaw.length : 0;
       const qual = hasData ? goalTrainQuality(n) : null;
+      goalRenderTrainChips(n, hasData, hasModel, qual);
       if (banner){
         banner.classList.remove('ok', 'warn', 'idle');
         if (!hasData){
@@ -4531,45 +4627,26 @@ bash scripts/update_and_serve.sh --start</div>
           banner.textContent = 'Выберите лигу и сезоны → «Загрузить из БД» → «Обучить модель».';
         } else if (!hasModel){
           banner.classList.add(qual.tier === 'warn' ? 'warn' : 'idle');
-          banner.textContent = `Данные загружены (${n} матч.). ${qual.detail} Нажмите «Обучить модель».`;
+          banner.textContent = qual.detail;
         } else {
           const clamp = gmModel.dClamp;
           const calDiag = gmModel.calDiag;
           const drawQDiag = gmModel.drawQDiag;
-          const sdDiag = gmModel.sdDiag;
           const drawHarmDiag = gmModel.drawHarmDiag;
           const calWarn = calDiag && !calDiag.stable;
           const qWarn = drawQDiag && drawQDiag.nEval > 0 && !drawQDiag.stable;
-          const sdWarn = sdDiag && sdDiag.nEval > 0 && !sdDiag.stable;
           const harmWarn = drawHarmDiag && drawHarmDiag.harmsWorseThanAfterDc;
           const clampWarn = clamp && ((clamp.nHit > 0 && clamp.pct > 2) || (clamp.nSensitive > 0));
-          banner.classList.add((qual.tier === 'warn' || clampWarn || calWarn || qWarn || sdWarn || harmWarn) ? 'warn' : 'ok');
-          const priorNote = (gmModel.cfg && gmModel.cfg.priorAlpha > 0 && goalTrainState.priorUsed)
-            ? ` Prior α=${goalFmtTrainNum(gmModel.cfg.priorAlpha, 2)} (стягивание к прошлой модели).` : '';
-          let clampNote = '';
-          if (clamp && clamp.nHit > 0){
-            clampNote = ` D clamp: ${clamp.nHit}/${clamp.nTotal} (${goalFmtTrainNum(clamp.pct,1)}%)`;
-            if (clamp.nSensitive) clampNote += `, чувствит. ${clamp.nSensitive}`;
-            if (clamp.pct > 2 || clamp.nSensitive > 0) clampNote += ' — проверьте AH vs OU / линии.';
-          }
-          let calNote = '';
-          if (calDiag && calDiag.n1x2 > 0 && !calDiag.stable){
-            calNote = ' Калибровка 1X2 нестабильна — проверьте S/D или объём 1X2.';
-          }
-          let qNote = '';
-          if (qWarn){
-            const qSrc = gmModel.cfg && gmModel.cfg.useDc ? 'DC+ничья' : 'матрица→ничья';
-            qNote = ` q clamp ${goalFmtTrainNum(drawQDiag.clampPct,0)}% — ${qSrc} расходятся.`;
-          }
-          let sdNote = '';
-          if (sdWarn){
-            sdNote = ` S/D→1X2: ${sdDiag.summary}.`;
-          }
-          let harmNote = '';
-          if (harmWarn){
-            harmNote = ' Модель ничьи ухудшает DC — рассмотрите выкл draw или residual.';
-          }
-          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${n} матчах. ${qual.short}: ${qual.detail}${clampNote}${calNote}${qNote}${harmNote}${sdNote}${priorNote}`;
+          banner.classList.add((qual.tier === 'warn' || clampWarn || calWarn || qWarn || harmWarn) ? 'warn' : 'ok');
+          const warns=[];
+          if(calWarn) warns.push('калибровка 1X2 нестабильна');
+          if(qWarn) warns.push(`q clamp ${goalFmtTrainNum(drawQDiag.clampPct,0)}%`);
+          if(harmWarn) warns.push('модель ничьи ухудшает DC');
+          if(clampWarn && clamp.nHit>0) warns.push(`D clamp ${clamp.nHit}/${clamp.nTotal}`);
+          const trained=goalFmtTrainDt(goalTrainState.trainedAt);
+          banner.textContent = warns.length
+            ? `Обучено ${trained}. ${warns.join(' · ')}`
+            : `Обучено ${trained}. Профиль: ${gmModel.cfg.modelProfile==='custom'?'свои':'рыночный baseline'}.`;
         }
       }
       goalRenderTrainDataPanel();
@@ -4852,18 +4929,35 @@ bash scripts/update_and_serve.sh --start</div>
       catch (e){ alert(e.message || e); }
     });
 
-    ['goalAlphaAh','goalAlphaT','goalPriorAlpha','goalRegLambdaAD','goalDerbyHDefault','goalQmin','goalQmax'].forEach(id => {
+    ['goalAlphaAh','goalAlphaT','goalRegLambdaAD','goalDerbyHDefault','goalQmin','goalQmax','goalPriorAlpha','goalSCalMaxDelta','goalGammaMax'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.addEventListener('input', () => goalUpdateTrainUI());
+      if (el) el.addEventListener('input', () => { goalMarkCustomProfile(); goalUpdateTrainUI(); });
     });
-    ['goalUseDraw','goalUseDc','goalExperimental'].forEach(id => {
+    ['goalUseDraw','goalUseDc','goalDrawMode','goalSCalMode'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', () => {
-        if (id === 'goalExperimental') gmToggleExperimentalUi();
+        goalMarkCustomProfile();
+        gmToggleDrawQUi();
         goalUpdateTrainUI();
       });
     });
-    gmToggleExperimentalUi();
+    const goalExpPanel = document.getElementById('goalExperimentalPanel');
+    if (goalExpPanel){
+      goalExpPanel.addEventListener('toggle', () => {
+        if(!goalExpPanel.open) goalApplyModelProfile();
+        else goalMarkCustomProfile();
+        gmToggleDrawQUi();
+        goalUpdateTrainUI();
+      });
+    }
+    const goalProfileSel = document.getElementById('goalModelProfile');
+    if (goalProfileSel){
+      goalProfileSel.addEventListener('change', () => {
+        goalApplyModelProfile();
+        goalUpdateTrainUI();
+      });
+    }
+    gmToggleDrawQUi();
     document.getElementById('goalSeasonWeightsTable')?.addEventListener('input', e => {
       if (e.target.classList.contains('goal-season-w')) goalUpdateTrainUI();
     });
