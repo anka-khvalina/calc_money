@@ -2098,8 +2098,12 @@ def build_app():
         c = model.calibration
         st = model.strength
         dr = model.draw
+        cal_note = ""
+        if model.cal_diag and model.cal_diag.n_1x2 > 0:
+            cal_note = f"Калибровка 1X2: {model.cal_diag.summary}\n"
         return (
             _goal_d_clamp_note(model)
+            + cal_note
             + f"Обучено: {n_matches} матчей, команд {len(st.ratings)}\n"
             f"H={st.home_advantage:.3f}  δ_derby={st.derby_home_delta:.3f}  "
             f"n_derby={st.derby_n}  RMSE_D={st.rmse:.3f}\n"

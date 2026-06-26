@@ -832,6 +832,51 @@ class Calibration:
     d: float = 1.0
     gamma: float = 0.0
     loss: float = 0.0
+    n_1x2: int = 0
+
+
+@dataclass
+class CalibrationDiagnostics:
+    """Насколько a,b,c,d близки к идеалу (0,1,0,1) — сигнал качества базы S/D."""
+
+    stable: bool
+    deviations: List[str]
+    n_1x2: int
+    summary: str
+
+
+def assess_calibration_stability(
+    cal: Calibration,
+    *,
+    tol_a: float = 0.35,
+    tol_b: float = 0.30,
+    tol_c: float = 0.35,
+    tol_d: float = 0.30,
+    min_1x2_stable: int = 30,
+) -> CalibrationDiagnostics:
+    """Калибровка стабильна, если a≈0, b≈1, c≈0, d≈1 в пределах допусков."""
+    if cal.n_1x2 == 0:
+        return CalibrationDiagnostics(
+            stable=True, deviations=[], n_1x2=0,
+            summary="нет 1X2 в выборке (калибровка не выполнялась)",
+        )
+    dev: List[str] = []
+    if abs(cal.a) > tol_a:
+        dev.append(f"a={cal.a:+.3f} (ожид. ≈0, допуск ±{tol_a})")
+    if abs(cal.b - 1.0) > tol_b:
+        dev.append(f"b={cal.b:.3f} (ожид. ≈1, допуск ±{tol_b})")
+    if abs(cal.c) > tol_c:
+        dev.append(f"c={cal.c:+.3f} (ожид. ≈0, допуск ±{tol_c})")
+    if abs(cal.d - 1.0) > tol_d:
+        dev.append(f"d={cal.d:.3f} (ожид. ≈1, допуск ±{tol_d})")
+    if cal.n_1x2 < min_1x2_stable:
+        dev.append(f"мало 1X2: {cal.n_1x2} матч. (<{min_1x2_stable})")
+    stable = len(dev) == 0
+    if stable:
+        summary = f"стабильна ({cal.n_1x2} матч. с 1X2)"
+    else:
+        summary = "нестабильна — " + "; ".join(dev)
+    return CalibrationDiagnostics(stable=stable, deviations=dev, n_1x2=cal.n_1x2, summary=summary)
 
 
 def _model_d_s(
@@ -941,7 +986,7 @@ def calibrate(
         return total
 
     x = nelder_mead(loss, [0.0, 1.0, 0.0, 1.0, 0.0])
-    return Calibration(a=x[0], b=x[1], c=x[2], d=x[3], gamma=x[4], loss=loss(x))
+    return Calibration(a=x[0], b=x[1], c=x[2], d=x[3], gamma=x[4], loss=loss(x), n_1x2=len(used))
 
 
 # --------------------------------------------------------------------------- #
@@ -1064,6 +1109,7 @@ class TrainedModel:
     draw: DrawModel
     config: ModelConfig
     d_clamp: Optional[DClampDiagnostics] = None
+    cal_diag: Optional[CalibrationDiagnostics] = None
 
 
 def train_full_model(
@@ -1083,8 +1129,9 @@ def train_full_model(
     strength = fit_strength_ratings(matches, cfg, prior_ratings=prior_r)
     goals = fit_attack_defense(matches, cfg, prior_attack=prior_a, prior_defense=prior_d)
     calibration = calibrate(matches, strength, goals, cfg)
+    cal_diag = assess_calibration_stability(calibration)
     draw = fit_draw_model(matches, cfg) if cfg.use_draw_model else _DRAW_DEFAULT
-    return TrainedModel(strength, goals, calibration, draw, cfg, d_clamp), matches
+    return TrainedModel(strength, goals, calibration, draw, cfg, d_clamp, cal_diag), matches
 
 
 @dataclass

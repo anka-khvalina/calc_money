@@ -382,6 +382,28 @@ def test_draw_diagnostics_present():
     assert all(r.p_draw_shin > 0 for r in diag)
 
 
+def test_calibration_stability_unstable_example():
+    cal = gmt.Calibration(a=0.0, b=0.45, c=-0.9, d=1.8, n_1x2=50)
+    diag = gmt.assess_calibration_stability(cal)
+    assert not diag.stable
+    assert any("b=" in s for s in diag.deviations)
+    assert any("c=" in s for s in diag.deviations)
+    assert any("d=" in s for s in diag.deviations)
+
+
+def test_calibration_stability_identity():
+    cal = gmt.Calibration(n_1x2=80)
+    diag = gmt.assess_calibration_stability(cal)
+    assert diag.stable
+
+
+def test_calibration_stability_on_trained_model():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    model, _ = gmt.train_full_model(gmt.load_raw_matches(csv_path))
+    assert model.cal_diag is not None
+    assert model.calibration.n_1x2 > 0
+
+
 def test_reg_lambda_stabilizes_coefficients():
     csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
     raw = gmt.load_raw_matches(csv_path)

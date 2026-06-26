@@ -3077,9 +3077,22 @@ bash scripts/update_and_serve.sh --start</div>
         else { const xc=cen.map((c,i)=>c+0.5*(simplex[n][i]-c)); const fc=f(xc); if(fc<fv[n]){simplex[n]=xc;fv[n]=fc;} else { for(let k=1;k<=n;k++){ simplex[k]=simplex[k].map((v,i)=>simplex[0][i]+0.5*(v-simplex[0][i])); fv[k]=f(simplex[k]); } } } }
       let best=0; for(let k=1;k<=n;k++) if(fv[k]<fv[best]) best=k; return simplex[best];
     }
+    function gmAssessCalibration(cal){
+      const n1x2=cal.n1x2!=null?cal.n1x2:0;
+      if(!n1x2) return { stable:true, deviations:[], n1x2:0, summary:'нет 1X2 в выборке (калибровка не выполнялась)' };
+      const tolA=0.35,tolB=0.30,tolC=0.35,tolD=0.30,min1x2=30;
+      const dev=[];
+      if(Math.abs(cal.a)>tolA) dev.push(`a=${cal.a.toFixed(3)} (ожид. ≈0)`);
+      if(Math.abs(cal.b-1)>tolB) dev.push(`b=${cal.b.toFixed(3)} (ожид. ≈1)`);
+      if(Math.abs(cal.c)>tolC) dev.push(`c=${cal.c.toFixed(3)} (ожид. ≈0)`);
+      if(Math.abs(cal.d-1)>tolD) dev.push(`d=${cal.d.toFixed(3)} (ожид. ≈1)`);
+      if(n1x2<min1x2) dev.push(`мало 1X2: ${n1x2} матч.`);
+      const stable=dev.length===0;
+      return { stable, deviations:dev, n1x2, summary: stable?`стабильна (${n1x2} матч. с 1X2)`:'нестабильна — '+dev.join('; ') };
+    }
     function gmCalibrate(ms,st,gl,cfg){
       const used=ms.filter(m=>m.p1!=null);
-      if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0};
+      if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0,n1x2:0};
       const pre=used.map(m=>{ const derby=gmDerbyHome(m); const hEff=gmEffectiveH(st,cfg,m.iHome===0,derby);
         const dm=(st.ratings[m.home]||0)-(st.ratings[m.away]||0)+hEff;
         const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
@@ -3090,7 +3103,7 @@ bash scripts/update_and_serve.sh --start</div>
           let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&g) mat=gmDC(mat,lh,la,g); const [p1,px,p2]=gm1x2(mat);
           tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2); }
         return tot; }
-      const x=gmNelder(loss,[0,1,0,1,0]); return {a:x[0],b:x[1],c:x[2],d:x[3],gamma:x[4]};
+      const x=gmNelder(loss,[0,1,0,1,0]); return {a:x[0],b:x[1],c:x[2],d:x[3],gamma:x[4],n1x2:used.length};
     }
     function gmFitDraw(ms,cfg){
       const rows=[];
@@ -3190,7 +3203,8 @@ bash scripts/update_and_serve.sh --start</div>
       const dClamp=gmDClampDiagnostics(ms, cfg);
       const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
       const draw=cfg.useDraw?gmFitDraw(ms,cfg):{alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default'};
-      return {st,gl,cal,draw,cfg,nMatches:ms.length,dClamp};
+      const calDiag=gmAssessCalibration(cal);
+      return {st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag};
     }
     let gmModel=null;
     function gmFillTeams(){
@@ -4015,7 +4029,7 @@ bash scripts/update_and_serve.sh --start</div>
         card.style.display = 'none';
         return;
       }
-      const { st, gl, cal, draw, dClamp } = gmModel;
+      const { st, gl, cal, draw, dClamp, calDiag } = gmModel;
       const rows = [
         ['Обучено', escapeHtml(goalFmtTrainDt(goalTrainState.trainedAt)), ''],
         ['Команд в модели', String(Object.keys(st.ratings).length), 'num'],
@@ -4029,6 +4043,7 @@ bash scripts/update_and_serve.sh --start</div>
         ['H_g (голы)', goalFmtTrainNum(gl.hg, 3), 'num'],
         ['Калибр. a, b', `${goalFmtTrainNum(cal.a, 3)}, ${goalFmtTrainNum(cal.b, 3)}`, 'num'],
         ['Калибр. c, d', `${goalFmtTrainNum(cal.c, 3)}, ${goalFmtTrainNum(cal.d, 3)}`, 'num'],
+        ['Калибровка 1X2', escapeHtml(calDiag ? calDiag.summary : '—'), calDiag && !calDiag.stable ? 'warn' : ''],
         ['Dixon-Coles γ', goalFmtTrainNum(cal.gamma, 4), 'num'],
         ['Ничья (источник)', escapeHtml(draw.source || '—'), ''],
       ];
@@ -4090,8 +4105,10 @@ bash scripts/update_and_serve.sh --start</div>
           banner.textContent = `Данные загружены (${n} матч.). ${qual.detail} Нажмите «Обучить модель».`;
         } else {
           const clamp = gmModel.dClamp;
+          const calDiag = gmModel.calDiag;
+          const calWarn = calDiag && !calDiag.stable;
           const clampWarn = clamp && ((clamp.nHit > 0 && clamp.pct > 2) || (clamp.nSensitive > 0));
-          banner.classList.add((qual.tier === 'warn' || clampWarn) ? 'warn' : 'ok');
+          banner.classList.add((qual.tier === 'warn' || clampWarn || calWarn) ? 'warn' : 'ok');
           const priorNote = (gmModel.cfg && gmModel.cfg.priorAlpha > 0 && goalTrainState.priorUsed)
             ? ` Prior α=${goalFmtTrainNum(gmModel.cfg.priorAlpha, 2)} (стягивание к прошлой модели).` : '';
           let clampNote = '';
@@ -4100,7 +4117,11 @@ bash scripts/update_and_serve.sh --start</div>
             if (clamp.nSensitive) clampNote += `, чувствит. ${clamp.nSensitive}`;
             if (clamp.pct > 2 || clamp.nSensitive > 0) clampNote += ' — проверьте AH vs OU / линии.';
           }
-          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${n} матчах. ${qual.short}: ${qual.detail}${clampNote}${priorNote}`;
+          let calNote = '';
+          if (calDiag && calDiag.n1x2 > 0 && !calDiag.stable){
+            calNote = ' Калибровка 1X2 нестабильна — проверьте S/D или объём 1X2.';
+          }
+          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${n} матчах. ${qual.short}: ${qual.detail}${clampNote}${calNote}${priorNote}`;
         }
       }
       goalRenderTrainDataPanel();
