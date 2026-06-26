@@ -231,10 +231,12 @@
     .goal-main-settings .field{ min-width:0; width:100%; flex:none; margin:0; }
     .goal-main-settings .field input,
     .goal-main-settings .field select{ width:100%; box-sizing:border-box; }
-    .goal-train-col--profile .goal-train-actions{ margin-top:10px; flex-direction:column; align-items:stretch; }
-    .goal-train-col--profile .goal-train-actions .btn{ width:100%; }
-    .goal-train-col--profile .goal-train-chips{ margin-top:6px; }
+    .goal-main-settings .hint{ font-size:10px; line-height:1.3; }
     .goal-train-col--profile .goal-exp-panel{ margin-top:10px; }
+    .goal-train-actions--main{
+      display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:12px;
+    }
+    .goal-train-actions--main .btn{ min-width:180px; padding:10px 20px; font-size:13px; }
     .goal-dc-row{
       display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; padding-bottom:2px;
     }
@@ -654,7 +656,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div class="goal-section goal-section--train">
         <h3>Обучение модели</h3>
         <div class="small">
-          Загрузите данные слева → профиль справа → обучите модель.
+          Загрузите данные → проверьте блок «Данные обучения» → нажмите «Обучить модель».
         </div>
 
       <div class="goal-train-layout">
@@ -765,11 +767,6 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               </div>
             </details>
           </div>
-
-          <div class="goal-train-actions">
-            <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
-            <div id="goalTrainChips" class="goal-train-chips" aria-live="polite"></div>
-          </div>
         </div>
       </div>
 
@@ -777,6 +774,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="goalTrainDataCard" class="goal-train-card" style="display:none">
         <h4>Данные обучения</h4>
         <div id="goalTrainDataBody"></div>
+      </div>
+      <div class="goal-train-actions goal-train-actions--main">
+        <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
+        <div id="goalTrainChips" class="goal-train-chips" aria-live="polite"></div>
       </div>
       <div id="goalTrainCoefCard" class="goal-train-card" style="display:none">
         <h4>Коэффициенты модели</h4>
