@@ -87,6 +87,10 @@ class ModelConfig:
     prior_alpha: float = 0.70          # стягивание рейтинга прошлого сезона
     prior_weight: float = 0.0          # вес ridge-привязки к prior (0 = выкл.)
     promoted_reference_n: int = 3       # сколько слабейших усреднять для новичка
+
+    # D clamp: «чувствительные» контексты (дерби, нейтраль, мало матчей, начало сезона)
+    d_clamp_low_team_matches: int = 3   # ≤N матчей команды в выборке → новичок / мало данных
+    d_clamp_early_fraction: float = 0.25  # первые 25% матчей по дате → начало сезона
     allow_unknown_teams: bool = True    # подставлять fallback для новичков
 
     # прогноз / дерби
@@ -415,6 +419,11 @@ class DClampDiagnosticRow:
     at_hi: bool
     ah_line: Optional[float]
     source: Optional[str]
+    tags: List[str] = field(default_factory=list)
+
+    @property
+    def sensitive(self) -> bool:
+        return bool(self.tags)
 
 
 @dataclass
@@ -422,17 +431,70 @@ class DClampDiagnostics:
     n_total: int
     n_hit: int
     pct: float
+    n_sensitive: int
+    sensitive_pct: float
     max_abs_trim: float
     rows: List[DClampDiagnosticRow] = field(default_factory=list)
 
 
-def d_clamp_diagnostics(matches: Sequence[PreparedMatch]) -> DClampDiagnostics:
+def _team_match_counts(matches: Sequence[PreparedMatch]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for m in matches:
+        if m.diff_goals is None:
+            continue
+        counts[m.home_team] = counts.get(m.home_team, 0) + 1
+        counts[m.away_team] = counts.get(m.away_team, 0) + 1
+    return counts
+
+
+def _early_season_cutoff_date(
+    matches: Sequence[PreparedMatch],
+    fraction: float,
+) -> Optional[date]:
+    dates = sorted({m.raw.date for m in matches if m.raw.date is not None})
+    if not dates:
+        return None
+    fraction = min(max(fraction, 0.0), 1.0)
+    idx = max(0, int(math.ceil(len(dates) * fraction)) - 1)
+    return dates[idx]
+
+
+def _d_clamp_sensitive_tags(
+    m: PreparedMatch,
+    team_counts: Dict[str, int],
+    early_cutoff: Optional[date],
+    cfg: ModelConfig,
+) -> List[str]:
+    tags: List[str] = []
+    if m.i_home == 0:
+        tags.append("нейтраль")
+    if _derby_home_indicator(m):
+        tags.append("дерби")
+    thr = cfg.d_clamp_low_team_matches
+    hc = team_counts.get(m.home_team, 0)
+    ac = team_counts.get(m.away_team, 0)
+    tmin = min(hc, ac)
+    if tmin <= thr:
+        tags.append(f"новичок/мало матчей ({tmin})")
+    if early_cutoff is not None and m.raw.date is not None and m.raw.date <= early_cutoff:
+        tags.append("начало сезона")
+    return tags
+
+
+def d_clamp_diagnostics(
+    matches: Sequence[PreparedMatch],
+    cfg: Optional[ModelConfig] = None,
+) -> DClampDiagnostics:
     """Матчи, где D упёрся в clamp или границу (−S+ε, S−ε)."""
+    cfg = cfg or ModelConfig()
+    team_counts = _team_match_counts(matches)
+    early_cutoff = _early_season_cutoff_date(matches, cfg.d_clamp_early_fraction)
     eligible = [m for m in matches if m.diff_goals is not None and m.sum_goals is not None]
     hits: List[DClampDiagnosticRow] = []
     for m in eligible:
         if not m.d_clamp_hit:
             continue
+        tags = _d_clamp_sensitive_tags(m, team_counts, early_cutoff, cfg)
         hits.append(DClampDiagnosticRow(
             date=m.raw.date,
             home_team=m.home_team,
@@ -445,13 +507,20 @@ def d_clamp_diagnostics(matches: Sequence[PreparedMatch]) -> DClampDiagnostics:
             at_hi=m.d_clamp_at_hi,
             ah_line=m.raw.closing_ah_home,
             source=m.d_infer_source,
+            tags=tags,
         ))
-    hits.sort(key=lambda r: abs(r.trim), reverse=True)
+    hits.sort(key=lambda r: (0 if r.sensitive else 1, -abs(r.trim)))
     n_total = len(eligible)
     n_hit = len(hits)
+    n_sensitive = sum(1 for r in hits if r.sensitive)
     pct = 100.0 * n_hit / n_total if n_total else 0.0
+    sens_pct = 100.0 * n_sensitive / n_total if n_total else 0.0
     max_trim = max((abs(r.trim) for r in hits), default=0.0)
-    return DClampDiagnostics(n_total=n_total, n_hit=n_hit, pct=pct, max_abs_trim=max_trim, rows=hits)
+    return DClampDiagnostics(
+        n_total=n_total, n_hit=n_hit, pct=pct,
+        n_sensitive=n_sensitive, sensitive_pct=sens_pct,
+        max_abs_trim=max_trim, rows=hits,
+    )
 
 
 def log_d_clamp_diagnostics(diag: DClampDiagnostics, *, warn_pct: float = 2.0) -> None:
@@ -460,19 +529,23 @@ def log_d_clamp_diagnostics(diag: DClampDiagnostics, *, warn_pct: float = 2.0) -
         log.info("D clamp: 0/%d matches (0%%)", diag.n_total)
         return
     level = logging.WARNING if diag.pct > warn_pct else logging.INFO
+    if diag.n_sensitive > 0:
+        level = logging.WARNING
     log.log(
         level,
-        "D clamp/saturate: %d/%d matches (%.1f%%), max |trim|=%.3f",
-        diag.n_hit, diag.n_total, diag.pct, diag.max_abs_trim,
+        "D clamp/saturate: %d/%d matches (%.1f%%), sensitive %d (%.1f%%), max |trim|=%.3f",
+        diag.n_hit, diag.n_total, diag.pct, diag.n_sensitive, diag.sensitive_pct, diag.max_abs_trim,
     )
     for row in diag.rows[:15]:
         bound = "lo" if row.at_lo else ("hi" if row.at_hi else "trim")
+        tag_s = f" {{{', '.join(row.tags)}}}" if row.tags else ""
+        prefix = "!" if row.sensitive else " "
         log.log(
             level,
-            "  %s — %s: S=%.2f AH=%s D_raw=%.3f → D=%.3f trim=%+.3f [%s, %s]",
-            row.home_team, row.away_team, row.sum_goals,
+            "%s %s — %s: S=%.2f AH=%s D_raw=%.3f → D=%.3f trim=%+.3f [%s, %s]%s",
+            prefix, row.home_team, row.away_team, row.sum_goals,
             f"{row.ah_line:+.2f}" if row.ah_line is not None else "?",
-            row.d_raw, row.d_used, row.trim, bound, row.source or "?",
+            row.d_raw, row.d_used, row.trim, bound, row.source or "?", tag_s,
         )
     if len(diag.rows) > 15:
         log.log(level, "  … и ещё %d матчей", len(diag.rows) - 15)
@@ -998,7 +1071,7 @@ def train_full_model(
     cfg = cfg or ModelConfig()
     matches = prepare_matches(raw, cfg)
     devig_and_infer(matches, cfg)
-    d_clamp = d_clamp_diagnostics(matches)
+    d_clamp = d_clamp_diagnostics(matches, cfg)
     log_d_clamp_diagnostics(d_clamp)
     prior_r = prior.strength.ratings if prior else None
     prior_a = prior.goals.attack if prior else None

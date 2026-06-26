@@ -293,9 +293,37 @@ def test_d_clamp_diagnostics_saturated_infer():
     m = prepared[0]
     assert m.d_clamp_hit
     assert m.d_clamp_at_hi
-    diag = gmt.d_clamp_diagnostics(prepared)
+    diag = gmt.d_clamp_diagnostics(prepared, cfg)
     assert diag.n_hit == 1
     assert diag.rows[0].source == "infer"
+
+
+def test_d_clamp_sensitive_tags():
+    from datetime import date as dt
+    cfg = gmt.ModelConfig(d_clamp_low_team_matches=3, d_clamp_early_fraction=0.5)
+    raw = [
+        gmt.RawMatch(dt(2025, 8, 1), "test", "A", "B", closing_ah_home=-2.0,
+                     closing_total_line=2.0, ah_home_odds=1.05, ah_away_odds=12.0,
+                     over_odds=1.9, under_odds=1.9, neutral_flag=True),
+        gmt.RawMatch(dt(2025, 12, 1), "test", "C", "D", closing_ah_home=0.0,
+                     closing_total_line=2.5, ah_home_odds=1.9, ah_away_odds=1.9,
+                     over_odds=1.9, under_odds=1.9, derby_flag=True),
+    ]
+    prepared = gmt.prepare_matches(raw, cfg)
+    gmt.devig_and_infer(prepared, cfg)
+    # force clamp on second match for test
+    prepared[1].diff_goals_raw = 5.0
+    info = gm.apply_goal_diff_clamp(5.0, prepared[1].sum_goals, cfg.lambda_epsilon)
+    prepared[1].diff_goals = info.value
+    prepared[1].d_clamp_hit = info.hit
+    prepared[1].d_clamp_trim = info.trim
+    prepared[1].d_clamp_at_hi = info.at_hi
+    diag = gmt.d_clamp_diagnostics(prepared, cfg)
+    by_pair = {(r.home_team, r.away_team): r for r in diag.rows}
+    assert "нейтраль" in by_pair[("A", "B")].tags
+    assert "начало сезона" in by_pair[("A", "B")].tags
+    assert "дерби" in by_pair[("C", "D")].tags
+    assert diag.n_sensitive >= 2
 
 
 def test_strength_diagnostics_sorted_by_error():

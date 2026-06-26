@@ -2079,7 +2079,9 @@ def build_app():
         if not dc or dc.n_hit == 0:
             return ""
         note = f"D clamp: {dc.n_hit}/{dc.n_total} ({dc.pct:.1f}%)"
-        if dc.pct > 2:
+        if dc.n_sensitive:
+            note += f", чувствит. {dc.n_sensitive}"
+        if dc.pct > 2 or dc.n_sensitive > 0:
             note += " — проверьте AH vs OU"
         return note + "\n"
 
