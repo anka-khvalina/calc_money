@@ -1110,6 +1110,7 @@ class TrainedModel:
     config: ModelConfig
     d_clamp: Optional[DClampDiagnostics] = None
     cal_diag: Optional[CalibrationDiagnostics] = None
+    draw_q_diag: Optional["DrawQDiagnostics"] = None
 
 
 def train_full_model(
@@ -1131,7 +1132,12 @@ def train_full_model(
     calibration = calibrate(matches, strength, goals, cfg)
     cal_diag = assess_calibration_stability(calibration)
     draw = fit_draw_model(matches, cfg) if cfg.use_draw_model else _DRAW_DEFAULT
-    return TrainedModel(strength, goals, calibration, draw, cfg, d_clamp, cal_diag), matches
+    model = TrainedModel(strength, goals, calibration, draw, cfg, d_clamp, cal_diag, None)
+    draw_q_diag = draw_q_diagnostics(model, matches)
+    log_draw_q_diagnostics(draw_q_diag)
+    return TrainedModel(
+        strength, goals, calibration, draw, cfg, d_clamp, cal_diag, draw_q_diag,
+    ), matches
 
 
 @dataclass
@@ -1218,6 +1224,124 @@ def predict_match(
         draw_target=draw_target,
         draw_diagnostics=draw_diag,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Диагностика q (DC → draw model): clamp rate
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class DrawQDiagnosticRow:
+    home_team: str
+    away_team: str
+    q_raw: float
+    q_used: float
+    clamp_low: bool
+    clamp_high: bool
+
+
+@dataclass
+class DrawQDiagnostics:
+    n_eval: int
+    n_clamped: int
+    clamp_pct: float
+    n_near_one: int
+    near_one_pct: float
+    q_min: float
+    q_max: float
+    warn_pct: float
+    stable: bool
+    summary: str
+    rows: List[DrawQDiagnosticRow] = field(default_factory=list)
+
+
+def _is_q_clamped(q_raw: float, q_min: float, q_max: float, eps: float = 1e-6) -> bool:
+    return q_raw < q_min - eps or q_raw > q_max + eps
+
+
+def draw_q_diagnostics(
+    model: TrainedModel,
+    prepared: Sequence[PreparedMatch],
+    *,
+    warn_pct: float = 12.0,
+) -> DrawQDiagnostics:
+    """Доля матчей, где q = clamp(P_X^target/P_X^matrix) упёрся в q_min/q_max."""
+    cfg = model.config
+    q_min = cfg.draw_diag_multiplier_min
+    q_max = cfg.draw_diag_multiplier_max
+    if not cfg.use_draw_model:
+        return DrawQDiagnostics(
+            0, 0, 0.0, 0, 0.0, q_min, q_max, warn_pct, True,
+            "модель ничьи выкл", [],
+        )
+    clamped_rows: List[DrawQDiagnosticRow] = []
+    n_eval = 0
+    n_near_one = 0
+    for m in prepared:
+        pred = predict_match(
+            model, m.home_team, m.away_team,
+            neutral=m.i_home == 0,
+            derby=_is_derby_match(m.raw) and m.i_home == 1,
+        )
+        diag = pred.draw_diagnostics
+        if not diag:
+            continue
+        n_eval += 1
+        q_raw = diag["diag_multiplier_raw"]
+        q_used = diag["diag_multiplier_used"]
+        if 0.98 <= q_used <= 1.03:
+            n_near_one += 1
+        if _is_q_clamped(q_raw, q_min, q_max):
+            clamped_rows.append(DrawQDiagnosticRow(
+                home_team=m.home_team,
+                away_team=m.away_team,
+                q_raw=q_raw,
+                q_used=q_used,
+                clamp_low=abs(q_used - q_min) < 1e-6,
+                clamp_high=abs(q_used - q_max) < 1e-6,
+            ))
+    clamped_rows.sort(key=lambda r: abs(r.q_raw - r.q_used), reverse=True)
+    n_clamped = len(clamped_rows)
+    clamp_pct = 100.0 * n_clamped / n_eval if n_eval else 0.0
+    near_one_pct = 100.0 * n_near_one / n_eval if n_eval else 0.0
+    stable = clamp_pct <= warn_pct
+    if n_eval == 0:
+        summary = "нет матчей для оценки q"
+    elif stable:
+        summary = (
+            f"стабильно: q clamp {clamp_pct:.0f}% ({n_clamped}/{n_eval}), "
+            f"q≈1 у {near_one_pct:.0f}%"
+        )
+    else:
+        dc_note = " (DC+ничья)" if cfg.use_dixon_coles else ""
+        summary = (
+            f"q clamp {clamp_pct:.0f}% ({n_clamped}/{n_eval}) — >{warn_pct:.0f}%, "
+            f"проверьте базовую матрицу и draw model{dc_note}"
+        )
+    return DrawQDiagnostics(
+        n_eval=n_eval, n_clamped=n_clamped, clamp_pct=clamp_pct,
+        n_near_one=n_near_one, near_one_pct=near_one_pct,
+        q_min=q_min, q_max=q_max, warn_pct=warn_pct, stable=stable,
+        summary=summary, rows=clamped_rows,
+    )
+
+
+def log_draw_q_diagnostics(diag: DrawQDiagnostics) -> None:
+    log = logging.getLogger(__name__)
+    if diag.n_eval == 0:
+        log.info("Draw q: %s", diag.summary)
+        return
+    level = logging.WARNING if not diag.stable else logging.INFO
+    log.log(level, "Draw q clamp: %s", diag.summary)
+    for row in diag.rows[:12]:
+        bound = "q_min" if row.clamp_low else ("q_max" if row.clamp_high else "?")
+        log.log(
+            level,
+            "  %s — %s: q_raw=%.3f → q=%.3f [%s]",
+            row.home_team, row.away_team, row.q_raw, row.q_used, bound,
+        )
+    if len(diag.rows) > 12:
+        log.log(level, "  … и ещё %d матчей", len(diag.rows) - 12)
 
 
 # --------------------------------------------------------------------------- #

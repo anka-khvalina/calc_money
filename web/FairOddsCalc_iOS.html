@@ -3198,13 +3198,42 @@ bash scripts/update_and_serve.sh --start</div>
       const maxAbsTrim=rows.length?Math.max(...rows.map(r=>Math.abs(r.trim))):0;
       return { nTotal, nHit, pct, nSensitive, sensitivePct, maxAbsTrim, rows };
     }
+    function gmDrawQDiagnostics(model, ms, warnPct=12){
+      if(!model.cfg.useDraw) return { nEval:0, nClamped:0, clampPct:0, nNearOne:0, nearOnePct:0, stable:true, summary:'модель ничьи выкл', rows:[] };
+      const qmin=model.cfg.qmin, qmax=model.cfg.qmax;
+      const rows=[]; let nEval=0, nClamped=0, nNearOne=0;
+      for(const m of ms){
+        if(!m.home||!m.away) continue;
+        const pred=gmPredict(model, m.home, m.away, { neutral: m.iHome===0, derby: gmDerbyHome(m) });
+        const d=pred.drawDiag; if(!d) continue;
+        nEval++;
+        const qr=d.qRaw!=null?d.qRaw:1, q=d.q!=null?d.q:1;
+        if(q>=0.98&&q<=1.03) nNearOne++;
+        const clamped=qr<qmin-1e-6||qr>qmax+1e-6;
+        if(clamped){
+          nClamped++;
+          rows.push({ home:m.home, away:m.away, qRaw:qr, q, clampLow:Math.abs(q-qmin)<1e-6, clampHigh:Math.abs(q-qmax)<1e-6 });
+        }
+      }
+      rows.sort((a,b)=>Math.abs(b.qRaw-b.q)-Math.abs(a.qRaw-a.q));
+      const clampPct=nEval?100*nClamped/nEval:0;
+      const nearOnePct=nEval?100*nNearOne/nEval:0;
+      const stable=clampPct<=warnPct;
+      let summary;
+      if(!nEval) summary='нет матчей для оценки q';
+      else if(stable) summary=`стабильно: q clamp ${clampPct.toFixed(0)}% (${nClamped}/${nEval}), q≈1 у ${nearOnePct.toFixed(0)}%`;
+      else summary=`q clamp ${clampPct.toFixed(0)}% (${nClamped}/${nEval}) — >${warnPct}%, проверьте DC+ничья`;
+      return { nEval, nClamped, clampPct, nNearOne, nearOnePct, stable, summary, rows };
+    }
     function gmTrain(raw,cfg,prior){
       const ms=gmPrepare(raw,cfg);
       const dClamp=gmDClampDiagnostics(ms, cfg);
       const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
       const draw=cfg.useDraw?gmFitDraw(ms,cfg):{alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default'};
       const calDiag=gmAssessCalibration(cal);
-      return {st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag};
+      const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag};
+      model.drawQDiag=gmDrawQDiagnostics(model, ms);
+      return model;
     }
     let gmModel=null;
     function gmFillTeams(){
@@ -4029,7 +4058,7 @@ bash scripts/update_and_serve.sh --start</div>
         card.style.display = 'none';
         return;
       }
-      const { st, gl, cal, draw, dClamp, calDiag } = gmModel;
+      const { st, gl, cal, draw, dClamp, calDiag, drawQDiag } = gmModel;
       const rows = [
         ['Обучено', escapeHtml(goalFmtTrainDt(goalTrainState.trainedAt)), ''],
         ['Команд в модели', String(Object.keys(st.ratings).length), 'num'],
@@ -4044,9 +4073,14 @@ bash scripts/update_and_serve.sh --start</div>
         ['Калибр. a, b', `${goalFmtTrainNum(cal.a, 3)}, ${goalFmtTrainNum(cal.b, 3)}`, 'num'],
         ['Калибр. c, d', `${goalFmtTrainNum(cal.c, 3)}, ${goalFmtTrainNum(cal.d, 3)}`, 'num'],
         ['Калибровка 1X2', escapeHtml(calDiag ? calDiag.summary : '—'), calDiag && !calDiag.stable ? 'warn' : ''],
+      ];
+      if (drawQDiag && drawQDiag.nEval > 0){
+        rows.push(['q clamp (DC→ничья)', escapeHtml(drawQDiag.summary), drawQDiag.stable ? '' : 'warn']);
+      }
+      rows.push(
         ['Dixon-Coles γ', goalFmtTrainNum(cal.gamma, 4), 'num'],
         ['Ничья (источник)', escapeHtml(draw.source || '—'), ''],
-      ];
+      );
       if (dClamp){
         const clampCls = (dClamp.pct > 2 || dClamp.nSensitive > 0) ? 'warn' : '';
         const clampDetail = dClamp.nHit
@@ -4075,6 +4109,15 @@ bash scripts/update_and_serve.sh --start</div>
         });
         box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Матчи с упором D (⚠ — дерби / нейтраль / мало матчей / начало сезона)</div>'
           + goalRenderTrainTable(clampRows);
+      }
+      if (drawQDiag && drawQDiag.rows && drawQDiag.rows.length){
+        const qRows = drawQDiag.rows.slice(0, 10).map(r => [
+          `${escapeHtml(r.home)} — ${escapeHtml(r.away)}`,
+          `q_raw=${goalFmtTrainNum(r.qRaw,3)} → q=${goalFmtTrainNum(r.q,3)} [${r.clampLow?'q_min':(r.clampHigh?'q_max':'?')}]`,
+          'warn',
+        ]);
+        box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Матчи с q на границе (DC → draw)</div>'
+          + goalRenderTrainTable(qRows);
       }
       card.style.display = '';
     }
@@ -4106,9 +4149,11 @@ bash scripts/update_and_serve.sh --start</div>
         } else {
           const clamp = gmModel.dClamp;
           const calDiag = gmModel.calDiag;
+          const drawQDiag = gmModel.drawQDiag;
           const calWarn = calDiag && !calDiag.stable;
+          const qWarn = drawQDiag && drawQDiag.nEval > 0 && !drawQDiag.stable;
           const clampWarn = clamp && ((clamp.nHit > 0 && clamp.pct > 2) || (clamp.nSensitive > 0));
-          banner.classList.add((qual.tier === 'warn' || clampWarn || calWarn) ? 'warn' : 'ok');
+          banner.classList.add((qual.tier === 'warn' || clampWarn || calWarn || qWarn) ? 'warn' : 'ok');
           const priorNote = (gmModel.cfg && gmModel.cfg.priorAlpha > 0 && goalTrainState.priorUsed)
             ? ` Prior α=${goalFmtTrainNum(gmModel.cfg.priorAlpha, 2)} (стягивание к прошлой модели).` : '';
           let clampNote = '';
@@ -4121,7 +4166,11 @@ bash scripts/update_and_serve.sh --start</div>
           if (calDiag && calDiag.n1x2 > 0 && !calDiag.stable){
             calNote = ' Калибровка 1X2 нестабильна — проверьте S/D или объём 1X2.';
           }
-          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${n} матчах. ${qual.short}: ${qual.detail}${clampNote}${calNote}${priorNote}`;
+          let qNote = '';
+          if (qWarn){
+            qNote = ` q clamp ${goalFmtTrainNum(drawQDiag.clampPct,0)}% — DC+ничья расходятся.`;
+          }
+          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${n} матчах. ${qual.short}: ${qual.detail}${clampNote}${calNote}${qNote}${priorNote}`;
         }
       }
       goalRenderTrainDataPanel();

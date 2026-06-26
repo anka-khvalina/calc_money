@@ -382,6 +382,22 @@ def test_draw_diagnostics_present():
     assert all(r.p_draw_shin > 0 for r in diag)
 
 
+def test_draw_q_clamp_detected_in_adjust():
+    m = gm.build_score_matrix(1.6, 1.1)
+    base = gm.draw_probability(m)
+    _, diag = gm.adjust_matrix_to_draw_target(m, base * 1.20, q_min=0.90, q_max=1.10)
+    assert diag["diag_multiplier_raw"] > 1.10
+    assert abs(diag["diag_multiplier_used"] - 1.10) < 1e-9
+    assert gmt._is_q_clamped(diag["diag_multiplier_raw"], 0.90, 1.10)
+
+
+def test_draw_q_diagnostics_on_trained_model():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    model, prepared = gmt.train_full_model(gmt.load_raw_matches(csv_path))
+    assert model.draw_q_diag is not None
+    assert model.draw_q_diag.n_eval > 0
+
+
 def test_calibration_stability_unstable_example():
     cal = gmt.Calibration(a=0.0, b=0.45, c=-0.9, d=1.8, n_1x2=50)
     diag = gmt.assess_calibration_stability(cal)
