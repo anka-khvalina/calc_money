@@ -9,6 +9,7 @@
 | **Desktop** (Tkinter) | `python3 app/fair_odds_calc.py` |
 | **Web / iOS** | `cd web && python3 -m http.server 8080` → [FairOddsCalc_iOS.html](web/FairOddsCalc_iOS.html) |
 | **History API** | `bash scripts/run_history_api.sh` |
+| **LAN (Mac + второй ПК)** | `bash scripts/update_and_serve.sh --start` |
 
 Подробнее: [app/README.md](app/README.md), [docs/ios-preview.md](docs/ios-preview.md).
 
@@ -24,6 +25,7 @@
 - [Архитектура](docs/architecture.md)
 - [API и маппинги](docs/reference.md) — все ручки и поля
 - [Формулы](docs/calculation.md)
+- **[Обучение и расчёт (подробно)](docs/training-and-calculation.md)**
 - [ER-диаграмма БД](docs/db-er-closing-lines.md)
 
 ## Тесты

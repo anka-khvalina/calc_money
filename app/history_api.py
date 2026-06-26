@@ -3,11 +3,13 @@
 
 Запуск:
   pip install -r requirements-api.txt
-  python3 -m uvicorn history_api:app --app-dir app --host 0.0.0.0 --port 8765
+  python3 -m uvicorn history_api:app --app-dir app --host 127.0.0.1 --port 8765
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 from typing import Dict
 
@@ -16,6 +18,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 import userbet_odds as ubo
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+log = logging.getLogger("history_api")
 
 _DEFAULT_CORS = os.environ.get("HISTORY_API_CORS", "*").split(",")
 
@@ -44,9 +53,18 @@ def health() -> dict:
 
 
 @app.post("/api/history/fetch-odds", response_model=FetchOddsResponse)
-def history_fetch_odds(body: FetchOddsRequest) -> FetchOddsResponse:
+async def history_fetch_odds(body: FetchOddsRequest) -> FetchOddsResponse:
+    log.info("fetch-odds start id_fixture=%s", body.id_fixture)
     try:
-        odds = ubo.fetch_odds(body.id_fixture)
+        odds = await asyncio.to_thread(ubo.fetch_odds, body.id_fixture)
     except ubo.UserbetError as exc:
+        log.warning("fetch-odds userbet error id=%s: %s", body.id_fixture, exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        log.exception("fetch-odds server error id=%s", body.id_fixture)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка сервера при запросе к userbet: {exc}",
+        ) from exc
+    log.info("fetch-odds ok id=%s fields=%d", body.id_fixture, len(odds))
     return FetchOddsResponse(odds=odds)

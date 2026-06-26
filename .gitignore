@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 .venv-api/
 venv/
+.run/
 build/
 dist/
 *.spec

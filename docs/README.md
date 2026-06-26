@@ -6,8 +6,9 @@
 
 1. [architecture.md](architecture.md) — что есть сейчас: вкладки, потоки данных, модули
 2. [reference.md](reference.md) — **все REST-ручки**, маппинги UI ↔ БД, whitelist PATCH
-3. [calculation.md](calculation.md) — формулы голевой модели, веса, Shin
-4. [db-er-closing-lines.md](db-er-closing-lines.md) — схема БД closing-линий
+3. [calculation.md](calculation.md) — формулы (краткий справочник)
+4. **[training-and-calculation.md](training-and-calculation.md)** — **обучение и расчёт линии (подробно)**
+5. [db-er-closing-lines.md](db-er-closing-lines.md) — схема БД closing-линий
 5. [glossary.md](glossary.md) — термины
 6. [ios-preview.md](ios-preview.md) — как открыть web-версию
 
