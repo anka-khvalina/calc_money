@@ -1683,14 +1683,16 @@ bash scripts/update_and_serve.sh --start</div>
       }
     }
 
-    function sbFillTeamSelect(sel, leagueId, selectedTeamId=null, awayDefault=false){
+    function sbFillTeamSelect(sel, leagueId, selectedTeamId=null, fourth=false){
       if (!sel) return '';
+      const opts = (fourth && typeof fourth === 'object') ? fourth : { awayDefault: !!fourth };
+      const excludeId = opts.excludeId != null ? String(opts.excludeId) : null;
       sel.innerHTML = '';
-      const teams = sbTeams(leagueId);
+      const teams = sbTeams(leagueId).filter(t => !excludeId || String(t.id) !== excludeId);
       if (!teams.length){
         const empty = document.createElement('option');
         empty.value = '';
-        empty.textContent = '— нет команд в лиге —';
+        empty.textContent = excludeId ? '— нет других команд —' : '— нет команд в лиге —';
         sel.appendChild(empty);
         return '';
       }
@@ -1702,7 +1704,7 @@ bash scripts/update_and_serve.sh --start</div>
       });
       const sid = selectedTeamId != null ? String(selectedTeamId) : null;
       if (sid && teams.some(t => String(t.id) === sid)) sel.value = sid;
-      else if (awayDefault && teams.length > 1) sel.selectedIndex = 1;
+      else if (opts.awayDefault && teams.length > 0) sel.selectedIndex = 0;
       else sel.selectedIndex = 0;
       return sel.value || '';
     }
@@ -3705,12 +3707,58 @@ bash scripts/update_and_serve.sh --start</div>
         away: sbTeamName(leagueId, awayId),
       };
     }
+    function goalFillPredTeamSelects(leagueId){
+      const homeSel = document.getElementById('goalPredHome');
+      const awaySel = document.getElementById('goalPredAway');
+      if (!homeSel || !awaySel) return;
+      const prevH = homeSel.value;
+      const prevA = awaySel.value;
+      const teams = sbTeams(leagueId);
+      if (teams.length < 2){
+        sbFillTeamSelect(homeSel, leagueId, prevH, false);
+        awaySel.innerHTML = '<option value="">— в лиге меньше 2 команд —</option>';
+        return;
+      }
+      let homePick = prevH;
+      let awayPick = (prevA && prevA !== prevH) ? prevA : null;
+      sbFillTeamSelect(homeSel, leagueId, homePick, { excludeId: awayPick || null });
+      const homeId = homeSel.value;
+      if (!awayPick || awayPick === homeId){
+        const other = teams.find(t => String(t.id) !== String(homeId));
+        awayPick = other ? String(other.id) : '';
+      }
+      sbFillTeamSelect(awaySel, leagueId, awayPick, { excludeId: homeId });
+    }
+    function goalOnPredHomeChange(){
+      const leagueId = document.getElementById('goalPredLeague')?.value;
+      const homeId = document.getElementById('goalPredHome')?.value;
+      const awaySel = document.getElementById('goalPredAway');
+      if (!leagueId || !homeId || !awaySel) return;
+      const prevA = awaySel.value;
+      let awayPick = (prevA && prevA !== homeId) ? prevA : null;
+      if (!awayPick){
+        const other = sbTeams(leagueId).find(t => String(t.id) !== String(homeId));
+        awayPick = other ? String(other.id) : '';
+      }
+      sbFillTeamSelect(awaySel, leagueId, awayPick, { excludeId: homeId });
+    }
+    function goalOnPredAwayChange(){
+      const leagueId = document.getElementById('goalPredLeague')?.value;
+      const awayId = document.getElementById('goalPredAway')?.value;
+      const homeSel = document.getElementById('goalPredHome');
+      if (!leagueId || !awayId || !homeSel) return;
+      const prevH = homeSel.value;
+      let homePick = (prevH && prevH !== awayId) ? prevH : null;
+      if (!homePick){
+        const other = sbTeams(leagueId).find(t => String(t.id) !== String(awayId));
+        homePick = other ? String(other.id) : '';
+      }
+      sbFillTeamSelect(homeSel, leagueId, homePick, { excludeId: awayId });
+    }
     async function goalOnPredLeagueChange(){
       const leagueId = document.getElementById('goalPredLeague')?.value;
       const homeSel = document.getElementById('goalPredHome');
       const awaySel = document.getElementById('goalPredAway');
-      const prevH = homeSel?.value;
-      const prevA = awaySel?.value;
       if (!leagueId){
         if (homeSel) homeSel.innerHTML = '<option value="">—</option>';
         if (awaySel) awaySel.innerHTML = '<option value="">—</option>';
@@ -3719,8 +3767,7 @@ bash scripts/update_and_serve.sh --start</div>
       try {
         await loadSupabaseConfig();
         await sbLoadTeams(leagueId);
-        sbFillTeamSelect(homeSel, leagueId, prevH, false);
-        sbFillTeamSelect(awaySel, leagueId, prevA, !prevA);
+        goalFillPredTeamSelects(leagueId);
       } catch (e){
         console.error('goalOnPredLeagueChange', e);
         alert('Не удалось загрузить команды лиги.');
@@ -5088,12 +5135,14 @@ bash scripts/update_and_serve.sh --start</div>
     });
 
     document.getElementById('goalPredLeague')?.addEventListener('change', () => { goalOnPredLeagueChange(); });
+    document.getElementById('goalPredHome')?.addEventListener('change', () => { goalOnPredHomeChange(); });
+    document.getElementById('goalPredAway')?.addEventListener('change', () => { goalOnPredAwayChange(); });
 
     window.goalInitTab = goalInitTab;
     bindClick('goalPredict',()=>{
       if(!gmModel){ alert('Сначала обучите модель.'); return; }
       const picked = goalPredSelectedTeams();
-      if(!picked){ alert('Выберите лигу и разные команды.'); return; }
+      if(!picked){ alert('Выберите лигу и две разные команды.'); return; }
       const { leagueId, home, away } = picked;
       try{
         const neutral=document.getElementById('goalNeutral').checked, derby=document.getElementById('goalDerby').checked;
