@@ -744,7 +744,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <th class="right hist-col-ah">AH1</th><th class="right hist-col-ah">AH</th><th class="right hist-col-ah">AH2</th>
             <th class="right hist-col-tot">O</th><th class="right hist-col-tot">Тот</th><th class="right hist-col-tot">U</th>
             <th class="right hist-col-1x2">1</th><th class="right hist-col-1x2">X</th><th class="right hist-col-1x2">2</th>
-            <th>Нейтр</th><th>Действие</th>
+            <th>Нейтр</th><th>Дерби</th><th>Действие</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -789,8 +789,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <li><b>closing_ah_home</b> + <b>ah_home_odds / ah_away_odds</b> — фора.</li>
         <li><b>closing_total_line</b> + <b>over_odds / under_odds</b> — тотал.</li>
         <li><b>home_odds / draw_odds / away_odds</b> — 1X2 (калибровка).</li>
-        <li><b>match_weight</b> — вес матча (по умолчанию 1). <b>derby_weight</b>, <b>neutral_weight</b> — множители при дерби / нейтральном поле.</li>
-        <li><b>is_neutral</b> — нейтральное поле (bool).</li>
+        <li><b>match_weight</b> — вес матча (по умолчанию 1). <b>neutral_weight</b> — множитель при нейтральном поле (по умолчанию 0.8).</li>
+        <li><b>is_neutral</b> — нейтральное поле (да/нет). <b>Дерби</b> — факт дерби (да/нет); при «да» вес матча умножается на <b>0.7</b> (константа в коде).</li>
       </ul>
       <p class="small">Полный маппинг UI ↔ БД: <code>docs/reference.md</code> в репозитории.</p>
 
@@ -860,7 +860,7 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         <tbody>
           <tr><td>W<sub>сезон</sub></td><td>таблица весов на «Линии»</td><td>прошлый сезон 0.7</td></tr>
           <tr><td>match_weight</td><td>История → «Вес»</td><td>низкая мотивация 0.5 (бывш. CSV <code>value</code>)</td></tr>
-          <tr><td>derby_weight</td><td>История</td><td>дерби 0.7</td></tr>
+          <tr><td>Дерби (факт)</td><td>История</td><td>да → множитель 0.7</td></tr>
           <tr><td>neutral_weight</td><td>История</td><td>нейтральное поле 0.8</td></tr>
         </tbody>
       </table></div>
@@ -901,7 +901,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
           <tr><td>ничья q_min / q_max</td><td>Предел изменения ничьи из матрицы (±15% по умолчанию).</td></tr>
           <tr><td>Модель ничьи</td><td>Вкл — отдельная модель ничьи + коррекция диагонали. Выкл — ничья как из Пуассона.</td></tr>
           <tr><td>Dixon-Coles</td><td>Поправка низких счетов (0:0, 1:0, 0:1, 1:1).</td></tr>
-          <tr><td>match_weight / derby_weight / neutral_weight</td><td>Веса матча из БД (вкладка «История»). Меньше → слабее влияет; 0 — исключить.</td></tr>
+          <tr><td>match_weight / neutral_weight</td><td>Веса матча из БД (вкладка «История»). Дерби — только факт да/нет, коэффициент 0.7 в коде.</td></tr>
           <tr><td>Веса сезонов</td><td>Множитель для каждого выбранного сезона при загрузке из Supabase.</td></tr>
           <tr><td>новичок: N слабейших</td><td>Команде без матчей рейтинг = среднее N слабейших команд лиги.</td></tr>
           <tr><td>Нейтраль / Дерби / Маржа</td><td>Параметры конкретного прогноза: без домашнего преимущества / дерби / кэфы с маржой.</td></tr>
@@ -2795,6 +2795,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       derby_weight:'derw',derby_value:'derw',
       neutral_weight:'neuw',neutral_value:'neuw',
     };
+    const DERBY_MATCH_WEIGHT = 0.7;
     function gmNumKey(s){ return String(s).trim().toLowerCase().replace(/[^a-z0-9_а-я]/gi,''); }
     function gmF(v){ if(v==null) return null; const t=String(v).trim().replace(',','.'); if(!t) return null; const n=parseFloat(t); return isNaN(n)?null:n; }
     function gmB(v){ return ['1','true','yes','y','да'].includes(String(v).trim().toLowerCase()); }
@@ -2820,7 +2821,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     }
     function gmMatchWeight(r, cfg){
       const wq = r.mw != null ? r.mw : 1.0;
-      const wd = r.derw != null ? r.derw : 1.0;
+      const wd = r.der ? (r.derw != null && r.derw !== 1 ? r.derw : DERBY_MATCH_WEIGHT) : 1.0;
       const wn = r.neu ? (r.neuw != null ? r.neuw : 1.0) : 1.0;
       const ws = gmSeasonWeight(r, cfg);
       return ws * wq * wd * wn;
@@ -3094,7 +3095,6 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       neutral:'is_neutral', derby:'derby_weight', match_w:'match_weight', neutr_w:'neutral_weight',
     };
     const SB_HIST_WEIGHT_COLS = [
-      { col:'derby', label:'Дерби' },
       { col:'match_w', label:'Вес матча' },
       { col:'neutr_w', label:'Нейтр. вес' },
     ];
@@ -3161,14 +3161,24 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     }
     window.__SB.matchRows = window.__SB.matchRows || {};
 
+    function sbIsDerby(m){
+      const w = m.derby_weight;
+      if (w == null) return false;
+      return Math.abs(Number(w) - 1) > 1e-9;
+    }
+    function sbDerbyWeightFromBool(isDerby){
+      return isDerby ? DERBY_MATCH_WEIGHT : 1;
+    }
     function sbFieldFromMatch(m, field){
       if (field === 'is_neutral') return !!m.is_neutral;
+      if (field === 'derby_weight') return sbIsDerby(m);
       const v = m[field];
       return v == null ? null : Number(v);
     }
     function sbEditDisplay(m, col){
       const field = SB_UI_COL_MAP[col];
       if (field === 'is_neutral') return m.is_neutral ? 'да' : 'нет';
+      if (col === 'derby') return sbIsDerby(m) ? 'да' : 'нет';
       const v = m[field];
       if (v == null) return '';
       return String(v).replace('.', ',');
@@ -3188,11 +3198,12 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     }
     function sbParseField(col, text){
       const field = SB_UI_COL_MAP[col];
-      return field === 'is_neutral' ? sbParseBool(text) : sbParseNumeric(text);
+      if (field === 'is_neutral' || col === 'derby') return sbParseBool(text);
+      return sbParseNumeric(text);
     }
     function sbValuesEqual(field, oldV, newV){
       if (oldV == null && newV == null) return true;
-      if (field === 'is_neutral') return !!oldV === !!newV;
+      if (field === 'is_neutral' || field === 'derby_weight') return !!oldV === !!newV;
       return oldV != null && newV != null && Math.abs(Number(oldV) - Number(newV)) < 1e-9;
     }
     function sbBuildDirtyPatch(original, edited){
@@ -3201,6 +3212,11 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         const field = SB_UI_COL_MAP[col];
         const text = edited[col] != null ? edited[col] : sbEditDisplay(original, col);
         const newV = sbParseField(col, text);
+        if (col === 'derby'){
+          const oldDerby = sbIsDerby(original);
+          if (!!newV !== oldDerby) payload.derby_weight = sbDerbyWeightFromBool(!!newV);
+          return;
+        }
         const oldV = sbFieldFromMatch(original, field);
         if (!sbValuesEqual(field, oldV, newV)) payload[field] = newV;
       });
@@ -3245,7 +3261,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     }
     function sbHistInput(col, m, st){
       const val = st.edited[col] != null ? st.edited[col] : sbEditDisplay(m, col);
-      if (col === 'neutral'){
+      if (col === 'neutral' || col === 'derby'){
         return `<select class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}">` +
           `<option value="нет"${val === 'нет' ? ' selected' : ''}>нет</option>` +
           `<option value="да"${val === 'да' ? ' selected' : ''}>да</option></select>`;
@@ -3363,6 +3379,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
           `<td class="num hist-col-num hist-col-1x2">${sbHistInput('ox', m, st)}</td>` +
           `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o2', m, st)}</td>` +
           `<td class="hist-col-neutral">${sbHistInput('neutral', m, st)}</td>` +
+          `<td class="hist-col-neutral">${sbHistInput('derby', m, st)}</td>` +
           `<td class="hist-col-action">` +
             `<button type="button" class="btn hist-fetch-toggle" data-hist-fetch-toggle="${m.match_id}" aria-expanded="${fetchOpen ? 'true' : 'false'}">${fetchOpen ? '▲ Данные' : '▼ Данные'}</button>` +
             `<button type="button" class="btn hist-weights-toggle" data-hist-weights-toggle="${m.match_id}" aria-expanded="${weightsOpen ? 'true' : 'false'}">${weightsOpen ? '▲ Веса' : '▼ Веса'}</button>` +
@@ -3372,10 +3389,10 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
           `</td>` +
         `</tr>`;
         const weightsRow = `<tr class="hist-weights-row" data-hist-weights-for="${m.match_id}" style="display:${weightsOpen ? '' : 'none'}">` +
-          `<td colspan="14">${sbHistWeightsPanel(m, st)}</td>` +
+          `<td colspan="15">${sbHistWeightsPanel(m, st)}</td>` +
         `</tr>`;
         const fetchRow = `<tr class="hist-fetch-row" data-hist-fetch-for="${m.match_id}" style="display:${fetchOpen ? '' : 'none'}">` +
-          `<td colspan="14">${sbHistFetchPanel(m, st)}</td>` +
+          `<td colspan="15">${sbHistFetchPanel(m, st)}</td>` +
         `</tr>`;
         return mainRow + fetchRow + weightsRow;
       }).join('');
@@ -3653,7 +3670,8 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         ao: gmF(m.away_odds),
         neu: !!m.is_neutral,
         mw: gmF(m.match_weight) != null ? gmF(m.match_weight) : 1.0,
-        derw: gmF(m.derby_weight) != null ? gmF(m.derby_weight) : 1.0,
+        der: (gmF(m.derby_weight) ?? 1) !== 1,
+        derw: DERBY_MATCH_WEIGHT,
         neuw: gmF(m.neutral_weight) != null ? gmF(m.neutral_weight) : 1.0,
         seasonId: m.season_id,
         seasonLabel: m.season_label || '',

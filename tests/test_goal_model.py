@@ -201,6 +201,15 @@ def test_prior_shrinkage_pulls_ratings():
     assert abs(shrunk.strength.ratings["Inter"]) < abs(base.strength.ratings["Inter"])
 
 
+def test_derby_flag_without_explicit_weight():
+    csv = """home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,derby_flag
+Inter,Roma,-0.5,2.5,1.9,1.9,1.9,1.9,2.0,3.5,3.5,true
+"""
+    raw = gmt.parse_raw_matches(csv)
+    cfg = gmt.ModelConfig(default_season_weight=1.0)
+    assert gmt.base_weight(raw[0], cfg) == gmt.DERBY_MATCH_WEIGHT
+
+
 def test_per_match_weights_from_csv():
     csv = """home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,quality_flag,value,derby_flag,derby_weight
 Inter,Empoli,-2.0,3.25,2.01,1.93,1.92,2.03,1.2,7.48,13.88,low_motivation,0.5,true,0.7

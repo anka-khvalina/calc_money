@@ -130,7 +130,7 @@ CORS: `HISTORY_API_CORS` (default `*`).
 | X | `ox` | `draw_odds` | да |
 | 2 | `o2` | `away_odds` | да |
 | Нейтр | `neutral` | `is_neutral` | да |
-| Дерби | `derby` | `derby_weight` | да |
+| Дерби | `derby` | `derby_weight` | да (да/нет; при «да» в БД пишется **0.7**) |
 | Вес матча | `match_w` | `match_weight` | да |
 | Нейтр. вес | `neutr_w` | `neutral_weight` | да |
 | Дата | — | `match_date` | нет |
@@ -150,7 +150,8 @@ is_neutral, match_weight, derby_weight, neutral_weight
 ### Валидация PATCH
 
 - Коэффициенты (`ah_*`, `over_odds`, `under_odds`, `home_odds`, `draw_odds`, `away_odds`): **> 1**
-- `match_weight`, `derby_weight`, `neutral_weight`: **≥ 0**
+- `match_weight`, `neutral_weight`: **≥ 0**
+- `derby_weight`: **0.7** (дерби) или **1.0** (не дерби) — задаётся из булева «Дерби» в UI
 - `is_neutral`: boolean
 
 ---
@@ -173,7 +174,7 @@ is_neutral, match_weight, derby_weight, neutral_weight
 | `away_odds` | `ao` |
 | `is_neutral` | `neu` (i_home = 0) |
 | `match_weight` | `mw` |
-| `derby_weight` | `derw` |
+| `derby_weight` | `der` + `derw` | факт: `derby_weight ≠ 1`; множитель **0.7** в коде |
 | `neutral_weight` | `neuw` |
 | `season_id` | `seasonId` → `season_weight` |
 
@@ -192,22 +193,25 @@ ah_home_odds, ah_away_odds, over_odds, under_odds
 |-------------|------------------|
 | `value`, `quality_weight` | `match_weight` |
 | `neutral_flag` | `is_neutral` |
-| `derby_flag` | (наследие; вес — `derby_weight`) |
+| `derby_flag` | факт дерби (legacy CSV); в UI — колонка «Дерби» |
 
 ---
 
 ## Итоговый вес матча
 
 ```text
-final_match_weight = season_weight × match_weight × derby_weight × neutral_weight
+final_match_weight = season_weight × match_weight × derby_mult × neutral_mult
+
+derby_mult   = is_derby ? 0.7 : 1.0        # факт «Дерби» в UI; 0.7 — константа
+neutral_mult = is_neutral ? neutral_weight : 1.0
 ```
 
 | Параметр | Где задаётся |
 |----------|--------------|
 | `season_weight` | вкладка «Линия», таблица весов по `season_id` |
 | `match_weight` | БД, вкладка «История» |
-| `derby_weight` | БД, вкладка «История» |
-| `neutral_weight` | БД, вкладка «История» |
+| Дерби (да/нет) | БД (`derby_weight` 0.7 или 1), вкладка «История» |
+| `neutral_weight` | БД, вкладка «История» (только если нейтральное поле) |
 
 Defaults весов сезонов (если не меняли): новый → **1**, предыдущий → **0.7**, старше → **0.5**.
 

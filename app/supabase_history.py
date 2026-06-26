@@ -12,6 +12,9 @@ from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Set, Union
 
 from supabase_teams import SupabaseError, _request
 
+# Множитель веса матча при дерби (факт «дерби» задаёт пользователь, коэффициент — в коде).
+DERBY_MATCH_WEIGHT: float = 0.7
+
 PATCH_WHITELIST: FrozenSet[str] = frozenset(
     {
         "ah_home_odds",
@@ -61,8 +64,8 @@ UI_COL_TO_FIELD: Dict[str, str] = {
 # Порядок столбцов линии в UI (AH1 → AH → AH2 → O → Тот → U)
 HIST_LINE_UI_COLS: tuple[str, ...] = ("ah1", "ah", "ah2", "over", "tot", "under")
 
-# Поля весов в раскрываемом блоке
-HIST_WEIGHT_UI_COLS: tuple[str, ...] = ("derby", "match_w", "neutr_w")
+# Поля весов в раскрываемом блоке (дерби — булев факт в основной строке)
+HIST_WEIGHT_UI_COLS: tuple[str, ...] = ("match_w", "neutr_w")
 
 EDITABLE_UI_COLS: FrozenSet[str] = frozenset(UI_COL_TO_FIELD)
 
@@ -109,6 +112,15 @@ class MatchFull:
     note: Optional[str]
 
 
+def is_derby_match(match: MatchFull) -> bool:
+    w = match.derby_weight
+    return w is not None and abs(float(w) - 1.0) > 1e-9
+
+
+def derby_weight_from_bool(is_derby: bool) -> float:
+    return DERBY_MATCH_WEIGHT if is_derby else 1.0
+
+
 def format_imported_at(iso: Optional[str]) -> str:
     if not iso:
         return ""
@@ -135,6 +147,8 @@ def edit_display_value(match: MatchFull, ui_col: str) -> str:
         return ""
     if field == "is_neutral":
         return "да" if match.is_neutral else "нет"
+    if ui_col == "derby":
+        return "да" if is_derby_match(match) else "нет"
     val = getattr(match, _match_attr(field), None)
     if val is None:
         return ""
@@ -184,7 +198,7 @@ def parse_bool_input(text: str) -> bool:
 
 def parse_field_input(ui_col: str, text: str) -> Any:
     field = UI_COL_TO_FIELD[ui_col]
-    if field == "is_neutral":
+    if field == "is_neutral" or ui_col == "derby":
         return parse_bool_input(text)
     return parse_numeric_input(text)
 
@@ -210,6 +224,8 @@ def validate_match_patch(changes: Mapping[str, Any]) -> None:
 def field_value_from_match(match: MatchFull, db_field: str) -> Any:
     if db_field == "is_neutral":
         return match.is_neutral
+    if db_field == "derby_weight":
+        return is_derby_match(match)
     return getattr(match, _match_attr(db_field))
 
 
@@ -220,6 +236,12 @@ def build_dirty_patch(original: MatchFull, edited: Mapping[str, str]) -> Dict[st
             continue
         field = UI_COL_TO_FIELD[ui_col]
         new_val = parse_field_input(ui_col, text)
+        if ui_col == "derby":
+            old_derby = is_derby_match(original)
+            if bool(new_val) == old_derby:
+                continue
+            payload["derby_weight"] = derby_weight_from_bool(bool(new_val))
+            continue
         old_val = field_value_from_match(original, field)
         if _values_equal(field, old_val, new_val):
             continue
@@ -231,7 +253,7 @@ def build_dirty_patch(original: MatchFull, edited: Mapping[str, str]) -> Dict[st
 def _values_equal(field: str, old: Any, new: Any) -> bool:
     if old is None and new is None:
         return True
-    if field == "is_neutral":
+    if field == "is_neutral" or field == "derby_weight":
         return bool(old) == bool(new)
     try:
         return old is not None and new is not None and abs(float(old) - float(new)) < 1e-9
@@ -422,7 +444,7 @@ def matches_to_goal_csv(matches: List[MatchFull], *, league_name: str = "") -> s
     lg = league_name
     for m in matches:
         lg = lg or m.league_name
-        derby_flag = (m.derby_weight or 1) != 1
+        derby_flag = is_derby_match(m)
         lines.append(
             ",".join(
                 [
