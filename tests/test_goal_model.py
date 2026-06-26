@@ -57,6 +57,36 @@ def test_total_quarter_line_halves():
     assert abs(win - 1.0) < 1e-9 and abs(loss - 0.0) < 1e-9
 
 
+def _p_ge(s: float, g_min: int, max_g: int = 30) -> float:
+    return sum(gm.poisson_pmf(g, s) for g in range(g_min, max_g))
+
+
+def _p_le(s: float, g_max: int, max_g: int = 30) -> float:
+    return sum(gm.poisson_pmf(g, s) for g in range(0, min(g_max, max_g) + 1))
+
+
+def test_fair_price_over_line_25():
+    s = 2.7
+    expected = _p_ge(s, 3)
+    assert abs(gm.fair_price_model_over(s, 2.5) - expected) < 1e-9
+
+
+def test_fair_price_over_line_20():
+    s = 2.7
+    w = _p_ge(s, 3)
+    l = _p_le(s, 1)
+    expected = w / (w + l)
+    assert abs(gm.fair_price_model_over(s, 2.0) - expected) < 1e-9
+
+
+def test_fair_price_over_line_225():
+    s = 2.7
+    w = _p_ge(s, 3)
+    l = _p_le(s, 1) + 0.5 * gm.poisson_pmf(2, s)
+    expected = w / (w + l)
+    assert abs(gm.fair_price_model_over(s, 2.25) - expected) < 1e-9
+
+
 def test_inter_roma_worked_example():
     # Из спецификации: Over 2.5 @1.91/1.99, AH -0.75 @1.93/1.97
     p_over, _ = gm.devig_two_way(1.91, 1.99)

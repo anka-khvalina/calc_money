@@ -29,7 +29,7 @@ D_m = λ_h − λ_a   — разница (из форы + AH-odds)
 λ_a = (S_m − D_m) / 2
 ```
 
-**Тотал:** `P_model(Over) = W/(W+L)` с азиатским settlement (half-win/half-loss на .25/.75, push на целых), не `P(G > line)`.  
+**Тотал:** `fair_price_model(Over) = W/(W+L)` — азиатский settlement (2.5 → `P(G≥3)`; 2.0 → push; 2.25 → half на 2 голах), не `P(G > line)`.  
 **Фора:** аналогично через `ah_home_units` и `conditional_win_prob`.
 
 ### Конвенция знака AH

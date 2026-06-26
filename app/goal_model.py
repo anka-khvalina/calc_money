@@ -173,11 +173,36 @@ def fair_odds_from_units(win_part: float, loss_part: float) -> float:
 
 
 def conditional_win_prob(win_part: float, loss_part: float) -> float:
-    """P(выигрыш | не возврат) — как при two-way de-vig (push исключён)."""
+    """W/(W+L) при push вне знаменателя — база для fair_price_model."""
     denom = win_part + loss_part
     if denom <= _EPS:
         return 0.5
     return win_part / denom
+
+
+def fair_price_model_over(
+    sum_goals: float,
+    line: float,
+    *,
+    side: str = "over",
+    max_goals: int = MAX_GOALS_DEFAULT,
+) -> float:
+    """Честная модельная цена Over/Under (азиатский settlement).
+
+    Не всегда совпадает с P(G > line). Например:
+    - 2.5: q = P(G≥3)
+    - 2.0: q = P(G≥3) / [P(G≥3) + P(G≤1)]
+    - 2.25: W=P(G≥3), L=P(G≤1)+½·P(G=2), q=W/(W+L)
+    """
+    if side not in ("over", "under"):
+        raise ValueError("side должно быть 'over' или 'under'")
+    win = loss = 0.0
+    for g in range(0, 2 * max_goals + 1):
+        pg = poisson_pmf(g, sum_goals)
+        w, l = total_units(g, line, side)
+        win += pg * w
+        loss += pg * l
+    return conditional_win_prob(win, loss)
 
 
 # --------------------------------------------------------------------------- #
@@ -240,23 +265,18 @@ def infer_total_sum(
     s_min: float = 0.3,
     s_max: float = 7.0,
 ) -> float:
-    """Найти S = λ_h+λ_a так, чтобы P(Over | не возврат) совпала с рынком.
+    """Найти S = λ_h+λ_a так, чтобы fair_price_model(Over) совпала с рынком.
 
     Сумма голов ~ Pois(S); конкретное деление на λ_h/λ_a здесь не важно
     (сумма независимых Пуассонов снова Пуассон со средним S).
     """
     p_over_fair = min(max(p_over_fair, 1e-4), 1.0 - 1e-4)
 
-    def model_p_over(s: float) -> float:
-        win = loss = 0.0
-        for g in range(0, 2 * max_goals + 1):
-            pg = poisson_pmf(g, s)
-            w, l = total_units(g, total_line, "over")
-            win += pg * w
-            loss += pg * l
-        return conditional_win_prob(win, loss)
+    def target_err(s: float) -> float:
+        q = fair_price_model_over(s, total_line, max_goals=max_goals)
+        return (q - p_over_fair) ** 2
 
-    return minimize_1d(lambda s: (model_p_over(s) - p_over_fair) ** 2, s_min, s_max)
+    return minimize_1d(target_err, s_min, s_max)
 
 
 def infer_goal_diff(

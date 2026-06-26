@@ -108,21 +108,20 @@ margin > 0 → хозяева покрыли (с учётом push на целы
 **S** — ожидаемая сумма голов `λ_h + λ_a`:
 
 ```text
-S = argmin ( P_model(Over | S) − P_fair(Over) )²
+S = argmin ( fair_price_model(Over | S) − P_fair(Over) )²
 ```
 
-`P_model(Over)` — **не** просто `P(G > line)`, а settlement-adjusted цена азиатского тотала:
+`fair_price_model(Over)` — **не** обычная вероятность `P(G > line)`, а честная модельная цена азиатского тотала:
 
-```text
-W = Σ_g P(G=g) · (full_win + 0.5·half_win)
-L = Σ_g P(G=g) · (full_loss + 0.5·half_loss)
+| Линия | Формула q |
+|-------|-----------|
+| **2.5** | `q = P(G ≥ 3)` |
+| **2.0** | `q = P(G ≥ 3) / [P(G ≥ 3) + P(G ≤ 1)]` (push на 2 голах) |
+| **2.25** | `W = P(G≥3)`, `L = P(G≤1) + ½·P(G=2)`, `q = W/(W+L)` |
 
-P_model(Over) = W / (W + L)     # push не входит в знаменатель
-```
+Общий вид: `W = Σ P(G=g)·(full_win + ½·half_win)`, `L = Σ …·(full_loss + ½·half_loss)`, `q = W/(W+L)`.
 
-Четвертные линии (2.25 = среднее 2.0 и 2.5), целые — push. Сумма голов `G ~ Pois(S)`.
-
-По линии тотала и de-vig Over/Under (не просто «линия = ожидание»).
+Сумма голов `G ~ Pois(S)`. По линии тотала и de-vig Over/Under (не просто «линия = ожидание»).
 
 **D** — ожидаемая разница `λ_h − λ_a`:
 
@@ -340,7 +339,7 @@ P(i,j) = Pois(i; λ_h) · Pois(j; λ_a)   [+ DC, + коррекция ничьи
 
 | Этап | Python | Web (JS) |
 |------|--------|----------|
-| Shin, S, D, рынки | `app/goal_model.py` | `gmInferS`, `gmInferD`, … |
+| Shin, S, D, рынки | `app/goal_model.py` | `fair_price_model_over`, `gmFairPriceOver`, `gmInferS`, … |
 | Полный train | `app/goal_model_train.py` | `gmTrain`, `gmPrepare` |
 | Тесты | `tests/test_goal_model.py` | — |
 
