@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
   <title>FairOddsCalc iOS</title>
   <!-- build: cursor/goal-model-17b5 goal-model-v1 -->
   <style>
@@ -59,7 +61,6 @@
     .js-status.err{ color:var(--danger); border-color:#f5c2c0; background:#fff5f5; }
     .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
     .btn.hist-save{ background:#16a34a; color:#fff; border-color:#16a34a; padding:4px 10px; font-size:12px; }
-    tr.hist-dirty{ background:#f0fdf4; }
     .hist-cell-input{
       width:100%; min-width:54px; max-width:none;
       font-size:13px; padding:5px 7px; box-sizing:border-box;
@@ -75,8 +76,10 @@
       padding:7px 9px; font-size:12.5px; vertical-align:middle;
     }
     #clhViewTable td.hist-col-date{ min-width:92px; white-space:nowrap; }
+    #clhViewTable th.hist-col-team,
     #clhViewTable td.hist-col-team{
       min-width:112px; max-width:168px; white-space:normal; line-height:1.25;
+      font-weight:600;
     }
     #clhViewTable td.hist-col-num{ min-width:68px; }
     #clhViewTable td.hist-col-neutral{ min-width:72px; }
@@ -144,6 +147,35 @@
     table{ width:100%; border-collapse:collapse; min-width:560px; background:#fff; }
     th,td{ border-bottom:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; }
     th{ background:#f8fafc; }
+    /* History: цветовые группы линии (после общего th, чтобы не перебивалось) */
+    #clhViewTable th.hist-col-ah,
+    #clhViewTable td.hist-col-ah{
+      background:#fff3cd;
+    }
+    #clhViewTable th.hist-col-tot,
+    #clhViewTable td.hist-col-tot{
+      background:#dbeafe;
+    }
+    #clhViewTable th.hist-col-1x2,
+    #clhViewTable td.hist-col-1x2{
+      background:#ede9fe;
+    }
+    #clhViewTable th.hist-col-ah{ background:#ffe69c; }
+    #clhViewTable th.hist-col-tot{ background:#bfdbfe; }
+    #clhViewTable th.hist-col-1x2{ background:#ddd6fe; }
+    #clhViewTable td.hist-col-ah .hist-cell-input,
+    #clhViewTable td.hist-col-tot .hist-cell-input,
+    #clhViewTable td.hist-col-1x2 .hist-cell-input{
+      background:rgba(255,255,255,0.82);
+      border-color:rgba(0,0,0,0.1);
+    }
+    tr.hist-dirty td.hist-col-date,
+    tr.hist-dirty td.hist-col-team,
+    tr.hist-dirty td.hist-col-neutral,
+    tr.hist-dirty td.hist-col-action{ background:#f0fdf4; }
+    tr.hist-dirty td.hist-col-ah{ background:#ffe08a; }
+    tr.hist-dirty td.hist-col-tot{ background:#93c5fd; }
+    tr.hist-dirty td.hist-col-1x2{ background:#c4b5fd; }
     .right{ text-align:right; }
     .logo-cell{ width:42px; text-align:center; vertical-align:middle; }
     .team-logo{
@@ -677,10 +709,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div class="table-wrap hist-matches-wrap">
         <table id="clhViewTable">
           <thead><tr>
-            <th>Дата</th><th>Дома</th><th>Гости</th>
-            <th class="right">AH1</th><th class="right">AH</th><th class="right">AH2</th>
-            <th class="right">O</th><th class="right">Тот</th><th class="right">U</th>
-            <th class="right">1</th><th class="right">X</th><th class="right">2</th>
+            <th>Дата</th><th class="hist-col-team">Дома</th><th class="hist-col-team">Гости</th>
+            <th class="right hist-col-ah">AH1</th><th class="right hist-col-ah">AH</th><th class="right hist-col-ah">AH2</th>
+            <th class="right hist-col-tot">O</th><th class="right hist-col-tot">Тот</th><th class="right hist-col-tot">U</th>
+            <th class="right hist-col-1x2">1</th><th class="right hist-col-1x2">X</th><th class="right hist-col-1x2">2</th>
             <th>Нейтр</th><th>Действие</th>
           </tr></thead>
           <tbody></tbody>
@@ -1128,6 +1160,27 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       URL.revokeObjectURL(a.href);
     });
 
+    function webAssetUrl(file){
+      return new URL(file, window.location.href).href;
+    }
+
+    const API_CONFIG_URL = 'api.config.json';
+    let API_BASE = '';
+    let _apiConfigPromise = null;
+
+    async function loadApiConfig(){
+      if (_apiConfigPromise) return _apiConfigPromise;
+      _apiConfigPromise = (async () => {
+        try {
+          const res = await fetch(webAssetUrl(API_CONFIG_URL));
+          if (!res.ok) return;
+          const cfg = await res.json();
+          API_BASE = String(cfg.api_base_url || '').replace(/\/$/, '');
+        } catch (_e){ /* optional until fetch-odds used */ }
+      })();
+      return _apiConfigPromise;
+    }
+
     // ---------------- Supabase справочник (вкладка «Справочник») ----------------
     const SB_CONFIG_URL = 'supabase.config.json';
     const SB_LEAGUE_KEY = 'FairOddsCalc_sb_league_v1';
@@ -1149,8 +1202,8 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     async function loadSupabaseConfig(){
       if (_sbConfigPromise) return _sbConfigPromise;
       _sbConfigPromise = (async () => {
-        const res = await fetch(SB_CONFIG_URL);
-        if (!res.ok) throw new Error('Не удалось загрузить конфигурацию Supabase');
+        const res = await fetch(webAssetUrl(SB_CONFIG_URL));
+        if (!res.ok) throw new Error(`Не удалось загрузить supabase.config.json (HTTP ${res.status}). Откройте страницу с Mac: http://ВАШ_IP:8080/FairOddsCalc_iOS.html и проверьте, что веб-сервер запущен из папки web.`);
         const cfg = await res.json();
         SB_URL = String(cfg.rest_url || '').replace(/\/$/, '');
         SB_KEY = String(cfg.anon_key || '').trim();
@@ -2941,111 +2994,6 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       { col:'match_w', label:'Вес матча' },
       { col:'neutr_w', label:'Нейтр. вес' },
     ];
-    const USERBET_ODDS_URL = 'https://userbet.info/user/get_current_lineups_odds/';
-    const USERBET_PREFERRED_B = 70;
-    const USERBET_UPSTREAM_HEADERS = {
-      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-      'X-Requested-With': 'XMLHttpRequest',
-      Accept: 'application/json, text/html, */*',
-    };
-
-    function userbetRoundOdds(v){ return Math.round(Number(v) * 100) / 100; }
-    function userbetNormalizeHandicap(raw){
-      const text = String(raw == null ? '' : raw).trim();
-      if (!text) return null;
-      if (!/^[+-]?\d+(?:\.\d+)?$/.test(text)) return null;
-      const n = parseFloat(text.replace('+', ''));
-      return Number.isFinite(n) ? Math.round(n * 10000) / 10000 : null;
-    }
-    function userbetNormalizeTotal(raw){
-      const text = String(raw == null ? '' : raw).trim();
-      if (!text) return null;
-      if (!/^\d+(?:\.\d+)?$/.test(text)) return null;
-      const n = parseFloat(text);
-      return Number.isFinite(n) ? Math.round(n * 10000) / 10000 : null;
-    }
-    function userbetFilterBookmaker(rows){
-      const hasPreferred = rows.some(r => Number(r.b) === USERBET_PREFERRED_B);
-      return hasPreferred ? rows.filter(r => Number(r.b) === USERBET_PREFERRED_B) : rows;
-    }
-    function userbetGroupMarkets(rows){
-      if (!rows || !rows.length) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
-      const filtered = userbetFilterBookmaker(rows);
-      const byM = {};
-      filtered.forEach(r => {
-        const m = Number(r.m);
-        if (!Number.isFinite(m)) return;
-        (byM[m] = byM[m] || []).push(r);
-      });
-      const unique = Object.keys(byM).map(Number).sort((a,b) => a - b);
-      if (unique.length !== 3) throw new Error('Не удалось определить группы рынков из ответа внешнего сайта');
-      return { x12: byM[unique[0]], total: byM[unique[1]], ah: byM[unique[2]] };
-    }
-    function userbetParse1x2(rows){
-      const out = {};
-      const map = { '1':'home_odds', x:'draw_odds', '2':'away_odds' };
-      rows.forEach(r => {
-        const l = String(r.l || '').trim().toLowerCase();
-        const field = map[l];
-        if (!field || r.v == null) return;
-        out[field] = userbetRoundOdds(r.v);
-      });
-      if (!('home_odds' in out) || !('draw_odds' in out) || !('away_odds' in out)) throw new Error('Не удалось определить коэффициенты 1X2');
-      return out;
-    }
-    function userbetParseTotal(rows){
-      const pairs = {};
-      rows.forEach(r => {
-        const line = userbetNormalizeTotal(r.t);
-        const l = String(r.l || '').trim().toLowerCase();
-        if (line == null || (l !== 'o' && l !== 'u') || r.v == null) return;
-        const key = String(line);
-        pairs[key] = pairs[key] || {};
-        pairs[key][l] = userbetRoundOdds(r.v);
-      });
-      let bestKey = null, bestDiff = Infinity;
-      Object.keys(pairs).forEach(key => {
-        const sides = pairs[key];
-        if (sides.o == null || sides.u == null) return;
-        const diff = Math.abs(sides.o - sides.u);
-        if (diff < bestDiff){ bestDiff = diff; bestKey = key; }
-      });
-      if (!bestKey) throw new Error('Не удалось определить основной тотал');
-      return {
-        closing_total_line: parseFloat(bestKey),
-        over_odds: pairs[bestKey].o,
-        under_odds: pairs[bestKey].u,
-      };
-    }
-    function userbetParseAh(rows){
-      const pairs = {};
-      rows.forEach(r => {
-        const line = userbetNormalizeHandicap(r.h);
-        const l = String(r.l || '').trim().toLowerCase();
-        if (line == null || (l !== '1' && l !== '2') || r.v == null) return;
-        const key = String(line);
-        pairs[key] = pairs[key] || {};
-        pairs[key][l] = userbetRoundOdds(r.v);
-      });
-      let bestKey = null, bestDiff = Infinity;
-      Object.keys(pairs).forEach(key => {
-        const sides = pairs[key];
-        if (sides['1'] == null || sides['2'] == null) return;
-        const diff = Math.abs(sides['1'] - sides['2']);
-        if (diff < bestDiff){ bestDiff = diff; bestKey = key; }
-      });
-      if (!bestKey) throw new Error('Не удалось определить основную фору');
-      return {
-        closing_ah_home: parseFloat(bestKey),
-        ah_home_odds: pairs[bestKey]['1'],
-        ah_away_odds: pairs[bestKey]['2'],
-      };
-    }
-    function userbetParseOddsResponse(rows){
-      if (!Array.isArray(rows)) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
-      const g = userbetGroupMarkets(rows);
-      return Object.assign({}, userbetParse1x2(g.x12), userbetParseTotal(g.total), userbetParseAh(g.ah));
-    }
     const USERBET_FIELD_TO_UI = {
       ah_home_odds:'ah1', closing_ah_home:'ah', ah_away_odds:'ah2',
       over_odds:'over', closing_total_line:'tot', under_odds:'under',
@@ -3063,26 +3011,28 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     async function userbetFetchOdds(externalId){
       const extId = String(externalId || '').trim();
       if (!extId) throw new Error('Введите id матча с сайта неизвестного мужика');
-
-      const formBody = new URLSearchParams({ id_fixture: extId }).toString();
+      await loadApiConfig();
+      if (!API_BASE) throw new Error('Не задан api_base_url в web/api.config.json');
       let resp;
       try {
-        resp = await fetch(USERBET_ODDS_URL, {
+        resp = await fetch(`${API_BASE}/api/history/fetch-odds`, {
           method:'POST',
-          headers: USERBET_UPSTREAM_HEADERS,
-          body: formBody,
+          headers:{ 'Content-Type':'application/json', Accept:'application/json' },
+          body: JSON.stringify({ id_fixture: extId }),
         });
       } catch (_e){
-        throw new Error('Не удалось получить данные с внешнего сайта (браузер может блокировать cross-origin запрос)');
+        throw new Error('Не удалось связаться с API (проверьте, что бэкенд запущен)');
       }
-      if (!resp.ok) throw new Error('Не удалось получить данные с внешнего сайта');
-      const text = await resp.text();
-      if (!text || !text.trim()) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
-      let rows;
-      try { rows = JSON.parse(text); } catch (_e){
+      let data;
+      try { data = await resp.json(); } catch (_e){
         throw new Error('Не удалось получить данные с внешнего сайта');
       }
-      return userbetParseOddsResponse(rows);
+      if (!resp.ok){
+        const msg = (data && data.detail) ? String(data.detail) : 'Не удалось получить данные с внешнего сайта';
+        throw new Error(msg);
+      }
+      if (!data || !data.odds) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
+      return data.odds;
     }
     window.__SB.matchRows = window.__SB.matchRows || {};
 
@@ -3160,7 +3110,13 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     async function sbPatchMatch(matchId, payload){
       const q = `id=eq.${encodeURIComponent(matchId)}`;
       const rows = await sbFetch(`/matches?${q}`, { method: 'PATCH', body: payload });
-      return Array.isArray(rows) ? rows[0] : rows;
+      if (!(Array.isArray(rows) ? rows.length : rows)) throw new Error('PATCH failed');
+      return rows;
+    }
+    function sbApplyPatchToMatch(original, payload){
+      const updated = Object.assign({}, original);
+      Object.keys(payload).forEach(field => { updated[field] = payload[field]; });
+      return updated;
     }
     function sbHistInput(col, m, st){
       const val = st.edited[col] != null ? st.edited[col] : sbEditDisplay(m, col);
@@ -3229,15 +3185,15 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
           `<td class="hist-col-date">${escapeHtml(m.match_date || '')}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.home_team || '')}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.away_team || '')}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ah1', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ah', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ah2', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('over', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('tot', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('under', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('o1', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('ox', m, st)}</td>` +
-          `<td class="num hist-col-num">${sbHistInput('o2', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah1', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah2', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-tot">${sbHistInput('over', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-tot">${sbHistInput('tot', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-tot">${sbHistInput('under', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o1', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-1x2">${sbHistInput('ox', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o2', m, st)}</td>` +
           `<td class="hist-col-neutral">${sbHistInput('neutral', m, st)}</td>` +
           `<td class="hist-col-action">` +
             `<button type="button" class="btn hist-fetch-toggle" data-hist-fetch-toggle="${m.match_id}" aria-expanded="${fetchOpen ? 'true' : 'false'}">${fetchOpen ? '▲ Данные' : '▼ Данные'}</button>` +
@@ -3313,7 +3269,8 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       st.savedMsg = '';
       sbHistUpdateRowUI(mid);
       try {
-        const updated = await sbPatchMatch(mid, payload);
+        await sbPatchMatch(mid, payload);
+        const updated = sbApplyPatchToMatch(st.original, payload);
         st.original = Object.assign({}, updated);
         st.edited = {};
         st.savedMsg = 'Сохранено';
@@ -3419,13 +3376,35 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         }
         renderHistMatchesTable(matches, `${leagueName || leagueId} / ${seasonLabel || seasonId} — ${matches.length} матчей`);
       } catch (e){
-        alert('Не удалось загрузить матчи выбранного сезона.');
+        console.error('sbSelectHistSeason failed', e);
+        const msg = sbHistErrorMessage(e, 'загрузить матчи сезона');
+        alert(msg);
         renderHistMatchesTable([], `${leagueName || leagueId} / ${seasonLabel || seasonId} — ошибка загрузки`);
+        const meta = document.getElementById('clhMeta');
+        if (meta) meta.textContent = msg;
       }
+    }
+
+    function sbHistErrorMessage(e, what){
+      if (!e) return `Не удалось ${what}.`;
+      if (e.message && e.message.includes('supabase.config')) return e.message;
+      if (e.status === 401 || e.status === 403) return `Нет доступа к Supabase (HTTP ${e.status}). Проверьте anon_key в supabase.config.json.`;
+      if (e.message === 'Failed to fetch' || (e.name === 'TypeError' && String(e.message).includes('fetch'))){
+        return `Нет связи с Supabase. Страница открыта с Mac по Wi‑Fi, но сезоны грузятся из интернета — на этом компьютере нужен рабочий интернет (откройте google.com). Также проверьте, что не блокирует антивирус/файрвол.`;
+      }
+      if (e.status) return `Не удалось ${what} (Supabase HTTP ${e.status}).`;
+      return e.message || `Не удалось ${what}.`;
     }
 
     async function sbInitHistTab(){
       const meta = document.getElementById('clhMeta');
+      if (window.__SB.configError){
+        const msg = window.__SB.configError;
+        alert(msg);
+        renderHistSeasonsTable();
+        if (meta) meta.textContent = msg;
+        return;
+      }
       try {
         await loadSupabaseConfig();
         const firstLoad = !window.__SB.histLoaded;
@@ -3458,9 +3437,11 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         }
         if (window.goalFillSrcSeasons) window.goalFillSrcSeasons();
       } catch (e){
-        alert('Не удалось загрузить список сезонов.');
+        console.error('sbInitHistTab failed', e);
+        const msg = sbHistErrorMessage(e, 'загрузить список сезонов');
+        alert(msg);
         renderHistSeasonsTable();
-        if (meta) meta.textContent = '';
+        if (meta) meta.textContent = msg;
       }
     }
     window.sbInitHistTab = sbInitHistTab;
@@ -3630,6 +3611,11 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     try { refreshShinTeamSelects(); } catch (e) { console.error(e); }
     try { gmFillTeams(); } catch (e) { console.error(e); }
     try { /* История: Supabase загружается при открытии вкладки */ } catch (e) { console.error(e); }
+    loadSupabaseConfig().catch(e => {
+      console.error('Supabase config preload failed', e);
+      window.__SB.configError = sbHistErrorMessage(e, 'загрузить конфигурацию Supabase');
+    });
+    loadApiConfig().catch(e => console.error('API config preload failed', e));
     window.refreshGoalTeams = gmFillTeams;
     window.goalFillSrcSeasons = goalFillSrcSeasons;
     setJsStatus('Версия goal-model-v1 — Линия (голы): closing → S/D → λ → матрица → рынки');

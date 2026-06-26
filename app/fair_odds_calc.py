@@ -1549,7 +1549,7 @@ def build_app():
         hist_row_status[mid] = ""
         _hist_refresh_row(mid)
         try:
-            updated = sbh.patch_match(mid, payload)
+            updated = sbh.patch_match(mid, payload, original=orig)
         except sb.SupabaseError:
             hist_row_status[mid] = "Не удалось сохранить коэффициенты в БД"
         except ValueError as exc:
