@@ -846,8 +846,9 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       Пример с жёсткой форой: −1 @ AH1 2.83 / AH2 1.49 → P(покрытия) &lt; 50%, D всё равно &gt; 0, но меньше, чем на −0.5.</p>
 
       <h3>3. Рейтинг силы команд</h3>
-      <div class="formula">D<sub>m</sub> = r<sub>хозяева</sub> − r<sub>гости</sub> + H·I<sub>дома</sub> + ε
-<span class="m"># взвешенный МНК (Huber), Σ r = 0, H — домашнее преимущество</span></div>
+      <div class="formula">D<sub>m</sub> = r<sub>хозяева</sub> − r<sub>гости</sub> + H<sub>league</sub>·I<sub>дома</sub> + δ<sub>derby</sub>·I<sub>дерби</sub> + ε
+<span class="m"># взвешенный МНК (Huber), Σ r = 0</span>
+<span class="m"># δ_derby оценивается при ≥3 дерби в выборке; shrinkage w = n/(n+τ), τ=30</span></div>
 
       <h3>4. Атака и оборона</h3>
       <div class="formula">log λ<sub>h</sub> = μ + A<sub>хозяева</sub> − Df<sub>гости</sub> + H<sub>g</sub>
@@ -868,14 +869,19 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
 
       <h3>Веса матча при обучении</h3>
       <div class="formula">w<sub>base</sub> = W<sub>сезон</sub> × match_weight × neutral_mult
-D = r<sub>h</sub> − r<sub>a</sub> + H<sub>eff</sub>    <span class="m"># H<sub>eff</sub> = H<sub>league</sub> или H<sub>derby</sub> (shrinkage)</span></div>
+<span class="m"># neutral_mult = neutral_weight только если нейтральное поле = да</span></div>
+      <p>При прогнозе дерби меняет <b>H<sub>eff</sub></b>, не вес:</p>
+      <div class="formula">H<sub>eff</sub> = 0                         <span class="m"># нейтраль</span>
+H<sub>eff</sub> = H<sub>league</sub>                 <span class="m"># обычный матч</span>
+H<sub>eff</sub> = shrink(H<sub>league</sub> + δ)       <span class="m"># дерби (δ из обучения)</span>
+D<sub>pred</sub> = r<sub>h</sub> − r<sub>a</sub> + H<sub>eff</sub></div>
       <div class="table-wrap"><table>
         <thead><tr><th>Множитель</th><th>Где задаётся</th><th>Пример</th></tr></thead>
         <tbody>
           <tr><td>W<sub>сезон</sub></td><td>таблица весов на «Линии»</td><td>прошлый сезон 0.7</td></tr>
           <tr><td>match_weight</td><td>История → «Вес»</td><td>низкая мотивация 0.5 (бывш. CSV <code>value</code>)</td></tr>
-          <tr><td>Дерби</td><td>История → ▼ Веса</td><td>факт; H_derby ≈ k×H, k оценивается</td></tr>
-          <tr><td>neutral_weight</td><td>История</td><td>нейтральное поле 0.8</td></tr>
+          <tr><td>Дерби</td><td>История → ▼ Веса</td><td>флаг 1/0; δ<sub>derby</sub> при обучении, H<sub>eff</sub> при прогнозе</td></tr>
+          <tr><td>neutral_weight</td><td>История → ▼ Веса</td><td>0.8, только если нейтральное поле = да</td></tr>
         </tbody>
       </table></div>
       <p>Метка <code>low_motivation</code> в <code>note</code> — только заметка; в формулу входит <b>число</b> match_weight.  
@@ -892,7 +898,8 @@ w<sub>line тотал</sub> = clamp( 1 / (1 + α<sub>тотала</sub>·(S−S�
       <div class="help-card">
         <ol>
           <li>Берём рейтинги <b>r</b>, атаку/оборону <b>A, Df</b> обученной модели.</li>
-          <li>Считаем <b>D<sub>pred</sub> = r<sub>h</sub>−r<sub>a</sub> + H·I<sub>дома</sub></b> (нейтраль → I=0).</li>
+          <li>Считаем <b>H<sub>eff</sub></b> (нейтраль → 0; дерби → shrink(H+δ); иначе H<sub>league</sub>).</li>
+          <li>Считаем <b>D<sub>pred</sub> = r<sub>h</sub>−r<sub>a</sub> + H<sub>eff</sub></b>.</li>
           <li>Считаем <b>S<sub>pred</sub></b> из log-модели голов + калибровка <b>a,b,c,d</b>.</li>
           <li><b>λ<sub>h</sub>, λ<sub>a</sub></b> → пуассоновская матрица P(i,j).</li>
           <li>Опционально: Dixon–Coles, коррекция ничьи (q<sub>min</sub>…q<sub>max</sub>).</li>
@@ -922,10 +929,22 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         </tbody>
       </table></div>
 
+      <h2>Mac + LAN (второй ПК / iPhone в Wi‑Fi)</h2>
+      <div class="help-card">
+        <p>Если на втором устройстве ошибка «Не удалось связаться с API» — в <code>api.config.json</code> не должен быть <code>localhost</code>.</p>
+        <p><b>На Mac:</b></p>
+        <div class="formula">cd ~/calc_money
+bash scripts/update_and_serve.sh --start</div>
+        <p>Откройте на телефоне: <code>http://&lt;IP-Mac&gt;:8080/FairOddsCalc_iOS.html</code></p>
+        <p class="small">Скрипты: <code>scripts/update_and_serve.sh</code>, <code>logs.sh</code>, <code>stop_servers.sh</code>. Подробнее — <code>docs/scripts.md</code>.</p>
+      </div>
+
       <h2>Советы и частые вопросы</h2>
       <ul>
         <li><b>Имена команд</b> в справочнике должны совпадать с матчами в БД, иначе применится рейтинг новичка.</li>
         <li>Фора в БД — <b>на хозяев, знак как у бука</b>; программа знак при расчёте не переворачивает.</li>
+        <li><b>Нейтральное поле</b> и <b>Нейтр. вес</b> — разные вещи: первое отключает H, второе ослабляет вклад строки при обучении.</li>
+        <li><b>Дерби</b> по умолчанию выключено у всех матчей. Отметьте в Истории → ▼ Веса → перезагрузите и переобучите модель.</li>
         <li>Низкая мотивация → уменьшите <b>match_weight</b> в Истории (не отдельный флаг).</li>
         <li>Чем больше матчей (несколько сезонов), тем стабильнее рейтинги. В «Линии» можно выбрать «Все сезоны».</li>
         <li>«Нужно ≥2 матчей» — мало загруженных матчей или не заполнены обязательные рынки.</li>

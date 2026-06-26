@@ -1922,7 +1922,7 @@ def build_app():
     _season_lbl.grid(row=4, column=0, columnspan=4, sticky="w", pady=(8, 0))
     _attach_tip(_season_lbl, "Свежие матчи важнее старых: задайте больший вес для последних дат. Матч ищет свой диапазон по дате; при пересечении применяется добавленный последним (нижняя строка). Вне диапазонов — «default сезон». Строки с # игнорируются.")
     _attach_tip(_cb_neu, "Прогноз без домашнего преимущества (финал, нейтральное поле).")
-    _attach_tip(_cb_der, "Матч-дерби: на прогноз влияет через множитель домашнего преимущества.")
+    _attach_tip(_cb_der, "Матч-дерби: при прогнозе используется H_eff (поправка δ_derby из обучения), не множитель веса.")
     _attach_tip(_cb_mar, "Вкл → коэффициенты с заданной маржой (как у бука). Выкл → честные (сумма вероятностей 100%).")
     goal_season_text = tk.Text(goal_cfg_frame, width=44, height=4, relief="solid", borderwidth=1)
     goal_season_text.grid(row=5, column=0, columnspan=6, sticky="w", pady=(2, 0))

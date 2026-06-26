@@ -9,8 +9,9 @@
 3. [calculation.md](calculation.md) — формулы (краткий справочник)
 4. **[training-and-calculation.md](training-and-calculation.md)** — **обучение и расчёт линии (подробно)**
 5. [db-er-closing-lines.md](db-er-closing-lines.md) — схема БД closing-линий
-5. [glossary.md](glossary.md) — термины
-6. [ios-preview.md](ios-preview.md) — как открыть web-версию
+6. [glossary.md](glossary.md) — термины
+7. [ios-preview.md](ios-preview.md) — как открыть web-версию
+8. [scripts.md](scripts.md) — bash-скрипты (LAN, логи, API)
 
 ## Примеры данных
 

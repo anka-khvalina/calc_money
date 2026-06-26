@@ -43,10 +43,14 @@ D_m = λ_h − λ_a   — разница (из форы + AH-odds)
 ### Базовый вес
 
 ```text
-w_base = season_weight × match_weight × derby_weight × neutral_weight
+w_base = season_weight × match_weight × neutral_mult
+
+neutral_mult = is_neutral ? neutral_weight : 1.0
 ```
 
-### На этапе «сила» (D_m = r_h − r_a + H·I_home)
+**Дерби не входит в вес.** Флаг дерби (`derby_weight` = 1 в БД) используется только при оценке поправки к домашнему преимуществу `H` (см. §4).
+
+### На этапе «сила» (D_m = r_h − r_a + H_eff)
 
 ```text
 w_line_AH = clamp(1 / (1 + α_AH · |D_m|^p), 0.15, 1)
@@ -66,15 +70,33 @@ Default: `α_T = 0.5`.
 
 ---
 
-## 4. Рейтинг силы
+## 4. Рейтинг силы и домашнее преимущество
 
-Robust WLS (Huber):
+Robust WLS (Huber) при обучении:
 
 ```text
-D_m ≈ r_home − r_away + H · I_home
+D_m ≈ r_home − r_away + H_league · I_home + δ_derby · I_derby_home
 ```
 
+- `I_home = 0` если `is_neutral`
+- `I_derby_home = 1` если матч дерби **и** не нейтральное поле
+- `δ_derby` оценивается только при **≥ 3** дерби-матчах в выборке
+- shrinkage: `δ_used = w · δ_raw`, `w = n_derby / (n_derby + τ)`, default `τ = 30`
+
 Ограничение: `Σ r_team = 0`.
+
+### Прогноз: эффективное H
+
+```text
+H_eff = 0                              # нейтральное поле
+H_eff = H_league                       # обычный матч
+H_eff = shrink(H_league + δ_used)      # дерби (если δ оценена)
+H_eff = 0.4 × H_league                 # дерби, но мало дерби в обучении
+```
+
+```text
+D_pred = r_home − r_away + H_eff
+```
 
 ---
 

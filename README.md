@@ -11,7 +11,7 @@
 | **History API** | `bash scripts/run_history_api.sh` |
 | **LAN (Mac + второй ПК)** | `bash scripts/update_and_serve.sh --start` |
 
-Подробнее: [app/README.md](app/README.md), [docs/ios-preview.md](docs/ios-preview.md).
+Подробнее: [app/README.md](app/README.md), [docs/ios-preview.md](docs/ios-preview.md), [docs/scripts.md](docs/scripts.md).
 
 ## Данные
 

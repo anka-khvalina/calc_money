@@ -45,7 +45,7 @@ Safari: http://localhost:8080/FairOddsCalc_iOS.html
 
 ```bash
 cd ~/calc_money
-git pull origin cursor/lan-update-script-17b5
+git pull origin main
 bash scripts/update_and_serve.sh --start
 ```
 
@@ -97,7 +97,9 @@ bash scripts/logs.sh -f --api # только History API / userbet
 bash scripts/update_and_serve.sh
 ```
 
-Ветка по умолчанию: `cursor/goal-line-supabase-17b5` (переопределение: `FAIR_ODDS_BRANCH=main bash scripts/update_and_serve.sh`).
+Ветка по умолчанию для pull: см. `FAIR_ODDS_BRANCH` в `scripts/update_and_serve.sh` (переопределение: `FAIR_ODDS_BRANCH=main bash scripts/update_and_serve.sh`).
+
+Полный список скриптов: [scripts.md](scripts.md).
 
 ## Деплой
 

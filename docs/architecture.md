@@ -53,8 +53,11 @@ closing-линии → de-vig (Shin) → S_m, D_m → λ_h, λ_a → матри�
 ### Вес матча при обучении
 
 ```text
-w_base = season_weight × match_weight × derby_weight × neutral_weight
+w_base = season_weight × match_weight × neutral_mult
+neutral_mult = is_neutral ? neutral_weight : 1.0
 ```
+
+Дерби **не** умножает вес. Флаг `derby_weight = 1` участвует в регрессии силы как `δ_derby · I_derby_home` (поправка к `H`).
 
 Далее на этапах WLS:
 
@@ -62,7 +65,7 @@ w_base = season_weight × match_weight × derby_weight × neutral_weight
 - attack/defense: `w = w_base × w_line_T × w_robust_λ`
 
 `season_weight` — на вкладке «Линия» (по выбранному `season_id`).  
-`match_weight`, `derby_weight`, `neutral_weight` — в БД (`v_matches_full`), редактируются на «Истории».
+`match_weight`, `is_neutral`, `derby_weight`, `neutral_weight` — в БД (`v_matches_full`), блок **▼ Веса** на «Истории».
 
 ## Запуск
 
@@ -71,8 +74,10 @@ w_base = season_weight × match_weight × derby_weight × neutral_weight
 | Desktop | `python3 app/fair_odds_calc.py` |
 | Web локально | `cd web && python3 -m http.server 8080 --bind 0.0.0.0` |
 | History API | `bash scripts/run_history_api.sh` |
+| **LAN (Mac + телефон/ПК)** | `bash scripts/update_and_serve.sh --start` |
 | Тесты | `python3 -m pytest tests/ -v` |
 
+Скрипты `scripts/`: [scripts.md](scripts.md).  
 Деплой web: [ios-preview.md](ios-preview.md).
 
 ## Код (основные модули)
