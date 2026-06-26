@@ -731,6 +731,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         Просмотр и редактирование матчей из Supabase. Измените коэффициент в ячейке и нажмите «Сохранить».
         Флаги <b>нейтральное поле</b> и <b>дерби</b> — в блоке <b>▼ Веса</b> под строкой матча.
       </div>
+      <div class="help-card" style="margin-top:10px">
+        <p class="small" style="margin:0 0 6px;font-weight:600">Справка: блок «▼ Веса»</p>
+        <ul class="small" style="margin:0;padding-left:18px;line-height:1.55">
+          <li><b>Нейтральное поле</b> — факт: «матч был на нейтральном?» (да/нет). При «да» в модели нет домашнего преимущества.</li>
+          <li><b>Нейтр. вес</b> — коэффициент ослабления при обучении; работает <b>только</b> при «Нейтральное поле» = да (обычно 0,8).</li>
+          <li><b>Дерби</b> — факт дерби (да/нет); при «да» вклад матча ослабляется ×0,7 (константа в коде).</li>
+          <li><b>Вес матча</b> — общий множитель важности строки (по умолчанию 1).</li>
+        </ul>
+      </div>
       <div class="small" style="margin-top:10px;font-weight:600;">Сохранённые сезоны</div>
       <div class="table-wrap">
         <table id="clhTable">
@@ -745,7 +754,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <th>Дата</th><th class="hist-col-team">Дома</th><th class="hist-col-team">Гости</th>
             <th class="right hist-col-ah">AH1</th><th class="right hist-col-ah">AH</th><th class="right hist-col-ah">AH2</th>
             <th class="right hist-col-tot">O</th><th class="right hist-col-tot">Тот</th><th class="right hist-col-tot">U</th>
-            <th class="right hist-col-1x2">1</th><th class="right hist-col-1x2">X</th>            <th class="right hist-col-1x2">2</th>
+            <th class="right hist-col-1x2">1</th><th class="right hist-col-1x2">X</th><th class="right hist-col-1x2">2</th>
             <th>Действие</th>
           </tr></thead>
           <tbody></tbody>
@@ -791,8 +800,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <li><b>closing_ah_home</b> + <b>ah_home_odds / ah_away_odds</b> — фора.</li>
         <li><b>closing_total_line</b> + <b>over_odds / under_odds</b> — тотал.</li>
         <li><b>home_odds / draw_odds / away_odds</b> — 1X2 (калибровка).</li>
-        <li><b>match_weight</b> — вес матча (по умолчанию 1). <b>neutral_weight</b> — множитель при нейтральном поле (по умолчанию 0.8).</li>
-        <li><b>is_neutral</b> — нейтральное поле (да/нет). <b>Дерби</b> — факт дерби (да/нет); при «да» вес матча умножается на <b>0.7</b> (константа в коде).</li>
+        <li><b>match_weight</b> — вес матча (по умолчанию 1).</li>
+        <li><b>Нейтральное поле</b> (<code>is_neutral</code>) — факт: матч был на нейтральном? При «да» нет домашнего преимущества.</li>
+        <li><b>Нейтр. вес</b> (<code>neutral_weight</code>) — коэффициент ослабления при обучении; учитывается <b>только</b> если нейтральное поле = да (обычно 0,8).</li>
+        <li><b>Дерби</b> — факт дерби (да/нет); при «да» вес матча умножается на <b>0.7</b> (константа в коде).</li>
       </ul>
       <p class="small">Полный маппинг UI ↔ БД: <code>docs/reference.md</code> в репозитории.</p>
 
@@ -3097,10 +3108,10 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       neutral:'is_neutral', derby:'derby_weight', match_w:'match_weight', neutr_w:'neutral_weight',
     };
     const SB_HIST_WEIGHT_COLS = [
-      { col:'neutral', label:'Нейтральное поле', hint:'да = финал / нейтральный стадион, без домашнего преимущества' },
-      { col:'derby', label:'Дерби', hint:'да = ослабить вклад матча в обучение (×0.7)' },
+      { col:'neutral', label:'Нейтральное поле', hint:'факт: матч был на нейтральном? да → без домашнего преимущества' },
+      { col:'derby', label:'Дерби', hint:'факт дерби; да → ослабить вклад в обучение (×0.7)' },
       { col:'match_w', label:'Вес матча', hint:'общий множитель важности матча' },
-      { col:'neutr_w', label:'Нейтр. вес', hint:'только если нейтральное поле = да (обычно 0.8)' },
+      { col:'neutr_w', label:'Нейтр. вес', hint:'коэфф. ослабления при обучении; только если «Нейтральное поле» = да' },
     ];
     const USERBET_FIELD_TO_UI = {
       ah_home_odds:'ah1', closing_ah_home:'ah', ah_away_odds:'ah2',
