@@ -666,6 +666,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </label>
         <div class="field" style="max-width:80px"><label>%</label><input id="goalMarginPct" value="3" /></div>
       </div>
+      <pre id="goalRatings" class="shin-details" style="display:none"></pre>
       <div class="row">
         <button type="button" id="goalPredict" class="btn primary">Рассчитать линию</button>
       </div>
@@ -3925,6 +3926,21 @@ bash scripts/update_and_serve.sh --start</div>
       }
       goalRenderTrainDataPanel();
       goalRenderTrainCoefPanel();
+      goalRenderRatings();
+    }
+    function goalRenderRatings(){
+      const el = document.getElementById('goalRatings');
+      if (!el) return;
+      if (!gmModel){
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+      }
+      const { st, gl } = gmModel;
+      const rk = Object.entries(st.ratings).sort((a, b) => b[1] - a[1])
+        .map(([t, r]) => `  ${t}: r=${r.toFixed(3)} A=${(gl.attack[t] || 0).toFixed(3)} Df=${(gl.defense[t] || 0).toFixed(3)}`).join('\n');
+      el.textContent = 'Рейтинги (сила / атака / оборона):\n' + rk;
+      el.style.display = '';
     }
     function goalRunTrain(){
       if (!goalLoadedRaw || !goalLoadedRaw.length){
@@ -3935,10 +3951,7 @@ bash scripts/update_and_serve.sh --start</div>
       const cfg = gmCfg();
       gmModel = gmTrain(goalLoadedRaw, cfg);
       goalTrainState.trainedAt = new Date().toISOString();
-      const { st, gl, cal, draw } = gmModel;
-      const rk = Object.entries(st.ratings).sort((a, b) => b[1] - a[1])
-        .map(([t, r]) => `  ${t}: r=${r.toFixed(3)} A=${(gl.attack[t] || 0).toFixed(3)} Df=${(gl.defense[t] || 0).toFixed(3)}`).join('\n');
-      document.getElementById('goalOut').textContent = 'Рейтинги (сила / атака / оборона):\n' + rk;
+      goalRenderRatings();
       goalUpdateTrainUI();
       gmFillTeams();
       return gmModel;
