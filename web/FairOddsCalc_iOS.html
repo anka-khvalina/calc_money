@@ -103,6 +103,8 @@
       display:block; width:100%; box-sizing:border-box;
       font-size:12px; padding:3px 5px; line-height:1.35;
     }
+    .goal-src-match{ flex:1 1 100%; width:100%; }
+    .goal-src-match select{ font-size:12px; width:100%; box-sizing:border-box; padding:4px 6px; }
     .goal-src-seasons .goal-all-seasons{
       display:flex; align-items:center; gap:6px; margin-top:4px; font-size:11px;
     }
@@ -396,7 +398,6 @@
             if (id === 'hist' && window.sbInitHistTab) window.sbInitHistTab();
             if (id === 'goal') {
               if (window.goalInitTab) window.goalInitTab();
-              if (window.refreshGoalTeams) window.refreshGoalTeams();
             }
             if (id === 'teams') {
               if (window.sbInitTeamsTab) window.sbInitTeamsTab();
@@ -803,19 +804,33 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 
       <div class="goal-section goal-section--predict">
         <h3>Расчёт линии</h3>
-      <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
-        <div class="field" style="min-width:150px">
-          <label>Лига (справочник)</label>
-          <select id="goalLeague">
-            <option value="epl">English Premier League</option>
-            <option value="la_liga">La Liga</option>
-            <option value="bundesliga">Bundesliga</option>
-            <option value="serie_a">Serie A</option>
-            <option value="ligue_1">Ligue 1</option>
-          </select>
+        <div class="goal-src-panel goal-pred-panel">
+          <div class="goal-src-row goal-src-row--pick">
+            <div class="goal-src-league">
+              <label class="block-label" for="goalPredLeague">Лига</label>
+              <select id="goalPredLeague"><option value="">Загрузка…</option></select>
+            </div>
+            <div class="goal-src-seasons">
+              <label class="block-label" for="goalPredSeason">Сезон</label>
+              <select id="goalPredSeason"><option value="">—</option></select>
+            </div>
+            <div class="goal-src-match">
+              <label class="block-label" for="goalPredMatch">Матч</label>
+              <select id="goalPredMatch"><option value="">—</option></select>
+            </div>
+          </div>
+          <div class="goal-src-row goal-src-row--action goal-src-action">
+            <button type="button" id="goalPredLoad" class="btn primary">Загрузить из БД</button>
+          </div>
         </div>
-        <div class="field" style="min-width:140px;flex:1"><label>Хозяева</label><select id="goalHome"></select></div>
-        <div class="field" style="min-width:140px;flex:1"><label>Гости</label><select id="goalAway"></select></div>
+        <div class="hint" style="margin-top:6px">
+          Supabase → матч, команды и closing-линии (фора, тотал, 1X2).
+        </div>
+        <div id="goalPredMatchCard" class="goal-train-card" style="display:none;margin-top:10px">
+          <h4>Матч из БД</h4>
+          <div id="goalPredMatchBody"></div>
+        </div>
+        <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;margin-top:12px">
         <label style="display:flex;align-items:flex-start;gap:6px;">
           <input id="goalNeutral" type="checkbox" style="width:auto;margin-top:2px" />
           <span><span class="small">Нейтраль</span><span class="hint" style="display:block">Без домашнего преимущества (финалы, нейтральное поле).</span></span>
@@ -3660,15 +3675,6 @@ bash scripts/update_and_serve.sh --start</div>
       return model;
     }
     let gmModel=null;
-    function gmFillTeams(){
-      // Команды берём из Справочника команд по выбранной лиге
-      const league=document.getElementById('goalLeague').value;
-      const homeSel=document.getElementById('goalHome'), awaySel=document.getElementById('goalAway');
-      const prevH=homeSel.value, prevA=awaySel.value;
-      fillTeamSelect(homeSel, league, prevH);
-      fillTeamSelect(awaySel, league, prevA);
-      if(!prevA && awaySel.options.length>1) awaySel.selectedIndex=1;
-    }
     function gmCfg(){
       const f=(id,d)=>{ const v=parseFloat((document.getElementById(id).value||'').replace(',','.')); return isNaN(v)?d:v; };
       return { maxGoals:GM_MAX, alphaAh:f('goalAlphaAh',0.25), pAh:2, minWAh:0.15, maxWAh:1,
@@ -3696,7 +3702,145 @@ bash scripts/update_and_serve.sh --start</div>
       }
       return def;
     }
-    document.getElementById('goalLeague').addEventListener('change', gmFillTeams);
+
+    // ---------------- «Расчёт линии»: матч из Supabase ----------------
+    let goalPredSeasons = [];
+    let goalPredMatches = [];
+    let goalPredMatch = null;
+
+    function goalFmtMatchOption(m){
+      const d = sbFmtDate(m.match_date) || m.match_date || '—';
+      return `${d} · ${m.home_team} — ${m.away_team}`;
+    }
+    function goalFmtDbNum(v){
+      if (v == null || v === '') return '—';
+      return String(v).replace('.', ',');
+    }
+    function goalRenderPredMatchCard(m){
+      const card = document.getElementById('goalPredMatchCard');
+      const body = document.getElementById('goalPredMatchBody');
+      if (!card || !body) return;
+      if (!m){
+        card.style.display = 'none';
+        body.innerHTML = '';
+        return;
+      }
+      body.innerHTML = goalRenderTrainTable([
+        ['Дата', escapeHtml(sbFmtDate(m.match_date) || m.match_date || '—'), ''],
+        ['Сезон', escapeHtml(m.season_label || '—'), ''],
+        ['Хозяева', escapeHtml(m.home_team || '—'), ''],
+        ['Гости', escapeHtml(m.away_team || '—'), ''],
+        ['Нейтраль', m.is_neutral ? 'да' : 'нет', ''],
+        ['Дерби', sbIsDerby(m) ? 'да' : 'нет', ''],
+        ['Фора', `${goalFmtDbNum(m.closing_ah_home)} · ${goalFmtDbNum(m.ah_home_odds)} / ${goalFmtDbNum(m.ah_away_odds)}`, 'num'],
+        ['Тотал', `${goalFmtDbNum(m.closing_total_line)} · ${goalFmtDbNum(m.over_odds)} / ${goalFmtDbNum(m.under_odds)}`, 'num'],
+        ['1X2', `${goalFmtDbNum(m.home_odds)} / ${goalFmtDbNum(m.draw_odds)} / ${goalFmtDbNum(m.away_odds)}`, 'num'],
+      ]);
+      card.style.display = '';
+    }
+    function goalApplyPredMatch(m){
+      goalPredMatch = m || null;
+      const neu = document.getElementById('goalNeutral');
+      const der = document.getElementById('goalDerby');
+      if (neu) neu.checked = !!(m && m.is_neutral);
+      if (der) der.checked = !!(m && sbIsDerby(m));
+      goalRenderPredMatchCard(m);
+    }
+    async function goalOnPredLeagueChange(){
+      const leagueId = document.getElementById('goalPredLeague')?.value;
+      const seasonSel = document.getElementById('goalPredSeason');
+      const matchSel = document.getElementById('goalPredMatch');
+      goalPredSeasons = [];
+      goalPredMatches = [];
+      goalApplyPredMatch(null);
+      if (!leagueId){
+        if (seasonSel) seasonSel.innerHTML = '<option value="">—</option>';
+        if (matchSel) matchSel.innerHTML = '<option value="">—</option>';
+        return;
+      }
+      try {
+        await loadSupabaseConfig();
+        goalPredSeasons = await sbLoadSeasonsForLeague(leagueId);
+        if (seasonSel){
+          seasonSel.innerHTML = '<option value="">— выберите сезон —</option>'
+            + goalPredSeasons.map(s =>
+              `<option value="${escapeHtml(String(s.season_id))}">${escapeHtml(s.season_label)} — ${escapeHtml(String(s.matches_count))} матч.</option>`
+            ).join('');
+        }
+        if (matchSel) matchSel.innerHTML = '<option value="">—</option>';
+      } catch (e){
+        console.error('goalOnPredLeagueChange', e);
+        alert('Не удалось загрузить сезоны лиги.');
+        if (seasonSel) seasonSel.innerHTML = '<option value="">—</option>';
+        if (matchSel) matchSel.innerHTML = '<option value="">—</option>';
+      }
+    }
+    async function goalOnPredSeasonChange(){
+      const leagueId = document.getElementById('goalPredLeague')?.value;
+      const seasonId = Number(document.getElementById('goalPredSeason')?.value);
+      const matchSel = document.getElementById('goalPredMatch');
+      goalPredMatches = [];
+      goalApplyPredMatch(null);
+      if (!leagueId || !seasonId){
+        if (matchSel) matchSel.innerHTML = '<option value="">—</option>';
+        return;
+      }
+      try {
+        await loadSupabaseConfig();
+        goalPredMatches = await sbLoadMatchesForSeasons(leagueId, [seasonId]);
+        goalPredMatches.sort((a, b) => String(b.match_date).localeCompare(String(a.match_date)));
+        if (matchSel){
+          matchSel.innerHTML = '<option value="">— выберите матч —</option>'
+            + goalPredMatches.map(m =>
+              `<option value="${escapeHtml(String(m.match_id))}">${escapeHtml(goalFmtMatchOption(m))}</option>`
+            ).join('');
+        }
+      } catch (e){
+        console.error('goalOnPredSeasonChange', e);
+        alert('Не удалось загрузить матчи сезона.');
+        if (matchSel) matchSel.innerHTML = '<option value="">—</option>';
+      }
+    }
+    function goalOnPredMatchChange(){
+      const mid = document.getElementById('goalPredMatch')?.value;
+      if (!mid){ goalApplyPredMatch(null); return; }
+      const m = goalPredMatches.find(x => String(x.match_id) === String(mid));
+      goalApplyPredMatch(m || null);
+    }
+    async function goalPredLoadFromDb(){
+      const leagueId = document.getElementById('goalPredLeague')?.value;
+      const mid = document.getElementById('goalPredMatch')?.value;
+      if (!leagueId){ alert('Выберите лигу'); return; }
+      const seasonId = Number(document.getElementById('goalPredSeason')?.value);
+      if (!seasonId){ alert('Выберите сезон'); return; }
+      try {
+        await loadSupabaseConfig();
+        if (!mid){
+          await goalOnPredSeasonChange();
+          return;
+        }
+        const fresh = await sbFetchMatchFromDb(mid);
+        const idx = goalPredMatches.findIndex(x => String(x.match_id) === String(mid));
+        if (idx >= 0) goalPredMatches[idx] = fresh;
+        else goalPredMatches.push(fresh);
+        goalApplyPredMatch(fresh);
+      } catch (e){
+        console.error('goalPredLoadFromDb', e);
+        alert('Не удалось загрузить матч из Supabase');
+      }
+    }
+    async function goalSyncPredLeagueFromTrain(){
+      const src = document.getElementById('goalSrcLeague');
+      const pred = document.getElementById('goalPredLeague');
+      if (!src || !pred || !src.value) return;
+      if (pred.value === src.value) return;
+      pred.value = src.value;
+      await goalOnPredLeagueChange();
+    }
+    async function goalInitPredSection(){
+      goalPopulateLeagueSelect('goalPredLeague');
+      await goalSyncPredLeagueFromTrain();
+    }
 
     // ---------------- История (Supabase) ----------------
     if (!window.__SB) window.__SB = { leagues: [], teamsByLeague: {}, leagueNameById: {}, leaguesLoaded: false };
@@ -4758,7 +4902,6 @@ bash scripts/update_and_serve.sh --start</div>
       goalTrainState.priorUsed = !!(prior && cfg.priorAlpha > 0);
       goalRenderRatings();
       goalUpdateTrainUI();
-      gmFillTeams();
       return gmModel;
     }
 
@@ -4827,8 +4970,8 @@ bash scripts/update_and_serve.sh --start</div>
       return Array.isArray(rows) ? rows : [];
     }
 
-    function goalPopulateLeagueSelect(){
-      const sel = document.getElementById('goalSrcLeague');
+    function goalPopulateLeagueSelect(selId='goalSrcLeague'){
+      const sel = document.getElementById(selId);
       if (!sel) return;
       const leagues = window.__SB.leagues || [];
       if (!leagues.length){
@@ -4950,6 +5093,7 @@ bash scripts/update_and_serve.sh --start</div>
         goalPopulateLeagueSelect();
         const leagueId = document.getElementById('goalSrcLeague').value;
         if (leagueId && !goalLineSeasons.length) await goalOnLeagueChange();
+        await goalInitPredSection();
         goalUpdateTrainUI();
       } catch (e){
         console.error('goalInitTab', e);
@@ -4958,7 +5102,10 @@ bash scripts/update_and_serve.sh --start</div>
       }
     }
 
-    document.getElementById('goalSrcLeague').addEventListener('change', () => { goalOnLeagueChange(); });
+    document.getElementById('goalSrcLeague').addEventListener('change', () => {
+      goalOnLeagueChange();
+      goalSyncPredLeagueFromTrain();
+    });
     document.getElementById('goalSrcAllSeasons').addEventListener('change', () => { goalRenderSeasonMulti(); });
     document.getElementById('goalSrcSeasons').addEventListener('change', () => {
       document.getElementById('goalSrcAllSeasons').checked = false;
@@ -4996,6 +5143,7 @@ bash scripts/update_and_serve.sh --start</div>
         goalApplyDefaultSeasonWeights();
         goalRenderSeasonWeights();
         goalUpdateTrainUI();
+        goalSyncPredLeagueFromTrain();
       } catch (e){
         console.error('goalLoadHist', e);
         alert('Не удалось загрузить матчи из Supabase');
@@ -5038,11 +5186,18 @@ bash scripts/update_and_serve.sh --start</div>
       if (e.target.classList.contains('goal-season-w')) goalUpdateTrainUI();
     });
 
+    document.getElementById('goalPredLeague')?.addEventListener('change', () => { goalOnPredLeagueChange(); });
+    document.getElementById('goalPredSeason')?.addEventListener('change', () => { goalOnPredSeasonChange(); });
+    document.getElementById('goalPredMatch')?.addEventListener('change', () => { goalOnPredMatchChange(); });
+    bindClick('goalPredLoad', () => { goalPredLoadFromDb(); });
+
     window.goalInitTab = goalInitTab;
     bindClick('goalPredict',()=>{
       if(!gmModel){ alert('Сначала обучите модель.'); return; }
-      const home=document.getElementById('goalHome').value, away=document.getElementById('goalAway').value;
-      if(!home||!away||home===away){ alert('Выберите разные команды.'); return; }
+      if(!goalPredMatch){ alert('Выберите матч и загрузите данные из БД.'); return; }
+      const home=String(goalPredMatch.home_team||'').trim();
+      const away=String(goalPredMatch.away_team||'').trim();
+      if(!home||!away||home===away){ alert('В матче из БД не указаны разные команды.'); return; }
       try{
         const neutral=document.getElementById('goalNeutral').checked, derby=document.getElementById('goalDerby').checked;
         const pred=gmPredict(gmModel,home,away,{neutral,derby});
@@ -5050,10 +5205,12 @@ bash scripts/update_and_serve.sh --start</div>
         const mg=(parseFloat((document.getElementById('goalMarginPct').value||'3').replace(',','.'))||0)/100;
         const {lines,summary}=gmFormatPredict(pred,home,away,neutral,useM,mg);
         document.getElementById('goalOut').textContent=lines.join('\n');
-        const league=document.getElementById('goalLeague').value;
+        const leagueName=goalPredMatch.league_name
+          || (window.__SB.leagueNameById && window.__SB.leagueNameById[goalPredMatch.league_id])
+          || String(goalPredMatch.league_id || '');
         gmAddPredHist({
           at:gmFormatDt(),
-          league:LEAGUE_TITLES[league]||league,
+          league:leagueName,
           match:`${home} — ${away}`,
           summary,
         });
@@ -5115,14 +5272,12 @@ bash scripts/update_and_serve.sh --start</div>
     seedDefaultTeams(false);
     try { /* Справочник: Supabase загружается при открытии вкладки */ } catch (e) { console.error(e); }
     try { refreshShinTeamSelects(); } catch (e) { console.error(e); }
-    try { gmFillTeams(); } catch (e) { console.error(e); }
     try { /* История: Supabase загружается при открытии вкладки */ } catch (e) { console.error(e); }
     loadSupabaseConfig().catch(e => {
       console.error('Supabase config preload failed', e);
       window.__SB.configError = sbHistErrorMessage(e, 'загрузить конфигурацию Supabase');
     });
     loadApiConfig().catch(e => console.error('API config preload failed', e));
-    window.refreshGoalTeams = gmFillTeams;
     goalInitTab().catch(e => console.error('goalInitTab failed', e));
     setJsStatus('Версия goal-model-v1 — Линия: Supabase → S/D → λ → матрица → рынки');
     } catch (err) {
