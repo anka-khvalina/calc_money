@@ -76,6 +76,7 @@
     #clhViewTable th, #clhViewTable td{
       padding:7px 9px; font-size:12.5px; vertical-align:middle;
     }
+    #clhViewTable td.hist-col-date{ min-width:92px; white-space:nowrap; }
     #goalSeasonWeightsTable .goal-season-w{
       width:100%; max-width:72px; text-align:right; padding:5px 7px; font-size:13px;
     }
@@ -773,36 +774,25 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <h2>Порядок работы</h2>
       <div class="help-card">
         <ol>
-          <li><span class="badge">1</span> <b>История</b>: откройте вкладку — список сезонов подгрузится из базы. Выберите сезон, чтобы посмотреть матчи.</li>
-          <li><span class="badge">2</span> <b>Линия</b> → блок «Из истории»: выберите лигу и сезон (или «все сезоны») → <b>«Загрузить из истории»</b>. CSV подставится в поле.</li>
-          <li><span class="badge">3</span> При желании поправьте параметры модели и веса сезонов → <b>«Обучить модель»</b>. Внизу появятся рейтинги команд и сводка.</li>
-          <li><span class="badge">4</span> Выберите <b>лигу справочника</b>, <b>Хозяев</b> и <b>Гостей</b>, флаги (нейтраль/дерби/маржа) → <b>«Рассчитать линию»</b>.</li>
+          <li><span class="badge">1</span> <b>Линия</b> → блок «Данные из Supabase»: выберите лигу и один или несколько сезонов (или «Все сезоны») → <b>«Загрузить из БД»</b>.</li>
+          <li><span class="badge">2</span> При необходимости задайте <b>веса сезонов</b> в таблице справа → <b>«Обучить модель»</b>. Внизу появятся рейтинги и сводка.</li>
+          <li><span class="badge">3</span> Выберите <b>лигу справочника</b>, <b>Хозяев</b> и <b>Гостей</b>, флаги (нейтраль/дерби/маржа) → <b>«Рассчитать линию»</b>.</li>
+          <li><span class="badge">4</span> <b>История</b> — просмотр и правка матчей в Supabase (линии, веса, коэффициенты 1X2).</li>
         </ol>
       </div>
-      <p class="small">Изменили настройки — снова нажмите «Обучить модель» (это и есть пересчёт).</p>
+      <p class="small">Изменили настройки или веса сезонов — снова нажмите «Обучить модель».</p>
 
-      <h2>Формат CSV</h2>
-      <div class="formula">date,league,home_team,away_team,
-closing_ah_home,closing_total_line,
-ah_home_odds,ah_away_odds,over_odds,under_odds,
-home_odds,draw_odds,away_odds,
-neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight</div>
-      <p><span class="badge">обязательно</span> — рынки:</p>
+      <h2>Поля матча (Supabase → модель)</h2>
+      <p>Для обучения из <code>v_matches_full</code> используются closing-линии и веса:</p>
       <ul>
-        <li><b>home_team, away_team</b> — команды (имена должны совпадать со Справочником).</li>
-        <li><b>closing_ah_home</b> — фора на хозяев (напр. −0.75) + <b>ah_home_odds / ah_away_odds</b>.</li>
-        <li><b>closing_total_line</b> — тотал (напр. 2.5) + <b>over_odds / under_odds</b>.</li>
-        <li><b>home_odds / draw_odds / away_odds</b> — 1X2 (для ничьи и калибровки).</li>
+        <li><b>home_team, away_team</b> — команды (имена из справочника <code>team</code>).</li>
+        <li><b>closing_ah_home</b> + <b>ah_home_odds / ah_away_odds</b> — фора.</li>
+        <li><b>closing_total_line</b> + <b>over_odds / under_odds</b> — тотал.</li>
+        <li><b>home_odds / draw_odds / away_odds</b> — 1X2 (калибровка).</li>
+        <li><b>match_weight</b> — вес матча (по умолчанию 1). <b>derby_weight</b>, <b>neutral_weight</b> — множители при дерби / нейтральном поле.</li>
+        <li><b>is_neutral</b> — нейтральное поле (bool).</li>
       </ul>
-      <p><span class="badge">необязательно</span> — признаки матча (по строке, прямо в CSV; грузить по одному не нужно):</p>
-      <ul>
-        <li><b>date</b> — дата (для весов по сезону). Нет столбца → «default сезон».</li>
-        <li><b>neutral_flag / derby_flag</b> — true/false. Нет → false.</li>
-        <li><b>quality_flag</b> — метка матча (normal, low_motivation, heavy_rotation, suspicious_line, data_error и т.д.). Нет → пусто.</li>
-        <li><b>value</b> — множитель веса для этой строки (качество/мотивация). Нет → 1.0.</li>
-        <li><b>derby_weight / neutral_weight</b> — множители, если derby_flag / neutral_flag = true. Нет → 1.0.</li>
-      </ul>
-      <div class="help-card"><p style="margin:0"><b>Важно:</b> множители качества, дерби и нейтраль задаются <b>в CSV по каждому матчу</b> (столбцы value, derby_weight, neutral_weight), а не в настройках программы. Вкладка «Линия» оставляет только веса сезонов по дате.</p></div>
+      <p class="small">Полный маппинг UI ↔ БД: <code>docs/reference.md</code> в репозитории.</p>
 
       <h2>Как обучается модель</h2>
 
@@ -843,8 +833,8 @@ P<sub>X</sub><sup>target</sup> = 1 / (1 + e<sup>−logit</sup>)</div>
 P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма снова = 1</span></div>
 
       <h3>Вес матча при обучении</h3>
-      <div class="formula">W = W<sub>сезон</sub> × value × derby_weight × neutral_weight × W<sub>размер линии</sub> × W<sub>robust</sub></div>
-      <p>Меньший вес → матч слабее влияет; 0 — исключён. Свежие матчи обычно весят больше.</p>
+      <div class="formula">W = W<sub>сезон</sub> × match_weight × derby_weight × neutral_weight</div>
+      <p>Меньший вес → матч слабее влияет; 0 — исключён. Веса сезонов задаются в таблице на вкладке «Линия».</p>
 
       <h2>Прогноз и рынки</h2>
       <div class="formula">P(i,j) = Pois(i; λ<sub>h</sub>) · Pois(j; λ<sub>a</sub>)
@@ -863,8 +853,8 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
           <tr><td>ничья q_min / q_max</td><td>Предел изменения ничьи из матрицы (±15% по умолчанию).</td></tr>
           <tr><td>Модель ничьи</td><td>Вкл — отдельная модель ничьи + коррекция диагонали. Выкл — ничья как из Пуассона.</td></tr>
           <tr><td>Dixon-Coles</td><td>Поправка низких счетов (0:0, 1:0, 0:1, 1:1).</td></tr>
-          <tr><td>Множители: качество / дерби / нейтраль</td><td>Вес матча по флагу из CSV. Меньше → слабее влияет; 0 — исключить.</td></tr>
-          <tr><td>Веса сезонов (диапазоны дат)</td><td>Вес по дате матча; свежие важнее. При пересечении диапазонов действует добавленный последним.</td></tr>
+          <tr><td>match_weight / derby_weight / neutral_weight</td><td>Веса матча из БД (вкладка «История»). Меньше → слабее влияет; 0 — исключить.</td></tr>
+          <tr><td>Веса сезонов</td><td>Множитель для каждого выбранного сезона при загрузке из Supabase.</td></tr>
           <tr><td>новичок: N слабейших</td><td>Команде без матчей рейтинг = среднее N слабейших команд лиги.</td></tr>
           <tr><td>Нейтраль / Дерби / Маржа</td><td>Параметры конкретного прогноза: без домашнего преимущества / дерби / кэфы с маржой.</td></tr>
         </tbody>
@@ -872,9 +862,9 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
 
       <h2>Советы и частые вопросы</h2>
       <ul>
-        <li><b>Имена команд</b> в CSV должны совпадать со Справочником, иначе команда не найдётся в модели (применится рейтинг новичка).</li>
-        <li>Чем больше матчей (прошлый сезон + текущий), тем стабильнее рейтинги. В «Линии» можно выбрать «все сезоны» лиги.</li>
-        <li>«Нужно ≥2 матчей» — мало строк или не распознан заголовок CSV (проверьте названия колонок и запятые).</li>
+        <li><b>Имена команд</b> в справочнике должны совпадать с матчами в БД, иначе применится рейтинг новичка.</li>
+        <li>Чем больше матчей (несколько сезонов), тем стабильнее рейтинги. В «Линии» можно выбрать «Все сезоны».</li>
+        <li>«Нужно ≥2 матчей» — мало загруженных матчей или не заполнены обязательные рынки.</li>
         <li>Все данные хранятся только в этом Safari на устройстве (localStorage).</li>
         <li>Открывайте в Safari напрямую, не во встроенном браузере мессенджера.</li>
       </ul>

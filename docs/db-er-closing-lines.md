@@ -1,10 +1,8 @@
 # ER-диаграмма БД: closing-линии (вкладка «История»)
 
-Целевая схема для замены CSV / localStorage на реляционную БД.
-Основана на текущем формате вкладки **«История»** и справочнике команд.
+Целевая схема Supabase для closing-линий (вкладки **«История»** и **«Линия»**).
 
-Связанные документы: [data-model.md](data-model.md) (старая MVP-модель 1X2),
-[../app/goal_model_train.py](../app/goal_model_train.py) (`RawMatch`), [../app/team_registry.py](../app/team_registry.py).
+Связанные документы: [architecture.md](architecture.md), [reference.md](reference.md), [../app/goal_model_train.py](../app/goal_model_train.py).
 
 ---
 

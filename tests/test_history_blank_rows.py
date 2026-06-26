@@ -16,29 +16,44 @@ from history_store import (  # noqa: E402
 
 
 def test_is_blank_row():
-    assert _is_blank_row(",,,,,,,,,,,")
-    assert _is_blank_row('""",""",""",""",""",""",""",""",""",""",""","""')
-    assert not _is_blank_row('"2026-05-24","Arsenal","2.1","3.4","3.5","Chelsea","","","1","0","H",""')
+    assert _is_blank_row([""] * 12)
+    assert _is_blank_row(['""'] * 12)
+    assert not _is_blank_row(
+        [
+            "2026-05-24",
+            "Arsenal",
+            "2.1",
+            "3.4",
+            "3.5",
+            "Chelsea",
+            "",
+            "",
+            "1",
+            "0",
+            "H",
+            "",
+        ]
+    )
 
 
 def test_filter_and_clean():
     raw = (
-        "Match Date,Team Home,1 Odds\n"
-        '"2026-05-24","Arsenal","2.1"\n'
+        "Match Date,Team Home,Team Away,1 Odds,X Odds,2 Odds\n"
+        '"2026-05-24","Arsenal","Chelsea","2.1","3.4","3.5"\n'
+        ",,,,,\n"
         ",,,,\n"
-        '""",""","""\n'
     )
     cleaned, n = clean_history_text(raw)
     assert n == 2
     assert ",,," not in cleaned.splitlines()[-1]
-    rows, stats = parse_history_text_with_stats(raw)
-    assert stats["blank_rows_removed"] == 2
+    rows, skipped = parse_history_text_with_stats(raw)
+    assert skipped == 2
     assert len(rows) == 1
-    assert rows[0]["team_home"] == "Arsenal"
+    assert rows[0].home_team == "Arsenal"
 
 
 def test_filter_blank_rows_keeps_header():
-    lines = ["h1,h2", "a,b", ",,"]
-    kept, n = _filter_blank_rows(lines)
+    rows = [["h1", "h2"], ["a", "b"], ["", ""]]
+    kept, n = _filter_blank_rows(rows)
     assert n == 1
-    assert kept == ["h1,h2", "a,b"]
+    assert kept == [["h1", "h2"], ["a", "b"]]
