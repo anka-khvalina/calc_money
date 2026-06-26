@@ -1158,6 +1158,10 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       URL.revokeObjectURL(a.href);
     });
 
+    function webAssetUrl(file){
+      return new URL(file, window.location.href).href;
+    }
+
     const API_CONFIG_URL = 'api.config.json';
     let API_BASE = '';
     let _apiConfigPromise = null;
@@ -1166,7 +1170,7 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       if (_apiConfigPromise) return _apiConfigPromise;
       _apiConfigPromise = (async () => {
         try {
-          const res = await fetch(API_CONFIG_URL);
+          const res = await fetch(webAssetUrl(API_CONFIG_URL));
           if (!res.ok) return;
           const cfg = await res.json();
           API_BASE = String(cfg.api_base_url || '').replace(/\/$/, '');
@@ -1196,8 +1200,8 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     async function loadSupabaseConfig(){
       if (_sbConfigPromise) return _sbConfigPromise;
       _sbConfigPromise = (async () => {
-        const res = await fetch(SB_CONFIG_URL);
-        if (!res.ok) throw new Error('Не удалось загрузить конфигурацию Supabase');
+        const res = await fetch(webAssetUrl(SB_CONFIG_URL));
+        if (!res.ok) throw new Error(`Не удалось загрузить supabase.config.json (HTTP ${res.status}). Откройте страницу с Mac: http://ВАШ_IP:8080/FairOddsCalc_iOS.html и проверьте, что веб-сервер запущен из папки web.`);
         const cfg = await res.json();
         SB_URL = String(cfg.rest_url || '').replace(/\/$/, '');
         SB_KEY = String(cfg.anon_key || '').trim();
@@ -3370,9 +3374,24 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         }
         renderHistMatchesTable(matches, `${leagueName || leagueId} / ${seasonLabel || seasonId} — ${matches.length} матчей`);
       } catch (e){
-        alert('Не удалось загрузить матчи выбранного сезона.');
+        console.error('sbSelectHistSeason failed', e);
+        const msg = sbHistErrorMessage(e, 'загрузить матчи сезона');
+        alert(msg);
         renderHistMatchesTable([], `${leagueName || leagueId} / ${seasonLabel || seasonId} — ошибка загрузки`);
+        const meta = document.getElementById('clhMeta');
+        if (meta) meta.textContent = msg;
       }
+    }
+
+    function sbHistErrorMessage(e, what){
+      if (!e) return `Не удалось ${what}.`;
+      if (e.message && e.message.includes('supabase.config')) return e.message;
+      if (e.status === 401 || e.status === 403) return `Нет доступа к Supabase (HTTP ${e.status}). Проверьте anon_key в supabase.config.json.`;
+      if (e.message === 'Failed to fetch' || (e.name === 'TypeError' && String(e.message).includes('fetch'))){
+        return `Нет связи с Supabase. Страница открыта с Mac по Wi‑Fi, но сезоны грузятся из интернета — на этом компьютере нужен рабочий интернет (откройте google.com). Также проверьте, что не блокирует антивирус/файрвол.`;
+      }
+      if (e.status) return `Не удалось ${what} (Supabase HTTP ${e.status}).`;
+      return e.message || `Не удалось ${what}.`;
     }
 
     async function sbInitHistTab(){
@@ -3409,9 +3428,11 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         }
         if (window.goalFillSrcSeasons) window.goalFillSrcSeasons();
       } catch (e){
-        alert('Не удалось загрузить список сезонов.');
+        console.error('sbInitHistTab failed', e);
+        const msg = sbHistErrorMessage(e, 'загрузить список сезонов');
+        alert(msg);
         renderHistSeasonsTable();
-        if (meta) meta.textContent = '';
+        if (meta) meta.textContent = msg;
       }
     }
     window.sbInitHistTab = sbInitHistTab;
