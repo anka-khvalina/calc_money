@@ -3252,6 +3252,48 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       }
       return `<input class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}" value="${escapeHtml(val)}" />`;
     }
+    function sbHistCellDisplay(st, col){
+      return st.edited[col] != null ? st.edited[col] : sbEditDisplay(st.original, col);
+    }
+    function sbHistRefreshRowInputs(mid){
+      const st = window.__SB.matchRows[mid];
+      if (!st) return;
+      document.querySelectorAll(`#clhViewTable tr[data-hist-mid="${mid}"] [data-hist-col], tr[data-hist-weights-for="${mid}"] [data-hist-col]`).forEach(el => {
+        const col = el.getAttribute('data-hist-col');
+        const val = sbHistCellDisplay(st, col);
+        if (el.tagName === 'SELECT') el.value = val;
+        else el.value = val;
+      });
+    }
+    function sbHistUpdateFetchPanel(mid){
+      const st = window.__SB.matchRows[mid];
+      const fetchRow = document.querySelector(`tr[data-hist-fetch-for="${mid}"]`);
+      if (!st || !fetchRow) return;
+      const extInput = fetchRow.querySelector('[data-hist-external-id]');
+      const btn = fetchRow.querySelector('[data-hist-fetch-run]');
+      if (extInput){
+        extInput.value = st.externalMatchId != null ? st.externalMatchId : '';
+        extInput.disabled = !!st.fetchLoading;
+      }
+      if (btn){
+        btn.disabled = !!st.fetchLoading;
+        btn.textContent = st.fetchLoading ? 'Получение...' : 'Получить данные';
+      }
+      let errEl = fetchRow.querySelector('[data-hist-fetch-err]');
+      if (st.fetchError){
+        if (!errEl){
+          errEl = document.createElement('span');
+          errEl.className = 'hist-row-err';
+          errEl.setAttribute('data-hist-fetch-err', '');
+          fetchRow.querySelector('.hist-fetch-panel')?.appendChild(errEl);
+        }
+        errEl.textContent = st.fetchError;
+        errEl.style.display = '';
+      } else if (errEl){
+        errEl.textContent = '';
+        errEl.style.display = 'none';
+      }
+    }
     function sbHistUpdateRowUI(mid){
       const tr = document.querySelector(`#clhViewTable tr[data-hist-mid="${mid}"]`);
       const st = window.__SB.matchRows[mid];
@@ -3345,18 +3387,12 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       const extId = String(st.externalMatchId || '').trim();
       if (!extId){
         st.fetchError = 'Введите id матча с сайта неизвестного мужика';
-        renderHistMatchesTable(
-          window.__SB.matchesBySeason[window.__SB.histSelected ? sbSeasonKey(window.__SB.histSelected.selected_league_id, window.__SB.histSelected.selected_season_id) : ''] || [st.original],
-          document.getElementById('clhMeta').textContent
-        );
+        sbHistUpdateFetchPanel(mid);
         return;
       }
       st.fetchLoading = true;
       st.fetchError = '';
-      renderHistMatchesTable(
-        window.__SB.matchesBySeason[window.__SB.histSelected ? sbSeasonKey(window.__SB.histSelected.selected_league_id, window.__SB.histSelected.selected_season_id) : ''] || [st.original],
-        document.getElementById('clhMeta').textContent
-      );
+      sbHistUpdateFetchPanel(mid);
       try {
         const odds = await userbetFetchOdds(extId);
         Object.assign(st.edited, userbetOddsToUiEdits(odds));
@@ -3366,9 +3402,9 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         st.fetchError = e.message || 'Не удалось получить данные с внешнего сайта';
       } finally {
         st.fetchLoading = false;
-        const key = window.__SB.histSelected ? sbSeasonKey(window.__SB.histSelected.selected_league_id, window.__SB.histSelected.selected_season_id) : null;
-        renderHistMatchesTable(window.__SB.matchesBySeason[key] || [st.original], document.getElementById('clhMeta').textContent);
+        sbHistRefreshRowInputs(mid);
         sbHistUpdateRowUI(mid);
+        sbHistUpdateFetchPanel(mid);
       }
     }
 
@@ -3404,7 +3440,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         if (key && window.__SB.matchesBySeason[key]){
           window.__SB.matchesBySeason[key] = window.__SB.matchesBySeason[key].map(r => Number(r.match_id) === Number(mid) ? updated : r);
         }
-        renderHistMatchesTable(window.__SB.matchesBySeason[key] || [updated], document.getElementById('clhMeta').textContent);
+        sbHistRefreshRowInputs(mid);
       } catch (e){
         console.error('PATCH match failed', e);
         st.saveError = 'Не удалось сохранить коэффициенты в БД';
