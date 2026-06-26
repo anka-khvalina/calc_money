@@ -427,6 +427,12 @@ Inter,Roma,-0.5,2.5,1.9,1.9,1.9,1.9,2.0,3.5,3.5,true
     assert gmt.base_weight(raw[0], cfg) == 1.0
 
 
+def test_effective_home_advantage_derby_fallback_default():
+    st = gmt.StrengthModel(ratings={}, home_advantage=0.30, derby_n=0)
+    cfg = gmt.ModelConfig()
+    assert abs(gmt.effective_home_advantage(st, cfg, neutral=False, derby=True) - 0.21) < 1e-9
+
+
 def test_effective_home_advantage_derby_shrinkage():
     st = gmt.StrengthModel(
         ratings={},

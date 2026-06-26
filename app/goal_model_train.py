@@ -96,7 +96,7 @@ class ModelConfig:
     # прогноз / дерби
     lambda_epsilon: float = 0.05
     derby_shrink_tau: float = 30.0       # τ в w = n/(n+τ) для shrinkage δ_derby
-    derby_h_default_ratio: float = 0.40  # H_derby ≈ ratio×H_league если мало дерби в выборке
+    derby_h_default_ratio: float = 0.70  # H_eff ≈ ratio×H_league если мало дерби (0.4 — агрессивно)
     derby_min_matches: int = 3           # минимум дерби-матчей для оценки δ_derby
 
     # L2-регуляризация r, A, Df (ridge к нулю): loss + reg_lambda·Σ(β²)

@@ -621,6 +621,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <div class="hint">При повторном обучении стягивает r, A, Df к предыдущей модели (0.7 = 70%). Первое обучение — без prior.</div>
         </div>
         <div class="field" style="min-width:150px;flex:1">
+          <label>дерби H×</label><input id="goalDerbyHDefault" value="0.7" />
+          <div class="hint">Если в обучении &lt;3 дерби: H_eff = этот коэфф. × H. 0.7 — default; 0.4 — сильное ослабление дома.</div>
+        </div>
+        <div class="field" style="min-width:150px;flex:1">
           <label>ничья q_min</label><input id="goalQmin" value="0.90" />
           <div class="hint">Насколько сильно МОЖНО уменьшить ничью из матрицы. 0.90 = максимум −10%. Широкий диапазон 0.85 — только для экспериментов.</div>
         </div>
@@ -2962,7 +2966,7 @@ bash scripts/update_and_serve.sh --start</div>
       const h = st.H;
       if (!derby) return h;
       if (!st.derbyN){
-        return h * (cfg.derbyHDefault != null ? cfg.derbyHDefault : 0.4);
+        return h * (cfg.derbyHDefault != null ? cfg.derbyHDefault : 0.7);
       }
       const hObs = h + (st.deltaDerby || 0);
       const w = st.derbyShrinkW != null ? st.derbyShrinkW : 0;
@@ -3200,7 +3204,7 @@ bash scripts/update_and_serve.sh --start</div>
         seasonWeightsById: goalSeasonWeightById || {},
         priorAlpha:f('goalPriorAlpha',0.7), promotedN:3, regLambda:0.1,
         dClampLowTeam:3, dClampEarlyFraction:0.25,
-        derbyShrinkTau:30, derbyHDefault:0.4, derbyMinMatches:3,
+        derbyShrinkTau:30, derbyHDefault:f('goalDerbyHDefault',0.7), derbyMinMatches:3,
         useDraw:document.getElementById('goalUseDraw').checked, useDc:document.getElementById('goalUseDc').checked,
         qmin:f('goalQmin',0.90), qmax:f('goalQmax',1.10) };
     }
@@ -3986,6 +3990,7 @@ bash scripts/update_and_serve.sh --start</div>
         + goalRenderTrainTable([
           ['α форы', goalFmtTrainNum(cfg.alphaAh, 2), 'num'],
           ['α тотала', goalFmtTrainNum(cfg.alphaT, 2), 'num'],
+          ['дерби H×', goalFmtTrainNum(cfg.derbyHDefault, 2), 'num'],
           ['Модель ничьи', cfg.useDraw ? 'вкл' : 'выкл', ''],
           ['Dixon-Coles', cfg.useDc ? 'вкл' : 'выкл', ''],
           ['Вес ничьи (loss)', goalFmtTrainNum(cfg.drawLoss, 2), 'num'],
@@ -4370,7 +4375,7 @@ bash scripts/update_and_serve.sh --start</div>
       catch (e){ alert(e.message || e); }
     });
 
-    ['goalAlphaAh','goalAlphaT','goalPriorAlpha','goalQmin','goalQmax'].forEach(id => {
+    ['goalAlphaAh','goalAlphaT','goalPriorAlpha','goalDerbyHDefault','goalQmin','goalQmax'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', () => goalUpdateTrainUI());
     });

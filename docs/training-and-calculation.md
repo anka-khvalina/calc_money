@@ -296,7 +296,7 @@ S_final = c + d · S_pred
 
 ```text
 H_eff = shrink(H_league + δ_used)     # если δ оценена (≥3 дерби в обучении)
-H_eff = 0.4 × H_league                # иначе запасной коэффициент
+H_eff = derbyDefaultFactor × H_league      # мало дерби в обучении (default 0.7; 0.4 — агрессивно)
 H_eff = H_league                      # не дерби
 H_eff = 0                             # нейтраль
 ```

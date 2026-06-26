@@ -1936,6 +1936,8 @@ def build_app():
     goal_use_draw_var = tk.BooleanVar(value=True)
     goal_use_dc_var = tk.BooleanVar(value=True)
     _cb_draw = ttk.Checkbutton(goal_cfg_frame, text="Модель ничьи", variable=goal_use_draw_var)
+    _cfg_entry(goal_cfg_frame, 3, 0, "дерби H×:", "derby_h_default", 0.7,
+               hint="Если в обучении <3 дерби: H_eff = коэфф. × H_league. 0.7 — default; 0.4 — агрессивное ослабление дома.")
     _cb_draw.grid(row=3, column=3, sticky="w", padx=(0, 12))
     _attach_tip(_cb_draw, "Считать ничью отдельной моделью и ею корректировать диагональ матрицы. Выкл → ничья как есть из Пуассона.")
     _cb_dc = ttk.Checkbutton(goal_cfg_frame, text="Dixon-Coles", variable=goal_use_dc_var)
@@ -1991,6 +1993,7 @@ def build_app():
             promoted_reference_n=int(f("promoted_n", 3)),
             draw_diag_multiplier_min=f("q_min", 0.90),
             draw_diag_multiplier_max=f("q_max", 1.10),
+            derby_h_default_ratio=f("derby_h_default", 0.7),
             use_draw_model=goal_use_draw_var.get(),
             use_dixon_coles=goal_use_dc_var.get(),
         )

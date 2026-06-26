@@ -94,7 +94,7 @@ D_m ≈ r_home − r_away + H_league · I_home + δ_derby · I_derby_home
 H_eff = 0                              # нейтральное поле
 H_eff = H_league                       # обычный матч
 H_eff = shrink(H_league + δ_used)      # дерби (если δ оценена)
-H_eff = 0.4 × H_league                 # дерби, но мало дерби в обучении
+H_eff = derbyDefaultFactor × H_league    # дерби, мало данных (default 0.7; 0.4 — агрессивно)
 ```
 
 ```text
