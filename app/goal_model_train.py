@@ -86,9 +86,11 @@ class ModelConfig:
 
     # модель ничьей: legacy = абсолютная P_X; residual_dc = q после DC (эксп.)
     use_draw_model: bool = False
-    draw_model_mode: str = "legacy"  # legacy | residual_dc
-    draw_diag_multiplier_min: float = 0.95
+    draw_model_mode: str = "residual_dc"  # legacy | residual_dc
+    draw_diag_multiplier_min: float = 0.95   # legacy draw
     draw_diag_multiplier_max: float = 1.05
+    draw_residual_multiplier_min: float = 0.98  # residual: узкая поправка после DC
+    draw_residual_multiplier_max: float = 1.03
     w_1x2_normal: float = 1.0
     w_1x2_suspicious: float = 0.5
     w_1x2_missing: float = 0.0
@@ -1103,7 +1105,19 @@ class DrawModel:
         """Residual DC: q = exp(z), clamp в [q_min, q_max]. Legacy: P_X / P_X_dc через target."""
         z = self._logit_z(d_final, s_final)
         q = math.exp(z)
-        return min(cfg.draw_diag_multiplier_max, max(cfg.draw_diag_multiplier_min, q))
+        q_min, q_max = effective_draw_q_bounds(cfg, self.mode)
+        return min(q_max, max(q_min, q))
+
+
+def effective_draw_q_bounds(
+    cfg: ModelConfig,
+    draw_mode: Optional[str] = None,
+) -> Tuple[float, float]:
+    """q_min/q_max для legacy или residual draw."""
+    mode = draw_mode or cfg.draw_model_mode
+    if mode == "residual_dc":
+        return cfg.draw_residual_multiplier_min, cfg.draw_residual_multiplier_max
+    return cfg.draw_diag_multiplier_min, cfg.draw_diag_multiplier_max
 
 
 _DRAW_DEFAULT = DrawModel(
@@ -1206,7 +1220,8 @@ def fit_draw_residual_model(
         if px_dc <= 1e-9:
             continue
         q = m.px_shin / px_dc
-        q = min(cfg.draw_diag_multiplier_max * 1.5, max(cfg.draw_diag_multiplier_min * 0.5, q))
+        q_lo, q_hi = effective_draw_q_bounds(cfg, "residual_dc")
+        q = min(q_hi * 1.5, max(q_lo * 0.5, q))
         if q <= 0:
             continue
         feats = [1.0, abs(d_cal), s_cal, s_cal * s_cal, abs(d_cal) * s_cal]
@@ -1398,10 +1413,11 @@ def predict_match(
             draw_target = q * px_matrix
         else:
             draw_target = model.draw.target_px(d_final, s_final)
+        q_min, q_max = effective_draw_q_bounds(cfg, model.draw.mode)
         matrix, draw_diag = gm.adjust_matrix_to_draw_target(
             matrix, draw_target,
-            q_min=cfg.draw_diag_multiplier_min,
-            q_max=cfg.draw_diag_multiplier_max,
+            q_min=q_min,
+            q_max=q_max,
         )
 
     markets = gm.markets_from_matrix(matrix)
@@ -1456,8 +1472,7 @@ def draw_q_diagnostics(
 ) -> DrawQDiagnostics:
     """Доля матчей, где q = clamp(P_X^target/P_X^matrix) упёрся в q_min/q_max."""
     cfg = model.config
-    q_min = cfg.draw_diag_multiplier_min
-    q_max = cfg.draw_diag_multiplier_max
+    q_min, q_max = effective_draw_q_bounds(cfg, model.draw.mode if cfg.use_draw_model else None)
     if not cfg.use_draw_model:
         return DrawQDiagnostics(
             0, 0, 0.0, 0, 0.0, q_min, q_max, warn_pct, True,
@@ -1642,7 +1657,20 @@ def draw_harm_diagnostics(
     if n == 0:
         summary = "нет матчей с 1X2"
     elif not model.config.use_draw_model:
-        summary = "; ".join(parts) + " (модель ничьи выкл)"
+        body = "; ".join(parts) + " (модель ничьи выкл)"
+        if mean_pois < -0.01 and abs(mean_dc) < 0.008:
+            summary = (
+                "Пуассон системно занижает ничью, DC исправляет среднюю ошибку. "
+                + body
+            )
+        else:
+            summary = body
+        low_s_gap = _avg(low_s_dc) - _avg(low_s_mkt) if low_s_mkt else 0.0
+        if low_s_mkt and low_s_gap < -0.008:
+            summary += (
+                f"; S<{low_s_threshold}: недобор ничьи после DC "
+                f"({low_s_gap * 100:+.1f} п.п.) — возможна residual-поправка"
+            )
     elif harms_worse:
         summary = (
             "; ".join(parts)

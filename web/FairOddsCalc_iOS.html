@@ -641,9 +641,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <select id="goalSCalMode">
             <option value="off" selected>off</option>
             <option value="soft">soft</option>
+          </select>
+          <div class="hint">off: c=0,d=1 (S из OU, рабочий режим). soft: штраф c,d + |ΔS|≤лимит.</div>
+        </div>
+        <div class="field" style="min-width:120px;flex:1" id="goalSCalFreeWrap" hidden>
+          <label>калибр. S (эксп.)</label>
+          <select id="goalSCalModeExp">
             <option value="free">free</option>
           </select>
-          <div class="hint">off: c=0,d=1 (S из OU). soft: штраф c,d + |ΔS|≤лимит. free: без ограничений (эксперимент).</div>
+          <div class="hint">free: без ограничений — только для экспериментов.</div>
         </div>
         <div class="field" style="min-width:120px;flex:1">
           <label>max |ΔS|</label><input id="goalSCalMaxDelta" value="0.15" />
@@ -655,22 +661,26 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </div>
       </div>
       <div class="row" style="flex-wrap:wrap;gap:16px;">
-        <label style="display:flex;align-items:flex-start;gap:6px;">
+        <label style="display:flex;align-items:flex-start;gap:6px;" id="goalUseDrawWrap" hidden>
           <input id="goalUseDraw" type="checkbox" style="width:auto;margin-top:2px" />
-          <span><span class="small">Модель ничьи</span><span class="hint" style="display:block">Считать ничью отдельной моделью и корректировать ею диагональ матрицы. Выкл → ничья как есть из Пуассона.</span></span>
+          <span><span class="small">Модель ничьи (эксп.)</span><span class="hint" style="display:block">Рабочий baseline: выкл. Residual — узкая поправка после DC.</span></span>
         </label>
         <label style="display:flex;align-items:flex-start;gap:6px;">
           <input id="goalUseDc" type="checkbox" checked style="width:auto;margin-top:2px" />
           <span><span class="small">Dixon-Coles</span><span class="hint" style="display:block">Поправка вероятностей низких счетов (0:0, 1:0, 0:1, 1:1) — рынок их оценивает иначе, чем чистый Пуассон.</span></span>
         </label>
-        <div class="field" style="min-width:150px;flex:1">
-          <label>режим ничьи</label>
+        <div class="field" style="min-width:150px;flex:1" id="goalDrawModeWrap" hidden>
+          <label>режим ничьи (эксп.)</label>
           <select id="goalDrawMode">
+            <option value="residual_dc" selected>residual (после DC)</option>
             <option value="legacy">legacy (абс. P_X)</option>
-            <option value="residual_dc">residual (после DC)</option>
           </select>
-          <div class="hint">residual: q = P_X^рынок / P_X^DC — эксперимент, не дублирует Dixon–Coles.</div>
+          <div class="hint">residual: q = P_X^рынок / P_X^DC, q ∈ [0.98, 1.03]. legacy — старый режим.</div>
         </div>
+        <label style="display:flex;align-items:flex-start;gap:6px;">
+          <input id="goalExperimental" type="checkbox" style="width:auto;margin-top:2px" />
+          <span><span class="small">Экспериментальные режимы</span><span class="hint" style="display:block">Модель ничьи, legacy draw, S cal free — не для рабочего baseline.</span></span>
+        </label>
       </div>
       <div class="goal-train-actions">
         <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
@@ -3182,6 +3192,29 @@ bash scripts/update_and_serve.sh --start</div>
       }
       return {a:full[0],b:full[1],c:full[2],d:full[3],gamma:full[4],n1x2:used.length};
     }
+    function gmEffectiveQBounds(cfg, drawMode){
+      const mode=drawMode||cfg.drawMode||'residual_dc';
+      if(mode==='residual_dc') return [cfg.qResMin!=null?cfg.qResMin:0.98, cfg.qResMax!=null?cfg.qResMax:1.03];
+      return [cfg.qmin, cfg.qmax];
+    }
+    function gmResolvedSCalMode(){
+      const exp=document.getElementById('goalExperimental')&&document.getElementById('goalExperimental').checked;
+      const base=(document.getElementById('goalSCalMode')||{}).value||'off';
+      if(exp){
+        const free=(document.getElementById('goalSCalModeExp')||{}).value;
+        if(free==='free') return 'free';
+      }
+      return base;
+    }
+    function gmToggleExperimentalUi(){
+      const exp=!!(document.getElementById('goalExperimental')&&document.getElementById('goalExperimental').checked);
+      ['goalUseDrawWrap','goalDrawModeWrap','goalSCalFreeWrap'].forEach(id=>{
+        const el=document.getElementById(id); if(el) el.hidden=!exp;
+      });
+      if(!exp){
+        const draw=document.getElementById('goalUseDraw'); if(draw) draw.checked=false;
+      }
+    }
     function gmFitDraw(ms,cfg){
       const rows=[];
       for(const m of ms){ if(m.px==null||m.D==null||m.S==null) continue; const px=m.px; if(px<=0||px>=1) continue;
@@ -3198,7 +3231,8 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function gmDrawQMult(dm,D,S,cfg){
       const z=gmLogitZ(dm,D,S); const q=Math.exp(z);
-      return Math.min(cfg.qmax, Math.max(cfg.qmin, q));
+      const [qmin,qmax]=gmEffectiveQBounds(cfg, dm.mode);
+      return Math.min(qmax, Math.max(qmin, q));
     }
     function gmCalibratedSdForMatch(m,st,gl,cal,cfg){
       const derby=gmDerbyHome(m);
@@ -3223,7 +3257,8 @@ bash scripts/update_and_serve.sh --start</div>
         const [,pxDc]=gmProb1x2FromSd(sCal,dCal,cfg,gamma);
         if(pxDc<=1e-9) continue;
         let q=m.px/pxDc;
-        q=Math.min(cfg.qmax*1.5, Math.max(cfg.qmin*0.5, q));
+        const [qLo,qHi]=gmEffectiveQBounds(cfg,'residual_dc');
+        q=Math.min(qHi*1.5, Math.max(qLo*0.5, q));
         if(q<=0) continue;
         const da=Math.abs(dCal), S=sCal;
         rows.push([[1,da,S,S*S,da*S],Math.log(q),w]);
@@ -3280,9 +3315,10 @@ bash scripts/update_and_serve.sh --start</div>
       let dtarget=null,diag=null;
       if(cfg.useDraw){
         const pxMat=gmDrawProb(mat);
+        const [qmin,qmax]=gmEffectiveQBounds(cfg, draw.mode);
         if(draw.mode==='residual_dc') dtarget=gmDrawQMult(draw,df,sf,cfg)*pxMat;
         else dtarget=gmDrawTarget(draw,df,sf);
-        [mat,diag]=gmAdjustDraw(mat,dtarget,cfg.qmin,cfg.qmax);
+        [mat,diag]=gmAdjustDraw(mat,dtarget,qmin,qmax);
       }
       return {lh,la,df,sf,markets:gmMarkets(mat),drawTarget:dtarget,drawDiag:diag};
     }
@@ -3329,7 +3365,7 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function gmDrawQDiagnostics(model, ms, warnPct=12){
       if(!model.cfg.useDraw) return { nEval:0, nClamped:0, clampPct:0, nNearOne:0, nearOnePct:0, stable:true, summary:'модель ничьи выкл', rows:[] };
-      const qmin=model.cfg.qmin, qmax=model.cfg.qmax;
+      const [qmin,qmax]=gmEffectiveQBounds(model.cfg, model.draw&&model.draw.mode);
       const rows=[]; let nEval=0, nClamped=0, nNearOne=0;
       for(const m of ms){
         if(!m.home||!m.away) continue;
@@ -3390,7 +3426,15 @@ bash scripts/update_and_serve.sh --start</div>
       const harmsWorse=model.cfg.useDraw&&(Math.abs(meanF)>Math.abs(meanD)+1e-9||maeF>maeD+1e-9);
       let summary;
       if(!n) summary='нет матчей с 1X2';
-      else if(!model.cfg.useDraw) summary=`err_PX: Пуассон ${meanP>=0?'+':''}${meanP.toFixed(3)}; после DC ${meanD>=0?'+':''}${meanD.toFixed(3)}; финал ${meanF>=0?'+':''}${meanF.toFixed(3)} (модель ничьи выкл)`;
+      else if(!model.cfg.useDraw){
+        const body=`err_PX: Пуассон ${meanP>=0?'+':''}${meanP.toFixed(3)}; после DC ${meanD>=0?'+':''}${meanD.toFixed(3)}; финал ${meanF>=0?'+':''}${meanF.toFixed(3)} (модель ничьи выкл)`;
+        if(meanP<-0.01&&Math.abs(meanD)<0.008) summary='Пуассон системно занижает ничью, DC исправляет среднюю ошибку. '+body;
+        else summary=body;
+        if(low.mkt.length){
+          const gap=avg(low.dc)-avg(low.mkt);
+          if(gap<-0.008) summary+=`; S<${lowSThreshold}: недобор ничьи после DC (${(gap*100).toFixed(1)} п.п.) — возможна residual-поправка`;
+        }
+      }
       else if(harmsWorse) summary=`err_PX: Пуассон ${meanP>=0?'+':''}${meanP.toFixed(3)}; после DC ${meanD>=0?'+':''}${meanD.toFixed(3)}; финал ${meanF>=0?'+':''}${meanF.toFixed(3)}; модель ничьи ухудшает DC на этой выборке (${pctHarms.toFixed(0)}% матчей)`;
       else summary=`err_PX: Пуассон ${meanP>=0?'+':''}${meanP.toFixed(3)}; после DC ${meanD>=0?'+':''}${meanD.toFixed(3)}; финал ${meanF>=0?'+':''}${meanF.toFixed(3)}; draw OK (${pctHarms.toFixed(0)}% хуже DC)`;
       return {
@@ -3516,10 +3560,12 @@ bash scripts/update_and_serve.sh --start</div>
         regLambda:0.1, regLambdaAttack:f('goalRegLambdaAD',0.1), regLambdaDefense:f('goalRegLambdaAD',0.1),
         dClampLowTeam:3, dClampEarlyFraction:0.25,
         derbyShrinkTau:30, derbyHDefault:f('goalDerbyHDefault',0.7), derbyMinMatches:3,
-        useDraw:document.getElementById('goalUseDraw').checked, useDc:document.getElementById('goalUseDc').checked,
-        drawMode:(document.getElementById('goalDrawMode')||{}).value||'legacy',
+        useDraw:document.getElementById('goalExperimental')&&document.getElementById('goalExperimental').checked&&document.getElementById('goalUseDraw').checked,
+        useDc:document.getElementById('goalUseDc').checked,
+        drawMode:(document.getElementById('goalDrawMode')||{}).value||'residual_dc',
         qmin:f('goalQmin',0.95), qmax:f('goalQmax',1.05),
-        sCalMode:(document.getElementById('goalSCalMode')||{}).value||'off',
+        qResMin:0.98, qResMax:1.03,
+        sCalMode:gmResolvedSCalMode(),
         sCalMaxDelta:f('goalSCalMaxDelta',0.15), gammaMax:f('goalGammaMax',0.20) };
     }
     function gmSeasonWeight(rec, cfg){
@@ -4326,9 +4372,9 @@ bash scripts/update_and_serve.sh --start</div>
           ['α тотала', goalFmtTrainNum(cfg.alphaT, 2), 'num'],
           ['λ A / Df', goalFmtTrainNum(cfg.regLambdaAttack, 2), 'num'],
           ['дерби H×', goalFmtTrainNum(cfg.derbyHDefault, 2), 'num'],
-          ['Модель ничьи', cfg.useDraw ? (`вкл (${cfg.drawMode || 'legacy'})`) : 'выкл', ''],
+          ['Модель ничьи', cfg.useDraw ? (`вкл (${cfg.drawMode || 'residual_dc'}, эксп.)`) : 'выкл (baseline)', ''],
           ['Dixon-Coles', cfg.useDc ? 'вкл' : 'выкл', ''],
-          ['калибр. S', cfg.sCalMode || 'off', ''],
+          ['калибр. S', cfg.sCalMode || 'off', cfg.sCalMode === 'free' ? 'warn' : ''],
           ['max |ΔS|', goalFmtTrainNum(cfg.sCalMaxDelta, 2), 'num'],
           ['γ max', goalFmtTrainNum(cfg.gammaMax, 2), 'num'],
           ['Вес ничьи (loss)', goalFmtTrainNum(cfg.drawLoss, 2), 'num'],
@@ -4491,11 +4537,13 @@ bash scripts/update_and_serve.sh --start</div>
           const calDiag = gmModel.calDiag;
           const drawQDiag = gmModel.drawQDiag;
           const sdDiag = gmModel.sdDiag;
+          const drawHarmDiag = gmModel.drawHarmDiag;
           const calWarn = calDiag && !calDiag.stable;
           const qWarn = drawQDiag && drawQDiag.nEval > 0 && !drawQDiag.stable;
           const sdWarn = sdDiag && sdDiag.nEval > 0 && !sdDiag.stable;
+          const harmWarn = drawHarmDiag && drawHarmDiag.harmsWorseThanAfterDc;
           const clampWarn = clamp && ((clamp.nHit > 0 && clamp.pct > 2) || (clamp.nSensitive > 0));
-          banner.classList.add((qual.tier === 'warn' || clampWarn || calWarn || qWarn || sdWarn) ? 'warn' : 'ok');
+          banner.classList.add((qual.tier === 'warn' || clampWarn || calWarn || qWarn || sdWarn || harmWarn) ? 'warn' : 'ok');
           const priorNote = (gmModel.cfg && gmModel.cfg.priorAlpha > 0 && goalTrainState.priorUsed)
             ? ` Prior α=${goalFmtTrainNum(gmModel.cfg.priorAlpha, 2)} (стягивание к прошлой модели).` : '';
           let clampNote = '';
@@ -4517,7 +4565,11 @@ bash scripts/update_and_serve.sh --start</div>
           if (sdWarn){
             sdNote = ` S/D→1X2: ${sdDiag.summary}.`;
           }
-          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${n} матчах. ${qual.short}: ${qual.detail}${clampNote}${calNote}${qNote}${sdNote}${priorNote}`;
+          let harmNote = '';
+          if (harmWarn){
+            harmNote = ' Модель ничьи ухудшает DC — рассмотрите выкл draw или residual.';
+          }
+          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${n} матчах. ${qual.short}: ${qual.detail}${clampNote}${calNote}${qNote}${harmNote}${sdNote}${priorNote}`;
         }
       }
       goalRenderTrainDataPanel();
@@ -4804,10 +4856,14 @@ bash scripts/update_and_serve.sh --start</div>
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', () => goalUpdateTrainUI());
     });
-    ['goalUseDraw','goalUseDc'].forEach(id => {
+    ['goalUseDraw','goalUseDc','goalExperimental'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.addEventListener('change', () => goalUpdateTrainUI());
+      if (el) el.addEventListener('change', () => {
+        if (id === 'goalExperimental') gmToggleExperimentalUi();
+        goalUpdateTrainUI();
+      });
     });
+    gmToggleExperimentalUi();
     document.getElementById('goalSeasonWeightsTable')?.addEventListener('input', e => {
       if (e.target.classList.contains('goal-season-w')) goalUpdateTrainUI();
     });

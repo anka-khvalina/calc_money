@@ -433,6 +433,15 @@ def test_draw_harm_diagnostics_default_draw_off():
     assert model.draw_harm_diag.n_matches > 0
     assert not model.draw_harm_diag.harms_worse_than_after_dc
     assert abs(model.draw_harm_diag.mean_err_px_final - model.draw_harm_diag.mean_err_px_after_dc) < 1e-6
+    if model.draw_harm_diag.mean_err_px_poisson < -0.01:
+        assert "Пуассон системно занижает ничью" in model.draw_harm_diag.summary
+
+
+def test_effective_draw_q_bounds():
+    cfg = gmt.ModelConfig()
+    assert gmt.effective_draw_q_bounds(cfg, "residual_dc") == (0.98, 1.03)
+    assert gmt.effective_draw_q_bounds(cfg, "legacy") == (0.95, 1.05)
+    assert cfg.draw_model_mode == "residual_dc"
 
 
 def test_residual_draw_model_fit():

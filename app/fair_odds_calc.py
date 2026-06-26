@@ -1939,10 +1939,10 @@ def build_app():
     ttk.Label(goal_cfg_frame, text="калибр. S:").grid(row=3, column=6, sticky="w", padx=(0, 4))
     s_cal_combo = ttk.Combobox(
         goal_cfg_frame, textvariable=goal_s_cal_mode_var, width=6,
-        values=("off", "soft", "free"), state="readonly",
+        values=("off", "soft"), state="readonly",
     )
     s_cal_combo.grid(row=3, column=7, sticky="w", padx=(0, 8))
-    _attach_tip(s_cal_combo, "off: c=0,d=1; soft: штраф+лимит ΔS; free: без ограничений.")
+    _attach_tip(s_cal_combo, "off: c=0,d=1 (рабочий режим); soft: штраф+лимит ΔS. free — только в коде (эксп.).")
     _cfg_entry(goal_cfg_frame, 3, 4, "γ max:", "gamma_max", 0.20,
                hint="Dixon–Coles: |γ| не выше (±).")
 
