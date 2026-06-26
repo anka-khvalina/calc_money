@@ -64,6 +64,11 @@ curl http://192.168.1.195:8765/health
 
 Должно вернуть `{"ok":true}`.
 
+Если с Mac `curl http://127.0.0.1:8765/health` работает, а с IP Mac — нет: **файрвол macOS** блокирует порт 8765.  
+System Settings → Network → Firewall → Options → разрешите **Python** (или отключите файрвол для теста).
+
+В браузере на втором ПК страница сама подставляет IP Mac вместо `localhost` в `api.config.json` (обновите HTML: Cmd+Shift+R).
+
 Только обновить конфиг без автозапуска:
 
 ```bash

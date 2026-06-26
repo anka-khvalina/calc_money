@@ -1185,20 +1185,66 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     }
 
     const API_CONFIG_URL = 'api.config.json';
+    const DEFAULT_API_PORT = 8765;
     let API_BASE = '';
     let _apiConfigPromise = null;
+
+    function isLoopbackHost(host){
+      const h = String(host || '').toLowerCase();
+      return !h || h === 'localhost' || h === '127.0.0.1';
+    }
+
+    /** Если страница открыта по IP Mac в Wi‑Fi, localhost в конфиге → тот же IP (порт 8765). */
+    function resolveApiBase(configured){
+      const pageHost = window.location.hostname || '';
+      const pageOnLan = !isLoopbackHost(pageHost);
+      let base = String(configured || '').trim().replace(/\/$/, '');
+      if (!base){
+        if (pageOnLan) return `http://${pageHost}:${DEFAULT_API_PORT}`;
+        return '';
+      }
+      try {
+        const u = new URL(base);
+        if (isLoopbackHost(u.hostname) && pageOnLan){
+          u.hostname = pageHost;
+          return u.toString().replace(/\/$/, '');
+        }
+        return base;
+      } catch (_e){
+        return base;
+      }
+    }
 
     async function loadApiConfig(){
       if (_apiConfigPromise) return _apiConfigPromise;
       _apiConfigPromise = (async () => {
+        let configured = '';
         try {
           const res = await fetch(webAssetUrl(API_CONFIG_URL));
-          if (!res.ok) return;
-          const cfg = await res.json();
-          API_BASE = String(cfg.api_base_url || '').replace(/\/$/, '');
+          if (res.ok){
+            const cfg = await res.json();
+            configured = cfg.api_base_url || '';
+          }
         } catch (_e){ /* optional until fetch-odds used */ }
+        API_BASE = resolveApiBase(configured);
       })();
       return _apiConfigPromise;
+    }
+
+    async function sbCheckHistoryApi(){
+      await loadApiConfig();
+      if (!API_BASE) return { ok: false, url: '', error: 'api_base_url не задан' };
+      try {
+        const r = await fetch(`${API_BASE}/health`, { method: 'GET', cache: 'no-store' });
+        if (r.ok) return { ok: true, url: API_BASE };
+        return { ok: false, url: API_BASE, error: `HTTP ${r.status}` };
+      } catch (_e){
+        return {
+          ok: false,
+          url: API_BASE,
+          error: 'нет соединения — на Mac запустите History API и откройте порт 8765 в файрволе',
+        };
+      }
     }
 
     // ---------------- Supabase справочник (вкладка «Справочник») ----------------
@@ -3034,7 +3080,11 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
           body: JSON.stringify({ id_fixture: extId }),
         });
       } catch (_e){
-        throw new Error('Не удалось связаться с API (проверьте, что бэкенд запущен)');
+        throw new Error(
+          `Не удалось связаться с API (${API_BASE}). ` +
+          `На Mac: bash scripts/run_history_api.sh (порт 8765, bind 0.0.0.0). ` +
+          `Проверка с этого ПК: curl ${API_BASE}/health`
+        );
       }
       let data;
       try { data = await resp.json(); } catch (_e){
@@ -3448,6 +3498,14 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
             await sbSelectHistSeason(sel.selected_league_id, sel.selected_season_id, sel.selected_league_name, sel.selected_season_label);
           }
         }
+        sbCheckHistoryApi().then(st => {
+          if (st.ok) return;
+          const hint = `History API: ${st.url} — ${st.error}`;
+          const m = document.getElementById('clhMeta');
+          if (m && m.textContent && m.textContent.indexOf('History API') < 0){
+            m.textContent += ` | ⚠ ${hint}`;
+          }
+        });
       } catch (e){
         console.error('sbInitHistTab failed', e);
         const msg = sbHistErrorMessage(e, 'загрузить список сезонов');

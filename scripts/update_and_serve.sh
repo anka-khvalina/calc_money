@@ -137,10 +137,17 @@ if [[ "$DO_START" -eq 1 ]]; then
   start_tmux_session "fair-odds-api" "$ROOT" "bash scripts/run_history_api.sh"
   start_tmux_session "fair-odds-web" "$ROOT/web" "python3 -m http.server ${WEB_PORT} --bind 0.0.0.0"
   sleep 2
-  if check_health "${API_URL}/health"; then
-    echo "  History API: OK"
+  if check_health "http://127.0.0.1:${API_PORT}/health"; then
+    echo "  History API (localhost): OK"
   else
     echo "  History API: ещё стартует или ошибка — смотрите: tmux attach -t fair-odds-api" >&2
+  fi
+  if check_health "http://${LAN_IP}:${API_PORT}/health"; then
+    echo "  History API (LAN ${LAN_IP}): OK"
+  else
+    echo "  ВНИМАНИЕ: с другого ПК API не отвечает на ${LAN_IP}:${API_PORT}" >&2
+    echo "  → System Settings → Network → Firewall: разрешите Python / входящие на порт ${API_PORT}" >&2
+    echo "  → Убедитесь, что API слушает 0.0.0.0: lsof -nP -iTCP:${API_PORT} -sTCP:LISTEN" >&2
   fi
   echo ""
   echo "Остановить: tmux kill-session -t fair-odds-api; tmux kill-session -t fair-odds-web"
