@@ -2104,6 +2104,9 @@ def build_app():
         q_note = ""
         if model.draw_q_diag and model.draw_q_diag.n_eval > 0:
             q_note = f"Draw q: {model.draw_q_diag.summary}\n"
+        sd_note = ""
+        if model.sd_diag and model.sd_diag.n_eval > 0:
+            sd_note = f"S/D→1X2: {model.sd_diag.summary}\n"
         dc_line = (
             f"Dixon-Coles: вкл, γ={c.gamma:.4f}  "
             if model.config.use_dixon_coles
@@ -2113,6 +2116,7 @@ def build_app():
             _goal_d_clamp_note(model)
             + cal_note
             + q_note
+            + sd_note
             + f"Обучено: {n_matches} матчей, команд {len(st.ratings)}\n"
             f"H={st.home_advantage:.3f}  δ_derby={st.derby_home_delta:.3f}  "
             f"n_derby={st.derby_n}  RMSE_D={st.rmse:.3f}\n"

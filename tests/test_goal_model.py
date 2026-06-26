@@ -406,6 +406,29 @@ def test_draw_q_diagnostics_on_trained_model():
     assert model.draw_q_diag.n_eval > 0
 
 
+def test_sd_1x2_diagnostics_on_trained_model():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    model, prepared = gmt.train_full_model(gmt.load_raw_matches(csv_path))
+    assert model.sd_diag is not None
+    assert model.sd_diag.n_eval > 0
+    assert len(model.sd_diag.rows) == model.sd_diag.n_eval
+    assert model.sd_diag.by_s
+    assert model.sd_diag.by_d
+    for row in model.sd_diag.rows:
+        assert row.err_x_model == row.px_model - row.px_market
+        assert row.delta_s_cal == row.s_cal - row.s_model
+
+
+def test_sd_1x2_market_matrix_covers_matches():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    model, prepared = gmt.train_full_model(gmt.load_raw_matches(csv_path))
+    diag = model.sd_diag
+    assert diag is not None
+    # Вариант A: рынок S/D → матрица должен давать конечные вероятности
+    assert all(0 <= r.px_market_sd <= 1 for r in diag.rows)
+    assert all(abs(r.p1_market_sd + r.px_market_sd + r.p2_market_sd - 1.0) < 1e-6 for r in diag.rows)
+
+
 def test_calibration_stability_unstable_example():
     cal = gmt.Calibration(a=0.0, b=0.45, c=-0.9, d=1.8, n_1x2=50)
     diag = gmt.assess_calibration_stability(cal)
