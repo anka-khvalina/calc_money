@@ -1,62 +1,38 @@
-# Документация: калькулятор честных коэффициентов
+# Документация FairOddsCalc
 
-Пакет технической документации для десктоп-приложения расчёта «честных» футбольных коэффициентов на исходы **P1 / X / P2** (победа хозяев / ничья / победа гостей).
-
-**Статус:** только документация. Прикладной код и выбор GUI-фреймворка — после согласования (см. [mvp-scope.md](mvp-scope.md)).
+Техническая документация актуального приложения (desktop + web/iOS + Supabase).
 
 ## Порядок чтения
 
-1. [glossary.md](glossary.md) — термины и определения.
-2. [requirements.md](requirements.md) — цели, сценарии 1 и 2, пользовательские потоки.
-3. [scenarios.md](scenarios.md) — выбор сценария, критерии общего соперника, надёжность.
-4. [data-model.md](data-model.md) — сущности, импорт, валидация.
-5. [calculation.md](calculation.md) — формулы с нуля, примеры, псевдокод.
-6. [ui-spec.md](ui-spec.md) — экраны десктопа MVP.
-7. [mvp-scope.md](mvp-scope.md) — границы первой версии кода.
-8. [open-questions.md](open-questions.md) — нерешённое и принятые допущения.
-
-## Карта зависимостей
-
-```mermaid
-flowchart TB
-  REQ[requirements.md]
-  SCEN[scenarios.md]
-  DATA[data-model.md]
-  CALC[calculation.md]
-  UI[ui-spec.md]
-  OPEN[open-questions.md]
-  MVP[mvp-scope.md]
-  REQ --> SCEN
-  SCEN --> CALC
-  REQ --> CALC
-  DATA --> CALC
-  CALC --> UI
-  OPEN --> MVP
-```
+1. [architecture.md](architecture.md) — что есть сейчас: вкладки, потоки данных, модули
+2. [reference.md](reference.md) — **все REST-ручки**, маппинги UI ↔ БД, whitelist PATCH
+3. [calculation.md](calculation.md) — формулы (краткий справочник)
+4. **[training-and-calculation.md](training-and-calculation.md)** — **обучение и расчёт линии (подробно)**
+5. [db-er-closing-lines.md](db-er-closing-lines.md) — схема БД closing-линий
+6. [glossary.md](glossary.md) — термины
+7. [ios-preview.md](ios-preview.md) — как открыть web-версию
+8. [scripts.md](scripts.md) — bash-скрипты (LAN, логи, API)
 
 ## Примеры данных
 
-Каталог [examples/](examples/):
+Каталог [examples/](examples/) — CSV для CLI-тестов и `goal_model_train.py`:
 
 | Файл | Назначение |
 |------|------------|
-| [season_odds_la_liga_2024_25.csv](examples/season_odds_la_liga_2024_25.csv) | **Таблица сезона** (как в Excel): P1/X/P2, счёт, Derby, Venue Type |
-| [matches.csv](examples/matches.csv) | Матчи, коэффициенты, closing, derby (внутренний id) |
-| [team_strength.csv](examples/team_strength.csv) | Рыночный удельный вес |
-| [derby_types.csv](examples/derby_types.csv) | **Справочник Derby** (No, City derby, …) |
-| [venue_types.csv](examples/venue_types.csv) | **Справочник Venue Type** (выпадающий список) |
-| [venue_factors.csv](examples/venue_factors.csv) | Устаревшее: три множителя home/away/neutral |
-| [flip_rules.csv](examples/flip_rules.csv) | Правила перевертышей (сценарий 2) |
+| `closing_lines_serie_a_sample.csv` | обучение голевой модели (CLI) |
+| `history_epl_2025_26.csv` | тесты Shin / истории |
+| `season_odds_la_liga_2024_25.csv` | пример сезонной таблицы |
 
-## Связанные документы
+Основной источник данных в приложении — **Supabase**, не CSV.
 
-| Документ | Содержание |
-|----------|------------|
-| [glossary.md](glossary.md) | Словарь |
-| [requirements.md](requirements.md) | Требования |
-| [scenarios.md](scenarios.md) | Сценарии 1/2 и логика выбора |
-| [data-model.md](data-model.md) | Модель данных |
-| [calculation.md](calculation.md) | Расчёты |
-| [ui-spec.md](ui-spec.md) | UI |
-| [mvp-scope.md](mvp-scope.md) | Объём MVP |
-| [open-questions.md](open-questions.md) | Открытые вопросы |
+## Код
+
+| Путь | Описание |
+|------|----------|
+| `app/fair_odds_calc.py` | desktop |
+| `web/FairOddsCalc_iOS.html` | web / iOS |
+| `app/supabase_history.py` | клиент истории |
+| `app/goal_model_train.py` | обучение (Python) |
+| `tests/` | автотесты |
+
+Запуск тестов: `python3 -m pytest tests/ -v`

@@ -1,33 +1,36 @@
-# calc_money
+# calc_money / FairOddsCalc
 
-Десктоп-калькулятор **честных** футбольных коэффициентов на исходы матча **P1 / X / P2** (победа хозяев / ничья / победа гостей).
+Расчёт согласованной футбольной линии из **closing-коэффициентов** (форы, тоталы, 1X2) через голевую модель Poisson / Dixon–Coles.
 
-## Текущий статус
+## Приложения
 
-На этапе подготовки к разработке подготовлен полный пакет технической документации в каталоге **[docs/](docs/)**. Прикладной код приложения **ещё не реализован** — реализация начинается после согласования документации (см. [docs/mvp-scope.md](docs/mvp-scope.md)).
+| Клиент | Запуск |
+|--------|--------|
+| **Desktop** (Tkinter) | `python3 app/fair_odds_calc.py` |
+| **Web / iOS** | `cd web && python3 -m http.server 8080` → [FairOddsCalc_iOS.html](web/FairOddsCalc_iOS.html) |
+| **History API** | `bash scripts/run_history_api.sh` |
+| **LAN (Mac + второй ПК)** | `bash scripts/update_and_serve.sh --start` |
+
+Подробнее: [app/README.md](app/README.md), [docs/ios-preview.md](docs/ios-preview.md), [docs/scripts.md](docs/scripts.md).
+
+## Данные
+
+Матчи и команды — **Supabase** (`v_matches_full`, `leagues`, `team`).  
+Конфиг: `config/supabase.json`, `web/supabase.config.json`.
 
 ## Документация
 
-- Оглавление и порядок чтения: [docs/README.md](docs/README.md)
-- Формулы и сценарии расчёта: [docs/calculation.md](docs/calculation.md), [docs/scenarios.md](docs/scenarios.md)
-- Модель данных и примеры CSV: [docs/data-model.md](docs/data-model.md), [docs/examples/](docs/examples/)
+Полный пакет: **[docs/README.md](docs/README.md)**
 
-## Приложение
+- [Архитектура](docs/architecture.md)
+- [API и маппинги](docs/reference.md) — все ручки и поля
+- [Формулы](docs/calculation.md)
+- **[Обучение и расчёт (подробно)](docs/training-and-calculation.md)**
+- [ER-диаграмма БД](docs/db-er-closing-lines.md)
 
-В каталоге [app/](app/) — десктоп-приложение (Python + Tkinter) с двумя вкладками:
-- **Калькулятор A** (исходный фронт + выбор метода усреднения + IQR-фильтр выбросов),
-- **Рейтинг команд** (ввод матчей 1/X/2, таблица рейтинга и коэффициента силы).
+## Тесты
 
-Запуск: `python3 app/fair_odds_calc.py` (см. [app/README.md](app/README.md)).
-
-Для iOS/Safari есть отдельный формат mobile-web:
-- [web/FairOddsCalc_iOS.html](web/FairOddsCalc_iOS.html)
-
-Также добавлен CLI для рейтинга команд по коэффициентам 1/X/2:
-
-`python3 app/team_ranking.py --input <matches.csv>`
-
-## Кратко о продукте
-
-- **Сценарий 1:** расчёт без пересечения через общего соперника (сезоны, рыночный вес, venue; без перевертышей).
-- **Сценарий 2:** база сценария 1 + пересечение через команду C, closing odds цепочки, перевертыши (включая дерби как коэффициент правила `derby`).
+```bash
+python3 -m pip install pytest httpx fastapi
+python3 -m pytest tests/ -v
+```
