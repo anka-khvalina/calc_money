@@ -87,7 +87,8 @@
       border-radius:10px;
       padding:12px 14px;
       margin-top:8px;
-      max-width:520px;
+      width:fit-content;
+      max-width:100%;
     }
     .goal-src-panel label.block-label{
       display:block; font-size:12px; color:var(--muted); margin-bottom:5px; font-weight:600;
@@ -106,10 +107,13 @@
     }
     .goal-src-seasons .goal-all-seasons input{ width:auto; margin:0; }
     .goal-src-seasons .goal-seasons-hint{ margin-top:2px; font-size:10px; color:var(--muted); }
-    .goal-src-weights{ flex:0 0 auto; width:fit-content; max-width:100%; }
-    .goal-src-weights .table-wrap{ margin-top:0; border-radius:8px; overflow:hidden; }
+    .goal-src-weights{ flex:0 0 auto; width:auto; }
+    .goal-src-weights .table-wrap{
+      margin-top:0; border-radius:8px; overflow:visible; width:fit-content;
+    }
     .goal-src-weights table.goal-sw-table{
-      width:auto; table-layout:auto; border-collapse:collapse;
+      width:auto; min-width:0; table-layout:auto; border-collapse:collapse;
+      background:#fff;
     }
     .goal-src-weights .goal-sw-table th,
     .goal-src-weights .goal-sw-table td{
@@ -117,10 +121,10 @@
     }
     .goal-src-weights .goal-sw-table th{ white-space:nowrap; font-size:11px; }
     .goal-src-weights .goal-sw-table .goal-sw-season{
-      max-width:9rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      min-width:5.5rem; max-width:11rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
     }
-    .goal-src-weights .goal-sw-table .goal-sw-n{ text-align:right; white-space:nowrap; }
-    .goal-src-weights .goal-sw-table .goal-sw-w{ text-align:right; width:3.5rem; }
+    .goal-src-weights .goal-sw-table .goal-sw-n{ text-align:right; white-space:nowrap; min-width:2.75rem; padding-left:12px; }
+    .goal-src-weights .goal-sw-table .goal-sw-w{ text-align:right; min-width:3.25rem; }
     .goal-src-weights td.num{ text-align:right; font-variant-numeric:tabular-nums; }
     .goal-src-action .btn{
       min-width:148px; padding:9px 16px; font-size:13px;
@@ -651,7 +655,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <button type="button" id="goalLoadHist" class="btn primary">Загрузить из БД</button>
         </div>
       </div>
-      <div class="hint" style="margin-top:6px;max-width:520px">
+      <div class="hint" style="margin-top:6px">
         Supabase → closing-линии. Вес матча: <b>сезон × match_weight × neutral</b>. Дерби → только H.
       </div>
 
@@ -4839,7 +4843,7 @@ bash scripts/update_and_serve.sh --start</div>
       }
       const byId = new Map(goalLineSeasons.map(s => [s.season_id, s]));
       box.innerHTML = '<div class="table-wrap"><table class="goal-sw-table"><thead><tr>'
-        + '<th class="goal-sw-season">Сезон</th><th class="goal-sw-n">Матч.</th><th class="goal-sw-w">Вес</th>'
+        + '<th class="goal-sw-season">Сезон</th><th class="goal-sw-n">Матчей</th><th class="goal-sw-w">Вес</th>'
         + '</tr></thead><tbody>'
         + ids.map(sid => {
           const s = byId.get(sid);
