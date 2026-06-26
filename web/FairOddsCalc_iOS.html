@@ -311,6 +311,16 @@
             tabsEl.addEventListener('touchend', onTabActivate);
           }
           window.__switchTab = switchTab;
+          function ensureGoalTabInit(attemptsLeft) {
+            var active = document.querySelector('.tab-btn.active[data-tab="goal"]');
+            if (!active) return;
+            if (window.goalInitTab) {
+              window.goalInitTab().catch(function (e) { console.error('goalInitTab', e); });
+              return;
+            }
+            if (attemptsLeft > 0) setTimeout(function () { ensureGoalTabInit(attemptsLeft - 1); }, 50);
+          }
+          ensureGoalTabInit(120);
         } catch (err) {
           setStatus('Ошибка вкладок: ' + err.message, true);
         }
@@ -1390,7 +1400,8 @@ bash scripts/update_and_serve.sh --start</div>
       return _sbConfigPromise;
     }
 
-    async function sbFetch(path, { method='GET', body=null, prefer=null }={}){
+    const SB_FETCH_TIMEOUT_MS = 30000;
+    async function sbFetch(path, { method='GET', body=null, prefer=null, timeoutMs=SB_FETCH_TIMEOUT_MS }={}){
       await loadSupabaseConfig();
       const methodU = method.toUpperCase();
       const headers = {
@@ -1403,11 +1414,28 @@ bash scripts/update_and_serve.sh --start</div>
       else if (methodU === 'POST' || methodU === 'PATCH' || methodU === 'DELETE'){
         headers.Prefer = 'return=representation';
       }
-      const res = await fetch(`${SB_URL}${path}`, {
-        method: methodU,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-      });
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = controller && timeoutMs > 0
+        ? setTimeout(() => controller.abort(), timeoutMs)
+        : null;
+      let res;
+      try {
+        res = await fetch(`${SB_URL}${path}`, {
+          method: methodU,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+          signal: controller ? controller.signal : undefined,
+        });
+      } catch (e) {
+        if (e && e.name === 'AbortError'){
+          const err = new Error(`Таймаут Supabase (${Math.round(timeoutMs / 1000)} с). Проверьте интернет на этом устройстве.`);
+          err.name = 'TimeoutError';
+          throw err;
+        }
+        throw e;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
       if (!res.ok){
         const text = await res.text();
         const err = new Error(`Supabase HTTP ${res.status}`);
@@ -3792,7 +3820,7 @@ bash scripts/update_and_serve.sh --start</div>
       const parts = raw.map(r => [
         r.matchId, r.date, r.home, r.away,
         r.ah, r.tot, r.aho, r.aha, r.ovr, r.und,
-        r.ho, r.dо, r.ao, r.mw, r.der ? 1 : 0, r.neu ? 1 : 0, r.neuw, r.seasonId,
+        r.ho, r.do, r.ao, r.mw, r.der ? 1 : 0, r.neu ? 1 : 0, r.neuw, r.seasonId,
       ].map(v => v == null ? '' : String(v)).join(':'));
       parts.sort();
       return goalSimpleHash(parts.join('\n'));
@@ -4117,37 +4145,60 @@ bash scripts/update_and_serve.sh --start</div>
       });
     }
 
+    let _goalInitPromise = null;
     async function goalInitTab(){
-      try {
-        await loadSupabaseConfig();
-        if (!goalLineLeaguesLoaded || !(window.__SB.leagues || []).length){
-          await sbFetchLeaguesList();
-          goalLineLeaguesLoaded = true;
-        }
-        goalPopulateLeagueSelect();
-        const leagueId = document.getElementById('goalSrcLeague').value;
-        if (leagueId && !goalLineSeasons.length) await goalOnLeagueChange();
-        goalUpdateTrainUI();
-      } catch (e){
-        console.error('goalInitTab', e);
+      if (_goalInitPromise) return _goalInitPromise;
+      _goalInitPromise = (async () => {
         const sel = document.getElementById('goalSrcLeague');
-        if (sel) sel.innerHTML = '<option value="">Ошибка загрузки лиг</option>';
-      }
+        try {
+          if (window.__SB.configError){
+            const msg = window.__SB.configError;
+            if (sel) sel.innerHTML = '<option value="">Ошибка конфигурации</option>';
+            if (!window.__SB.goalLeaguesErrorShown){
+              window.__SB.goalLeaguesErrorShown = true;
+              alert(msg);
+            }
+            return;
+          }
+          await loadSupabaseConfig();
+          if (!goalLineLeaguesLoaded || !(window.__SB.leagues || []).length){
+            await sbFetchLeaguesList();
+            goalLineLeaguesLoaded = true;
+          }
+          goalPopulateLeagueSelect();
+          const leagueId = sel && sel.value;
+          if (leagueId && !goalLineSeasons.length) await goalOnLeagueChange();
+          goalUpdateTrainUI();
+        } catch (e){
+          const msg = sbHistErrorMessage(e, 'загрузить список лиг');
+          console.error('goalInitTab', e);
+          if (sel) sel.innerHTML = '<option value="">Ошибка загрузки лиг</option>';
+          if (!window.__SB.goalLeaguesErrorShown){
+            window.__SB.goalLeaguesErrorShown = true;
+            alert(msg);
+          }
+        }
+      })().finally(() => { _goalInitPromise = null; });
+      return _goalInitPromise;
     }
+    window.goalInitTab = goalInitTab;
+    goalInitTab().catch(e => console.error('goalInitTab failed', e));
 
-    document.getElementById('goalSrcLeague').addEventListener('change', () => { goalOnLeagueChange(); });
-    document.getElementById('goalSrcAllSeasons').addEventListener('change', () => { goalRenderSeasonMulti(); });
-    document.getElementById('goalSrcSeasons').addEventListener('change', () => {
-      document.getElementById('goalSrcAllSeasons').checked = false;
+    document.getElementById('goalSrcLeague')?.addEventListener('change', () => { goalOnLeagueChange(); });
+    document.getElementById('goalSrcAllSeasons')?.addEventListener('change', () => { goalRenderSeasonMulti(); });
+    document.getElementById('goalSrcSeasons')?.addEventListener('change', () => {
+      const all = document.getElementById('goalSrcAllSeasons');
+      if (all) all.checked = false;
       goalApplyDefaultSeasonWeights();
       goalRenderSeasonWeights();
     });
-    document.getElementById('goalSeasonWeightsTable').addEventListener('input', e => {
+    document.getElementById('goalSeasonWeightsTable')?.addEventListener('input', e => {
       const inp = e.target.closest('.goal-season-w');
       if (!inp) return;
       const sid = Number(inp.getAttribute('data-sid'));
       const w = parseFloat(String(inp.value).replace(',', '.'));
       if (!isNaN(sid) && !isNaN(w)) goalSeasonWeightById[sid] = w;
+      goalUpdateTrainUI();
     });
 
     bindClick('goalLoadHist', async () => {
@@ -4192,11 +4243,7 @@ bash scripts/update_and_serve.sh --start</div>
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', () => goalUpdateTrainUI());
     });
-    document.getElementById('goalSeasonWeightsTable')?.addEventListener('input', e => {
-      if (e.target.classList.contains('goal-season-w')) goalUpdateTrainUI();
-    });
 
-    window.goalInitTab = goalInitTab;
     bindClick('goalPredict',()=>{
       if(!gmModel){ alert('Сначала обучите модель.'); return; }
       const home=document.getElementById('goalHome').value, away=document.getElementById('goalAway').value;
@@ -4281,7 +4328,6 @@ bash scripts/update_and_serve.sh --start</div>
     });
     loadApiConfig().catch(e => console.error('API config preload failed', e));
     window.refreshGoalTeams = gmFillTeams;
-    goalInitTab().catch(e => console.error('goalInitTab failed', e));
     setJsStatus('Версия goal-model-v1 — Линия: Supabase → S/D → λ → матрица → рынки');
     } catch (err) {
       setJsStatus('Ошибка JS: ' + (err.message || err), true);
