@@ -3231,6 +3231,95 @@ bash scripts/update_and_serve.sh --start</div>
       else summary=`q clamp ${clampPct.toFixed(0)}% (${nClamped}/${nEval}) — >${warnPct}%, проверьте DC+ничья`;
       return { nEval, nClamped, clampPct, nNearOne, nearOnePct, stable, summary, rows };
     }
+    function gmProb1x2FromSd(s, d, cfg, gamma=0){
+      const df=gmClampD(d,s);
+      const lh=(s+df)/2, la=(s-df)/2;
+      if(lh<=0||la<=0) return [0,0,0];
+      let mat=gmMatrix(lh,la,cfg.maxGoals);
+      if(cfg.useDc&&gamma) mat=gmDC(mat,lh,la,gamma);
+      return gm1x2(mat);
+    }
+    function gmSdGroupStats(rows, keyFn, buckets){
+      const out=[];
+      for(const [label,pred] of buckets){
+        const grp=rows.filter(r=>pred(keyFn(r)));
+        if(!grp.length) continue;
+        const n=grp.length;
+        const avg=k=>grp.reduce((a,r)=>a+r[k],0)/n;
+        out.push({ label, n, avgErrXMarket:avg('errXMarket'), avgErrXModel:avg('errXModel'), avgErrXCal:avg('errXCal') });
+      }
+      return out;
+    }
+    function gmSd1x2Diagnostics(model, ms, biasWarn=-0.015, sLineWarn=0.20){
+      const {st,gl,cal,cfg}=model;
+      const gamma=cfg.useDc?(cal.gamma||0):0;
+      const rows=[];
+      for(const m of ms){
+        if(m.p1==null||m.px==null||m.p2==null||m.S==null||m.D==null) continue;
+        const derby=gmDerbyHome(m);
+        const hEff=gmEffectiveH(st,cfg,m.iHome===0,derby);
+        const dModel=(st.ratings[m.home]||0)-(st.ratings[m.away]||0)+hEff;
+        const kHg=Math.abs(st.H)>1e-9?hEff/st.H:1;
+        const lhAD=Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*m.iHome*kHg);
+        const laAD=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0));
+        const sModel=lhAD+laAD;
+        const sCal=cal.c+cal.d*sModel;
+        const dCalRaw=cal.a+cal.b*dModel;
+        const [p1MktSd,pxMktSd,p2MktSd]=gmProb1x2FromSd(m.S,m.D,cfg,0);
+        const [p1Mod,pxMod,p2Mod]=gmProb1x2FromSd(sModel,dModel,cfg,0);
+        const [p1Cal,pxCal,p2Cal]=gmProb1x2FromSd(sCal,dCalRaw,cfg,gamma);
+        const raw=m.raw||{};
+        rows.push({
+          home:m.home, away:m.away, date:raw.date,
+          closingTotal:raw.tot!=null?raw.tot:null, overOdds:raw.over, underOdds:raw.under,
+          sMarket:m.S, closingAh:raw.ah!=null?raw.ah:null, dMarket:m.D,
+          p1Market:m.p1, pxMarket:m.px, p2Market:m.p2,
+          p1MarketSd:p1MktSd, pxMarketSd:pxMktSd, p2MarketSd:p2MktSd,
+          errXMarket:pxMktSd-m.px,
+          sModel, dModel, p1Model:p1Mod, pxModel:pxMod, p2Model:p2Mod,
+          errXModel:pxMod-m.px,
+          sCal, dCal:gmClampD(dCalRaw,sCal),
+          p1Cal, pxCal, p2Cal, errXCal:pxCal-m.px,
+          deltaSCal:sCal-sModel, dSource:m.dSource||'', dClampHit:!!m.dClampHit,
+        });
+      }
+      rows.sort((a,b)=>a.errXModel-b.errXModel);
+      const n=rows.length;
+      if(!n) return { nEval:0, stable:true, summary:'нет матчей с 1X2 и S/D', rows:[], byS:[], byD:[] };
+      const avg=arr=>arr.reduce((a,b)=>a+b,0)/arr.length;
+      const biasMkt=avg(rows.map(r=>r.errXMarket));
+      const biasMod=avg(rows.map(r=>r.errXModel));
+      const biasCal=avg(rows.map(r=>r.errXCal));
+      const nUnder=rows.filter(r=>r.errXModel<-1e-9).length;
+      const pctUnder=100*nUnder/n;
+      const lineDiffs=rows.filter(r=>r.closingTotal!=null).map(r=>r.sMarket-r.closingTotal);
+      const avgSLine=lineDiffs.length?avg(lineDiffs):0;
+      const byS=gmSdGroupStats(rows,r=>r.sMarket,[
+        ['S<2.3',s=>s<2.3], ['2.3≤S≤2.7',s=>s>=2.3&&s<=2.7], ['S>2.7',s=>s>2.7],
+      ]);
+      const byD=gmSdGroupStats(rows,r=>Math.abs(r.dMarket),[
+        ['|D|<0.25',ad=>ad<0.25], ['0.25≤|D|≤0.75',ad=>ad>=0.25&&ad<=0.75], ['|D|>0.75',ad=>ad>0.75],
+      ]);
+      const stable=!(biasMod<biasWarn||Math.abs(avgSLine)>sLineWarn);
+      const parts=[`PX до калибр.: ${biasMod>=0?'+':''}${biasMod.toFixed(3)} (модель S/D)`,
+        `после: ${biasCal>=0?'+':''}${biasCal.toFixed(3)}`, `заниж. ничьи ${pctUnder.toFixed(0)}%`];
+      if(lineDiffs.length) parts.push(`S−линия ${avgSLine>=0?'+':''}${avgSLine.toFixed(3)}`);
+      if(!stable){
+        if(biasMod<biasWarn) parts.push('матрица занижает ничью');
+        if(Math.abs(avgSLine)>sLineWarn) parts.push('проверьте OU settlement');
+      }
+      return {
+        nEval:n, biasPxMarketSd:biasMkt, biasPxModel:biasMod, biasPxCal:biasCal,
+        maePxModel:avg(rows.map(r=>Math.abs(r.errXModel))),
+        maeP1Model:avg(rows.map(r=>Math.abs(r.p1Model-r.p1Market))),
+        maeP2Model:avg(rows.map(r=>Math.abs(r.p2Model-r.p2Market))),
+        maePxCal:avg(rows.map(r=>Math.abs(r.errXCal))),
+        avgSMarket:avg(rows.map(r=>r.sMarket)), avgSModel:avg(rows.map(r=>r.sModel)),
+        avgSCal:avg(rows.map(r=>r.sCal)), avgDeltaS:avg(rows.map(r=>r.deltaSCal)),
+        avgSMinusLine:avgSLine, nPxUnderModel:nUnder, pctPxUnderModel:pctUnder,
+        stable, summary:parts.join('; '), byS, byD, rows,
+      };
+    }
     function gmTrain(raw,cfg,prior){
       const ms=gmPrepare(raw,cfg);
       const dClamp=gmDClampDiagnostics(ms, cfg);
@@ -3239,6 +3328,7 @@ bash scripts/update_and_serve.sh --start</div>
       const calDiag=gmAssessCalibration(cal);
       const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag};
       model.drawQDiag=gmDrawQDiagnostics(model, ms);
+      model.sdDiag=gmSd1x2Diagnostics(model, ms);
       return model;
     }
     let gmModel=null;
@@ -4064,7 +4154,7 @@ bash scripts/update_and_serve.sh --start</div>
         card.style.display = 'none';
         return;
       }
-      const { st, gl, cal, draw, dClamp, calDiag, drawQDiag } = gmModel;
+      const { st, gl, cal, draw, dClamp, calDiag, drawQDiag, sdDiag } = gmModel;
       const rows = [
         ['Обучено', escapeHtml(goalFmtTrainDt(goalTrainState.trainedAt)), ''],
         ['Команд в модели', String(Object.keys(st.ratings).length), 'num'],
@@ -4082,6 +4172,16 @@ bash scripts/update_and_serve.sh --start</div>
       ];
       if (drawQDiag && drawQDiag.nEval > 0){
         rows.push(['q clamp (DC→ничья)', escapeHtml(drawQDiag.summary), drawQDiag.stable ? '' : 'warn']);
+      }
+      if (sdDiag && sdDiag.nEval > 0){
+        rows.push(['S/D→1X2 (ничья)', escapeHtml(sdDiag.summary), sdDiag.stable ? '' : 'warn']);
+        rows.push(['PX ошибка до/после', `${goalFmtTrainNum(sdDiag.biasPxModel, 3)} / ${goalFmtTrainNum(sdDiag.biasPxCal, 3)}`, sdDiag.stable ? '' : 'warn']);
+        rows.push(['Средн. S рынок/модель/калибр.', `${goalFmtTrainNum(sdDiag.avgSMarket, 2)} / ${goalFmtTrainNum(sdDiag.avgSModel, 2)} / ${goalFmtTrainNum(sdDiag.avgSCal, 2)}`, 'num']);
+        rows.push(['Средн. ΔS (калибр.)', goalFmtTrainNum(sdDiag.avgDeltaS, 3), Math.abs(sdDiag.avgDeltaS) > 0.25 ? 'warn' : 'num']);
+        if (sdDiag.avgSMinusLine != null && !Number.isNaN(sdDiag.avgSMinusLine)){
+          rows.push(['S−линия (OU)', goalFmtTrainNum(sdDiag.avgSMinusLine, 3), Math.abs(sdDiag.avgSMinusLine) > 0.20 ? 'warn' : 'num']);
+        }
+        rows.push(['Матчей PX_matrix < рынок', `${sdDiag.nPxUnderModel} (${goalFmtTrainNum(sdDiag.pctPxUnderModel, 0)}%)`, sdDiag.pctPxUnderModel > 55 ? 'warn' : '']);
       }
       if (gmModel.cfg && gmModel.cfg.useDc){
         rows.push(['Dixon-Coles', 'включён', '']);
@@ -4129,6 +4229,35 @@ bash scripts/update_and_serve.sh --start</div>
         box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Матчи с q на границе (DC → draw)</div>'
           + goalRenderTrainTable(qRows);
       }
+      if (sdDiag && sdDiag.nEval > 0){
+        if (sdDiag.byS && sdDiag.byS.length){
+          const sRows = sdDiag.byS.map(g => [
+            escapeHtml(g.label), `${g.n} матч.`,
+            `err_X: рынок ${goalFmtTrainNum(g.avgErrXMarket,3)}, модель ${goalFmtTrainNum(g.avgErrXModel,3)}, калибр. ${goalFmtTrainNum(g.avgErrXCal,3)}`,
+            Math.abs(g.avgErrXModel) > 0.03 ? 'warn' : '',
+          ]);
+          box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Ошибка ничьи по тоталу S</div>'
+            + goalRenderTrainTable(sRows);
+        }
+        if (sdDiag.byD && sdDiag.byD.length){
+          const dRows = sdDiag.byD.map(g => [
+            escapeHtml(g.label), `${g.n} матч.`,
+            `err_X: рынок ${goalFmtTrainNum(g.avgErrXMarket,3)}, модель ${goalFmtTrainNum(g.avgErrXModel,3)}, калибр. ${goalFmtTrainNum(g.avgErrXCal,3)}`,
+            Math.abs(g.avgErrXModel) > 0.03 ? 'warn' : '',
+          ]);
+          box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Ошибка ничьи по |D|</div>'
+            + goalRenderTrainTable(dRows);
+        }
+        if (sdDiag.rows && sdDiag.rows.length){
+          const worst = sdDiag.rows.slice(0, 10).map(r => [
+            `${escapeHtml(r.home)} — ${escapeHtml(r.away)}`,
+            `err_X=${goalFmtTrainNum(r.errXModel,3)} S=${goalFmtTrainNum(r.sMarket,2)}/${goalFmtTrainNum(r.sModel,2)} ΔS=${goalFmtTrainNum(r.deltaSCal,2)} tot=${r.closingTotal!=null?goalFmtTrainNum(r.closingTotal,2):'—'}`,
+            r.errXModel < -0.04 ? 'warn' : '',
+          ]);
+          box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Топ занижения ничьи (модель S/D → матрица)</div>'
+            + goalRenderTrainTable(worst);
+        }
+      }
       card.style.display = '';
     }
     function goalTrainQuality(n){
@@ -4160,10 +4289,12 @@ bash scripts/update_and_serve.sh --start</div>
           const clamp = gmModel.dClamp;
           const calDiag = gmModel.calDiag;
           const drawQDiag = gmModel.drawQDiag;
+          const sdDiag = gmModel.sdDiag;
           const calWarn = calDiag && !calDiag.stable;
           const qWarn = drawQDiag && drawQDiag.nEval > 0 && !drawQDiag.stable;
+          const sdWarn = sdDiag && sdDiag.nEval > 0 && !sdDiag.stable;
           const clampWarn = clamp && ((clamp.nHit > 0 && clamp.pct > 2) || (clamp.nSensitive > 0));
-          banner.classList.add((qual.tier === 'warn' || clampWarn || calWarn || qWarn) ? 'warn' : 'ok');
+          banner.classList.add((qual.tier === 'warn' || clampWarn || calWarn || qWarn || sdWarn) ? 'warn' : 'ok');
           const priorNote = (gmModel.cfg && gmModel.cfg.priorAlpha > 0 && goalTrainState.priorUsed)
             ? ` Prior α=${goalFmtTrainNum(gmModel.cfg.priorAlpha, 2)} (стягивание к прошлой модели).` : '';
           let clampNote = '';
@@ -4180,7 +4311,11 @@ bash scripts/update_and_serve.sh --start</div>
           if (qWarn){
             qNote = ` q clamp ${goalFmtTrainNum(drawQDiag.clampPct,0)}% — DC+ничья расходятся.`;
           }
-          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${n} матчах. ${qual.short}: ${qual.detail}${clampNote}${calNote}${qNote}${priorNote}`;
+          let sdNote = '';
+          if (sdWarn){
+            sdNote = ` S/D→1X2: ${sdDiag.summary}.`;
+          }
+          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${n} матчах. ${qual.short}: ${qual.detail}${clampNote}${calNote}${qNote}${sdNote}${priorNote}`;
         }
       }
       goalRenderTrainDataPanel();
