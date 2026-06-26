@@ -129,10 +129,10 @@ CORS: `HISTORY_API_CORS` (default `*`).
 | 1 | `o1` | `home_odds` | да |
 | X | `ox` | `draw_odds` | да |
 | 2 | `o2` | `away_odds` | да |
-| Нейтр | `neutral` | `is_neutral` | да |
-| Дерби | `derby` | `derby_weight` | да (да/нет; при «да» в БД пишется **0.7**) |
+| Нейтральное поле | `neutral` | `is_neutral` | да (в блоке **▼ Веса**) |
+| Дерби | `derby` | `derby_weight` | да (в блоке **▼ Веса**; при «да» в БД **0.7**) |
 | Вес матча | `match_w` | `match_weight` | да |
-| Нейтр. вес | `neutr_w` | `neutral_weight` | да |
+| Нейтр. вес | `neutr_w` | `neutral_weight` | да (только если нейтральное поле = да) |
 | Дата | — | `match_date` | нет |
 | Дома / Гости | — | `home_team` / `away_team` | нет |
 

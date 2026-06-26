@@ -64,8 +64,8 @@ UI_COL_TO_FIELD: Dict[str, str] = {
 # Порядок столбцов линии в UI (AH1 → AH → AH2 → O → Тот → U)
 HIST_LINE_UI_COLS: tuple[str, ...] = ("ah1", "ah", "ah2", "over", "tot", "under")
 
-# Поля весов в раскрываемом блоке (дерби — булев факт в основной строке)
-HIST_WEIGHT_UI_COLS: tuple[str, ...] = ("match_w", "neutr_w")
+# Поля весов и флагов в раскрываемом блоке «Веса»
+HIST_WEIGHT_UI_COLS: tuple[str, ...] = ("neutral", "derby", "match_w", "neutr_w")
 
 EDITABLE_UI_COLS: FrozenSet[str] = frozenset(UI_COL_TO_FIELD)
 

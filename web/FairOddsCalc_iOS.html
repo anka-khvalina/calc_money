@@ -129,6 +129,7 @@
     .hist-fetch-panel input{ min-width:180px; font-size:13px; padding:6px 8px; }
     .hist-weights-panel{ display:flex; flex-wrap:wrap; gap:10px 16px; align-items:flex-end; }
     .hist-weights-field label{ display:block; font-size:11px; color:var(--muted); margin-bottom:3px; }
+    .hist-weights-field .hist-field-hint{ display:block; font-size:10px; color:#8a93a0; margin-top:2px; line-height:1.25; max-width:200px; }
     .btn.hist-fetch-toggle,.btn.hist-weights-toggle{ padding:4px 8px; font-size:12px; margin-right:6px; }
     #clhViewTable td.num .hist-cell-input{ text-align:right; font-variant-numeric:tabular-nums; }
     .hist-row-err{ color:var(--danger); font-size:11px; display:block; margin-top:2px; }
@@ -728,6 +729,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <section id="tab-hist" class="panel">
       <div class="small">
         Просмотр и редактирование матчей из Supabase. Измените коэффициент в ячейке и нажмите «Сохранить».
+        Флаги <b>нейтральное поле</b> и <b>дерби</b> — в блоке <b>▼ Веса</b> под строкой матча.
       </div>
       <div class="small" style="margin-top:10px;font-weight:600;">Сохранённые сезоны</div>
       <div class="table-wrap">
@@ -743,8 +745,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <th>Дата</th><th class="hist-col-team">Дома</th><th class="hist-col-team">Гости</th>
             <th class="right hist-col-ah">AH1</th><th class="right hist-col-ah">AH</th><th class="right hist-col-ah">AH2</th>
             <th class="right hist-col-tot">O</th><th class="right hist-col-tot">Тот</th><th class="right hist-col-tot">U</th>
-            <th class="right hist-col-1x2">1</th><th class="right hist-col-1x2">X</th><th class="right hist-col-1x2">2</th>
-            <th>Нейтр</th><th>Дерби</th><th>Действие</th>
+            <th class="right hist-col-1x2">1</th><th class="right hist-col-1x2">X</th>            <th class="right hist-col-1x2">2</th>
+            <th>Действие</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -3095,8 +3097,10 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       neutral:'is_neutral', derby:'derby_weight', match_w:'match_weight', neutr_w:'neutral_weight',
     };
     const SB_HIST_WEIGHT_COLS = [
-      { col:'match_w', label:'Вес матча' },
-      { col:'neutr_w', label:'Нейтр. вес' },
+      { col:'neutral', label:'Нейтральное поле', hint:'да = финал / нейтральный стадион, без домашнего преимущества' },
+      { col:'derby', label:'Дерби', hint:'да = ослабить вклад матча в обучение (×0.7)' },
+      { col:'match_w', label:'Вес матча', hint:'общий множитель важности матча' },
+      { col:'neutr_w', label:'Нейтр. вес', hint:'только если нейтральное поле = да (обычно 0.8)' },
     ];
     const USERBET_FIELD_TO_UI = {
       ah_home_odds:'ah1', closing_ah_home:'ah', ah_away_odds:'ah2',
@@ -3342,8 +3346,10 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
 
     function sbHistWeightsPanel(m, st){
       return `<div class="hist-weights-panel">` +
-        SB_HIST_WEIGHT_COLS.map(({ col, label }) =>
-          `<div class="hist-weights-field"><label>${label}</label>${sbHistInput(col, m, st)}</div>`
+        SB_HIST_WEIGHT_COLS.map(({ col, label, hint }) =>
+          `<div class="hist-weights-field"><label>${label}</label>${sbHistInput(col, m, st)}` +
+          (hint ? `<span class="hist-field-hint">${hint}</span>` : '') +
+          `</div>`
         ).join('') +
       `</div>`;
     }
@@ -3378,8 +3384,6 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
           `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o1', m, st)}</td>` +
           `<td class="num hist-col-num hist-col-1x2">${sbHistInput('ox', m, st)}</td>` +
           `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o2', m, st)}</td>` +
-          `<td class="hist-col-neutral">${sbHistInput('neutral', m, st)}</td>` +
-          `<td class="hist-col-neutral">${sbHistInput('derby', m, st)}</td>` +
           `<td class="hist-col-action">` +
             `<button type="button" class="btn hist-fetch-toggle" data-hist-fetch-toggle="${m.match_id}" aria-expanded="${fetchOpen ? 'true' : 'false'}">${fetchOpen ? '▲ Данные' : '▼ Данные'}</button>` +
             `<button type="button" class="btn hist-weights-toggle" data-hist-weights-toggle="${m.match_id}" aria-expanded="${weightsOpen ? 'true' : 'false'}">${weightsOpen ? '▲ Веса' : '▼ Веса'}</button>` +
@@ -3389,10 +3393,10 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
           `</td>` +
         `</tr>`;
         const weightsRow = `<tr class="hist-weights-row" data-hist-weights-for="${m.match_id}" style="display:${weightsOpen ? '' : 'none'}">` +
-          `<td colspan="15">${sbHistWeightsPanel(m, st)}</td>` +
+          `<td colspan="13">${sbHistWeightsPanel(m, st)}</td>` +
         `</tr>`;
         const fetchRow = `<tr class="hist-fetch-row" data-hist-fetch-for="${m.match_id}" style="display:${fetchOpen ? '' : 'none'}">` +
-          `<td colspan="15">${sbHistFetchPanel(m, st)}</td>` +
+          `<td colspan="13">${sbHistFetchPanel(m, st)}</td>` +
         `</tr>`;
         return mainRow + fetchRow + weightsRow;
       }).join('');
