@@ -18,7 +18,7 @@ import csv
 import io
 import logging
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
@@ -75,7 +75,7 @@ class ModelConfig:
     # калибровка
     draw_loss_weight: float = 1.5
     # S_cal = c + d·S_model: off=фикс c=0,d=1; soft=штраф+лимит ΔS; free=как раньше
-    s_calibration_mode: str = "soft"  # off | soft | free
+    s_calibration_mode: str = "off"  # off | soft | free
     s_cal_penalty_c: float = 2.0
     s_cal_penalty_d: float = 2.0
     s_cal_max_delta: float = 0.15  # |S_cal−S_model| на матч (soft); free — без лимита
@@ -84,8 +84,9 @@ class ModelConfig:
     dc_gamma_min: float = -0.20
     dc_gamma_max: float = 0.20
 
-    # модель ничьей (отдельная) + коррекция диагонали матрицы
-    use_draw_model: bool = True
+    # модель ничьей: legacy = абсолютная P_X; residual_dc = q после DC (эксп.)
+    use_draw_model: bool = False
+    draw_model_mode: str = "legacy"  # legacy | residual_dc
     draw_diag_multiplier_min: float = 0.95
     draw_diag_multiplier_max: float = 1.05
     w_1x2_normal: float = 1.0
@@ -1080,22 +1081,35 @@ class DrawModel:
     beta_dxs: float = 0.0
     n: int = 0
     source: str = "fitted"  # fitted | default
+    mode: str = "legacy"  # legacy | residual_dc
 
     def target_px(self, d_final: float, s_final: float) -> float:
-        z = (self.alpha
-             + self.beta_d * abs(d_final)
-             + self.beta_s * s_final
-             + self.beta_s2 * s_final * s_final
-             + self.beta_dxs * abs(d_final) * s_final)
-        # σ(z) с защитой от переполнения
+        z = self._logit_z(d_final, s_final)
         if z >= 0:
             return 1.0 / (1.0 + math.exp(-z))
         ez = math.exp(z)
         return ez / (1.0 + ez)
 
+    def _logit_z(self, d_final: float, s_final: float) -> float:
+        return (
+            self.alpha
+            + self.beta_d * abs(d_final)
+            + self.beta_s * s_final
+            + self.beta_s2 * s_final * s_final
+            + self.beta_dxs * abs(d_final) * s_final
+        )
 
-_DRAW_DEFAULT = DrawModel(alpha=-0.95, beta_d=-0.55, beta_s=0.0, beta_s2=0.0,
-                          beta_dxs=0.0, n=0, source="default")
+    def target_q_multiplier(self, d_final: float, s_final: float, cfg: ModelConfig) -> float:
+        """Residual DC: q = exp(z), clamp в [q_min, q_max]. Legacy: P_X / P_X_dc через target."""
+        z = self._logit_z(d_final, s_final)
+        q = math.exp(z)
+        return min(cfg.draw_diag_multiplier_max, max(cfg.draw_diag_multiplier_min, q))
+
+
+_DRAW_DEFAULT = DrawModel(
+    alpha=-0.95, beta_d=-0.55, beta_s=0.0, beta_s2=0.0,
+    beta_dxs=0.0, n=0, source="default", mode="legacy",
+)
 
 
 def w_1x2_weight(m: PreparedMatch, cfg: ModelConfig) -> float:
@@ -1132,13 +1146,100 @@ def fit_draw_model(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> DrawMo
         beta = tr._solve_weighted(rows, p)
     except ValueError:
         return _DRAW_DEFAULT
-    dm = DrawModel(alpha=beta[0], beta_d=beta[1], beta_s=beta[2],
-                   beta_s2=beta[3], beta_dxs=beta[4], n=len(rows), source="fitted")
+    dm = DrawModel(
+        alpha=beta[0], beta_d=beta[1], beta_s=beta[2],
+        beta_s2=beta[3], beta_dxs=beta[4], n=len(rows), source="fitted", mode="legacy",
+    )
     # Санити: базовая ничья (D=0, S=2.6) в разумных пределах, иначе дефолт.
     base = dm.target_px(0.0, 2.6)
     if not (0.10 <= base <= 0.45):
         return _DRAW_DEFAULT
     return dm
+
+
+def _calibrated_sd_for_match(
+    m: PreparedMatch,
+    strength: StrengthModel,
+    goals: GoalModel,
+    cal: Calibration,
+    cfg: ModelConfig,
+) -> Tuple[float, float, float, float]:
+    """d_model, s_model, s_cal, d_cal для матча при обучении."""
+    d_model, s_model = _model_d_s(m, strength, goals, cfg)
+    s_cal = apply_s_calibration(s_model, cal.c, cal.d, cfg)
+    d_cal = gm.clamp_goal_diff(cal.a + cal.b * d_model, s_cal, cfg.lambda_epsilon)
+    return d_model, s_model, s_cal, d_cal
+
+
+def _px_stages_from_calibrated(
+    s_cal: float,
+    d_cal: float,
+    cfg: ModelConfig,
+    gamma: float,
+) -> Tuple[float, float]:
+    """(PX_poisson, PX_after_DC) без draw-q."""
+    _, px_pois, _ = _prob_1x2_from_sd(s_cal, d_cal, cfg, gamma=0.0)
+    _, px_dc, _ = _prob_1x2_from_sd(s_cal, d_cal, cfg, gamma=gamma)
+    return px_pois, px_dc
+
+
+def fit_draw_residual_model(
+    matches: Sequence[PreparedMatch],
+    strength: StrengthModel,
+    goals: GoalModel,
+    calibration: Calibration,
+    cfg: ModelConfig,
+) -> DrawModel:
+    """log(q) ~ features, q = PX_market / PX_after_DC на истории (остаток после DC)."""
+    gamma = calibration.gamma if cfg.use_dixon_coles else 0.0
+    rows: List[Tuple[List[float], float, float]] = []
+    for m in matches:
+        if m.px_shin is None:
+            continue
+        w = m.w_base * w_1x2_weight(m, cfg)
+        if w <= 0:
+            continue
+        _, _, s_cal, d_cal = _calibrated_sd_for_match(
+            m, strength, goals, calibration, cfg,
+        )
+        _, px_dc = _px_stages_from_calibrated(s_cal, d_cal, cfg, gamma)
+        if px_dc <= 1e-9:
+            continue
+        q = m.px_shin / px_dc
+        q = min(cfg.draw_diag_multiplier_max * 1.5, max(cfg.draw_diag_multiplier_min * 0.5, q))
+        if q <= 0:
+            continue
+        feats = [1.0, abs(d_cal), s_cal, s_cal * s_cal, abs(d_cal) * s_cal]
+        rows.append((feats, math.log(q), w))
+    if len(rows) < 6:
+        return replace(_DRAW_DEFAULT, mode="residual_dc", source="default")
+    try:
+        beta = tr._solve_weighted(rows, 5)
+    except ValueError:
+        return replace(_DRAW_DEFAULT, mode="residual_dc", source="default")
+    dm = DrawModel(
+        alpha=beta[0], beta_d=beta[1], beta_s=beta[2],
+        beta_s2=beta[3], beta_dxs=beta[4], n=len(rows), source="fitted", mode="residual_dc",
+    )
+    # Санити: при S=2.6, D=0 множитель q близок к 1
+    q0 = dm.target_q_multiplier(0.0, 2.6, cfg)
+    if not (0.85 <= q0 <= 1.15):
+        return replace(_DRAW_DEFAULT, mode="residual_dc", source="default")
+    return dm
+
+
+def fit_draw_for_config(
+    matches: Sequence[PreparedMatch],
+    strength: StrengthModel,
+    goals: GoalModel,
+    calibration: Calibration,
+    cfg: ModelConfig,
+) -> DrawModel:
+    if not cfg.use_draw_model:
+        return _DRAW_DEFAULT
+    if cfg.draw_model_mode == "residual_dc":
+        return fit_draw_residual_model(matches, strength, goals, calibration, cfg)
+    return fit_draw_model(matches, cfg)
 
 
 @dataclass
@@ -1186,6 +1287,7 @@ class TrainedModel:
     cal_diag: Optional[CalibrationDiagnostics] = None
     draw_q_diag: Optional["DrawQDiagnostics"] = None
     sd_diag: Optional["Sd1x2Diagnostics"] = None
+    draw_harm_diag: Optional["DrawHarmDiagnostics"] = None
 
 
 def train_full_model(
@@ -1206,14 +1308,19 @@ def train_full_model(
     goals = fit_attack_defense(matches, cfg, prior_attack=prior_a, prior_defense=prior_d)
     calibration = calibrate(matches, strength, goals, cfg)
     cal_diag = assess_calibration_stability(calibration, cfg=cfg)
-    draw = fit_draw_model(matches, cfg) if cfg.use_draw_model else _DRAW_DEFAULT
-    model = TrainedModel(strength, goals, calibration, draw, cfg, d_clamp, cal_diag, None, None)
+    draw = fit_draw_for_config(matches, strength, goals, calibration, cfg)
+    model = TrainedModel(
+        strength, goals, calibration, draw, cfg, d_clamp, cal_diag, None, None, None,
+    )
     draw_q_diag = draw_q_diagnostics(model, matches)
     log_draw_q_diagnostics(draw_q_diag)
     sd_diag = sd_1x2_diagnostics(model, matches)
     log_sd_1x2_diagnostics(sd_diag)
+    draw_harm_diag = draw_harm_diagnostics(model, matches)
+    log_draw_harm_diagnostics(draw_harm_diag)
     return TrainedModel(
-        strength, goals, calibration, draw, cfg, d_clamp, cal_diag, draw_q_diag, sd_diag,
+        strength, goals, calibration, draw, cfg,
+        d_clamp, cal_diag, draw_q_diag, sd_diag, draw_harm_diag,
     ), matches
 
 
@@ -1285,7 +1392,12 @@ def predict_match(
     draw_target = None
     draw_diag = None
     if cfg.use_draw_model:
-        draw_target = model.draw.target_px(d_final, s_final)
+        px_matrix = gm.draw_probability(matrix)
+        if model.draw.mode == "residual_dc":
+            q = model.draw.target_q_multiplier(d_final, s_final, cfg)
+            draw_target = q * px_matrix
+        else:
+            draw_target = model.draw.target_px(d_final, s_final)
         matrix, draw_diag = gm.adjust_matrix_to_draw_target(
             matrix, draw_target,
             q_min=cfg.draw_diag_multiplier_min,
@@ -1419,6 +1531,162 @@ def log_draw_q_diagnostics(diag: DrawQDiagnostics) -> None:
         )
     if len(diag.rows) > 12:
         log.log(level, "  … и ещё %d матчей", len(diag.rows) - 12)
+
+
+# --------------------------------------------------------------------------- #
+# Диагностика: модель ничьи ухудшает Dixon–Coles?
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class DrawHarmDiagnostics:
+    n_matches: int
+    mean_err_px_poisson: float
+    mean_err_px_after_dc: float
+    mean_err_px_final: float
+    mean_abs_err_poisson: float
+    mean_abs_err_after_dc: float
+    mean_abs_err_final: float
+    n_draw_harms: int
+    pct_draw_harms: float
+    harms_worse_than_after_dc: bool
+    low_s_threshold: float
+    low_s_n: int
+    low_s_mean_px_market: float
+    low_s_mean_px_poisson: float
+    low_s_mean_px_after_dc: float
+    low_s_mean_px_final: float
+    summary: str
+
+
+def _match_draw_px_stages(
+    model: TrainedModel,
+    m: PreparedMatch,
+) -> Optional[Tuple[float, float, float]]:
+    """(PX_poisson, PX_after_DC, PX_final) для матча."""
+    if m.px_shin is None:
+        return None
+    cfg = model.config
+    cal = model.calibration
+    gamma = cal.gamma if cfg.use_dixon_coles else 0.0
+    _, _, s_cal, d_cal = _calibrated_sd_for_match(
+        m, model.strength, model.goals, cal, cfg,
+    )
+    _, px_poisson, _ = _prob_1x2_from_sd(s_cal, d_cal, cfg, gamma=0.0)
+    _, px_after_dc, _ = _prob_1x2_from_sd(s_cal, d_cal, cfg, gamma=gamma)
+    pred = predict_match(
+        model, m.home_team, m.away_team,
+        neutral=m.i_home == 0,
+        derby=_is_derby_match(m.raw) and m.i_home == 1,
+    )
+    return px_poisson, px_after_dc, pred.markets.px
+
+
+def draw_harm_diagnostics(
+    model: TrainedModel,
+    prepared: Sequence[PreparedMatch],
+    *,
+    low_s_threshold: float = 2.3,
+    harm_eps: float = 1e-9,
+) -> DrawHarmDiagnostics:
+    """Сравнение ошибки ничьи: Poisson → DC → финал (с draw model)."""
+    poisson_errs: List[float] = []
+    after_dc_errs: List[float] = []
+    final_errs: List[float] = []
+    n_harms = 0
+    low_s_mkt: List[float] = []
+    low_s_pois: List[float] = []
+    low_s_dc: List[float] = []
+    low_s_fin: List[float] = []
+
+    for m in prepared:
+        stages = _match_draw_px_stages(model, m)
+        if stages is None:
+            continue
+        px_pois, px_dc, px_fin = stages
+        px_mkt = m.px_shin
+        e_pois = px_pois - px_mkt
+        e_dc = px_dc - px_mkt
+        e_fin = px_fin - px_mkt
+        poisson_errs.append(e_pois)
+        after_dc_errs.append(e_dc)
+        final_errs.append(e_fin)
+        if abs(e_fin) > abs(e_dc) + harm_eps:
+            n_harms += 1
+        if m.sum_goals is not None and m.sum_goals < low_s_threshold:
+            low_s_mkt.append(px_mkt)
+            low_s_pois.append(px_pois)
+            low_s_dc.append(px_dc)
+            low_s_fin.append(px_fin)
+
+    def _avg(vals: Sequence[float]) -> float:
+        return sum(vals) / len(vals) if vals else 0.0
+
+    n = len(final_errs)
+    mean_pois = _avg(poisson_errs)
+    mean_dc = _avg(after_dc_errs)
+    mean_fin = _avg(final_errs)
+    mae_pois = _avg([abs(e) for e in poisson_errs])
+    mae_dc = _avg([abs(e) for e in after_dc_errs])
+    mae_fin = _avg([abs(e) for e in final_errs])
+    pct_harms = 100.0 * n_harms / n if n else 0.0
+    harms_worse = (
+        abs(mean_fin) > abs(mean_dc) + harm_eps
+        or mae_fin > mae_dc + harm_eps
+    )
+
+    parts = [
+        f"err_PX: Пуассон {mean_pois:+.3f}",
+        f"после DC {mean_dc:+.3f}",
+        f"финал {mean_fin:+.3f}",
+    ]
+    if n == 0:
+        summary = "нет матчей с 1X2"
+    elif not model.config.use_draw_model:
+        summary = "; ".join(parts) + " (модель ничьи выкл)"
+    elif harms_worse:
+        summary = (
+            "; ".join(parts)
+            + f"; модель ничьи ухудшает DC на этой выборке ({pct_harms:.0f}% матчей)"
+        )
+    else:
+        summary = "; ".join(parts) + f"; draw OK ({pct_harms:.0f}% хуже DC)"
+
+    return DrawHarmDiagnostics(
+        n_matches=n,
+        mean_err_px_poisson=mean_pois,
+        mean_err_px_after_dc=mean_dc,
+        mean_err_px_final=mean_fin,
+        mean_abs_err_poisson=mae_pois,
+        mean_abs_err_after_dc=mae_dc,
+        mean_abs_err_final=mae_fin,
+        n_draw_harms=n_harms,
+        pct_draw_harms=pct_harms,
+        harms_worse_than_after_dc=harms_worse and model.config.use_draw_model,
+        low_s_threshold=low_s_threshold,
+        low_s_n=len(low_s_mkt),
+        low_s_mean_px_market=_avg(low_s_mkt),
+        low_s_mean_px_poisson=_avg(low_s_pois),
+        low_s_mean_px_after_dc=_avg(low_s_dc),
+        low_s_mean_px_final=_avg(low_s_fin),
+        summary=summary,
+    )
+
+
+def log_draw_harm_diagnostics(diag: DrawHarmDiagnostics) -> None:
+    log = logging.getLogger(__name__)
+    if diag.n_matches == 0:
+        log.info("Draw harm: %s", diag.summary)
+        return
+    level = logging.WARNING if diag.harms_worse_than_after_dc else logging.INFO
+    log.log(level, "Draw harm: %s", diag.summary)
+    if diag.low_s_n > 0:
+        log.log(
+            level,
+            "  S<%.1f (%d): PX рынок %.3f, Пуассон %.3f, после DC %.3f, финал %.3f",
+            diag.low_s_threshold, diag.low_s_n,
+            diag.low_s_mean_px_market, diag.low_s_mean_px_poisson,
+            diag.low_s_mean_px_after_dc, diag.low_s_mean_px_final,
+        )
 
 
 # --------------------------------------------------------------------------- #

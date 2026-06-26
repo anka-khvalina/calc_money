@@ -359,7 +359,8 @@ def test_draw_target_clamped():
 def test_draw_model_fit_and_prediction_matches_target():
     csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
     raw = gmt.load_raw_matches(csv_path)
-    model, prepared = gmt.train_full_model(raw)
+    cfg = gmt.ModelConfig(use_draw_model=True, draw_model_mode="legacy")
+    model, prepared = gmt.train_full_model(raw, cfg)
     dm = model.draw
     assert dm.n > 0
     # базовая ничья при равных командах в разумных пределах
@@ -418,9 +419,38 @@ def test_draw_q_clamp_detected_in_adjust():
 
 def test_draw_q_diagnostics_on_trained_model():
     csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
-    model, prepared = gmt.train_full_model(gmt.load_raw_matches(csv_path))
+    raw = gmt.load_raw_matches(csv_path)
+    cfg = gmt.ModelConfig(use_draw_model=True)
+    model, prepared = gmt.train_full_model(raw, cfg)
     assert model.draw_q_diag is not None
     assert model.draw_q_diag.n_eval > 0
+
+
+def test_draw_harm_diagnostics_default_draw_off():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    model, _ = gmt.train_full_model(gmt.load_raw_matches(csv_path))
+    assert model.draw_harm_diag is not None
+    assert model.draw_harm_diag.n_matches > 0
+    assert not model.draw_harm_diag.harms_worse_than_after_dc
+    assert abs(model.draw_harm_diag.mean_err_px_final - model.draw_harm_diag.mean_err_px_after_dc) < 1e-6
+
+
+def test_residual_draw_model_fit():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    cfg = gmt.ModelConfig(use_draw_model=True, draw_model_mode="residual_dc")
+    model, _ = gmt.train_full_model(raw, cfg)
+    assert model.draw.mode == "residual_dc"
+    assert model.draw.n > 0
+    pred = gmt.predict_match(model, "Inter", "Empoli")
+    assert pred.draw_target is not None
+    assert pred.draw_diagnostics is not None
+
+
+def test_default_config_draw_off_s_cal_off():
+    cfg = gmt.ModelConfig()
+    assert cfg.use_draw_model is False
+    assert cfg.s_calibration_mode == "off"
 
 
 def test_sd_1x2_diagnostics_on_trained_model():

@@ -1935,7 +1935,7 @@ def build_app():
     _cfg_entry(goal_cfg_frame, 2, 3, "default сезон:", "w_season_def", 1.0,
                hint="Множитель для матча, чья date не попала ни в один диапазон таблицы сезонов ниже.")
 
-    goal_s_cal_mode_var = tk.StringVar(value="soft")
+    goal_s_cal_mode_var = tk.StringVar(value="off")
     ttk.Label(goal_cfg_frame, text="калибр. S:").grid(row=3, column=6, sticky="w", padx=(0, 4))
     s_cal_combo = ttk.Combobox(
         goal_cfg_frame, textvariable=goal_s_cal_mode_var, width=6,
@@ -1946,7 +1946,7 @@ def build_app():
     _cfg_entry(goal_cfg_frame, 3, 4, "γ max:", "gamma_max", 0.20,
                hint="Dixon–Coles: |γ| не выше (±).")
 
-    goal_use_draw_var = tk.BooleanVar(value=True)
+    goal_use_draw_var = tk.BooleanVar(value=False)
     goal_use_dc_var = tk.BooleanVar(value=True)
     _cb_draw = ttk.Checkbutton(goal_cfg_frame, text="Модель ничьи", variable=goal_use_draw_var)
     _cfg_entry(goal_cfg_frame, 3, 0, "дерби H×:", "derby_h_default", 0.7,
