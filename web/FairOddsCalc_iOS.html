@@ -3098,12 +3098,18 @@ bash scripts/update_and_serve.sh --start</div>
         const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
         const lh=Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*m.iHome*kHg);
         const la=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0)); return [m,dm,lh+la,m.wBase]; });
-      function loss(pp){ const [a,b,c,d,g]=pp; if(d<=0) return 1e9; let tot=0;
+      function loss5(pp){ const [a,b,c,d,g]=pp; if(d<=0) return 1e9; let tot=0;
         for(const [m,dm,sm,w] of pre){ const sf=c+d*sm; if(sf<=0.2) return 1e9; const df=gmClampD(a+b*dm,sf); const lh=(sf+df)/2,la=(sf-df)/2; if(lh<=0||la<=0) return 1e9;
           let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&g) mat=gmDC(mat,lh,la,g); const [p1,px,p2]=gm1x2(mat);
           tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2); }
         return tot; }
-      const x=gmNelder(loss,[0,1,0,1,0]); return {a:x[0],b:x[1],c:x[2],d:x[3],gamma:x[4],n1x2:used.length};
+      function loss4(pp){ return loss5([pp[0],pp[1],pp[2],pp[3],0]); }
+      if(cfg.useDc){
+        const x=gmNelder(loss5,[0,1,0,1,0]);
+        return {a:x[0],b:x[1],c:x[2],d:x[3],gamma:x[4],n1x2:used.length};
+      }
+      const x=gmNelder(loss4,[0,1,0,1]);
+      return {a:x[0],b:x[1],c:x[2],d:x[3],gamma:0,n1x2:used.length};
     }
     function gmFitDraw(ms,cfg){
       const rows=[];
@@ -4077,10 +4083,14 @@ bash scripts/update_and_serve.sh --start</div>
       if (drawQDiag && drawQDiag.nEval > 0){
         rows.push(['q clamp (DC→ничья)', escapeHtml(drawQDiag.summary), drawQDiag.stable ? '' : 'warn']);
       }
-      rows.push(
-        ['Dixon-Coles γ', goalFmtTrainNum(cal.gamma, 4), 'num'],
-        ['Ничья (источник)', escapeHtml(draw.source || '—'), ''],
-      );
+      if (gmModel.cfg && gmModel.cfg.useDc){
+        rows.push(['Dixon-Coles', 'включён', '']);
+        rows.push(['γ', goalFmtTrainNum(cal.gamma, 4), 'num']);
+      } else {
+        rows.push(['Dixon-Coles', 'выключен', '']);
+        rows.push(['γ', 'не используется', '']);
+      }
+      rows.push(['Ничья (источник)', escapeHtml(draw.source || '—'), '']);
       if (dClamp){
         const clampCls = (dClamp.pct > 2 || dClamp.nSensitive > 0) ? 'warn' : '';
         const clampDetail = dClamp.nHit

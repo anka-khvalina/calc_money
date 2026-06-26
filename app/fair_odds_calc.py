@@ -2104,6 +2104,11 @@ def build_app():
         q_note = ""
         if model.draw_q_diag and model.draw_q_diag.n_eval > 0:
             q_note = f"Draw q: {model.draw_q_diag.summary}\n"
+        dc_line = (
+            f"Dixon-Coles: вкл, γ={c.gamma:.4f}  "
+            if model.config.use_dixon_coles
+            else "Dixon-Coles: выкл, γ не используется  "
+        )
         return (
             _goal_d_clamp_note(model)
             + cal_note
@@ -2113,7 +2118,8 @@ def build_app():
             f"n_derby={st.derby_n}  RMSE_D={st.rmse:.3f}\n"
             f"μ={model.goals.mu:.3f}  H_g={model.goals.home_goal_adv:.3f}  "
             f"RMSE_logλ={model.goals.rmse:.3f}\n"
-            f"Калибр: a={c.a:.3f} b={c.b:.3f} c={c.c:.3f} d={c.d:.3f} γ={c.gamma:.4f}  "
+            f"Калибр: a={c.a:.3f} b={c.b:.3f} c={c.c:.3f} d={c.d:.3f}  "
+            f"{dc_line}"
             f"Ничья: {dr.source}"
         )
 

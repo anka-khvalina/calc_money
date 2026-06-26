@@ -382,6 +382,14 @@ def test_draw_diagnostics_present():
     assert all(r.p_draw_shin > 0 for r in diag)
 
 
+def test_calibration_gamma_zero_when_dc_off():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    cfg = gmt.ModelConfig(use_dixon_coles=False)
+    model, _ = gmt.train_full_model(raw, cfg)
+    assert model.calibration.gamma == 0.0
+
+
 def test_draw_q_clamp_detected_in_adjust():
     m = gm.build_score_matrix(1.6, 1.1)
     base = gm.draw_probability(m)

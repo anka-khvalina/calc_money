@@ -985,8 +985,20 @@ def calibrate(
             )
         return total
 
-    x = nelder_mead(loss, [0.0, 1.0, 0.0, 1.0, 0.0])
-    return Calibration(a=x[0], b=x[1], c=x[2], d=x[3], gamma=x[4], loss=loss(x), n_1x2=len(used))
+    if cfg.use_dixon_coles:
+        x = nelder_mead(loss, [0.0, 1.0, 0.0, 1.0, 0.0])
+        return Calibration(
+            a=x[0], b=x[1], c=x[2], d=x[3], gamma=x[4], loss=loss(x), n_1x2=len(used),
+        )
+
+    def loss_abcd(params: List[float]) -> float:
+        return loss([params[0], params[1], params[2], params[3], 0.0])
+
+    x4 = nelder_mead(loss_abcd, [0.0, 1.0, 0.0, 1.0])
+    full = [x4[0], x4[1], x4[2], x4[3], 0.0]
+    return Calibration(
+        a=x4[0], b=x4[1], c=x4[2], d=x4[3], gamma=0.0, loss=loss(full), n_1x2=len(used),
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -1480,8 +1492,15 @@ def _cmd_train(args: argparse.Namespace) -> None:
     print(f"μ: {_fmt(model.goals.mu,3)}  H_g: {_fmt(model.goals.home_goal_adv,3)}  "
           f"RMSE_logλ: {_fmt(model.goals.rmse,4)}")
     c = model.calibration
-    print(f"Калибровка: a={_fmt(c.a,3)} b={_fmt(c.b,3)} c={_fmt(c.c,3)} "
-          f"d={_fmt(c.d,3)} γ={_fmt(c.gamma,4)}  loss={_fmt(c.loss,5)}")
+    cal_line = (
+        f"Калибровка: a={_fmt(c.a,3)} b={_fmt(c.b,3)} c={_fmt(c.c,3)} "
+        f"d={_fmt(c.d,3)}  loss={_fmt(c.loss,5)}"
+    )
+    if model.config.use_dixon_coles:
+        cal_line += f"  γ={_fmt(c.gamma,4)}"
+    else:
+        cal_line += "  Dixon-Coles: выкл, γ не используется"
+    print(cal_line)
     print("\nРейтинги (сила, нейтраль):")
     for t, r in sorted(model.strength.ratings.items(), key=lambda kv: kv[1], reverse=True):
         print(f"  {t:<20} r={_fmt(r,3):>7}  A={_fmt(model.goals.attack[t],3):>7}  "
