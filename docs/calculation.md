@@ -112,7 +112,13 @@ log λ_a = μ + A_away − D_home
 
 Ограничения: `Σ A = 0`, `Σ D = 0`.
 
-L2-регуляризация (default `reg_lambda = 0.10`): штраф `reg_lambda·Σ(r² + A² + Df²)` — коэффициенты не «улетают» без доказательств.
+**Attack/defense** (robust WLS по log λ):
+
+```text
+Loss = Σ w·ε² + λ_A·Σ A² + λ_Df·Σ Df²
+```
+
+Defaults: `λ_A = λ_Df = 0.10`. **Сила** `r`: отдельно `λ_r = reg_lambda = 0.10`.
 
 ---
 

@@ -621,6 +621,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <div class="hint">При повторном обучении стягивает r, A, Df к предыдущей модели (0.7 = 70%). Первое обучение — без prior.</div>
         </div>
         <div class="field" style="min-width:150px;flex:1">
+          <label>λ A / Df</label><input id="goalRegLambdaAD" value="0.10" />
+          <div class="hint">L2-штраф на атаку и оборону: Loss += λ·ΣA² + λ·ΣDf². Сдерживает «сильная атака + дырявая оборона» от шума тотала. 0 = выкл.</div>
+        </div>
+        <div class="field" style="min-width:150px;flex:1">
           <label>дерби H×</label><input id="goalDerbyHDefault" value="0.7" />
           <div class="hint">Если в обучении &lt;3 дерби: H_eff = этот коэфф. × H. 0.7 — default; 0.4 — сильное ослабление дома.</div>
         </div>
@@ -3041,11 +3045,13 @@ bash scripts/update_and_serve.sh --start</div>
         });
       }
       const regLam=cfg.regLambda!=null?cfg.regLambda:0.1;
+      const regLamA=cfg.regLambdaAttack!=null?cfg.regLambdaAttack:regLam;
+      const regLamD=cfg.regLambdaDefense!=null?cfg.regLambdaDefense:regLamA;
       const regRows=[];
-      if(regLam>0){
+      if(regLamA>0||regLamD>0){
         teams.forEach(t=>{
-          const ca=Array(p).fill(0); ca[ai.get(t)]=1; regRows.push([ca,0,regLam]);
-          const cd=Array(p).fill(0); cd[di.get(t)]=1; regRows.push([cd,0,regLam]);
+          if(regLamA>0){ const ca=Array(p).fill(0); ca[ai.get(t)]=1; regRows.push([ca,0,regLamA]); }
+          if(regLamD>0){ const cd=Array(p).fill(0); cd[di.get(t)]=1; regRows.push([cd,0,regLamD]); }
         });
       }
       function run(W){ const wr=rows.map((r,i)=>[r,tg[i],W[i]]);
@@ -3202,7 +3208,8 @@ bash scripts/update_and_serve.sh --start</div>
         alphaT:f('goalAlphaT',0.5), deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
         seasonDefault:1.0,
         seasonWeightsById: goalSeasonWeightById || {},
-        priorAlpha:f('goalPriorAlpha',0.7), promotedN:3, regLambda:0.1,
+        priorAlpha:f('goalPriorAlpha',0.7), promotedN:3,
+        regLambda:0.1, regLambdaAttack:f('goalRegLambdaAD',0.1), regLambdaDefense:f('goalRegLambdaAD',0.1),
         dClampLowTeam:3, dClampEarlyFraction:0.25,
         derbyShrinkTau:30, derbyHDefault:f('goalDerbyHDefault',0.7), derbyMinMatches:3,
         useDraw:document.getElementById('goalUseDraw').checked, useDc:document.getElementById('goalUseDc').checked,
@@ -3990,6 +3997,7 @@ bash scripts/update_and_serve.sh --start</div>
         + goalRenderTrainTable([
           ['α форы', goalFmtTrainNum(cfg.alphaAh, 2), 'num'],
           ['α тотала', goalFmtTrainNum(cfg.alphaT, 2), 'num'],
+          ['λ A / Df', goalFmtTrainNum(cfg.regLambdaAttack, 2), 'num'],
           ['дерби H×', goalFmtTrainNum(cfg.derbyHDefault, 2), 'num'],
           ['Модель ничьи', cfg.useDraw ? 'вкл' : 'выкл', ''],
           ['Dixon-Coles', cfg.useDc ? 'вкл' : 'выкл', ''],
@@ -4375,7 +4383,7 @@ bash scripts/update_and_serve.sh --start</div>
       catch (e){ alert(e.message || e); }
     });
 
-    ['goalAlphaAh','goalAlphaT','goalPriorAlpha','goalDerbyHDefault','goalQmin','goalQmax'].forEach(id => {
+    ['goalAlphaAh','goalAlphaT','goalPriorAlpha','goalRegLambdaAD','goalDerbyHDefault','goalQmin','goalQmax'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', () => goalUpdateTrainUI());
     });

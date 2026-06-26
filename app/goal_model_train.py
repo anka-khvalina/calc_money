@@ -99,8 +99,10 @@ class ModelConfig:
     derby_h_default_ratio: float = 0.70  # H_eff ≈ ratio×H_league если мало дерби (0.4 — агрессивно)
     derby_min_matches: int = 3           # минимум дерби-матчей для оценки δ_derby
 
-    # L2-регуляризация r, A, Df (ridge к нулю): loss + reg_lambda·Σ(β²)
-    reg_lambda: float = 0.10
+    # L2-регуляризация (ridge к нулю)
+    reg_lambda: float = 0.10           # λ на рейтинги силы r
+    reg_lambda_attack: float = 0.10    # λ_A на attack
+    reg_lambda_defense: float = 0.10     # λ_Df на defense
 
 
 # --------------------------------------------------------------------------- #
@@ -763,14 +765,16 @@ def fit_attack_defense(
                 prior_rows.append((row, cfg.prior_alpha * prior_defense[t], cfg.prior_weight))
 
     reg_rows: List[Tuple[List[float], float, float]] = []
-    if cfg.reg_lambda > 0:
+    if cfg.reg_lambda_attack > 0 or cfg.reg_lambda_defense > 0:
         for t in teams:
-            row_a = [0.0] * p
-            row_a[a_idx[t]] = 1.0
-            reg_rows.append((row_a, 0.0, cfg.reg_lambda))
-            row_d = [0.0] * p
-            row_d[d_idx[t]] = 1.0
-            reg_rows.append((row_d, 0.0, cfg.reg_lambda))
+            if cfg.reg_lambda_attack > 0:
+                row_a = [0.0] * p
+                row_a[a_idx[t]] = 1.0
+                reg_rows.append((row_a, 0.0, cfg.reg_lambda_attack))
+            if cfg.reg_lambda_defense > 0:
+                row_d = [0.0] * p
+                row_d[d_idx[t]] = 1.0
+                reg_rows.append((row_d, 0.0, cfg.reg_lambda_defense))
 
     def solve(weights: Sequence[float]) -> Tuple[List[float], List[float]]:
         wrows = [(rows[i], targets[i], weights[i]) for i in range(len(rows))]
