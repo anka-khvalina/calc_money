@@ -105,6 +105,11 @@
     }
     .goal-src-match{ flex:1 1 100%; width:100%; }
     .goal-src-match select{ font-size:12px; width:100%; box-sizing:border-box; padding:4px 6px; }
+    .goal-pred-teams{
+      display:flex; flex-wrap:wrap; gap:10px 12px; width:100%;
+    }
+    .goal-pred-teams .field{ flex:1 1 140px; min-width:0; margin:0; }
+    .goal-pred-teams select{ width:100%; box-sizing:border-box; font-size:12px; padding:4px 6px; }
     .goal-src-seasons .goal-all-seasons{
       display:flex; align-items:center; gap:6px; margin-top:4px; font-size:11px;
     }
@@ -810,13 +815,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <label class="block-label" for="goalPredLeague">Лига</label>
               <select id="goalPredLeague"><option value="">Загрузка…</option></select>
             </div>
-            <div class="goal-src-seasons">
-              <label class="block-label" for="goalPredSeason">Сезон</label>
-              <select id="goalPredSeason"><option value="">—</option></select>
-            </div>
-            <div class="goal-src-match">
-              <label class="block-label" for="goalPredMatch">Матч</label>
-              <select id="goalPredMatch"><option value="">—</option></select>
+            <div class="goal-pred-teams">
+              <div class="field">
+                <label class="block-label" for="goalPredHome">Хозяева</label>
+                <select id="goalPredHome"><option value="">—</option></select>
+              </div>
+              <div class="field">
+                <label class="block-label" for="goalPredAway">Гости</label>
+                <select id="goalPredAway"><option value="">—</option></select>
+              </div>
             </div>
           </div>
           <div class="goal-src-row goal-src-row--action goal-src-action">
@@ -824,7 +831,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           </div>
         </div>
         <div class="hint" style="margin-top:6px">
-          Supabase → матч, команды и closing-линии (фора, тотал, 1X2).
+          Лига и команды — из Supabase (как «Справочник»). Кнопка подтягивает closing-линии последнего матча пары.
         </div>
         <div id="goalPredMatchCard" class="goal-train-card" style="display:none;margin-top:10px">
           <h4>Матч из БД</h4>
@@ -1698,8 +1705,7 @@ bash scripts/update_and_serve.sh --start</div>
       }
     }
 
-    function fillLogoTeamSelect(leagueId, selectedTeamId=null){
-      const sel = document.getElementById('teamsLogoTeam');
+    function sbFillTeamSelect(sel, leagueId, selectedTeamId=null, awayDefault=false){
       if (!sel) return '';
       sel.innerHTML = '';
       const teams = sbTeams(leagueId);
@@ -1718,8 +1724,14 @@ bash scripts/update_and_serve.sh --start</div>
       });
       const sid = selectedTeamId != null ? String(selectedTeamId) : null;
       if (sid && teams.some(t => String(t.id) === sid)) sel.value = sid;
+      else if (awayDefault && teams.length > 1) sel.selectedIndex = 1;
       else sel.selectedIndex = 0;
       return sel.value || '';
+    }
+
+    function fillLogoTeamSelect(leagueId, selectedTeamId=null){
+      const sel = document.getElementById('teamsLogoTeam');
+      return sbFillTeamSelect(sel, leagueId, selectedTeamId, false);
     }
     window.fillLogoTeamSelect = fillLogoTeamSelect;
 
@@ -3703,15 +3715,9 @@ bash scripts/update_and_serve.sh --start</div>
       return def;
     }
 
-    // ---------------- «Расчёт линии»: матч из Supabase ----------------
-    let goalPredSeasons = [];
-    let goalPredMatches = [];
+    // ---------------- «Расчёт линии»: лига + команды из Supabase ----------------
     let goalPredMatch = null;
 
-    function goalFmtMatchOption(m){
-      const d = sbFmtDate(m.match_date) || m.match_date || '—';
-      return `${d} · ${m.home_team} — ${m.away_team}`;
-    }
     function goalFmtDbNum(v){
       if (v == null || v === '') return '—';
       return String(v).replace('.', ',');
@@ -3746,87 +3752,64 @@ bash scripts/update_and_serve.sh --start</div>
       if (der) der.checked = !!(m && sbIsDerby(m));
       goalRenderPredMatchCard(m);
     }
+    function goalPredSelectedTeams(){
+      const leagueId = document.getElementById('goalPredLeague')?.value;
+      const homeId = document.getElementById('goalPredHome')?.value;
+      const awayId = document.getElementById('goalPredAway')?.value;
+      if (!leagueId || !homeId || !awayId || homeId === awayId) return null;
+      return {
+        leagueId,
+        homeId,
+        awayId,
+        home: sbTeamName(leagueId, homeId),
+        away: sbTeamName(leagueId, awayId),
+      };
+    }
     async function goalOnPredLeagueChange(){
       const leagueId = document.getElementById('goalPredLeague')?.value;
-      const seasonSel = document.getElementById('goalPredSeason');
-      const matchSel = document.getElementById('goalPredMatch');
-      goalPredSeasons = [];
-      goalPredMatches = [];
+      const homeSel = document.getElementById('goalPredHome');
+      const awaySel = document.getElementById('goalPredAway');
+      const prevH = homeSel?.value;
+      const prevA = awaySel?.value;
       goalApplyPredMatch(null);
       if (!leagueId){
-        if (seasonSel) seasonSel.innerHTML = '<option value="">—</option>';
-        if (matchSel) matchSel.innerHTML = '<option value="">—</option>';
+        if (homeSel) homeSel.innerHTML = '<option value="">—</option>';
+        if (awaySel) awaySel.innerHTML = '<option value="">—</option>';
         return;
       }
       try {
         await loadSupabaseConfig();
-        goalPredSeasons = await sbLoadSeasonsForLeague(leagueId);
-        if (seasonSel){
-          seasonSel.innerHTML = '<option value="">— выберите сезон —</option>'
-            + goalPredSeasons.map(s =>
-              `<option value="${escapeHtml(String(s.season_id))}">${escapeHtml(s.season_label)} — ${escapeHtml(String(s.matches_count))} матч.</option>`
-            ).join('');
-        }
-        if (matchSel) matchSel.innerHTML = '<option value="">—</option>';
+        await sbLoadTeams(leagueId);
+        sbFillTeamSelect(homeSel, leagueId, prevH, false);
+        sbFillTeamSelect(awaySel, leagueId, prevA, !prevA);
       } catch (e){
         console.error('goalOnPredLeagueChange', e);
-        alert('Не удалось загрузить сезоны лиги.');
-        if (seasonSel) seasonSel.innerHTML = '<option value="">—</option>';
-        if (matchSel) matchSel.innerHTML = '<option value="">—</option>';
+        alert('Не удалось загрузить команды лиги.');
+        if (homeSel) homeSel.innerHTML = '<option value="">—</option>';
+        if (awaySel) awaySel.innerHTML = '<option value="">—</option>';
       }
-    }
-    async function goalOnPredSeasonChange(){
-      const leagueId = document.getElementById('goalPredLeague')?.value;
-      const seasonId = Number(document.getElementById('goalPredSeason')?.value);
-      const matchSel = document.getElementById('goalPredMatch');
-      goalPredMatches = [];
-      goalApplyPredMatch(null);
-      if (!leagueId || !seasonId){
-        if (matchSel) matchSel.innerHTML = '<option value="">—</option>';
-        return;
-      }
-      try {
-        await loadSupabaseConfig();
-        goalPredMatches = await sbLoadMatchesForSeasons(leagueId, [seasonId]);
-        goalPredMatches.sort((a, b) => String(b.match_date).localeCompare(String(a.match_date)));
-        if (matchSel){
-          matchSel.innerHTML = '<option value="">— выберите матч —</option>'
-            + goalPredMatches.map(m =>
-              `<option value="${escapeHtml(String(m.match_id))}">${escapeHtml(goalFmtMatchOption(m))}</option>`
-            ).join('');
-        }
-      } catch (e){
-        console.error('goalOnPredSeasonChange', e);
-        alert('Не удалось загрузить матчи сезона.');
-        if (matchSel) matchSel.innerHTML = '<option value="">—</option>';
-      }
-    }
-    function goalOnPredMatchChange(){
-      const mid = document.getElementById('goalPredMatch')?.value;
-      if (!mid){ goalApplyPredMatch(null); return; }
-      const m = goalPredMatches.find(x => String(x.match_id) === String(mid));
-      goalApplyPredMatch(m || null);
     }
     async function goalPredLoadFromDb(){
-      const leagueId = document.getElementById('goalPredLeague')?.value;
-      const mid = document.getElementById('goalPredMatch')?.value;
-      if (!leagueId){ alert('Выберите лигу'); return; }
-      const seasonId = Number(document.getElementById('goalPredSeason')?.value);
-      if (!seasonId){ alert('Выберите сезон'); return; }
+      const picked = goalPredSelectedTeams();
+      if (!picked){ alert('Выберите лигу и разные команды.'); return; }
       try {
         await loadSupabaseConfig();
-        if (!mid){
-          await goalOnPredSeasonChange();
+        const q = `select=${SB_MATCH_SELECT}`
+          + `&league_id=eq.${encodeURIComponent(picked.leagueId)}`
+          + `&home_team=eq.${encodeURIComponent(picked.home)}`
+          + `&away_team=eq.${encodeURIComponent(picked.away)}`
+          + `&order=match_date.desc&limit=1`;
+        const rows = await sbFetch(`/v_matches_full?${q}`);
+        const m = Array.isArray(rows) && rows.length ? rows[0] : null;
+        if (!m){
+          alert('В БД нет матча с этой парой (хозяева — гости).');
+          goalApplyPredMatch(null);
           return;
         }
-        const fresh = await sbFetchMatchFromDb(mid);
-        const idx = goalPredMatches.findIndex(x => String(x.match_id) === String(mid));
-        if (idx >= 0) goalPredMatches[idx] = fresh;
-        else goalPredMatches.push(fresh);
-        goalApplyPredMatch(fresh);
+        goalApplyPredMatch(m);
       } catch (e){
         console.error('goalPredLoadFromDb', e);
-        alert('Не удалось загрузить матч из Supabase');
+        alert('Не удалось загрузить линии из Supabase');
       }
     }
     async function goalSyncPredLeagueFromTrain(){
@@ -3839,7 +3822,9 @@ bash scripts/update_and_serve.sh --start</div>
     }
     async function goalInitPredSection(){
       goalPopulateLeagueSelect('goalPredLeague');
-      await goalSyncPredLeagueFromTrain();
+      const pred = document.getElementById('goalPredLeague');
+      if (pred && pred.value) await goalOnPredLeagueChange();
+      else await goalSyncPredLeagueFromTrain();
     }
 
     // ---------------- История (Supabase) ----------------
@@ -5187,17 +5172,16 @@ bash scripts/update_and_serve.sh --start</div>
     });
 
     document.getElementById('goalPredLeague')?.addEventListener('change', () => { goalOnPredLeagueChange(); });
-    document.getElementById('goalPredSeason')?.addEventListener('change', () => { goalOnPredSeasonChange(); });
-    document.getElementById('goalPredMatch')?.addEventListener('change', () => { goalOnPredMatchChange(); });
+    document.getElementById('goalPredHome')?.addEventListener('change', () => { goalApplyPredMatch(null); });
+    document.getElementById('goalPredAway')?.addEventListener('change', () => { goalApplyPredMatch(null); });
     bindClick('goalPredLoad', () => { goalPredLoadFromDb(); });
 
     window.goalInitTab = goalInitTab;
     bindClick('goalPredict',()=>{
       if(!gmModel){ alert('Сначала обучите модель.'); return; }
-      if(!goalPredMatch){ alert('Выберите матч и загрузите данные из БД.'); return; }
-      const home=String(goalPredMatch.home_team||'').trim();
-      const away=String(goalPredMatch.away_team||'').trim();
-      if(!home||!away||home===away){ alert('В матче из БД не указаны разные команды.'); return; }
+      const picked = goalPredSelectedTeams();
+      if(!picked){ alert('Выберите лигу и разные команды.'); return; }
+      const { leagueId, home, away } = picked;
       try{
         const neutral=document.getElementById('goalNeutral').checked, derby=document.getElementById('goalDerby').checked;
         const pred=gmPredict(gmModel,home,away,{neutral,derby});
@@ -5205,12 +5189,9 @@ bash scripts/update_and_serve.sh --start</div>
         const mg=(parseFloat((document.getElementById('goalMarginPct').value||'3').replace(',','.'))||0)/100;
         const {lines,summary}=gmFormatPredict(pred,home,away,neutral,useM,mg);
         document.getElementById('goalOut').textContent=lines.join('\n');
-        const leagueName=goalPredMatch.league_name
-          || (window.__SB.leagueNameById && window.__SB.leagueNameById[goalPredMatch.league_id])
-          || String(goalPredMatch.league_id || '');
         gmAddPredHist({
           at:gmFormatDt(),
-          league:leagueName,
+          league:sbLeagueName(leagueId),
           match:`${home} — ${away}`,
           summary,
         });
