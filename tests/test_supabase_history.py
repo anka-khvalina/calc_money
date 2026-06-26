@@ -49,6 +49,13 @@ def test_fetch_season_summary_parses_rows():
     assert sbh.format_imported_at(rows[0].imported_at) == "2026-06-25 16:05"
 
 
+def test_format_ui_date():
+    assert sbh.format_ui_date("2025-08-15") == "15.08.2025"
+    assert sbh.format_ui_date("2025-08-15T12:00:00") == "15.08.2025"
+    assert sbh.format_ui_date("") == ""
+    assert sbh.format_ui_date(None) == ""
+
+
 def test_fetch_matches_filters_by_league_and_season():
     payload = json.dumps(
         [

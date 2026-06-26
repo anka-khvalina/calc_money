@@ -131,6 +131,16 @@ def format_imported_at(iso: Optional[str]) -> str:
     return iso.replace("T", " ")[:16]
 
 
+def format_ui_date(iso: Optional[str]) -> str:
+    """YYYY-MM-DD → DD.MM.YYYY для отображения в UI."""
+    if not iso:
+        return ""
+    s = str(iso).strip()
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return f"{s[8:10]}.{s[5:7]}.{s[:4]}"
+    return s
+
+
 def format_cell(value: Any, *, kind: str = "text") -> str:
     if value is None:
         return "—"

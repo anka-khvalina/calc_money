@@ -2640,7 +2640,7 @@ bash scripts/update_and_serve.sh --start</div>
         const score = (m.hg != null && m.ag != null) ? `${m.hg}:${m.ag}` : '';
         const res = derivedResult(m);
         tr.innerHTML =
-          `<td>${m.date||''}</td><td>${m.home}</td>`+
+          `<td>${escapeHtml(sbFmtDate(m.date))}</td><td>${m.home}</td>`+
           `<td class="right">${fmt(m.o1,2)}</td><td class="right">${fmt(m.ox,2)}</td><td class="right">${fmt(m.o2,2)}</td>`+
           `<td>${m.away}</td><td class="right">${score}</td><td>${res}</td>`;
         tbody.appendChild(tr);
@@ -3069,6 +3069,13 @@ bash scripts/update_and_serve.sh --start</div>
     function sbFmtImportedAt(iso){
       return iso ? String(iso).replace('T', ' ').slice(0, 16) : '';
     }
+    function sbFmtDate(iso){
+      if (!iso) return '';
+      const s = String(iso).trim();
+      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+      return s;
+    }
     function sbFmtCell(v, kind='text'){
       if (v == null || v === '') return '—';
       if (kind === 'bool') return v ? 'да' : 'нет';
@@ -3439,7 +3446,7 @@ bash scripts/update_and_serve.sh --start</div>
         const weightsOpen = !!st.weightsOpen;
         const fetchOpen = !!st.fetchOpen;
         const mainRow = `<tr data-hist-mid="${m.match_id}" class="${dirty ? 'hist-dirty' : ''}">` +
-          `<td class="hist-col-date">${escapeHtml(m.match_date || '')}</td>` +
+          `<td class="hist-col-date">${escapeHtml(sbFmtDate(m.match_date))}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.home_team || '')}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.away_team || '')}</td>` +
           `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah1', m, st)}</td>` +

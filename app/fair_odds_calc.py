@@ -1375,7 +1375,7 @@ def build_app():
             _hist_hide_fetch_bar()
             return
         hist_fetch_mid = mid
-        hist_fetch_match_lbl.config(text=f"{m.match_date}  {m.home_team} — {m.away_team}")
+        hist_fetch_match_lbl.config(text=f"{sbh.format_ui_date(m.match_date)}  {m.home_team} — {m.away_team}")
         hist_fetch_var.set(hist_external_ids.get(mid, ""))
         hist_fetch_err.set("")
         hist_fetch_bar.pack(fill="x", pady=(6, 0))
@@ -1468,7 +1468,7 @@ def build_app():
 
         fetch_mark = "▲" if hist_fetch_mid == mid else "▼"
         return (
-            m.match_date,
+            sbh.format_ui_date(m.match_date),
             m.home_team,
             m.away_team,
             cell("ah1"),
