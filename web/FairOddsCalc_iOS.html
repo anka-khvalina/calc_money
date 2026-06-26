@@ -794,7 +794,27 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </ul>
       <p class="small">Полный маппинг UI ↔ БД: <code>docs/reference.md</code> в репозитории.</p>
 
+      <p class="small">Полная версия в репозитории: <code>docs/training-and-calculation.md</code></p>
+
+      <h2>Азиатская фора — знак (как у бука)</h2>
+      <div class="help-card">
+        <p><b>closing_ah_home</b> — фора <b>на хозяев</b>, в БД хранится <b>без смены знака</b>:</p>
+        <ul>
+          <li><b>Минус</b> (−0.75, −1, …) — хозяева <b>сильнее</b>, отдают голы форой.</li>
+          <li><b>Плюс</b> (+0.5, …) — хозяева слабее, получают фору.</li>
+          <li><b>AH1</b> выше AH2 на минусовой линии — нормально: покрыть жёсткую фору <b>сложнее</b>, чем просто выиграть.</li>
+        </ul>
+        <p>Программа подставляет линию <b>как в БД</b> в расчёт покрытия. Отдельно подбирается <b>D = λ<sub>h</sub>−λ<sub>a</sub></b> (обычно D&gt;0, если хозяева сильнее) — это не «перевёрнутая» фора в базе.</p>
+        <div class="formula">margin = (голы хозяев − голы гостей) + closing_ah_home
+<span class="m"># margin &gt; 0 → хозяева покрыли (с учётом push на .0 / четвертных)</span></div>
+      </div>
+
       <h2>Как обучается модель</h2>
+      <p>Цепочка для <b>каждого матча</b> истории, затем сводная регрессия по всей выборке.</p>
+
+      <h3>0. Что должно быть в матче</h3>
+      <p>Обязательно: <b>фора + AH1/AH2 + тотал + Over/Under</b>. Без этого матч не идёт в обучение.  
+      Желательно: 1/X/2, веса, <b>is_neutral</b>.</p>
 
       <h3>1. Снятие маржи (везде Shin)</h3>
       <p>Все рынки — форы, тоталы и 1X2 — очищаются от маржи <b>методом Shin</b>
@@ -804,12 +824,13 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 <span class="m"># Over 2.5 @1.91 / Under @1.99  →  P(Over) ≈ 0.511</span></div>
 
       <h3>2. Восстановление скрытых S и D</h3>
-      <p>Линия ≠ ожидание. Из тотала и Over/Under подбираем <b>S</b> (сумма голов ~ Пуассон):</p>
-      <div class="formula">S = argmin<sub>S</sub> ( P<sub>модель</sub>(Over | S) − P<sup>fair</sup><sub>Over</sub> )²</div>
-      <p>Из форы и AH-кэфов (по матрице, с учётом возвратов и четвертных линий) подбираем <b>D</b>:</p>
-      <div class="formula">D = argmin<sub>D</sub> ( P<sub>модель</sub>(хозяева покрыли | S, D) − P<sup>fair</sup><sub>AH</sub> )²
+      <p><b>S</b> — ожидаемая сумма голов λ<sub>h</sub>+λ<sub>a</sub>. Не равна просто линии тотала: подбирается по Over/Under.</p>
+      <div class="formula">S = argmin ( P<sub>модель</sub>(Over | S) − P<sup>fair</sup><sub>Over</sub> )²</div>
+      <p><b>D</b> — ожидаемая разница λ<sub>h</sub>−λ<sub>a</sub>. Подбирается по <b>линии форы как у бука</b> и AH1/AH2 (четвертные линии, push).</p>
+      <div class="formula">D = argmin ( P<sub>модель</sub>(покрыли AH | S, D) − P<sup>fair</sup><sub>AH home</sub> )²
 λ<sub>h</sub> = (S + D) / 2 ,   λ<sub>a</sub> = (S − D) / 2</div>
-      <p class="small">Пример (Inter–Roma): тотал 2.5, фора −0.75 → S ≈ 2.716, D ≈ 0.817 → λ<sub>h</sub> ≈ 1.767, λ<sub>a</sub> ≈ 0.949.</p>
+      <p class="small">Пример: Inter–Roma, тотал 2.5, фора −0.75 → S≈2.72, D≈0.82.  
+      Пример с жёсткой форой: −1 @ AH1 2.83 / AH2 1.49 → P(покрытия) &lt; 50%, D всё равно &gt; 0, но меньше, чем на −0.5.</p>
 
       <h3>3. Рейтинг силы команд</h3>
       <div class="formula">D<sub>m</sub> = r<sub>хозяева</sub> − r<sub>гости</sub> + H·I<sub>дома</sub> + ε
@@ -832,16 +853,43 @@ P<sub>X</sub><sup>target</sup> = 1 / (1 + e<sup>−logit</sup>)</div>
       <div class="formula">q = clamp( P<sub>X</sub><sup>target</sup> / P<sub>X</sub><sup>матрица</sup> , q<sub>min</sub> , q<sub>max</sub> )
 P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма снова = 1</span></div>
 
-      <h3>Вес матча при обучении</h3>
-      <div class="formula">W = W<sub>сезон</sub> × match_weight × derby_weight × neutral_weight</div>
-      <p>Меньший вес → матч слабее влияет; 0 — исключён. Веса сезонов задаются в таблице на вкладке «Линия».</p>
+      <h3>Веса матча при обучении</h3>
+      <div class="formula">w<sub>base</sub> = W<sub>сезон</sub> × match_weight × derby_weight × neutral_weight</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Множитель</th><th>Где задаётся</th><th>Пример</th></tr></thead>
+        <tbody>
+          <tr><td>W<sub>сезон</sub></td><td>таблица весов на «Линии»</td><td>прошлый сезон 0.7</td></tr>
+          <tr><td>match_weight</td><td>История → «Вес»</td><td>низкая мотивация 0.5 (бывш. CSV <code>value</code>)</td></tr>
+          <tr><td>derby_weight</td><td>История</td><td>дерби 0.7</td></tr>
+          <tr><td>neutral_weight</td><td>История</td><td>нейтральное поле 0.8</td></tr>
+        </tbody>
+      </table></div>
+      <p>Метка <code>low_motivation</code> в <code>note</code> — только заметка; в формулу входит <b>число</b> match_weight.  
+      <b>0</b> — матч исключён из обучения.</p>
+      <p>Дополнительно (автоматически в коде):</p>
+      <div class="formula">w<sub>сила</sub> = w<sub>base</sub> × w<sub>line AH</sub> × w<sub>Huber</sub>
+w<sub>line AH</sub> = clamp( 1 / (1 + α<sub>форы</sub>·|D|²), 0.15, 1 )
 
-      <h2>Прогноз и рынки</h2>
+w<sub>атака</sub> = w<sub>base</sub> × w<sub>line тотал</sub> × w<sub>Huber</sub>
+w<sub>line тотал</sub> = clamp( 1 / (1 + α<sub>тотала</sub>·(S−S̄)²), 0.3, 1 )</div>
+      <p class="small">Большой перевес по форе / экстремальный тотал → матч слабее влияет на соответствующий этап. Huber ослабляет выбросы по остаткам.</p>
+
+      <h2>Прогноз («Рассчитать линию»)</h2>
+      <div class="help-card">
+        <ol>
+          <li>Берём рейтинги <b>r</b>, атаку/оборону <b>A, Df</b> обученной модели.</li>
+          <li>Считаем <b>D<sub>pred</sub> = r<sub>h</sub>−r<sub>a</sub> + H·I<sub>дома</sub></b> (нейтраль → I=0).</li>
+          <li>Считаем <b>S<sub>pred</sub></b> из log-модели голов + калибровка <b>a,b,c,d</b>.</li>
+          <li><b>λ<sub>h</sub>, λ<sub>a</sub></b> → пуассоновская матрица P(i,j).</li>
+          <li>Опционально: Dixon–Coles, коррекция ничьи (q<sub>min</sub>…q<sub>max</sub>).</li>
+          <li>Из <b>одной</b> матрицы: 1X2, тоталы, форы (знак как у бука), ИТ, топ счетов.</li>
+        </ol>
+      </div>
       <div class="formula">P(i,j) = Pois(i; λ<sub>h</sub>) · Pois(j; λ<sub>a</sub>)
-П1 = Σ<sub>i&gt;j</sub> P(i,j) ,  X = Σ<sub>i=j</sub> P(i,j) ,  П2 = Σ<sub>i&lt;j</sub> P(i,j)
-Честный коэффициент:  K = 1 / P</div>
-      <p>«Центральная» фора/тотал — линия, где стороны сбалансированы (кэфы ≈ равны).
-      Маржа (опц.): P<sup>book</sup> = P·(1+маржа), K = 1/P<sup>book</sup>.</p>
+П1 = Σ<sub>i&gt;j</sub> P ,  X = Σ<sub>i=j</sub> P ,  П2 = Σ<sub>i&lt;j</sub> P
+K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+маржа%))</div>
+      <p>Команда не участвовала в обучении → рейтинг <b>новичка</b> (среднее N слабейших). Имена — из <b>Справочника</b>.  
+      «Центральная» фора/тотал — линия с примерно равными кэфами (поиск по матрице).</p>
 
       <h2>Справочник настроек («Линия»)</h2>
       <div class="table-wrap"><table>
@@ -863,6 +911,8 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       <h2>Советы и частые вопросы</h2>
       <ul>
         <li><b>Имена команд</b> в справочнике должны совпадать с матчами в БД, иначе применится рейтинг новичка.</li>
+        <li>Фора в БД — <b>на хозяев, знак как у бука</b>; программа знак при расчёте не переворачивает.</li>
+        <li>Низкая мотивация → уменьшите <b>match_weight</b> в Истории (не отдельный флаг).</li>
         <li>Чем больше матчей (несколько сезонов), тем стабильнее рейтинги. В «Линии» можно выбрать «Все сезоны».</li>
         <li>«Нужно ≥2 матчей» — мало загруженных матчей или не заполнены обязательные рынки.</li>
         <li>Все данные хранятся только в этом Safari на устройстве (localStorage).</li>

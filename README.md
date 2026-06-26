@@ -25,6 +25,7 @@
 - [Архитектура](docs/architecture.md)
 - [API и маппинги](docs/reference.md) — все ручки и поля
 - [Формулы](docs/calculation.md)
+- **[Обучение и расчёт (подробно)](docs/training-and-calculation.md)**
 - [ER-диаграмма БД](docs/db-er-closing-lines.md)
 
 ## Тесты
