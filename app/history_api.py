@@ -3,11 +3,12 @@
 
 Запуск:
   pip install -r requirements-api.txt
-  python3 -m uvicorn history_api:app --app-dir app --host 0.0.0.0 --port 8765
+  python3 -m uvicorn history_api:app --app-dir app --host 127.0.0.1 --port 8765
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Dict
 
@@ -44,9 +45,14 @@ def health() -> dict:
 
 
 @app.post("/api/history/fetch-odds", response_model=FetchOddsResponse)
-def history_fetch_odds(body: FetchOddsRequest) -> FetchOddsResponse:
+async def history_fetch_odds(body: FetchOddsRequest) -> FetchOddsResponse:
     try:
-        odds = ubo.fetch_odds(body.id_fixture)
+        odds = await asyncio.to_thread(ubo.fetch_odds, body.id_fixture)
     except ubo.UserbetError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка сервера при запросе к userbet: {exc}",
+        ) from exc
     return FetchOddsResponse(odds=odds)

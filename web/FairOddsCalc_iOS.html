@@ -3117,19 +3117,30 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       if (!extId) throw new Error('Введите id матча с сайта неизвестного мужика');
       await loadApiConfig();
       if (!API_BASE) throw new Error('Не задан api_base_url в web/api.config.json');
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 90000);
       let resp;
       try {
         resp = await fetch(`${API_BASE}/api/history/fetch-odds`, {
           method:'POST',
           headers:{ 'Content-Type':'application/json', Accept:'application/json' },
           body: JSON.stringify({ id_fixture: extId }),
+          signal: ctrl.signal,
         });
-      } catch (_e){
+      } catch (e){
+        if (e && e.name === 'AbortError'){
+          throw new Error(
+            'Таймаут запроса (90 с). Сайт userbet отвечает медленно — подождите 10 сек и нажмите снова. ' +
+            'Не нажимайте «Получить данные» несколько раз подряд.'
+          );
+        }
         throw new Error(
           `Не удалось связаться с API (${API_BASE}). ` +
-          `На Mac: bash scripts/run_history_api.sh (порт 8765, bind 0.0.0.0). ` +
-          `Проверка с этого ПК: curl ${API_BASE}/health`
+          `На Mac должны работать: bash scripts/run_history_api.sh и python3 scripts/serve_lan.py. ` +
+          `Проверка: curl ${API_BASE}/health`
         );
+      } finally {
+        clearTimeout(timer);
       }
       let data;
       try { data = await resp.json(); } catch (_e){
@@ -3137,6 +3148,12 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       }
       if (!resp.ok){
         const msg = (data && data.detail) ? String(data.detail) : 'Не удалось получить данные с внешнего сайта';
+        if (resp.status === 502){
+          throw new Error('History API не запущен на Mac. Терминал: bash scripts/run_history_api.sh');
+        }
+        if (resp.status === 504){
+          throw new Error('Таймаут userbet — подождите 10 сек и повторите (не жмите кнопку подряд).');
+        }
         throw new Error(msg);
       }
       if (!data || !data.odds) throw new Error('Внешний сайт не вернул коэффициенты по матчу');
@@ -3260,6 +3277,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         `<div><label>id матча с сайта неизвестного мужика</label>` +
         `<input type="text" data-hist-external-id="${m.match_id}" value="${escapeHtml(extId)}" ${loading ? 'disabled' : ''} /></div>` +
         `<button type="button" class="btn primary" data-hist-fetch-run="${m.match_id}" ${loading ? 'disabled' : ''}>${loading ? 'Получение...' : 'Получить данные'}</button>` +
+        `<span class="small" style="color:#666">пауза 2–3 сек между матчами</span>` +
         (st.fetchError ? `<span class="hist-row-err">${escapeHtml(st.fetchError)}</span>` : '') +
       `</div>`;
     }

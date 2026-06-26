@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -13,6 +16,9 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 USERBET_ODDS_URL = "https://userbet.info/user/get_current_lineups_odds/"
 PREFERRED_BOOKMAKER = 70
+USERBET_MIN_INTERVAL_SEC = float(os.environ.get("USERBET_MIN_INTERVAL_SEC", "2.0"))
+USERBET_MAX_RETRIES = int(os.environ.get("USERBET_MAX_RETRIES", "3"))
+USERBET_TIMEOUT_SEC = float(os.environ.get("USERBET_TIMEOUT_SEC", "45"))
 
 USERBET_REQUEST_HEADERS = {
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -52,6 +58,20 @@ _TOTAL_RE = re.compile(r"^\d+(?:\.\d+)?$")
 
 class UserbetError(RuntimeError):
     pass
+
+
+_userbet_lock = threading.Lock()
+_userbet_last_call = 0.0
+
+
+def _throttle_userbet() -> None:
+    global _userbet_last_call
+    with _userbet_lock:
+        now = time.monotonic()
+        wait = USERBET_MIN_INTERVAL_SEC - (now - _userbet_last_call)
+        if wait > 0:
+            time.sleep(wait)
+        _userbet_last_call = time.monotonic()
 
 
 def round_odds(value: float) -> float:
@@ -241,7 +261,7 @@ def _decode_response_payload(raw: bytes) -> Any:
         raise UserbetError("Не удалось получить данные с внешнего сайта") from None
 
 
-def fetch_odds(external_match_id: str, *, timeout: float = 30.0) -> Dict[str, float]:
+def _fetch_odds_once(external_match_id: str, *, timeout: float) -> Dict[str, float]:
     ext_id = str(external_match_id or "").strip()
     if not ext_id:
         raise UserbetError("Введите id матча с сайта неизвестного мужика")
@@ -255,6 +275,40 @@ def fetch_odds(external_match_id: str, *, timeout: float = 30.0) -> Dict[str, fl
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
-    except (urllib.error.URLError, TimeoutError):
-        raise UserbetError("Не удалось получить данные с внешнего сайта") from None
+    except TimeoutError as exc:
+        raise UserbetError(
+            "Сайт userbet не ответил вовремя — подождите 5–10 сек и повторите"
+        ) from exc
+    except urllib.error.HTTPError as exc:
+        if exc.code in (429, 503, 502, 403):
+            raise UserbetError(
+                f"Сайт userbet временно недоступен (HTTP {exc.code}). Подождите и повторите."
+            ) from exc
+        raise UserbetError("Не удалось получить данные с внешнего сайта") from exc
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", exc)
+        if isinstance(reason, TimeoutError):
+            raise UserbetError(
+                "Сайт userbet не ответил вовремя — подождите 5–10 сек и повторите"
+            ) from exc
+        raise UserbetError("Не удалось получить данные с внешнего сайта") from exc
     return parse_odds_response(_decode_response_payload(raw))
+
+
+def fetch_odds(external_match_id: str, *, timeout: Optional[float] = None) -> Dict[str, float]:
+    timeout_sec = USERBET_TIMEOUT_SEC if timeout is None else timeout
+    last_err: Optional[UserbetError] = None
+    for attempt in range(USERBET_MAX_RETRIES):
+        if attempt:
+            time.sleep(min(2.0 * attempt, 6.0))
+        _throttle_userbet()
+        try:
+            return _fetch_odds_once(external_match_id, timeout=timeout_sec)
+        except UserbetError as exc:
+            last_err = exc
+            msg = str(exc).lower()
+            if "подождите" in msg or "временно" in msg or "не ответил" in msg:
+                continue
+            raise
+    assert last_err is not None
+    raise last_err

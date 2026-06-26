@@ -63,6 +63,14 @@ class LanHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(data)
+        except TimeoutError as exc:
+            msg = '{"detail":"History API timeout (userbet). Wait and retry."}'.encode()
+            self.send_response(504)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(msg)
+            sys.stderr.write(f"proxy timeout {self.path}: {exc}\n")
         except OSError as exc:
             msg = '{"detail":"History API not running. On Mac: bash scripts/run_history_api.sh"}'.encode()
             self.send_response(502)
