@@ -12,9 +12,10 @@ from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Set, Union
 
 from supabase_teams import SupabaseError, _request
 
-# Явный маркер «дерби» в поле derby_weight (null и 1.0 = не дерби; legacy 0.7 не считается).
-DERBY_FLAG_MARKER: float = 2.0
-DERBY_WEIGHT_DEFAULT: float = 1.0
+# Поле derby_weight в БД — булев флаг: 1 = дерби, 0 = не дерби (null → не дерби).
+# Вес дерби (поправка H) считается при обучении, в БД не хранится.
+DERBY_FLAG_YES: float = 1.0
+DERBY_FLAG_NO: float = 0.0
 
 PATCH_WHITELIST: FrozenSet[str] = frozenset(
     {
@@ -117,11 +118,11 @@ def is_derby_match(match: MatchFull) -> bool:
     w = match.derby_weight
     if w is None:
         return False
-    return abs(float(w) - DERBY_FLAG_MARKER) < 1e-9
+    return abs(float(w) - DERBY_FLAG_YES) < 1e-9
 
 
 def derby_weight_from_bool(is_derby: bool) -> float:
-    return DERBY_FLAG_MARKER if is_derby else DERBY_WEIGHT_DEFAULT
+    return DERBY_FLAG_YES if is_derby else DERBY_FLAG_NO
 
 
 def format_imported_at(iso: Optional[str]) -> str:
@@ -220,7 +221,12 @@ def validate_match_patch(changes: Mapping[str, Any]) -> None:
             raise ValueError("Проверьте значения коэффициентов")
         if key in ODDS_GT_ONE_FIELDS and val <= 1:
             raise ValueError("Проверьте значения коэффициентов")
-        if key in ("derby_weight", "match_weight", "neutral_weight") and val < 0:
+        if key == "derby_weight":
+            fv = float(val)
+            if fv < 0 or fv > 1:
+                raise ValueError("Проверьте значения коэффициентов")
+            continue
+        if key in ("match_weight", "neutral_weight") and val < 0:
             raise ValueError("Проверьте значения коэффициентов")
 
 
@@ -468,7 +474,7 @@ def matches_to_goal_csv(matches: List[MatchFull], *, league_name: str = "") -> s
                     "true" if derby_flag else "false",
                     cell(m.note or ""),
                     cell(m.match_weight if m.match_weight is not None else 1),
-                    cell(m.derby_weight if m.derby_weight is not None else 1),
+                    cell(m.derby_weight if m.derby_weight is not None else 0),
                     cell(m.neutral_weight if m.neutral_weight is not None else 1),
                 ]
             )

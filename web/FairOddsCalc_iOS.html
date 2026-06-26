@@ -803,7 +803,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <li><b>match_weight</b> — вес матча (по умолчанию 1).</li>
         <li><b>Нейтральное поле</b> (<code>is_neutral</code>) — факт: матч был на нейтральном? При «да» нет домашнего преимущества.</li>
         <li><b>Нейтр. вес</b> (<code>neutral_weight</code>) — коэффициент ослабления при обучении; учитывается <b>только</b> если нейтральное поле = да (обычно 0,8).</li>
-        <li><b>Дерби</b> — факт дерби (да/нет); при обучении оценивается поправка <b>δ_derby</b> к домашнему преимуществу <b>H</b> (не множитель веса).</li>
+          <li><b>Дерби</b> — факт (да/нет); в БД <code>derby_weight</code> = 1 или 0. Поправка к H считается при обучении.</li>
       </ul>
       <p class="small">Полный маппинг UI ↔ БД: <code>docs/reference.md</code> в репозитории.</p>
 
@@ -2809,8 +2809,8 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       derby_weight:'derw',derby_value:'derw',
       neutral_weight:'neuw',neutral_value:'neuw',
     };
-    const DERBY_FLAG_MARKER = 2;
-    const DERBY_WEIGHT_DEFAULT = 1;
+    const DERBY_FLAG_YES = 1;
+    const DERBY_FLAG_NO = 0;
     function gmNumKey(s){ return String(s).trim().toLowerCase().replace(/[^a-z0-9_а-я]/gi,''); }
     function gmF(v){ if(v==null) return null; const t=String(v).trim().replace(',','.'); if(!t) return null; const n=parseFloat(t); return isNaN(n)?null:n; }
     function gmB(v){ return ['1','true','yes','y','да'].includes(String(v).trim().toLowerCase()); }
@@ -3094,7 +3094,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
           cell(m.home_odds), cell(m.draw_odds), cell(m.away_odds),
           m.is_neutral ? 'true' : 'false', derbyFlag ? 'true' : 'false', cell(m.note || ''),
           cell(m.match_weight != null ? m.match_weight : 1),
-          cell(m.derby_weight != null ? m.derby_weight : 1),
+          cell(sbIsDerby(m) ? 1 : 0),
           cell(m.neutral_weight != null ? m.neutral_weight : 1),
         ].join(','));
       });
@@ -3139,7 +3139,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     };
     const SB_HIST_WEIGHT_COLS = [
       { col:'neutral', label:'Нейтральное поле', hint:'факт: матч был на нейтральном? да → без домашнего преимущества' },
-      { col:'derby', label:'Дерби', hint:'факт дерби; при обучении снижает H (дом. преимущество)' },
+      { col:'derby', label:'Дерби', hint:'факт дерби (да→1, нет→0 в БД); вес H считается при обучении' },
       { col:'match_w', label:'Вес матча', hint:'общий множитель важности матча' },
       { col:'neutr_w', label:'Нейтр. вес', hint:'коэфф. ослабления при обучении; только если «Нейтральное поле» = да' },
     ];
@@ -3209,10 +3209,10 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     function sbIsDerby(m){
       const w = m.derby_weight;
       if (w == null) return false;
-      return Math.abs(Number(w) - DERBY_FLAG_MARKER) < 1e-9;
+      return Math.abs(Number(w) - DERBY_FLAG_YES) < 1e-9;
     }
     function sbDerbyWeightFromBool(isDerby){
-      return isDerby ? DERBY_FLAG_MARKER : DERBY_WEIGHT_DEFAULT;
+      return isDerby ? DERBY_FLAG_YES : DERBY_FLAG_NO;
     }
     function sbFieldFromMatch(m, field){
       if (field === 'is_neutral') return !!m.is_neutral;
@@ -3271,7 +3271,8 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         if (v == null) return;
         if (field === 'is_neutral' && typeof v !== 'boolean') throw new Error('Проверьте значения коэффициентов');
         if (SB_ODDS_GT_ONE.has(field) && v <= 1) throw new Error('Проверьте значения коэффициентов');
-        if ((field === 'derby_weight' || field === 'match_weight' || field === 'neutral_weight') && v < 0) throw new Error('Проверьте значения коэффициентов');
+        if (field === 'derby_weight' && (v < 0 || v > 1)) throw new Error('Проверьте значения коэффициентов');
+        if ((field === 'match_weight' || field === 'neutral_weight') && v < 0) throw new Error('Проверьте значения коэффициентов');
       });
       return payload;
     }
@@ -3716,7 +3717,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         neu: !!m.is_neutral,
         mw: gmF(m.match_weight) != null ? gmF(m.match_weight) : 1.0,
         der: sbIsDerby(m),
-        derw: DERBY_WEIGHT_DEFAULT,
+        derw: DERBY_FLAG_NO,
         neuw: gmF(m.neutral_weight) != null ? gmF(m.neutral_weight) : 1.0,
         seasonId: m.season_id,
         seasonLabel: m.season_label || '',

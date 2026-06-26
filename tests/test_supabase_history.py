@@ -179,17 +179,17 @@ def test_build_dirty_patch_derby_bool():
         away_odds=9.0,
         is_neutral=False,
         match_weight=1.0,
-        derby_weight=1.0,
+        derby_weight=0.0,
         neutral_weight=1.0,
         note=None,
     )
     payload = sbh.build_dirty_patch(m, {"derby": "да"})
-    assert payload == {"derby_weight": sbh.DERBY_FLAG_MARKER}
+    assert payload == {"derby_weight": sbh.DERBY_FLAG_YES}
     payload2 = sbh.build_dirty_patch(
-        replace(m, derby_weight=sbh.DERBY_FLAG_MARKER),
+        replace(m, derby_weight=sbh.DERBY_FLAG_YES),
         {"derby": "нет"},
     )
-    assert payload2 == {"derby_weight": sbh.DERBY_WEIGHT_DEFAULT}
+    assert payload2 == {"derby_weight": sbh.DERBY_FLAG_NO}
 
 
 def test_is_derby_default_not_derby():
@@ -220,9 +220,9 @@ def test_is_derby_default_not_derby():
         note=None,
     )
     assert not sbh.is_derby_match(m)
-    assert not sbh.is_derby_match(replace(m, derby_weight=1.0))
+    assert not sbh.is_derby_match(replace(m, derby_weight=0))
     assert not sbh.is_derby_match(replace(m, derby_weight=0.7))
-    assert sbh.is_derby_match(replace(m, derby_weight=sbh.DERBY_FLAG_MARKER))
+    assert sbh.is_derby_match(replace(m, derby_weight=sbh.DERBY_FLAG_YES))
 
 
 def test_build_dirty_patch_match_and_neutral_weights():
