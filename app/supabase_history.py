@@ -12,7 +12,9 @@ from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Set, Union
 
 from supabase_teams import SupabaseError, _request
 
-DERBY_FLAG_WEIGHT: float = 0.7  # маркер «дерби» в БД (derby_weight ≠ 1); на вес матча не влияет
+# Явный маркер «дерби» в поле derby_weight (null и 1.0 = не дерби; legacy 0.7 не считается).
+DERBY_FLAG_MARKER: float = 2.0
+DERBY_WEIGHT_DEFAULT: float = 1.0
 
 PATCH_WHITELIST: FrozenSet[str] = frozenset(
     {
@@ -113,11 +115,13 @@ class MatchFull:
 
 def is_derby_match(match: MatchFull) -> bool:
     w = match.derby_weight
-    return w is not None and abs(float(w) - 1.0) > 1e-9
+    if w is None:
+        return False
+    return abs(float(w) - DERBY_FLAG_MARKER) < 1e-9
 
 
 def derby_weight_from_bool(is_derby: bool) -> float:
-    return DERBY_FLAG_WEIGHT if is_derby else 1.0
+    return DERBY_FLAG_MARKER if is_derby else DERBY_WEIGHT_DEFAULT
 
 
 def format_imported_at(iso: Optional[str]) -> str:

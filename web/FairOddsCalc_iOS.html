@@ -2809,7 +2809,8 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       derby_weight:'derw',derby_value:'derw',
       neutral_weight:'neuw',neutral_value:'neuw',
     };
-    const DERBY_MATCH_WEIGHT = 0.7;
+    const DERBY_FLAG_MARKER = 2;
+    const DERBY_WEIGHT_DEFAULT = 1;
     function gmNumKey(s){ return String(s).trim().toLowerCase().replace(/[^a-z0-9_а-я]/gi,''); }
     function gmF(v){ if(v==null) return null; const t=String(v).trim().replace(',','.'); if(!t) return null; const n=parseFloat(t); return isNaN(n)?null:n; }
     function gmB(v){ return ['1','true','yes','y','да'].includes(String(v).trim().toLowerCase()); }
@@ -3085,7 +3086,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       const lines = [header];
       matches.forEach(m => {
         const league = lg || m.league_name || '';
-        const derbyFlag = (m.derby_weight != null && Number(m.derby_weight) !== 1);
+        const derbyFlag = sbIsDerby(m);
         lines.push([
           cell(m.match_date), cell(league), cell(m.home_team), cell(m.away_team),
           cell(m.closing_ah_home), cell(m.closing_total_line),
@@ -3208,10 +3209,10 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     function sbIsDerby(m){
       const w = m.derby_weight;
       if (w == null) return false;
-      return Math.abs(Number(w) - 1) > 1e-9;
+      return Math.abs(Number(w) - DERBY_FLAG_MARKER) < 1e-9;
     }
     function sbDerbyWeightFromBool(isDerby){
-      return isDerby ? DERBY_MATCH_WEIGHT : 1;
+      return isDerby ? DERBY_FLAG_MARKER : DERBY_WEIGHT_DEFAULT;
     }
     function sbFieldFromMatch(m, field){
       if (field === 'is_neutral') return !!m.is_neutral;
@@ -3714,8 +3715,8 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         ao: gmF(m.away_odds),
         neu: !!m.is_neutral,
         mw: gmF(m.match_weight) != null ? gmF(m.match_weight) : 1.0,
-        der: (gmF(m.derby_weight) ?? 1) !== 1,
-        derw: DERBY_MATCH_WEIGHT,
+        der: sbIsDerby(m),
+        derw: DERBY_WEIGHT_DEFAULT,
         neuw: gmF(m.neutral_weight) != null ? gmF(m.neutral_weight) : 1.0,
         seasonId: m.season_id,
         seasonLabel: m.season_label || '',

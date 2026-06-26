@@ -201,7 +201,20 @@ def test_prior_shrinkage_pulls_ratings():
     assert abs(shrunk.strength.ratings["Inter"]) < abs(base.strength.ratings["Inter"])
 
 
-def test_derby_flag_without_explicit_weight():
+def test_is_derby_match_from_db_marker():
+    from goal_model_train import DERBY_FLAG_MARKER, RawMatch, _is_derby_match
+
+    base = dict(
+        date=None, league="", home_team="A", away_team="B",
+        closing_ah_home=-0.5, closing_total_line=2.5,
+        ah_home_odds=1.9, ah_away_odds=1.9, over_odds=1.9, under_odds=1.9,
+        home_odds=2.0, draw_odds=3.5, away_odds=3.5,
+    )
+    assert not _is_derby_match(RawMatch(**base))
+    assert not _is_derby_match(RawMatch(**base, derby_match_weight=1.0))
+    assert not _is_derby_match(RawMatch(**base, derby_match_weight=0.7))
+    assert _is_derby_match(RawMatch(**base, derby_flag=True))
+    assert _is_derby_match(RawMatch(**base, derby_match_weight=DERBY_FLAG_MARKER))
     csv = """home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,derby_flag
 Inter,Roma,-0.5,2.5,1.9,1.9,1.9,1.9,2.0,3.5,3.5,true
 """

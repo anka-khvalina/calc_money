@@ -151,7 +151,7 @@ is_neutral, match_weight, derby_weight, neutral_weight
 
 - Коэффициенты (`ah_*`, `over_odds`, `under_odds`, `home_odds`, `draw_odds`, `away_odds`): **> 1**
 - `match_weight`, `neutral_weight`: **≥ 0**
-- `derby_weight`: **0.7** (флаг дерби) или **1.0** (не дерби) — не множитель веса
+- `derby_weight`: **2.0** (явный флаг дерби) или **1.0** / `null` (не дерби; legacy 0.7 не считается)
 - `is_neutral`: boolean
 
 ---
@@ -174,7 +174,7 @@ is_neutral, match_weight, derby_weight, neutral_weight
 | `away_odds` | `ao` |
 | `is_neutral` | `neu` (i_home = 0) |
 | `match_weight` | `mw` |
-| `derby_weight` | `der` | факт дерби (`derby_weight ≠ 1`); **H_derby** оценивается при обучении |
+| `derby_weight` | `der` | факт дерби (`derby_weight = 2`); `null`/1 = не дерби |
 | `neutral_weight` | `neuw` |
 | `season_id` | `seasonId` → `season_weight` |
 

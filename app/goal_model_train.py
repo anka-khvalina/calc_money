@@ -260,12 +260,16 @@ def _match_weight(flag: bool, weight: Optional[float]) -> float:
     return 1.0 if weight is None else weight
 
 
+DERBY_FLAG_MARKER: float = 2.0
+DERBY_WEIGHT_DEFAULT: float = 1.0
+
+
 def _is_derby_match(m: RawMatch) -> bool:
     if m.derby_flag:
         return True
     if m.derby_match_weight is None:
         return False
-    return abs(m.derby_match_weight - 1.0) > 1e-9
+    return abs(m.derby_match_weight - DERBY_FLAG_MARKER) < 1e-9
 
 
 def _neutral_weight_mult(m: RawMatch) -> float:

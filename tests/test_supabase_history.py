@@ -184,12 +184,45 @@ def test_build_dirty_patch_derby_bool():
         note=None,
     )
     payload = sbh.build_dirty_patch(m, {"derby": "да"})
-    assert payload == {"derby_weight": sbh.DERBY_FLAG_WEIGHT}
+    assert payload == {"derby_weight": sbh.DERBY_FLAG_MARKER}
     payload2 = sbh.build_dirty_patch(
-        replace(m, derby_weight=sbh.DERBY_FLAG_WEIGHT),
+        replace(m, derby_weight=sbh.DERBY_FLAG_MARKER),
         {"derby": "нет"},
     )
-    assert payload2 == {"derby_weight": 1.0}
+    assert payload2 == {"derby_weight": sbh.DERBY_WEIGHT_DEFAULT}
+
+
+def test_is_derby_default_not_derby():
+    m = sbh.MatchFull(
+        match_id=1,
+        match_date="2025-08-15",
+        league_id="uuid",
+        league_name="PL",
+        season_id=4,
+        season_label="2025-26",
+        home_team_id=1,
+        home_team="A",
+        away_team_id=2,
+        away_team="B",
+        closing_ah_home=None,
+        closing_total_line=None,
+        ah_home_odds=None,
+        ah_away_odds=None,
+        over_odds=None,
+        under_odds=None,
+        home_odds=1.3,
+        draw_odds=6.0,
+        away_odds=9.0,
+        is_neutral=False,
+        match_weight=1.0,
+        derby_weight=None,
+        neutral_weight=1.0,
+        note=None,
+    )
+    assert not sbh.is_derby_match(m)
+    assert not sbh.is_derby_match(replace(m, derby_weight=1.0))
+    assert not sbh.is_derby_match(replace(m, derby_weight=0.7))
+    assert sbh.is_derby_match(replace(m, derby_weight=sbh.DERBY_FLAG_MARKER))
 
 
 def test_build_dirty_patch_match_and_neutral_weights():
