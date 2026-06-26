@@ -250,6 +250,54 @@ def test_walk_forward_runs():
     assert metrics.mae_p1 < 0.05
 
 
+def test_apply_goal_diff_clamp_trim():
+    info = gm.apply_goal_diff_clamp(2.5, 2.0, eps=0.05)
+    assert info.hit
+    assert abs(info.value - 1.95) < 1e-9
+    assert abs(info.trim - 0.55) < 1e-9
+    assert info.at_hi
+
+
+def test_d_clamp_diagnostics_fallback():
+    raw = gmt.RawMatch(
+        date=None, league="test",
+        home_team="A", away_team="B",
+        closing_ah_home=-2.5, closing_total_line=2.0,
+        over_odds=1.9, under_odds=1.9,
+    )
+    cfg = gmt.ModelConfig()
+    prepared = gmt.prepare_matches([raw], cfg)
+    gmt.devig_and_infer(prepared, cfg)
+    diag = gmt.d_clamp_diagnostics(prepared)
+    assert diag.n_hit == 1
+    assert diag.pct == 100.0
+    assert abs(diag.rows[0].trim) > 0.35
+    assert diag.rows[0].source == "fallback_ah"
+
+
+def test_d_clamp_diagnostics_saturated_infer():
+    s = 2.0
+    p_home, _ = gm.devig_two_way(1.05, 12.0)
+    d = gm.infer_goal_diff(-2.0, p_home, s)
+    hi = s - 0.05
+    assert abs(d - hi) < 0.02
+    raw = gmt.RawMatch(
+        date=None, league="test",
+        home_team="H", away_team="A",
+        closing_ah_home=-2.0, closing_total_line=s,
+        ah_home_odds=1.05, ah_away_odds=12.0,
+        over_odds=1.9, under_odds=1.9,
+    )
+    prepared = gmt.prepare_matches([raw], cfg := gmt.ModelConfig())
+    gmt.devig_and_infer(prepared, cfg)
+    m = prepared[0]
+    assert m.d_clamp_hit
+    assert m.d_clamp_at_hi
+    diag = gmt.d_clamp_diagnostics(prepared)
+    assert diag.n_hit == 1
+    assert diag.rows[0].source == "infer"
+
+
 def test_strength_diagnostics_sorted_by_error():
     csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
     raw = gmt.load_raw_matches(csv_path)

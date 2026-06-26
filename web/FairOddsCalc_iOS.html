@@ -250,6 +250,7 @@
       color:var(--muted); font-weight:600; width:1%; white-space:nowrap; padding-right:12px;
     }
     .goal-train-table td,.goal-train-table td.num{ text-align:left; font-variant-numeric:tabular-nums; }
+    .goal-train-table td.warn{ color:#92400e; font-weight:600; }
     .goal-train-table tr:last-child td,.goal-train-table tr:last-child th{ border-bottom:none; }
     .logo-cell{ width:42px; text-align:center; vertical-align:middle; }
     .team-logo{
@@ -2868,7 +2869,13 @@ bash scripts/update_and_serve.sh --start</div>
       const model=d=>{ const lh=(S+d)/2,la=(S-d)/2; return gmFairPriceAhHome(lh,la,ah,mx); };
       return gmMin(d=>{const e=model(d)-pHome; return e*e;},-S+eps,S-eps);
     }
-    function gmClampD(d,S,eps=0.05){ return Math.max(-S+eps,Math.min(d,S-eps)); }
+    function gmClampD(d,S,eps=0.05){ return gmClampDInfo(d,S,eps).value; }
+    function gmClampDInfo(d,S,eps=0.05){
+      const lo=-S+eps, hi=S-eps, value=Math.max(lo,Math.min(d,hi)), trim=d-value;
+      const tol=1e-4;
+      const atLo=value<=lo+tol, atHi=value>=hi-tol;
+      return { value, raw:d, trim, lo, hi, atLo, atHi, hit: Math.abs(trim)>1e-9||atLo||atHi };
+    }
     const GM_GAUGE=1e6;
     function gmWls(rows,p){
       const ATA=Array.from({length:p},()=>Array(p).fill(0)), ATb=Array(p).fill(0);
@@ -2932,10 +2939,15 @@ bash scripts/update_and_serve.sh --start</div>
         if(r.ho&&r.dо&&r.ao){ const s=shinDevig(r.ho,r.dо,r.ao); m.p1=s[0]; m.px=s[1]; m.p2=s[2]; }
         if(r.tot!=null&&m.pOver!=null) m.S=gmInferS(r.tot,m.pOver); else if(r.tot!=null) m.S=r.tot;
         if(m.S!=null){
-          if(r.ah!=null&&m.pAhHome!=null) m.D=gmInferD(r.ah,m.pAhHome,m.S);
-          else if(r.ah!=null) m.D=gmClampD(-r.ah,m.S);
+          if(r.ah!=null&&m.pAhHome!=null){ m.D=gmInferD(r.ah,m.pAhHome,m.S); m.dSource='infer'; }
+          else if(r.ah!=null){ m.D=-r.ah; m.dSource='fallback_ah'; }
         }
-        if(m.S!=null&&m.D!=null){ m.D=gmClampD(m.D,m.S); m.lh=(m.S+m.D)/2; m.la=(m.S-m.D)/2; }
+        if(m.S!=null&&m.D!=null){
+          const ci=gmClampDInfo(m.D,m.S);
+          m.dRaw=m.D; m.D=ci.value; m.dClampHit=ci.hit; m.dClampTrim=ci.trim;
+          m.dClampAtLo=ci.atLo; m.dClampAtHi=ci.atHi;
+          m.lh=(m.S+m.D)/2; m.la=(m.S-m.D)/2;
+        }
         ms.push(m);
       }
       const sv=ms.filter(m=>m.S!=null).map(m=>m.S);
@@ -3122,11 +3134,25 @@ bash scripts/update_and_serve.sh --start</div>
       if(cfg.useDraw){ dtarget=gmDrawTarget(draw,df,sf); [mat,diag]=gmAdjustDraw(mat,dtarget,cfg.qmin,cfg.qmax); }
       return {lh,la,df,sf,markets:gmMarkets(mat),drawTarget:dtarget,drawDiag:diag};
     }
+    function gmDClampDiagnostics(ms){
+      const eligible=ms.filter(m=>m.S!=null&&m.D!=null);
+      const rows=eligible.filter(m=>m.dClampHit).map(m=>({
+        home:m.home, away:m.away, S:m.S, dRaw:m.dRaw!=null?m.dRaw:m.D, dUsed:m.D,
+        trim:m.dClampTrim||0, atLo:!!m.dClampAtLo, atHi:!!m.dClampAtHi,
+        ah:m.raw&&m.raw.ah!=null?m.raw.ah:null, source:m.dSource||'',
+      }));
+      rows.sort((a,b)=>Math.abs(b.trim)-Math.abs(a.trim));
+      const nTotal=eligible.length, nHit=rows.length;
+      const pct=nTotal?100*nHit/nTotal:0;
+      const maxAbsTrim=rows.length?Math.max(...rows.map(r=>Math.abs(r.trim))):0;
+      return { nTotal, nHit, pct, maxAbsTrim, rows };
+    }
     function gmTrain(raw,cfg,prior){
       const ms=gmPrepare(raw,cfg);
+      const dClamp=gmDClampDiagnostics(ms);
       const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
       const draw=cfg.useDraw?gmFitDraw(ms,cfg):{alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default'};
-      return {st,gl,cal,draw,cfg,nMatches:ms.length};
+      return {st,gl,cal,draw,cfg,nMatches:ms.length,dClamp};
     }
     let gmModel=null;
     function gmFillTeams(){
@@ -3947,7 +3973,7 @@ bash scripts/update_and_serve.sh --start</div>
         card.style.display = 'none';
         return;
       }
-      const { st, gl, cal, draw } = gmModel;
+      const { st, gl, cal, draw, dClamp } = gmModel;
       const rows = [
         ['Обучено', escapeHtml(goalFmtTrainDt(goalTrainState.trainedAt)), ''],
         ['Команд в модели', String(Object.keys(st.ratings).length), 'num'],
@@ -3964,12 +3990,32 @@ bash scripts/update_and_serve.sh --start</div>
         ['Dixon-Coles γ', goalFmtTrainNum(cal.gamma, 4), 'num'],
         ['Ничья (источник)', escapeHtml(draw.source || '—'), ''],
       ];
+      if (dClamp){
+        const clampCls = dClamp.pct > 2 ? 'warn' : '';
+        const clampDetail = dClamp.nHit
+          ? `${dClamp.nHit} из ${dClamp.nTotal} (${goalFmtTrainNum(dClamp.pct, 1)}%), max |trim|=${goalFmtTrainNum(dClamp.maxAbsTrim, 3)}`
+          : `0 из ${dClamp.nTotal}`;
+        rows.push(['D clamp / граница', clampDetail, clampCls]);
+      }
       if (draw.source === 'fitted'){
         rows.push(['Ничья α', goalFmtTrainNum(draw.alpha, 3), 'num']);
         rows.push(['β_D, β_S', `${goalFmtTrainNum(draw.betaD, 3)}, ${goalFmtTrainNum(draw.betaS, 3)}`, 'num']);
         rows.push(['β_S2, β_D×S', `${goalFmtTrainNum(draw.betaS2, 3)}, ${goalFmtTrainNum(draw.betaDxS, 3)}`, 'num']);
       }
       box.innerHTML = goalRenderTrainTable(rows);
+      if (dClamp && dClamp.rows && dClamp.rows.length){
+        const clampRows = dClamp.rows.slice(0, 12).map(r => {
+          const bound = r.atLo ? 'lo' : (r.atHi ? 'hi' : 'trim');
+          const ah = r.ah != null ? goalFmtTrainNum(r.ah, 2) : '—';
+          return [
+            `${escapeHtml(r.home)} — ${escapeHtml(r.away)}`,
+            `S=${goalFmtTrainNum(r.S,2)} AH=${ah} D ${goalFmtTrainNum(r.dRaw,3)}→${goalFmtTrainNum(r.dUsed,3)} trim=${goalFmtTrainNum(r.trim,3)} [${bound}]`,
+            Math.abs(r.trim) > 0.2 ? 'warn' : '',
+          ];
+        });
+        box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Матчи с упором D в границу</div>'
+          + goalRenderTrainTable(clampRows);
+      }
       card.style.display = '';
     }
     function goalTrainQuality(n){
@@ -3998,10 +4044,17 @@ bash scripts/update_and_serve.sh --start</div>
           banner.classList.add(qual.tier === 'warn' ? 'warn' : 'idle');
           banner.textContent = `Данные загружены (${n} матч.). ${qual.detail} Нажмите «Обучить модель».`;
         } else {
-          banner.classList.add(qual.tier === 'warn' ? 'warn' : 'ok');
+          const clamp = gmModel.dClamp;
+          const clampWarn = clamp && clamp.nHit > 0 && clamp.pct > 2;
+          banner.classList.add((qual.tier === 'warn' || clampWarn) ? 'warn' : 'ok');
           const priorNote = (gmModel.cfg && gmModel.cfg.priorAlpha > 0 && goalTrainState.priorUsed)
             ? ` Prior α=${goalFmtTrainNum(gmModel.cfg.priorAlpha, 2)} (стягивание к прошлой модели).` : '';
-          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${n} матчах. ${qual.short}: ${qual.detail}${priorNote}`;
+          let clampNote = '';
+          if (clamp && clamp.nHit > 0){
+            clampNote = ` D clamp: ${clamp.nHit}/${clamp.nTotal} (${goalFmtTrainNum(clamp.pct,1)}%)`
+              + (clampWarn ? ' — проверьте AH vs OU / линии.' : '');
+          }
+          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${n} матчах. ${qual.short}: ${qual.detail}${clampNote}${priorNote}`;
         }
       }
       goalRenderTrainDataPanel();

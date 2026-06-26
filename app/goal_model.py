@@ -324,7 +324,42 @@ def infer_goal_diff(
 
 
 def clamp_goal_diff(d: float, sum_goals: float, eps: float = 0.05) -> float:
-    return max(-sum_goals + eps, min(d, sum_goals - eps))
+    return apply_goal_diff_clamp(d, sum_goals, eps).value
+
+
+@dataclass(frozen=True)
+class GoalDiffClampInfo:
+    """Результат clamp D: значение и признаки упора в границу λ."""
+
+    value: float
+    raw: float
+    trim: float  # raw − value (положительный, если raw выше верхней границы)
+    lo: float
+    hi: float
+    at_lo: bool
+    at_hi: bool
+
+    @property
+    def hit(self) -> bool:
+        """Clamp изменил D или D на границе допустимого диапазона."""
+        return abs(self.trim) > _EPS or self.at_lo or self.at_hi
+
+
+def apply_goal_diff_clamp(
+    d: float,
+    sum_goals: float,
+    eps: float = 0.05,
+    *,
+    boundary_tol: float = 1e-4,
+) -> GoalDiffClampInfo:
+    """D ← clamp(D, −S+ε, S−ε); фиксирует trim и упор в границу."""
+    lo = -sum_goals + eps
+    hi = sum_goals - eps
+    value = max(lo, min(d, hi))
+    trim = d - value
+    at_lo = value <= lo + boundary_tol
+    at_hi = value >= hi - boundary_tol
+    return GoalDiffClampInfo(value=value, raw=d, trim=trim, lo=lo, hi=hi, at_lo=at_lo, at_hi=at_hi)
 
 
 # --------------------------------------------------------------------------- #

@@ -2074,24 +2074,37 @@ def build_app():
         goal_path_var.set(path_label)
         return model
 
+    def _goal_d_clamp_note(model):
+        dc = model.d_clamp
+        if not dc or dc.n_hit == 0:
+            return ""
+        note = f"D clamp: {dc.n_hit}/{dc.n_total} ({dc.pct:.1f}%)"
+        if dc.pct > 2:
+            note += " — проверьте AH vs OU"
+        return note + "\n"
+
+    def _goal_format_meta(model, n_matches: int) -> str:
+        c = model.calibration
+        st = model.strength
+        dr = model.draw
+        return (
+            _goal_d_clamp_note(model)
+            + f"Обучено: {n_matches} матчей, команд {len(st.ratings)}\n"
+            f"H={st.home_advantage:.3f}  δ_derby={st.derby_home_delta:.3f}  "
+            f"n_derby={st.derby_n}  RMSE_D={st.rmse:.3f}\n"
+            f"μ={model.goals.mu:.3f}  H_g={model.goals.home_goal_adv:.3f}  "
+            f"RMSE_logλ={model.goals.rmse:.3f}\n"
+            f"Калибр: a={c.a:.3f} b={c.b:.3f} c={c.c:.3f} d={c.d:.3f} γ={c.gamma:.4f}  "
+            f"Ничья: {dr.source}"
+        )
+
     def goal_train_from_path(path):
         try:
             raw = gmt.load_raw_matches(Path(path))
             if len(raw) < 2:
                 raise ValueError("В файле меньше 2 матчей.")
             model = _goal_train(raw, f"Загружено: {path}  ({len(raw)} матчей)")
-            c = model.calibration
-            st = model.strength
-            dr = model.draw
-            goal_meta_var.set(
-                f"Обучено: {len(raw)} матчей, команд {len(st.ratings)}\n"
-                f"H={st.home_advantage:.3f}  δ_derby={st.derby_home_delta:.3f}  "
-                f"n_derby={st.derby_n}  RMSE_D={st.rmse:.3f}\n"
-                f"μ={model.goals.mu:.3f}  H_g={model.goals.home_goal_adv:.3f}  "
-                f"RMSE_logλ={model.goals.rmse:.3f}\n"
-                f"Калибр: a={c.a:.3f} b={c.b:.3f} c={c.c:.3f} d={c.d:.3f} γ={c.gamma:.4f}  "
-                f"Ничья: {dr.source}"
-            )
+            goal_meta_var.set(_goal_format_meta(model, len(raw)))
             _goal_refresh_teams()
             lines = ["Рейтинги (сила на нейтрали) / атака / оборона:"]
             for t, r in sorted(model.strength.ratings.items(), key=lambda kv: kv[1], reverse=True):
@@ -2118,18 +2131,7 @@ def build_app():
             return
         try:
             model = _goal_train(raw, f"Пересчитано ({len(raw)} матчей, новые настройки)")
-            c = model.calibration
-            st = model.strength
-            dr = model.draw
-            goal_meta_var.set(
-                f"Обучено: {len(raw)} матчей, команд {len(st.ratings)}\n"
-                f"H={st.home_advantage:.3f}  δ_derby={st.derby_home_delta:.3f}  "
-                f"n_derby={st.derby_n}  RMSE_D={st.rmse:.3f}\n"
-                f"μ={model.goals.mu:.3f}  H_g={model.goals.home_goal_adv:.3f}  "
-                f"RMSE_logλ={model.goals.rmse:.3f}\n"
-                f"Калибр: a={c.a:.3f} b={c.b:.3f} c={c.c:.3f} d={c.d:.3f} γ={c.gamma:.4f}  "
-                f"Ничья: {dr.source}"
-            )
+            goal_meta_var.set(_goal_format_meta(model, len(raw)))
             _goal_refresh_teams()
         except Exception as exc:
             messagebox.showerror("Линия (голы)", str(exc))

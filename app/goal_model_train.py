@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import logging
 import math
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -236,6 +237,12 @@ class PreparedMatch:
     p2_shin: Optional[float] = None
     sum_goals: Optional[float] = None
     diff_goals: Optional[float] = None
+    diff_goals_raw: Optional[float] = None
+    d_clamp_hit: bool = False
+    d_clamp_trim: float = 0.0
+    d_clamp_at_lo: bool = False
+    d_clamp_at_hi: bool = False
+    d_infer_source: Optional[str] = None  # "infer" | "fallback_ah"
     lambda_home: Optional[float] = None
     lambda_away: Optional[float] = None
     w_line_ah: float = 1.0
@@ -362,16 +369,26 @@ def devig_and_infer(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> None:
 
         # D_m
         if m.sum_goals is not None:
+            d_raw: Optional[float] = None
             if r.closing_ah_home is not None and m.p_ah_home_fair is not None:
-                m.diff_goals = gm.infer_goal_diff(
+                d_raw = gm.infer_goal_diff(
                     r.closing_ah_home, m.p_ah_home_fair, m.sum_goals,
                     max_goals=cfg.max_goals, eps=cfg.lambda_epsilon,
                 )
+                m.d_infer_source = "infer"
             elif r.closing_ah_home is not None:
-                m.diff_goals = gm.clamp_goal_diff(-r.closing_ah_home, m.sum_goals, cfg.lambda_epsilon)
+                d_raw = -r.closing_ah_home
+                m.d_infer_source = "fallback_ah"
+            if d_raw is not None:
+                info = gm.apply_goal_diff_clamp(d_raw, m.sum_goals, cfg.lambda_epsilon)
+                m.diff_goals_raw = d_raw
+                m.diff_goals = info.value
+                m.d_clamp_hit = info.hit
+                m.d_clamp_trim = info.trim
+                m.d_clamp_at_lo = info.at_lo
+                m.d_clamp_at_hi = info.at_hi
 
         if m.sum_goals is not None and m.diff_goals is not None:
-            m.diff_goals = gm.clamp_goal_diff(m.diff_goals, m.sum_goals, cfg.lambda_epsilon)
             m.lambda_home = (m.sum_goals + m.diff_goals) / 2.0
             m.lambda_away = (m.sum_goals - m.diff_goals) / 2.0
 
@@ -383,6 +400,82 @@ def devig_and_infer(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> None:
             continue
         w = 1.0 / (1.0 + cfg.alpha_t * (m.sum_goals - s_mean) ** 2)
         m.w_line_t = min(cfg.max_w_line_t, max(cfg.min_w_line_t, w))
+
+
+@dataclass
+class DClampDiagnosticRow:
+    date: Optional[date]
+    home_team: str
+    away_team: str
+    sum_goals: float
+    d_raw: float
+    d_used: float
+    trim: float
+    at_lo: bool
+    at_hi: bool
+    ah_line: Optional[float]
+    source: Optional[str]
+
+
+@dataclass
+class DClampDiagnostics:
+    n_total: int
+    n_hit: int
+    pct: float
+    max_abs_trim: float
+    rows: List[DClampDiagnosticRow] = field(default_factory=list)
+
+
+def d_clamp_diagnostics(matches: Sequence[PreparedMatch]) -> DClampDiagnostics:
+    """Матчи, где D упёрся в clamp или границу (−S+ε, S−ε)."""
+    eligible = [m for m in matches if m.diff_goals is not None and m.sum_goals is not None]
+    hits: List[DClampDiagnosticRow] = []
+    for m in eligible:
+        if not m.d_clamp_hit:
+            continue
+        hits.append(DClampDiagnosticRow(
+            date=m.raw.date,
+            home_team=m.home_team,
+            away_team=m.away_team,
+            sum_goals=m.sum_goals,
+            d_raw=m.diff_goals_raw if m.diff_goals_raw is not None else m.diff_goals,
+            d_used=m.diff_goals,
+            trim=m.d_clamp_trim,
+            at_lo=m.d_clamp_at_lo,
+            at_hi=m.d_clamp_at_hi,
+            ah_line=m.raw.closing_ah_home,
+            source=m.d_infer_source,
+        ))
+    hits.sort(key=lambda r: abs(r.trim), reverse=True)
+    n_total = len(eligible)
+    n_hit = len(hits)
+    pct = 100.0 * n_hit / n_total if n_total else 0.0
+    max_trim = max((abs(r.trim) for r in hits), default=0.0)
+    return DClampDiagnostics(n_total=n_total, n_hit=n_hit, pct=pct, max_abs_trim=max_trim, rows=hits)
+
+
+def log_d_clamp_diagnostics(diag: DClampDiagnostics, *, warn_pct: float = 2.0) -> None:
+    log = logging.getLogger(__name__)
+    if diag.n_hit == 0:
+        log.info("D clamp: 0/%d matches (0%%)", diag.n_total)
+        return
+    level = logging.WARNING if diag.pct > warn_pct else logging.INFO
+    log.log(
+        level,
+        "D clamp/saturate: %d/%d matches (%.1f%%), max |trim|=%.3f",
+        diag.n_hit, diag.n_total, diag.pct, diag.max_abs_trim,
+    )
+    for row in diag.rows[:15]:
+        bound = "lo" if row.at_lo else ("hi" if row.at_hi else "trim")
+        log.log(
+            level,
+            "  %s — %s: S=%.2f AH=%s D_raw=%.3f → D=%.3f trim=%+.3f [%s, %s]",
+            row.home_team, row.away_team, row.sum_goals,
+            f"{row.ah_line:+.2f}" if row.ah_line is not None else "?",
+            row.d_raw, row.d_used, row.trim, bound, row.source or "?",
+        )
+    if len(diag.rows) > 15:
+        log.log(level, "  … и ещё %d матчей", len(diag.rows) - 15)
 
 
 # --------------------------------------------------------------------------- #
@@ -893,6 +986,7 @@ class TrainedModel:
     calibration: Calibration
     draw: DrawModel
     config: ModelConfig
+    d_clamp: Optional[DClampDiagnostics] = None
 
 
 def train_full_model(
@@ -904,6 +998,8 @@ def train_full_model(
     cfg = cfg or ModelConfig()
     matches = prepare_matches(raw, cfg)
     devig_and_infer(matches, cfg)
+    d_clamp = d_clamp_diagnostics(matches)
+    log_d_clamp_diagnostics(d_clamp)
     prior_r = prior.strength.ratings if prior else None
     prior_a = prior.goals.attack if prior else None
     prior_d = prior.goals.defense if prior else None
@@ -911,7 +1007,7 @@ def train_full_model(
     goals = fit_attack_defense(matches, cfg, prior_attack=prior_a, prior_defense=prior_d)
     calibration = calibrate(matches, strength, goals, cfg)
     draw = fit_draw_model(matches, cfg) if cfg.use_draw_model else _DRAW_DEFAULT
-    return TrainedModel(strength, goals, calibration, draw, cfg), matches
+    return TrainedModel(strength, goals, calibration, draw, cfg, d_clamp), matches
 
 
 @dataclass
