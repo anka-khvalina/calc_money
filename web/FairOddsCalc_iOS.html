@@ -133,6 +133,7 @@
     }
     @media (max-width:720px){
       .goal-train-layout{ grid-template-columns:1fr; }
+      .goal-train-results{ grid-template-columns:1fr; }
     }
     @media (max-width:480px){
       .goal-src-panel{ max-width:none; }
@@ -237,6 +238,14 @@
       display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:12px;
     }
     .goal-train-actions--main .btn{ min-width:180px; padding:10px 20px; font-size:13px; }
+    .goal-train-results{
+      display:grid; grid-template-columns:1fr 1fr; gap:16px;
+      align-items:start; margin-top:10px;
+    }
+    .goal-train-results .goal-train-card{ margin-top:0; }
+    .goal-train-ratings-table th,
+    .goal-train-ratings-table td{ padding-right:10px; }
+    .goal-train-ratings-table td:first-child{ font-weight:500; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .goal-dc-row{
       display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; padding-bottom:2px;
     }
@@ -779,9 +788,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
         <div id="goalTrainChips" class="goal-train-chips" aria-live="polite"></div>
       </div>
-      <div id="goalTrainCoefCard" class="goal-train-card" style="display:none">
-        <h4>Коэффициенты модели</h4>
-        <div id="goalTrainCoefBody"></div>
+      <div class="goal-train-results">
+        <div id="goalTrainCoefCard" class="goal-train-card" style="display:none">
+          <h4>Коэффициенты модели</h4>
+          <div id="goalTrainCoefBody"></div>
+        </div>
+        <div id="goalTrainRatingsCard" class="goal-train-card" style="display:none">
+          <h4>Рейтинги команд</h4>
+          <div id="goalTrainRatingsBody"></div>
+        </div>
       </div>
       <div id="goalMeta" class="meta" style="display:none"></div>
       </div>
@@ -815,7 +830,6 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </label>
         <div class="field" style="max-width:80px"><label>%</label><input id="goalMarginPct" value="3" /></div>
       </div>
-      <pre id="goalRatings" class="shin-details" style="display:none"></pre>
       <div class="row">
         <button type="button" id="goalPredict" class="btn primary">Рассчитать линию</button>
       </div>
@@ -4708,18 +4722,28 @@ bash scripts/update_and_serve.sh --start</div>
       goalRenderRatings();
     }
     function goalRenderRatings(){
-      const el = document.getElementById('goalRatings');
-      if (!el) return;
+      const box = document.getElementById('goalTrainRatingsBody');
+      const card = document.getElementById('goalTrainRatingsCard');
+      if (!box || !card) return;
       if (!gmModel){
-        el.style.display = 'none';
-        el.textContent = '';
+        card.style.display = 'none';
+        box.innerHTML = '';
         return;
       }
       const { st, gl } = gmModel;
-      const rk = Object.entries(st.ratings).sort((a, b) => b[1] - a[1])
-        .map(([t, r]) => `  ${t}: r=${r.toFixed(3)} A=${(gl.attack[t] || 0).toFixed(3)} Df=${(gl.defense[t] || 0).toFixed(3)}`).join('\n');
-      el.textContent = 'Рейтинги (сила / атака / оборона):\n' + rk;
-      el.style.display = '';
+      const rows = Object.entries(st.ratings)
+        .sort((a, b) => b[1] - a[1])
+        .map(([t, r]) => [
+          escapeHtml(t),
+          goalFmtTrainNum(r, 3),
+          goalFmtTrainNum(gl.attack[t] || 0, 3),
+          goalFmtTrainNum(gl.defense[t] || 0, 3),
+        ]);
+      box.innerHTML = '<table class="goal-train-table goal-train-ratings-table"><thead><tr>'
+        + '<th>Команда</th><th>r</th><th>A</th><th>Df</th></tr></thead><tbody>'
+        + rows.map(([t, r, a, d]) => `<tr><td>${t}</td><td class="num">${r}</td><td class="num">${a}</td><td class="num">${d}</td></tr>`).join('')
+        + '</tbody></table>';
+      card.style.display = '';
     }
     function goalRunTrain(){
       if (!goalLoadedRaw || !goalLoadedRaw.length){
