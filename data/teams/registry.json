@@ -1,0 +1,684 @@
+{
+  "version": 1,
+  "next_seq": {
+    "bundesliga": 19,
+    "epl": 21,
+    "la_liga": 21,
+    "ligue_1": 19,
+    "serie_a": 21
+  },
+  "teams": [
+    {
+      "id": "bundesliga:1",
+      "league": "bundesliga",
+      "name": "Augsburg",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:2",
+      "league": "bundesliga",
+      "name": "Bayern Munich",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:3",
+      "league": "bundesliga",
+      "name": "Dortmund",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:4",
+      "league": "bundesliga",
+      "name": "Ein Frankfurt",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:5",
+      "league": "bundesliga",
+      "name": "FC Koln",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:6",
+      "league": "bundesliga",
+      "name": "Freiburg",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:7",
+      "league": "bundesliga",
+      "name": "Hamburg",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:8",
+      "league": "bundesliga",
+      "name": "Heidenheim",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:9",
+      "league": "bundesliga",
+      "name": "Hoffenheim",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:10",
+      "league": "bundesliga",
+      "name": "Leverkusen",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:11",
+      "league": "bundesliga",
+      "name": "M'gladbach",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:12",
+      "league": "bundesliga",
+      "name": "Mainz",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:13",
+      "league": "bundesliga",
+      "name": "RB Leipzig",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:14",
+      "league": "bundesliga",
+      "name": "St Pauli",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:15",
+      "league": "bundesliga",
+      "name": "Stuttgart",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:16",
+      "league": "bundesliga",
+      "name": "Union Berlin",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:17",
+      "league": "bundesliga",
+      "name": "Werder Bremen",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:18",
+      "league": "bundesliga",
+      "name": "Wolfsburg",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:1",
+      "league": "epl",
+      "name": "Arsenal",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:2",
+      "league": "epl",
+      "name": "Aston Villa",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:3",
+      "league": "epl",
+      "name": "Bournemouth",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:4",
+      "league": "epl",
+      "name": "Brentford",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:5",
+      "league": "epl",
+      "name": "Brighton",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:6",
+      "league": "epl",
+      "name": "Burnley",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:7",
+      "league": "epl",
+      "name": "Chelsea",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:8",
+      "league": "epl",
+      "name": "Crystal Palace",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:9",
+      "league": "epl",
+      "name": "Everton",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:10",
+      "league": "epl",
+      "name": "Fulham",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:11",
+      "league": "epl",
+      "name": "Leeds",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:12",
+      "league": "epl",
+      "name": "Liverpool",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:13",
+      "league": "epl",
+      "name": "Man City",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:14",
+      "league": "epl",
+      "name": "Man United",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:15",
+      "league": "epl",
+      "name": "Newcastle",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:16",
+      "league": "epl",
+      "name": "Nott'm Forest",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:17",
+      "league": "epl",
+      "name": "Sunderland",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:18",
+      "league": "epl",
+      "name": "Tottenham",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:19",
+      "league": "epl",
+      "name": "West Ham",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:20",
+      "league": "epl",
+      "name": "Wolves",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:1",
+      "league": "la_liga",
+      "name": "Alaves",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:2",
+      "league": "la_liga",
+      "name": "Ath Bilbao",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:3",
+      "league": "la_liga",
+      "name": "Ath Madrid",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:4",
+      "league": "la_liga",
+      "name": "Barcelona",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:5",
+      "league": "la_liga",
+      "name": "Betis",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:6",
+      "league": "la_liga",
+      "name": "Celta",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:7",
+      "league": "la_liga",
+      "name": "Elche",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:8",
+      "league": "la_liga",
+      "name": "Espanol",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:9",
+      "league": "la_liga",
+      "name": "Getafe",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:10",
+      "league": "la_liga",
+      "name": "Girona",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:11",
+      "league": "la_liga",
+      "name": "Levante",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:12",
+      "league": "la_liga",
+      "name": "Mallorca",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:13",
+      "league": "la_liga",
+      "name": "Osasuna",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:14",
+      "league": "la_liga",
+      "name": "Oviedo",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:15",
+      "league": "la_liga",
+      "name": "Real Madrid",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:16",
+      "league": "la_liga",
+      "name": "Sevilla",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:17",
+      "league": "la_liga",
+      "name": "Sociedad",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:18",
+      "league": "la_liga",
+      "name": "Valencia",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:19",
+      "league": "la_liga",
+      "name": "Vallecano",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "la_liga:20",
+      "league": "la_liga",
+      "name": "Villarreal",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:1",
+      "league": "ligue_1",
+      "name": "Angers",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:2",
+      "league": "ligue_1",
+      "name": "Auxerre",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:3",
+      "league": "ligue_1",
+      "name": "Brest",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:4",
+      "league": "ligue_1",
+      "name": "Le Havre",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:5",
+      "league": "ligue_1",
+      "name": "Lens",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:6",
+      "league": "ligue_1",
+      "name": "Lille",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:7",
+      "league": "ligue_1",
+      "name": "Lorient",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:8",
+      "league": "ligue_1",
+      "name": "Lyon",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:9",
+      "league": "ligue_1",
+      "name": "Marseille",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:10",
+      "league": "ligue_1",
+      "name": "Metz",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:11",
+      "league": "ligue_1",
+      "name": "Monaco",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:12",
+      "league": "ligue_1",
+      "name": "Nantes",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:13",
+      "league": "ligue_1",
+      "name": "Nice",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:14",
+      "league": "ligue_1",
+      "name": "Paris FC",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:15",
+      "league": "ligue_1",
+      "name": "Paris SG",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:16",
+      "league": "ligue_1",
+      "name": "Rennes",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:17",
+      "league": "ligue_1",
+      "name": "Strasbourg",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:18",
+      "league": "ligue_1",
+      "name": "Toulouse",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:1",
+      "league": "serie_a",
+      "name": "Atalanta",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:2",
+      "league": "serie_a",
+      "name": "Bologna",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:3",
+      "league": "serie_a",
+      "name": "Cagliari",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:4",
+      "league": "serie_a",
+      "name": "Como",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:5",
+      "league": "serie_a",
+      "name": "Cremonese",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:6",
+      "league": "serie_a",
+      "name": "Fiorentina",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:7",
+      "league": "serie_a",
+      "name": "Genoa",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:8",
+      "league": "serie_a",
+      "name": "Inter",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:9",
+      "league": "serie_a",
+      "name": "Juventus",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:10",
+      "league": "serie_a",
+      "name": "Lazio",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:11",
+      "league": "serie_a",
+      "name": "Lecce",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:12",
+      "league": "serie_a",
+      "name": "Milan",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:13",
+      "league": "serie_a",
+      "name": "Napoli",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:14",
+      "league": "serie_a",
+      "name": "Parma",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:15",
+      "league": "serie_a",
+      "name": "Pisa",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:16",
+      "league": "serie_a",
+      "name": "Roma",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:17",
+      "league": "serie_a",
+      "name": "Sassuolo",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:18",
+      "league": "serie_a",
+      "name": "Torino",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:19",
+      "league": "serie_a",
+      "name": "Udinese",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:20",
+      "league": "serie_a",
+      "name": "Verona",
+      "created_at": "2026-06-04T11:05:48+00:00",
+      "updated_at": "2026-06-04T11:05:48+00:00"
+    }
+  ]
+}
