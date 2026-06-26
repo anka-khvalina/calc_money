@@ -111,6 +111,17 @@ margin > 0 → хозяева покрыли (с учётом push на целы
 S = argmin ( P_model(Over | S) − P_fair(Over) )²
 ```
 
+`P_model(Over)` — **не** просто `P(G > line)`, а settlement-adjusted цена азиатского тотала:
+
+```text
+W = Σ_g P(G=g) · (full_win + 0.5·half_win)
+L = Σ_g P(G=g) · (full_loss + 0.5·half_loss)
+
+P_model(Over) = W / (W + L)     # push не входит в знаменатель
+```
+
+Четвертные линии (2.25 = среднее 2.0 и 2.5), целые — push. Сумма голов `G ~ Pois(S)`.
+
 По линии тотала и de-vig Over/Under (не просто «линия = ожидание»).
 
 **D** — ожидаемая разница `λ_h − λ_a`:

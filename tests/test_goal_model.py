@@ -48,6 +48,15 @@ def test_integer_total_push():
     assert win == 1.0
 
 
+def test_total_quarter_line_halves():
+    # 2.25 = среднее(2.0, 2.5): ровно 2 гола → half_loss на Over
+    win, loss = gm.total_units(2, 2.25, "over")
+    assert abs(win - 0.0) < 1e-9 and abs(loss - 0.5) < 1e-9
+    # 3 гола → полный выигрыш Over
+    win, loss = gm.total_units(3, 2.25, "over")
+    assert abs(win - 1.0) < 1e-9 and abs(loss - 0.0) < 1e-9
+
+
 def test_inter_roma_worked_example():
     # Из спецификации: Over 2.5 @1.91/1.99, AH -0.75 @1.93/1.97
     p_over, _ = gm.devig_two_way(1.91, 1.99)
