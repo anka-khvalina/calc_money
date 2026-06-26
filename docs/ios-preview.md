@@ -73,6 +73,14 @@ curl http://192.168.1.195:8080/health
 bash scripts/check_lan_api.sh
 ```
 
+Остановка фоновых процессов (если нет tmux):
+
+```bash
+bash scripts/stop_servers.sh
+```
+
+`tmux` не обязателен — скрипт `update_and_serve.sh --start` запустит серверы через `nohup` в каталог `.run/`.
+
 Только обновить конфиг без автозапуска:
 
 ```bash

@@ -2,21 +2,22 @@
 # FairOddsCalc — обновление с GitHub и настройка LAN (Mac → iPhone / другой ПК в Wi‑Fi).
 #
 # Использование:
-#   bash scripts/update_and_serve.sh              # pull + api.config.json с IP Mac
-#   bash scripts/update_and_serve.sh --start      # то же + запуск API и веб-сервера в tmux
-#   bash scripts/update_and_serve.sh --no-pull    # только конфиг и подсказки
+#   bash scripts/update_and_serve.sh              # pull + api.config.json
+#   bash scripts/update_and_serve.sh --start      # + запуск API и веб-прокси
+#   bash scripts/update_and_serve.sh --no-pull    # только конфиг
 #
 # Переменные:
-#   FAIR_ODDS_BRANCH   ветка для git pull (default: cursor/goal-line-supabase-17b5)
-#   FAIR_ODDS_WEB_PORT порт статики (default: 8080)
-#   HISTORY_API_PORT   порт History API (default: 8765)
+#   FAIR_ODDS_BRANCH   ветка для git pull (default: cursor/lan-update-script-17b5)
+#   FAIR_ODDS_WEB_PORT порт веб+прокси (default: 8080)
+#   HISTORY_API_PORT   порт History API на localhost (default: 8765)
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+RUN_DIR="$ROOT/.run"
 
-BRANCH="${FAIR_ODDS_BRANCH:-cursor/goal-line-supabase-17b5}"
+BRANCH="${FAIR_ODDS_BRANCH:-cursor/lan-update-script-17b5}"
 WEB_PORT="${FAIR_ODDS_WEB_PORT:-8080}"
 API_PORT="${HISTORY_API_PORT:-8765}"
 DO_PULL=1
@@ -27,7 +28,7 @@ for arg in "$@"; do
     --start) DO_START=1 ;;
     --no-pull) DO_PULL=0 ;;
     -h|--help)
-      sed -n '2,12p' "$0"
+      sed -n '2,13p' "$0"
       exit 0
       ;;
     *)
@@ -52,8 +53,7 @@ detect_lan_ip() {
     ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' || true)"
   fi
   if [[ -z "$ip" ]]; then
-    echo "Не удалось определить IP в локальной сети. Задайте вручную:" >&2
-    echo "  echo '{\"api_base_url\":\"http://ВАШ_IP:${API_PORT}\"}' > web/api.config.json" >&2
+    echo "Не удалось определить IP в локальной сети." >&2
     exit 1
   fi
   echo "$ip"
@@ -61,10 +61,14 @@ detect_lan_ip() {
 
 write_api_config() {
   local ip="$1"
-  # Пустой url — в браузере на LAN подставится тот же хост:порт, что и страница (прокси serve_lan.py).
   mkdir -p "$ROOT/web"
   printf '%s\n' '{"api_base_url": ""}' > "$ROOT/web/api.config.json"
   echo "http://${ip}:${WEB_PORT} (API через /api/ на том же порту)"
+}
+
+check_health() {
+  local url="$1"
+  command -v curl >/dev/null 2>&1 && curl -fsS --max-time 5 "$url" >/dev/null 2>&1
 }
 
 tmux_cmd() {
@@ -80,19 +84,67 @@ start_tmux_session() {
   local workdir="$2"
   shift 2
   if tmux_cmd has-session -t "=$name" 2>/dev/null; then
-    echo "  tmux-сессия «${name}» уже запущена (пропуск)"
+    echo "  tmux «${name}» уже запущена"
     return 0
   fi
   tmux_cmd new-session -d -s "$name" -c "$workdir" -- "${SHELL:-bash}" -lc "$*"
-  echo "  запущена tmux-сессия «${name}»"
+  echo "  tmux «${name}» запущена"
 }
 
-check_health() {
-  local url="$1"
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsS --max-time 3 "$url" >/dev/null 2>&1
+start_background() {
+  local name="$1"
+  shift
+  local pidfile="$RUN_DIR/${name}.pid"
+  local logfile="$RUN_DIR/${name}.log"
+  mkdir -p "$RUN_DIR"
+  if [[ -f "$pidfile" ]]; then
+    local oldpid
+    oldpid="$(cat "$pidfile")"
+    if kill -0 "$oldpid" 2>/dev/null; then
+      echo "  ${name} уже работает (pid ${oldpid})"
+      return 0
+    fi
+  fi
+  nohup "$@" >>"$logfile" 2>&1 &
+  echo $! >"$pidfile"
+  echo "  ${name} запущен (pid $(cat "$pidfile"), лог ${logfile})"
+}
+
+start_servers() {
+  if command -v tmux >/dev/null 2>&1; then
+    echo ">> Запуск через tmux..."
+    start_tmux_session "fair-odds-api" "$ROOT" \
+      "HISTORY_API_HOST=127.0.0.1 bash scripts/run_history_api.sh"
+    start_tmux_session "fair-odds-web" "$ROOT" \
+      "python3 scripts/serve_lan.py --port ${WEB_PORT}"
+    echo "  Остановить: tmux kill-session -t fair-odds-api; tmux kill-session -t fair-odds-web"
   else
-    return 1
+    echo ">> tmux не найден — запуск в фоне (nohup, каталог .run/)..."
+    start_background "fair-odds-api" env HISTORY_API_HOST=127.0.0.1 bash scripts/run_history_api.sh
+    echo "  ждём History API..."
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+      check_health "http://127.0.0.1:${API_PORT}/health" && break
+      sleep 1
+    done
+    start_background "fair-odds-web" python3 scripts/serve_lan.py --port "${WEB_PORT}"
+    echo "  Остановить: bash scripts/stop_servers.sh"
+    echo "  Логи:       tail -f .run/fair-odds-api.log .run/fair-odds-web.log"
+  fi
+}
+
+verify_servers() {
+  local lan_ip="$1"
+  sleep 2
+  if check_health "http://127.0.0.1:${API_PORT}/health"; then
+    echo "  History API (localhost:${API_PORT}): OK"
+  else
+    echo "  History API: FAIL — смотрите лог (см. выше)" >&2
+  fi
+  if check_health "http://${lan_ip}:${WEB_PORT}/health"; then
+    echo "  Прокси LAN (:${WEB_PORT}/health): OK"
+  else
+    echo "  Прокси LAN: FAIL — запущен ли serve_lan.py?" >&2
   fi
 }
 
@@ -114,49 +166,27 @@ LAN_IP="$(detect_lan_ip)"
 API_URL="$(write_api_config "$LAN_IP")"
 WEB_URL="http://${LAN_IP}:${WEB_PORT}/FairOddsCalc_iOS.html"
 
-echo ">> web/api.config.json → API через тот же порт ${WEB_PORT} (прокси)"
+echo ">> web/api.config.json → API через порт ${WEB_PORT}"
 echo "   ${API_URL}"
 echo ""
 
 if [[ ! -f "$ROOT/web/supabase.config.json" ]]; then
-  echo "ВНИМАНИЕ: нет web/supabase.config.json — скопируйте из примера или спросите ключ." >&2
+  echo "ВНИМАНИЕ: нет web/supabase.config.json" >&2
 fi
 
-echo "=== Откройте в Safari / Chrome (тот же Wi‑Fi) ==="
+echo "=== Ссылка для мужа (тот же Wi‑Fi) ==="
 echo "  ${WEB_URL}"
 echo ""
-echo "На этом Mac (локально):"
-echo "  http://127.0.0.1:${WEB_PORT}/FairOddsCalc_iOS.html"
-echo ""
-echo "Проверка (с Mac или с ПК мужа в Wi‑Fi):"
-echo "  curl http://${LAN_IP}:${WEB_PORT}/health"
+echo "Проверка: curl http://${LAN_IP}:${WEB_PORT}/health"
 echo ""
 
 if [[ "$DO_START" -eq 1 ]]; then
-  echo ">> Запуск серверов в tmux..."
-  start_tmux_session "fair-odds-api" "$ROOT" "HISTORY_API_HOST=127.0.0.1 bash scripts/run_history_api.sh"
-  start_tmux_session "fair-odds-web" "$ROOT" "python3 scripts/serve_lan.py --port ${WEB_PORT}"
-  sleep 2
-  if check_health "http://127.0.0.1:${API_PORT}/health"; then
-    echo "  History API (localhost:${API_PORT}): OK"
-  else
-    echo "  History API: ещё стартует — tmux attach -t fair-odds-api" >&2
-  fi
-  if check_health "http://${LAN_IP}:${WEB_PORT}/health"; then
-    echo "  API через прокси (LAN :${WEB_PORT}/health): OK"
-  else
-    echo "  ВНИМАНИЕ: прокси на ${LAN_IP}:${WEB_PORT} не отвечает" >&2
-    echo "  → tmux attach -t fair-odds-web" >&2
-  fi
-  echo ""
-  echo "Остановить: tmux kill-session -t fair-odds-api; tmux kill-session -t fair-odds-web"
-  echo "Логи:       tmux attach -t fair-odds-api   |   tmux attach -t fair-odds-web"
+  start_servers
+  verify_servers "$LAN_IP"
 else
-  echo "=== Запуск вручную (два терминала на Mac) ==="
-  echo "  Терминал 1:  bash scripts/run_history_api.sh"
-  echo "  Терминал 2:  python3 scripts/serve_lan.py --port ${WEB_PORT}"
-  echo ""
-  echo "  НЕ используйте «python3 -m http.server» для LAN — API не проксируется."
+  echo "=== Запуск вручную (два окна Terminal) ==="
+  echo "  1) HISTORY_API_HOST=127.0.0.1 bash scripts/run_history_api.sh"
+  echo "  2) python3 scripts/serve_lan.py --port ${WEB_PORT}"
   echo ""
   echo "Или: bash scripts/update_and_serve.sh --start"
 fi
