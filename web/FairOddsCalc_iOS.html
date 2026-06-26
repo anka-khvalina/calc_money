@@ -617,15 +617,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </div>
         <div class="field" style="min-width:150px;flex:1">
           <label>prior α</label><input id="goalPriorAlpha" value="0.7" />
-          <div class="hint">Доля силы прошлого сезона, переносимая на старт нового (0.7 = 70%). Работает при наличии модели-prior; влияет на стягивание рейтингов.</div>
+          <div class="hint">При повторном обучении стягивает r, A, Df к предыдущей модели (0.7 = 70%). Первое обучение — без prior.</div>
         </div>
         <div class="field" style="min-width:150px;flex:1">
-          <label>ничья q_min</label><input id="goalQmin" value="0.85" />
-          <div class="hint">Насколько сильно МОЖНО уменьшить ничью из матрицы. 0.85 = максимум −15%. Защита от перекоса модели ничьи.</div>
+          <label>ничья q_min</label><input id="goalQmin" value="0.90" />
+          <div class="hint">Насколько сильно МОЖНО уменьшить ничью из матрицы. 0.90 = максимум −10%. Широкий диапазон 0.85 — только для экспериментов.</div>
         </div>
         <div class="field" style="min-width:150px;flex:1">
-          <label>ничья q_max</label><input id="goalQmax" value="1.15" />
-          <div class="hint">Насколько сильно МОЖНО увеличить ничью из матрицы. 1.15 = максимум +15%.</div>
+          <label>ничья q_max</label><input id="goalQmax" value="1.10" />
+          <div class="hint">Насколько сильно МОЖНО увеличить ничью из матрицы. 1.10 = максимум +10%. Широкий диапазон 1.15 — только для экспериментов.</div>
         </div>
       </div>
       <div class="row" style="flex-wrap:wrap;gap:16px;">
@@ -972,8 +972,8 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         <tbody>
           <tr><td>α форы</td><td>Приглушение матчей с большим перевесом сил при обучении рейтинга. Больше → крупные форы влияют меньше.</td></tr>
           <tr><td>α тотала</td><td>Приглушение матчей с экстремальным тоталом при обучении атаки/обороны.</td></tr>
-          <tr><td>prior α / prior вес</td><td>Перенос силы прошлого сезона на новый (доля и сила стягивания). Полезно в начале сезона.</td></tr>
-          <tr><td>ничья q_min / q_max</td><td>Предел изменения ничьи из матрицы (±15% по умолчанию).</td></tr>
+          <tr><td>prior α</td><td>При повторном «Обучить модель» стягивает рейтинги и A/Df к предыдущей модели (0.7 = 70%). Первое обучение — без prior.</td></tr>
+          <tr><td>q_min / q_max</td><td>Предел изменения ничьи из матрицы (±10% по умолчанию). 0.85–1.15 — только для экспериментов.</td></tr>
           <tr><td>Модель ничьи</td><td>Вкл — отдельная модель ничьи + коррекция диагонали. Выкл — ничья как из Пуассона.</td></tr>
           <tr><td>Dixon-Coles</td><td>Поправка низких счетов (0:0, 1:0, 0:1, 1:1).</td></tr>
           <tr><td>match_weight / neutral_weight</td><td>Веса матча (▼ Веса). Дерби меняет H при прогнозе, не вес.</td></tr>
@@ -2946,7 +2946,7 @@ bash scripts/update_and_serve.sh --start</div>
       const w = st.derbyShrinkW != null ? st.derbyShrinkW : 0;
       return w * hObs + (1 - w) * h;
     }
-    function gmFitStrength(ms,cfg){
+    function gmFitStrength(ms,cfg,priorSt){
       const used=ms.filter(m=>m.D!=null);
       if(used.length<2) throw new Error('Мало матчей с D');
       const teams=[...new Set(used.flatMap(m=>[m.home,m.away]))].sort();
@@ -2961,7 +2961,23 @@ bash scripts/update_and_serve.sh --start</div>
         if(dCol!=null) c[dCol]=gmDerbyHome(m)?1:0; coeffs.push(c); tg.push(m.D);
         m.wLineAh=Math.min(cfg.maxWAh,Math.max(cfg.minWAh,1/(1+cfg.alphaAh*Math.pow(Math.abs(m.D),cfg.pAh)))); m.wRob=1; });
       const gauge=[...Array(teams.length).fill(1),...Array(p-teams.length).fill(0)];
-      function run(W){ const rows=used.map((m,i)=>[coeffs[i],tg[i],W[i]]); rows.push([gauge,0,GM_GAUGE]); const sol=gmWls(rows,p);
+      const priorRows=[];
+      const pw=(cfg.priorAlpha>0&&priorSt&&priorSt.ratings)?cfg.priorAlpha:0;
+      if(pw>0){
+        teams.forEach(t=>{
+          if(priorSt.ratings[t]==null) return;
+          const c=Array(p).fill(0); c[idx.get(t)]=1;
+          priorRows.push([c,cfg.priorAlpha*priorSt.ratings[t],pw]);
+        });
+      }
+      const regLam=cfg.regLambda!=null?cfg.regLambda:0.1;
+      const regRows=[];
+      if(regLam>0){
+        teams.forEach(t=>{ const c=Array(p).fill(0); c[idx.get(t)]=1; regRows.push([c,0,regLam]); });
+      }
+      function run(W){ const rows=used.map((m,i)=>[coeffs[i],tg[i],W[i]]);
+        rows.push(...priorRows); rows.push(...regRows); rows.push([gauge,0,GM_GAUGE]);
+        const sol=gmWls(rows,p);
         const res=used.map((m,i)=>{ let pr=0; for(let k=0;k<p;k++) pr+=coeffs[i][k]*sol[k]; return pr-tg[i]; }); return [sol,res]; }
       let W=used.map(m=>m.wBase*m.wLineAh); let [sol,res]=run(W);
       for(let it=0;it<cfg.maxIter;it++){ const nW=used.map((m,i)=>{ m.wRob=gmHuber(res[i],cfg.deltaAh); return m.wBase*m.wLineAh*m.wRob; });
@@ -2977,7 +2993,7 @@ bash scripts/update_and_serve.sh --start</div>
       const kDerby=Math.abs(hLeague)>1e-9 ? hDerby/hLeague : 1;
       return {ratings, H:hLeague, deltaDerby, derbyN, derbyShrinkW, hDerby, kDerby, rmse};
     }
-    function gmFitAD(ms,cfg){
+    function gmFitAD(ms,cfg,priorGl){
       const used=ms.filter(m=>m.lh>0&&m.la>0);
       if(used.length<2) throw new Error('Мало матчей с λ');
       const teams=[...new Set(used.flatMap(m=>[m.home,m.away]))].sort(); const nt=teams.length;
@@ -2986,7 +3002,29 @@ bash scripts/update_and_serve.sh --start</div>
       used.forEach(m=>{ const rh=Array(p).fill(0); rh[ai.get(m.home)]+=1; rh[di.get(m.away)]-=1; rh[mu]=1; rh[hg]=m.iHome; rows.push(rh); tg.push(Math.log(m.lh)); bw.push(m.wBase*(m.wLineT||1));
         const ra=Array(p).fill(0); ra[ai.get(m.away)]+=1; ra[di.get(m.home)]-=1; ra[mu]=1; rows.push(ra); tg.push(Math.log(m.la)); bw.push(m.wBase*(m.wLineT||1)); });
       const ga=Array(p).fill(0), gd=Array(p).fill(0); teams.forEach(t=>{ ga[ai.get(t)]=1; gd[di.get(t)]=1; });
-      function run(W){ const wr=rows.map((r,i)=>[r,tg[i],W[i]]); wr.push([ga,0,GM_GAUGE]); wr.push([gd,0,GM_GAUGE]); const sol=gmWls(wr,p);
+      const priorRows=[];
+      const pw=(cfg.priorAlpha>0&&priorGl)?cfg.priorAlpha:0;
+      if(pw>0){
+        teams.forEach(t=>{
+          if(priorGl.attack&&priorGl.attack[t]!=null){
+            const c=Array(p).fill(0); c[ai.get(t)]=1; priorRows.push([c,cfg.priorAlpha*priorGl.attack[t],pw]);
+          }
+          if(priorGl.defense&&priorGl.defense[t]!=null){
+            const c=Array(p).fill(0); c[di.get(t)]=1; priorRows.push([c,cfg.priorAlpha*priorGl.defense[t],pw]);
+          }
+        });
+      }
+      const regLam=cfg.regLambda!=null?cfg.regLambda:0.1;
+      const regRows=[];
+      if(regLam>0){
+        teams.forEach(t=>{
+          const ca=Array(p).fill(0); ca[ai.get(t)]=1; regRows.push([ca,0,regLam]);
+          const cd=Array(p).fill(0); cd[di.get(t)]=1; regRows.push([cd,0,regLam]);
+        });
+      }
+      function run(W){ const wr=rows.map((r,i)=>[r,tg[i],W[i]]);
+        wr.push(...priorRows); wr.push(...regRows); wr.push([ga,0,GM_GAUGE]); wr.push([gd,0,GM_GAUGE]);
+        const sol=gmWls(wr,p);
         const res=rows.map((r,i)=>{ let pr=0; for(let k=0;k<p;k++) pr+=r[k]*sol[k]; return pr-tg[i]; }); return [sol,res]; }
       let W=bw.slice(),[sol,res]=run(W);
       for(let it=0;it<cfg.maxIter;it++){ const nW=rows.map((r,i)=>bw[i]*gmHuber(res[i],cfg.deltaLam)); const dl=Math.max(...nW.map((w,i)=>Math.abs(w-W[i]))); W=nW; [sol,res]=run(W); if(dl<cfg.tol) break; }
@@ -3074,9 +3112,9 @@ bash scripts/update_and_serve.sh --start</div>
       if(cfg.useDraw){ dtarget=gmDrawTarget(draw,df,sf); [mat,diag]=gmAdjustDraw(mat,dtarget,cfg.qmin,cfg.qmax); }
       return {lh,la,df,sf,markets:gmMarkets(mat),drawTarget:dtarget,drawDiag:diag};
     }
-    function gmTrain(raw,cfg){
+    function gmTrain(raw,cfg,prior){
       const ms=gmPrepare(raw,cfg);
-      const st=gmFitStrength(ms,cfg), gl=gmFitAD(ms,cfg), cal=gmCalibrate(ms,st,gl,cfg);
+      const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
       const draw=cfg.useDraw?gmFitDraw(ms,cfg):{alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default'};
       return {st,gl,cal,draw,cfg,nMatches:ms.length};
     }
@@ -3096,10 +3134,10 @@ bash scripts/update_and_serve.sh --start</div>
         alphaT:f('goalAlphaT',0.5), deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
         seasonDefault:1.0,
         seasonWeightsById: goalSeasonWeightById || {},
-        priorAlpha:f('goalPriorAlpha',0.7), promotedN:3,
+        priorAlpha:f('goalPriorAlpha',0.7), promotedN:3, regLambda:0.1,
         derbyShrinkTau:30, derbyHDefault:0.4, derbyMinMatches:3,
         useDraw:document.getElementById('goalUseDraw').checked, useDc:document.getElementById('goalUseDc').checked,
-        qmin:f('goalQmin',0.85), qmax:f('goalQmax',1.15) };
+        qmin:f('goalQmin',0.90), qmax:f('goalQmax',1.10) };
     }
     function gmSeasonWeight(rec, cfg){
       const def = cfg.seasonDefault != null ? cfg.seasonDefault : 1.0;
@@ -3803,7 +3841,7 @@ bash scripts/update_and_serve.sh --start</div>
     let goalLineSeasons = [];
     let goalSeasonWeightById = {};
     let goalLineLeaguesLoaded = false;
-    let goalTrainState = { trainedAt: null, loadedAt: null };
+    let goalTrainState = { trainedAt: null, loadedAt: null, priorUsed: false };
 
     function goalSimpleHash(str){
       let h = 0;
@@ -3924,21 +3962,36 @@ bash scripts/update_and_serve.sh --start</div>
       box.innerHTML = goalRenderTrainTable(rows);
       card.style.display = '';
     }
+    function goalTrainQuality(n){
+      if (n < 2) return { tier: 'error', short: 'Слишком мало матчей', detail: 'Нужно минимум 2 матча с полной линией.' };
+      if (n < 30) return { tier: 'warn', short: 'Технический расчёт',
+        detail: `${n} матч. — только ознакомительный результат. Для обучения рекомендуется ≥30 матчей.` };
+      if (n < 100) return { tier: 'warn', short: 'Минимально допустимо',
+        detail: `${n} матч. — рейтинг силы возможен, но нестабилен. Для устойчивой модели желательно ≥100 матчей.` };
+      if (n < 150) return { tier: 'ok', short: 'Рейтинг надёжен',
+        detail: `${n} матч. — рейтинг силы можно доверять. Для attack/defense лучше ≥150–250 матчей за лигу.` };
+      return { tier: 'ok', short: 'Достаточно данных',
+        detail: `${n} матч. — достаточно для рейтинга и attack/defense.` };
+    }
     function goalUpdateTrainUI(){
       const banner = document.getElementById('goalTrainBanner');
       const hasData = !!(goalLoadedRaw && goalLoadedRaw.length);
       const hasModel = !!gmModel;
+      const n = hasData ? goalLoadedRaw.length : 0;
+      const qual = hasData ? goalTrainQuality(n) : null;
       if (banner){
         banner.classList.remove('ok', 'warn', 'idle');
         if (!hasData){
           banner.classList.add('idle');
           banner.textContent = 'Выберите лигу и сезоны → «Загрузить из БД» → «Обучить модель».';
         } else if (!hasModel){
-          banner.classList.add('warn');
-          banner.textContent = `Данные загружены (${goalLoadedRaw.length} матчей). Нажмите «Обучить модель».`;
+          banner.classList.add(qual.tier === 'warn' ? 'warn' : 'idle');
+          banner.textContent = `Данные загружены (${n} матч.). ${qual.detail} Нажмите «Обучить модель».`;
         } else {
-          banner.classList.add('ok');
-          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${goalLoadedRaw.length} матчах. Повторное нажатие «Обучить модель» пересчитает коэффициенты.`;
+          banner.classList.add(qual.tier === 'warn' ? 'warn' : 'ok');
+          const priorNote = (gmModel.cfg && gmModel.cfg.priorAlpha > 0 && goalTrainState.priorUsed)
+            ? ` Prior α=${goalFmtTrainNum(gmModel.cfg.priorAlpha, 2)} (стягивание к прошлой модели).` : '';
+          banner.textContent = `Модель обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${n} матчах. ${qual.short}: ${qual.detail}${priorNote}`;
         }
       }
       goalRenderTrainDataPanel();
@@ -3966,8 +4019,10 @@ bash scripts/update_and_serve.sh --start</div>
       if (goalLoadedRaw.length < 2) throw new Error('Недостаточно матчей с полной линией для обучения модели');
       goalReadSeasonWeightsFromUI();
       const cfg = gmCfg();
-      gmModel = gmTrain(goalLoadedRaw, cfg);
+      const prior = (cfg.priorAlpha > 0 && gmModel) ? gmModel : null;
+      gmModel = gmTrain(goalLoadedRaw, cfg, prior);
       goalTrainState.trainedAt = new Date().toISOString();
+      goalTrainState.priorUsed = !!(prior && cfg.priorAlpha > 0);
       goalRenderRatings();
       goalUpdateTrainUI();
       gmFillTeams();

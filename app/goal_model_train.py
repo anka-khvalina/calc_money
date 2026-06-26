@@ -76,8 +76,8 @@ class ModelConfig:
 
     # модель ничьей (отдельная) + коррекция диагонали матрицы
     use_draw_model: bool = True
-    draw_diag_multiplier_min: float = 0.85
-    draw_diag_multiplier_max: float = 1.15
+    draw_diag_multiplier_min: float = 0.90
+    draw_diag_multiplier_max: float = 1.10
     w_1x2_normal: float = 1.0
     w_1x2_suspicious: float = 0.5
     w_1x2_missing: float = 0.0
@@ -93,6 +93,9 @@ class ModelConfig:
     derby_shrink_tau: float = 30.0       # τ в w = n/(n+τ) для shrinkage δ_derby
     derby_h_default_ratio: float = 0.40  # H_derby ≈ ratio×H_league если мало дерби в выборке
     derby_min_matches: int = 3           # минимум дерби-матчей для оценки δ_derby
+
+    # L2-регуляризация r, A, Df (ridge к нулю): loss + reg_lambda·Σ(β²)
+    reg_lambda: float = 0.10
 
 
 # --------------------------------------------------------------------------- #
@@ -462,9 +465,17 @@ def fit_strength_ratings(
 
     gauge = [1.0] * len(teams) + [0.0] * (p - len(teams))
 
+    reg_rows: List[Tuple[List[float], float, float]] = []
+    if cfg.reg_lambda > 0:
+        for t in teams:
+            row = [0.0] * p
+            row[idx[t]] = 1.0
+            reg_rows.append((row, 0.0, cfg.reg_lambda))
+
     def solve(weights: Sequence[float]) -> Tuple[List[float], List[float]]:
         rows = [(coeffs[i], targets[i], weights[i]) for i in range(len(used))]
         rows.extend(prior_rows)
+        rows.extend(reg_rows)
         rows.append((gauge, 0.0, tr.GAUGE_WEIGHT))
         sol = tr._solve_weighted(rows, p)
         resid = [
@@ -585,9 +596,20 @@ def fit_attack_defense(
                 row[d_idx[t]] = 1.0
                 prior_rows.append((row, cfg.prior_alpha * prior_defense[t], cfg.prior_weight))
 
+    reg_rows: List[Tuple[List[float], float, float]] = []
+    if cfg.reg_lambda > 0:
+        for t in teams:
+            row_a = [0.0] * p
+            row_a[a_idx[t]] = 1.0
+            reg_rows.append((row_a, 0.0, cfg.reg_lambda))
+            row_d = [0.0] * p
+            row_d[d_idx[t]] = 1.0
+            reg_rows.append((row_d, 0.0, cfg.reg_lambda))
+
     def solve(weights: Sequence[float]) -> Tuple[List[float], List[float]]:
         wrows = [(rows[i], targets[i], weights[i]) for i in range(len(rows))]
         wrows.extend(prior_rows)
+        wrows.extend(reg_rows)
         wrows.append((gauge_a, 0.0, tr.GAUGE_WEIGHT))
         wrows.append((gauge_d, 0.0, tr.GAUGE_WEIGHT))
         sol = tr._solve_weighted(wrows, p)

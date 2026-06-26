@@ -191,6 +191,19 @@ def test_draw_diagnostics_present():
     assert all(r.p_draw_shin > 0 for r in diag)
 
 
+def test_reg_lambda_stabilizes_coefficients():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    loose, _ = gmt.train_full_model(raw, gmt.ModelConfig(reg_lambda=0.0))
+    tight, _ = gmt.train_full_model(raw, gmt.ModelConfig(reg_lambda=1.0))
+    sum_r_loose = sum(abs(v) for v in loose.strength.ratings.values())
+    sum_r_tight = sum(abs(v) for v in tight.strength.ratings.values())
+    sum_a_loose = sum(abs(v) for v in loose.goals.attack.values())
+    sum_a_tight = sum(abs(v) for v in tight.goals.attack.values())
+    assert sum_r_tight < sum_r_loose
+    assert sum_a_tight < sum_a_loose
+
+
 def test_prior_shrinkage_pulls_ratings():
     csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
     raw = gmt.load_raw_matches(csv_path)

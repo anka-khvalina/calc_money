@@ -421,8 +421,8 @@ def adjust_matrix_to_draw_target(
     matrix: List[List[float]],
     p_draw_target: float,
     *,
-    q_min: float = 0.85,
-    q_max: float = 1.15,
+    q_min: float = 0.90,
+    q_max: float = 1.10,
 ) -> Tuple[List[List[float]], Dict[str, float]]:
     """Скорректировать диагональ матрицы под целевую вероятность ничьей.
 

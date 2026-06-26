@@ -1926,10 +1926,10 @@ def build_app():
                hint="Сила стягивания рейтингов к прошлому сезону. 0 = выкл. Больше → сильнее держим прошлогоднюю оценку (полезно в начале сезона).")
     _cfg_entry(goal_cfg_frame, 1, 2, "новичок: N слабейших:", "promoted_n", 3,
                hint="Команде без матчей (новичок лиги) рейтинг = среднее N слабейших команд.")
-    _cfg_entry(goal_cfg_frame, 2, 0, "ничья q_min:", "q_min", 0.85,
-               hint="Насколько можно УМЕНЬШИТЬ ничью из матрицы. 0.85 = максимум −15%. Защита от перекоса модели ничьи.")
-    _cfg_entry(goal_cfg_frame, 2, 1, "ничья q_max:", "q_max", 1.15,
-               hint="Насколько можно УВЕЛИЧИТЬ ничью из матрицы. 1.15 = максимум +15%.")
+    _cfg_entry(goal_cfg_frame, 2, 0, "ничья q_min:", "q_min", 0.90,
+               hint="Насколько можно УМЕНЬШИТЬ ничью из матрицы. 0.90 = максимум −10%. Широкий 0.85 — только для экспериментов.")
+    _cfg_entry(goal_cfg_frame, 2, 1, "ничья q_max:", "q_max", 1.10,
+               hint="Насколько можно УВЕЛИЧИТЬ ничью из матрицы. 1.10 = максимум +10%. Широкий 1.15 — только для экспериментов.")
     _cfg_entry(goal_cfg_frame, 2, 2, "default сезон:", "w_season_def", 1.0,
                hint="Множитель для матча, чья date не попала ни в один диапазон таблицы сезонов ниже (или столбца date нет).")
 
@@ -1989,8 +1989,8 @@ def build_app():
             prior_alpha=f("prior_alpha", 0.7),
             prior_weight=f("prior_weight", 0.0),
             promoted_reference_n=int(f("promoted_n", 3)),
-            draw_diag_multiplier_min=f("q_min", 0.85),
-            draw_diag_multiplier_max=f("q_max", 1.15),
+            draw_diag_multiplier_min=f("q_min", 0.90),
+            draw_diag_multiplier_max=f("q_max", 1.10),
             use_draw_model=goal_use_draw_var.get(),
             use_dixon_coles=goal_use_dc_var.get(),
         )

@@ -109,6 +109,8 @@ log λ_a = μ + A_away − D_home
 
 Ограничения: `Σ A = 0`, `Σ D = 0`.
 
+L2-регуляризация (default `reg_lambda = 0.10`): штраф `reg_lambda·Σ(r² + A² + Df²)` — коэффициенты не «улетают» без доказательств.
+
 ---
 
 ## 6. Калибровка и Dixon–Coles
@@ -135,7 +137,7 @@ logit(P_X) = α + β_D·|D| + β_S·S + β_S2·S² + β_DxS·|D|·S
 q = clamp(P_X^target / P_X^matrix, q_min, q_max)
 ```
 
-Defaults: `q_min = 0.85`, `q_max = 1.15`.
+Defaults: `q_min = 0.90`, `q_max = 1.10` (±10%; 0.85–1.15 — экспериментальный режим).
 
 ---
 
