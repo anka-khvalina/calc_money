@@ -4944,8 +4944,6 @@ bash scripts/update_and_serve.sh --start</div>
     const goalExpPanel = document.getElementById('goalExperimentalPanel');
     if (goalExpPanel){
       goalExpPanel.addEventListener('toggle', () => {
-        if(!goalExpPanel.open) goalApplyModelProfile();
-        else goalMarkCustomProfile();
         gmToggleDrawQUi();
         goalUpdateTrainUI();
       });
