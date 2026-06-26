@@ -45,29 +45,33 @@ Safari: http://localhost:8080/FairOddsCalc_iOS.html
 
 ```bash
 cd ~/calc_money
+git pull origin cursor/lan-update-script-17b5
 bash scripts/update_and_serve.sh --start
 ```
 
-Скрипт:
-1. `git pull` актуальной ветки
-2. Пишет `web/api.config.json` с IP Mac, например `http://192.168.1.195:8765`
-3. Запускает History API (порт 8765) и веб (порт 8080) в tmux
+Скрипт запускает:
+1. History API на `127.0.0.1:8765` (только на Mac)
+2. **`scripts/serve_lan.py`** на порту 8080 — статика + прокси `/api/*` и `/health`
 
-**На втором устройстве (тот же Wi‑Fi):** откройте URL из вывода скрипта, например  
-`http://192.168.1.195:8080/FairOddsCalc_iOS.html`
+Гости открывают **тот же порт 8080** — отдельно открывать 8765 в файрволе не нужно.
 
-Проверка API с любого устройства в сети:
+**Важно:** не используйте `python3 -m http.server` для доступа с другого ПК — API не проксируется.
 
-```bash
-curl http://192.168.1.195:8765/health
+**На втором устройстве:** `http://192.168.1.195:8080/FairOddsCalc_iOS.html`
+
+Проверка с ПК мужа (PowerShell):
+
+```powershell
+curl http://192.168.1.195:8080/health
 ```
 
 Должно вернуть `{"ok":true}`.
 
-Если с Mac `curl http://127.0.0.1:8765/health` работает, а с IP Mac — нет: **файрвол macOS** блокирует порт 8765.  
-System Settings → Network → Firewall → Options → разрешите **Python** (или отключите файрвол для теста).
+Диагностика на Mac:
 
-В браузере на втором ПК страница сама подставляет IP Mac вместо `localhost` в `api.config.json` (обновите HTML: Cmd+Shift+R).
+```bash
+bash scripts/check_lan_api.sh
+```
 
 Только обновить конфиг без автозапуска:
 

@@ -61,10 +61,10 @@ detect_lan_ip() {
 
 write_api_config() {
   local ip="$1"
-  local url="http://${ip}:${API_PORT}"
+  # Пустой url — в браузере на LAN подставится тот же хост:порт, что и страница (прокси serve_lan.py).
   mkdir -p "$ROOT/web"
-  printf '%s\n' "{\"api_base_url\": \"${url}\"}" > "$ROOT/web/api.config.json"
-  echo "$url"
+  printf '%s\n' '{"api_base_url": ""}' > "$ROOT/web/api.config.json"
+  echo "http://${ip}:${WEB_PORT} (API через /api/ на том же порту)"
 }
 
 tmux_cmd() {
@@ -114,8 +114,8 @@ LAN_IP="$(detect_lan_ip)"
 API_URL="$(write_api_config "$LAN_IP")"
 WEB_URL="http://${LAN_IP}:${WEB_PORT}/FairOddsCalc_iOS.html"
 
-echo ">> web/api.config.json → api_base_url = ${API_URL}"
-echo "   (кнопка «Получить данные» во вкладке История ходит на этот адрес)"
+echo ">> web/api.config.json → API через тот же порт ${WEB_PORT} (прокси)"
+echo "   ${API_URL}"
 echo ""
 
 if [[ ! -f "$ROOT/web/supabase.config.json" ]]; then
@@ -128,26 +128,25 @@ echo ""
 echo "На этом Mac (локально):"
 echo "  http://127.0.0.1:${WEB_PORT}/FairOddsCalc_iOS.html"
 echo ""
-echo "Проверка History API:"
-echo "  curl ${API_URL}/health"
+echo "Проверка (с Mac или с ПК мужа в Wi‑Fi):"
+echo "  curl http://${LAN_IP}:${WEB_PORT}/health"
 echo ""
 
 if [[ "$DO_START" -eq 1 ]]; then
   echo ">> Запуск серверов в tmux..."
-  start_tmux_session "fair-odds-api" "$ROOT" "bash scripts/run_history_api.sh"
-  start_tmux_session "fair-odds-web" "$ROOT/web" "python3 -m http.server ${WEB_PORT} --bind 0.0.0.0"
+  start_tmux_session "fair-odds-api" "$ROOT" "HISTORY_API_HOST=127.0.0.1 bash scripts/run_history_api.sh"
+  start_tmux_session "fair-odds-web" "$ROOT" "python3 scripts/serve_lan.py --port ${WEB_PORT}"
   sleep 2
   if check_health "http://127.0.0.1:${API_PORT}/health"; then
-    echo "  History API (localhost): OK"
+    echo "  History API (localhost:${API_PORT}): OK"
   else
-    echo "  History API: ещё стартует или ошибка — смотрите: tmux attach -t fair-odds-api" >&2
+    echo "  History API: ещё стартует — tmux attach -t fair-odds-api" >&2
   fi
-  if check_health "http://${LAN_IP}:${API_PORT}/health"; then
-    echo "  History API (LAN ${LAN_IP}): OK"
+  if check_health "http://${LAN_IP}:${WEB_PORT}/health"; then
+    echo "  API через прокси (LAN :${WEB_PORT}/health): OK"
   else
-    echo "  ВНИМАНИЕ: с другого ПК API не отвечает на ${LAN_IP}:${API_PORT}" >&2
-    echo "  → System Settings → Network → Firewall: разрешите Python / входящие на порт ${API_PORT}" >&2
-    echo "  → Убедитесь, что API слушает 0.0.0.0: lsof -nP -iTCP:${API_PORT} -sTCP:LISTEN" >&2
+    echo "  ВНИМАНИЕ: прокси на ${LAN_IP}:${WEB_PORT} не отвечает" >&2
+    echo "  → tmux attach -t fair-odds-web" >&2
   fi
   echo ""
   echo "Остановить: tmux kill-session -t fair-odds-api; tmux kill-session -t fair-odds-web"
@@ -155,10 +154,11 @@ if [[ "$DO_START" -eq 1 ]]; then
 else
   echo "=== Запуск вручную (два терминала на Mac) ==="
   echo "  Терминал 1:  bash scripts/run_history_api.sh"
-  echo "  Терминал 2:  cd web && python3 -m http.server ${WEB_PORT} --bind 0.0.0.0"
+  echo "  Терминал 2:  python3 scripts/serve_lan.py --port ${WEB_PORT}"
   echo ""
-  echo "Или одной командой с автозапуском:"
-  echo "  bash scripts/update_and_serve.sh --start"
+  echo "  НЕ используйте «python3 -m http.server» для LAN — API не проксируется."
+  echo ""
+  echo "Или: bash scripts/update_and_serve.sh --start"
 fi
 
 echo ""

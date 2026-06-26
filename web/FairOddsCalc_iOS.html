@@ -1194,24 +1194,19 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       return !h || h === 'localhost' || h === '127.0.0.1';
     }
 
-    /** Если страница открыта по IP Mac в Wi‑Fi, localhost в конфиге → тот же IP (порт 8765). */
+    /** LAN: API на том же порту, что страница (scripts/serve_lan.py). Локально: :8765. */
     function resolveApiBase(configured){
       const pageHost = window.location.hostname || '';
       const pageOnLan = !isLoopbackHost(pageHost);
+      if (pageOnLan) return window.location.origin;
       let base = String(configured || '').trim().replace(/\/$/, '');
-      if (!base){
-        if (pageOnLan) return `http://${pageHost}:${DEFAULT_API_PORT}`;
-        return '';
-      }
+      if (!base) return `http://127.0.0.1:${DEFAULT_API_PORT}`;
       try {
         const u = new URL(base);
-        if (isLoopbackHost(u.hostname) && pageOnLan){
-          u.hostname = pageHost;
-          return u.toString().replace(/\/$/, '');
-        }
+        if (isLoopbackHost(u.hostname)) return `http://127.0.0.1:${DEFAULT_API_PORT}`;
         return base;
       } catch (_e){
-        return base;
+        return base || `http://127.0.0.1:${DEFAULT_API_PORT}`;
       }
     }
 
