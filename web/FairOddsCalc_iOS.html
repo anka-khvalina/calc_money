@@ -1287,9 +1287,20 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       return window.__SB.leagues;
     }
 
-    async function sbLoadLeagues(){
-      const leagues = await sbFetchLeaguesList();
+    function sbTeamsLeagueSelectNeedsPopulate(){
       const sel = document.getElementById('teamsLeague');
+      if (!sel) return false;
+      if (sel.disabled) return true;
+      if (!sel.options.length) return true;
+      const only = sel.options.length === 1;
+      const label = only ? String(sel.options[0].textContent || '') : '';
+      return only && (!sel.value || /загрузка/i.test(label));
+    }
+
+    function sbPopulateTeamsLeagueSelect(){
+      const leagues = window.__SB.leagues || [];
+      const sel = document.getElementById('teamsLeague');
+      if (!sel) return;
       sel.innerHTML = '';
       if (!leagues.length){
         sel.disabled = true;
@@ -1308,6 +1319,11 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
       sel.disabled = false;
       const saved = localStorage.getItem(SB_LEAGUE_KEY);
       if (saved && leagues.some(l => l.id === saved)) sel.value = saved;
+    }
+
+    async function sbLoadLeagues(){
+      await sbFetchLeaguesList();
+      sbPopulateTeamsLeagueSelect();
     }
 
     async function sbLoadTeams(leagueId){
@@ -1426,7 +1442,11 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
         if (!window.__SB.leaguesLoaded){
           if (meta) meta.textContent = 'Загрузка лиг…';
           if (sel) sel.disabled = true;
-          await sbLoadLeagues();
+          await sbFetchLeaguesList();
+        }
+        if (sbTeamsLeagueSelectNeedsPopulate()){
+          if (meta) meta.textContent = 'Загрузка лиг…';
+          sbPopulateTeamsLeagueSelect();
         }
         await refreshTeamsTable(sel.value);
       } catch (e){
