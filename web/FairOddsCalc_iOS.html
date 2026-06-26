@@ -3854,7 +3854,7 @@ bash scripts/update_and_serve.sh --start</div>
       let html = goalRenderTrainTable(rows);
       if (seasonRows.length){
         html += '<div class="small" style="margin-top:8px;font-weight:600">Веса сезонов</div>'
-          + goalRenderTrainTable(seasonRows.map(([a,b]) => [a, b, 'num'])));
+          + goalRenderTrainTable(seasonRows.map(([a,b]) => [a, b, 'num']));
       }
       html += '<div class="small" style="margin-top:8px;font-weight:600">Параметры обучения (вход)</div>'
         + goalRenderTrainTable([
