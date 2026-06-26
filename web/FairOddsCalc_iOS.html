@@ -203,11 +203,32 @@
     }
     .goal-chip.ok{ background:#dcfce7; color:#166534; }
     .goal-chip.warn{ background:#fef3c7; color:#92400e; }
-    .goal-profile-bar{
-      display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:12px 0 8px;
+    .goal-train-layout{
+      display:flex; flex-wrap:wrap; gap:16px 20px; align-items:flex-start; margin-top:8px;
     }
-    .goal-profile-bar select{ min-width:180px; }
-    .goal-main-settings{ margin-top:4px; }
+    .goal-train-col--profile{
+      flex:0 0 272px; max-width:100%; min-width:240px;
+    }
+    .goal-train-col--data{
+      flex:1 1 300px; min-width:0; max-width:100%;
+    }
+    .goal-config-card{
+      background:#fff; border:1px solid #dbe3f7; border-radius:10px; padding:12px 14px;
+    }
+    .goal-profile-bar{
+      display:flex; flex-direction:column; align-items:stretch; gap:6px; margin:0 0 10px;
+    }
+    .goal-profile-bar select{ width:100%; min-width:0; font-size:13px; }
+    .goal-profile-bar .hint{ font-size:11px; }
+    .goal-main-settings{
+      display:flex; flex-direction:column; gap:10px; margin:0;
+    }
+    .goal-main-settings .field{ min-width:0; width:100%; flex:none; margin:0; }
+    .goal-main-settings .hint{ font-size:10px; line-height:1.3; }
+    .goal-train-col--profile .goal-train-actions{ margin-top:10px; flex-direction:column; align-items:stretch; }
+    .goal-train-col--profile .goal-train-actions .btn{ width:100%; }
+    .goal-train-col--profile .goal-train-chips{ margin-top:6px; }
+    .goal-train-col--profile .goal-exp-panel{ margin-top:10px; }
     .goal-dc-row{
       display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; padding-bottom:2px;
     }
@@ -627,8 +648,93 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div class="goal-section goal-section--train">
         <h3>Обучение модели</h3>
         <div class="small">
-          Загрузите closing-линии из БД → обучите модель. Профиль по умолчанию: <b>рыночный baseline</b> (S из OU, DC on, draw off).
+          Загрузите closing-линии из БД → настройте профиль слева → обучите модель.
         </div>
+
+      <div class="goal-train-layout">
+        <div class="goal-train-col goal-train-col--profile">
+          <div class="goal-config-card">
+            <div class="goal-profile-bar">
+              <label class="block-label" for="goalModelProfile">Профиль модели</label>
+              <select id="goalModelProfile">
+                <option value="baseline" selected>Рыночный baseline</option>
+                <option value="custom">Свои настройки</option>
+              </select>
+              <span class="hint">S cal off · DC on · draw off</span>
+            </div>
+
+            <div class="goal-main-settings">
+              <div class="field">
+                <label>α форы</label><input id="goalAlphaAh" value="0.25" />
+                <div class="hint">Крупные форы слабее в рейтинге силы.</div>
+              </div>
+              <div class="field">
+                <label>α тотала</label><input id="goalAlphaT" value="0.5" />
+                <div class="hint">Экстремальные тоталы слабее в attack/defense.</div>
+              </div>
+              <div class="field">
+                <label>λ A / Df</label><input id="goalRegLambdaAD" value="0.10" />
+                <div class="hint">L2 на атаку и оборону.</div>
+              </div>
+              <div class="goal-dc-row">
+                <label>
+                  <input id="goalUseDc" type="checkbox" checked style="width:auto;margin:0" />
+                  <span class="small">Dixon-Coles</span>
+                </label>
+                <div class="field goal-gamma-inline">
+                  <label>γ max</label><input id="goalGammaMax" value="0.20" />
+                </div>
+              </div>
+            </div>
+
+            <details id="goalExperimentalPanel" class="goal-exp-panel">
+              <summary>Экспериментально</summary>
+              <div class="goal-exp-body row" style="flex-wrap:wrap;gap:10px;align-items:flex-start;">
+                <div class="field" style="min-width:100%;flex:1">
+                  <label>prior α</label><input id="goalPriorAlpha" value="0.7" />
+                </div>
+                <div class="field" style="min-width:100%;flex:1">
+                  <label>дерби H×</label><input id="goalDerbyHDefault" value="0.7" />
+                </div>
+                <div class="field" style="min-width:100%;flex:1">
+                  <label>калибр. S</label>
+                  <select id="goalSCalMode">
+                    <option value="off" selected>off</option>
+                    <option value="soft">soft</option>
+                    <option value="free">free</option>
+                  </select>
+                </div>
+                <div class="field" style="min-width:100%;flex:1">
+                  <label>max |ΔS|</label><input id="goalSCalMaxDelta" value="0.15" />
+                </div>
+                <label style="display:flex;align-items:flex-start;gap:6px;min-width:100%">
+                  <input id="goalUseDraw" type="checkbox" style="width:auto;margin-top:2px" />
+                  <span class="small">Модель ничьи</span>
+                </label>
+                <div class="field" style="min-width:100%;flex:1" id="goalDrawModeWrap" hidden>
+                  <label>режим ничьи</label>
+                  <select id="goalDrawMode">
+                    <option value="residual_dc" selected>residual (после DC)</option>
+                    <option value="legacy">legacy (абс. P_X)</option>
+                  </select>
+                </div>
+                <div class="field" style="min-width:45%;flex:1" id="goalQBoundsWrap" hidden>
+                  <label>q_min</label><input id="goalQmin" value="0.95" />
+                </div>
+                <div class="field" style="min-width:45%;flex:1" id="goalQBoundsMaxWrap" hidden>
+                  <label>q_max</label><input id="goalQmax" value="1.05" />
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <div class="goal-train-actions">
+            <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
+            <div id="goalTrainChips" class="goal-train-chips" aria-live="polite"></div>
+          </div>
+        </div>
+
+        <div class="goal-train-col goal-train-col--data">
       <div class="goal-src-panel">
         <div class="goal-src-row goal-src-row--pick">
           <div class="goal-src-league">
@@ -658,91 +764,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div class="hint" style="margin-top:6px">
         Supabase → closing-линии. Вес матча: <b>сезон × match_weight × neutral</b>. Дерби → только H.
       </div>
-
-      <div class="goal-profile-bar">
-        <label class="block-label" for="goalModelProfile" style="margin:0">Профиль модели</label>
-        <select id="goalModelProfile">
-          <option value="baseline" selected>Рыночный baseline</option>
-          <option value="custom">Свои настройки</option>
-        </select>
-        <span class="hint" style="margin:0">S cal off · DC on · draw off</span>
-      </div>
-
-      <div class="row goal-main-settings" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
-        <div class="field" style="min-width:120px;flex:1">
-          <label>α форы</label><input id="goalAlphaAh" value="0.25" />
-          <div class="hint">Крупные форы слабее влияют на рейтинг силы.</div>
-        </div>
-        <div class="field" style="min-width:120px;flex:1">
-          <label>α тотала</label><input id="goalAlphaT" value="0.5" />
-          <div class="hint">Экстремальные тоталы слабее влияют на attack/defense.</div>
-        </div>
-        <div class="field" style="min-width:120px;flex:1">
-          <label>λ A / Df</label><input id="goalRegLambdaAD" value="0.10" />
-          <div class="hint">L2 на атаку и оборону (0 = выкл).</div>
-        </div>
-        <div class="goal-dc-row">
-          <label>
-            <input id="goalUseDc" type="checkbox" checked style="width:auto;margin:0" />
-            <span class="small">Dixon-Coles</span>
-          </label>
-          <div class="field goal-gamma-inline">
-            <label>γ max</label><input id="goalGammaMax" value="0.20" />
-          </div>
         </div>
       </div>
 
-      <div class="goal-train-actions">
-        <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
-        <div id="goalTrainChips" class="goal-train-chips" aria-live="polite"></div>
-      </div>
       <div id="goalTrainBanner" class="goal-train-banner idle">Загрузите матчи из БД и обучите модель.</div>
-
-      <details id="goalExperimentalPanel" class="goal-exp-panel">
-        <summary>Экспериментально</summary>
-        <div class="goal-exp-body row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
-          <div class="field" style="min-width:120px;flex:1">
-            <label>prior α</label><input id="goalPriorAlpha" value="0.7" />
-            <div class="hint">Стягивание к прошлой модели при переобучении.</div>
-          </div>
-          <div class="field" style="min-width:120px;flex:1">
-            <label>дерби H×</label><input id="goalDerbyHDefault" value="0.7" />
-            <div class="hint">H_eff при малом числе дерби в выборке.</div>
-          </div>
-          <div class="field" style="min-width:130px;flex:1">
-            <label>калибр. S</label>
-            <select id="goalSCalMode">
-              <option value="off" selected>off</option>
-              <option value="soft">soft</option>
-              <option value="free">free</option>
-            </select>
-            <div class="hint">off = S из OU. free — без ограничений.</div>
-          </div>
-          <div class="field" style="min-width:100px;flex:1">
-            <label>max |ΔS|</label><input id="goalSCalMaxDelta" value="0.15" />
-            <div class="hint">Лимит при soft-калибровке.</div>
-          </div>
-          <label style="display:flex;align-items:flex-start;gap:6px;min-width:140px">
-            <input id="goalUseDraw" type="checkbox" style="width:auto;margin-top:2px" />
-            <span><span class="small">Модель ничьи</span><span class="hint" style="display:block">Residual после DC (эксп.).</span></span>
-          </label>
-          <div class="field" style="min-width:150px;flex:1" id="goalDrawModeWrap" hidden>
-            <label>режим ничьи</label>
-            <select id="goalDrawMode">
-              <option value="residual_dc" selected>residual (после DC)</option>
-              <option value="legacy">legacy (абс. P_X)</option>
-            </select>
-          </div>
-          <div class="field" style="min-width:100px;flex:1" id="goalQBoundsWrap" hidden>
-            <label>q_min</label><input id="goalQmin" value="0.95" />
-            <div class="hint">legacy: 0.95. residual: 0.98 (в коде).</div>
-          </div>
-          <div class="field" style="min-width:100px;flex:1" id="goalQBoundsMaxWrap" hidden>
-            <label>q_max</label><input id="goalQmax" value="1.05" />
-            <div class="hint">legacy: 1.05. residual: 1.03 (в коде).</div>
-          </div>
-        </div>
-      </details>
       <div id="goalTrainDataCard" class="goal-train-card" style="display:none">
         <h4>Данные обучения</h4>
         <div id="goalTrainDataBody"></div>
