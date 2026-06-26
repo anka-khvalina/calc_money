@@ -205,6 +205,28 @@ def fair_price_model_over(
     return conditional_win_prob(win, loss)
 
 
+def fair_price_model_ah_home(
+    lambda_home: float,
+    lambda_away: float,
+    line: float,
+    *,
+    max_goals: int = MAX_GOALS_DEFAULT,
+) -> float:
+    """Честная модельная цена AH home (азиатский settlement).
+
+    margin = home_goals − away_goals + line
+    win / push / half-win / half-loss / loss через ah_home_units;
+    q = W/(W+L), push не в знаменателе.
+
+    Четвертные: −0.25 = ½·AH(0)+½·AH(−0.5); +0.75 = ½·AH(+0.5)+½·AH(+1.0).
+    """
+    if lambda_home <= 0 or lambda_away <= 0:
+        return 0.5
+    matrix = build_score_matrix(lambda_home, lambda_away, max_goals)
+    win, loss = _accumulate_units(matrix, lambda i, j: ah_home_units(i, j, line))
+    return conditional_win_prob(win, loss)
+
+
 # --------------------------------------------------------------------------- #
 # Снятие маржи
 # --------------------------------------------------------------------------- #
@@ -287,24 +309,18 @@ def infer_goal_diff(
     max_goals: int = MAX_GOALS_DEFAULT,
     eps: float = 0.05,
 ) -> float:
-    """Найти D = λ_h−λ_a так, чтобы P(хозяева покрыли | не возврат) = рынок.
-
-    Использует полную матрицу счетов (учитывает возвраты и половины фор).
-    """
+    """Найти D = λ_h−λ_a так, чтобы fair_price_model(AH home) совпала с рынком."""
     p_ah_home_fair = min(max(p_ah_home_fair, 1e-4), 1.0 - 1e-4)
     d_min = -sum_goals + eps
     d_max = sum_goals - eps
 
-    def model_p_home(d: float) -> float:
+    def target_err(d: float) -> float:
         lh = (sum_goals + d) / 2.0
         la = (sum_goals - d) / 2.0
-        if lh <= 0 or la <= 0:
-            return 1.0 if d > 0 else 0.0
-        matrix = build_score_matrix(lh, la, max_goals)
-        win, loss = _accumulate_units(matrix, lambda i, j: ah_home_units(i, j, ah_home_line))
-        return conditional_win_prob(win, loss)
+        q = fair_price_model_ah_home(lh, la, ah_home_line, max_goals=max_goals)
+        return (q - p_ah_home_fair) ** 2
 
-    return minimize_1d(lambda d: (model_p_home(d) - p_ah_home_fair) ** 2, d_min, d_max)
+    return minimize_1d(target_err, d_min, d_max)
 
 
 def clamp_goal_diff(d: float, sum_goals: float, eps: float = 0.05) -> float:

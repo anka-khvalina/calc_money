@@ -40,6 +40,26 @@ def test_ah_quarter_line_halves():
     assert abs(loss - 1.0) < 1e-9
 
 
+def test_ah_quarter_line_minus_025_and_plus_075():
+    # -0.25 = ½·AH(0) + ½·AH(-0.5): ничья → half_loss
+    win, loss = gm.ah_home_units(0, 0, -0.25)
+    assert abs(win - 0.0) < 1e-9 and abs(loss - 0.5) < 1e-9
+    win, loss = gm.ah_home_units(1, 0, -0.25)
+    assert abs(win - 1.0) < 1e-9
+    # +0.75 = ½·AH(+0.5) + ½·AH(+1.0): ничья → full win (обе половины в плюсе)
+    win, loss = gm.ah_home_units(0, 0, 0.75)
+    assert abs(win - 1.0) < 1e-9 and abs(loss - 0.0) < 1e-9
+    # поражение в 1 гол → half_loss (+0.5 loss, +1.0 push)
+    win, loss = gm.ah_home_units(0, 1, 0.75)
+    assert abs(win - 0.0) < 1e-9 and abs(loss - 0.5) < 1e-9
+
+
+def test_ah_integer_line_push():
+    # AH -1.0, счёт 2:1 → margin = 0 → push
+    win, loss = gm.ah_home_units(2, 1, -1.0)
+    assert win == 0.0 and loss == 0.0
+
+
 def test_integer_total_push():
     # тотал 3.0, ровно 3 гола → возврат (push)
     win, loss = gm.total_units(3, 3.0, "over")
@@ -85,6 +105,62 @@ def test_fair_price_over_line_225():
     l = _p_le(s, 1) + 0.5 * gm.poisson_pmf(2, s)
     expected = w / (w + l)
     assert abs(gm.fair_price_model_over(s, 2.25) - expected) < 1e-9
+
+
+def _matrix_probs(lh: float, la: float, mx: int = 10):
+    return gm.build_score_matrix(lh, la, mx)
+
+
+def test_fair_price_ah_home_line_0():
+    lh, la, mx = 1.5, 1.2, 10
+    m = _matrix_probs(lh, la, mx)
+    w = sum(m[i][j] for i in range(mx + 1) for j in range(mx + 1) if i > j)
+    l = sum(m[i][j] for i in range(mx + 1) for j in range(mx + 1) if i < j)
+    expected = w / (w + l)
+    assert abs(gm.fair_price_model_ah_home(lh, la, 0.0, max_goals=mx) - expected) < 1e-9
+
+
+def test_fair_price_ah_home_line_minus_05():
+    lh, la, mx = 1.5, 1.2, 10
+    m = _matrix_probs(lh, la, mx)
+    expected = sum(m[i][j] for i in range(mx + 1) for j in range(mx + 1) if i >= j + 1)
+    assert abs(gm.fair_price_model_ah_home(lh, la, -0.5, max_goals=mx) - expected) < 1e-9
+
+
+def test_fair_price_ah_home_line_minus_025():
+    lh, la, mx = 1.5, 1.2, 10
+    m = _matrix_probs(lh, la, mx)
+    w = l = 0.0
+    for i in range(mx + 1):
+        for j in range(mx + 1):
+            p, du = m[i][j], i - j
+            if du >= 1:
+                w += p
+            elif du == 0:
+                l += 0.5 * p
+            else:
+                l += p
+    expected = w / (w + l)
+    assert abs(gm.fair_price_model_ah_home(lh, la, -0.25, max_goals=mx) - expected) < 1e-9
+
+
+def test_fair_price_ah_home_line_plus_075():
+    lh, la, mx = 1.5, 1.2, 10
+    m = _matrix_probs(lh, la, mx)
+    w = l = 0.0
+    for i in range(mx + 1):
+        for j in range(mx + 1):
+            p, du = m[i][j], i - j
+            if du >= 1:
+                w += p
+            elif du == 0:
+                w += p
+            elif du == -1:
+                l += 0.5 * p
+            else:
+                l += p
+    expected = w / (w + l)
+    assert abs(gm.fair_price_model_ah_home(lh, la, 0.75, max_goals=mx) - expected) < 1e-9
 
 
 def test_inter_roma_worked_example():

@@ -126,10 +126,28 @@ S = argmin ( fair_price_model(Over | S) − P_fair(Over) )²
 **D** — ожидаемая разница `λ_h − λ_a`:
 
 ```text
-D = argmin ( P_model(хозяева покрыли AH | S, D) − P_fair(AH home) )²
+D = argmin ( fair_price_model(AH home | S, D) − P_fair(AH home) )²
 ```
 
-Учитываются четвертные линии (−0.75 = среднее −0.5 и −1.0) и возвраты (push).
+`fair_price_model(AH home)` — не просто `P(margin > 0)`, а честная модельная цена с азиатским settlement:
+
+```text
+margin = (голы хозяев − голы гостей) + closing_ah_home
+
+простая линия:  margin > 0 → win;  margin = 0 → push;  margin < 0 → loss
+четвертная:     −0.25 = ½·AH(0) + ½·AH(−0.5);  +0.75 = ½·AH(+0.5) + ½·AH(+1.0)
+
+W = Σ P(i,j)·(full_win + ½·half_win)
+L = Σ P(i,j)·(full_loss + ½·half_loss)
+q = W / (W + L)
+```
+
+| Линия | Пример на счёте 0:0 |
+|-------|---------------------|
+| **0** | push → вне знаменателя |
+| **−0.5** | loss (нет push на .5) |
+| **−0.25** | half_loss (push на 0, loss на −0.5) |
+| **+0.75** | full win; при 0:1 — half_loss (+0.5 loss, +1.0 push) |
 
 Затем:
 
@@ -339,7 +357,7 @@ P(i,j) = Pois(i; λ_h) · Pois(j; λ_a)   [+ DC, + коррекция ничьи
 
 | Этап | Python | Web (JS) |
 |------|--------|----------|
-| Shin, S, D, рынки | `app/goal_model.py` | `fair_price_model_over`, `gmFairPriceOver`, `gmInferS`, … |
+| Shin, S, D, рынки | `app/goal_model.py` | `fair_price_model_over`, `fair_price_model_ah_home`, `gmFairPriceOver`, `gmFairPriceAhHome`, … |
 | Полный train | `app/goal_model_train.py` | `gmTrain`, `gmPrepare` |
 | Тесты | `tests/test_goal_model.py` | — |
 

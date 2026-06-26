@@ -2857,9 +2857,15 @@ bash scripts/update_and_serve.sh --start</div>
       pOver=Math.min(Math.max(pOver,1e-4),1-1e-4);
       return gmMin(s=>{const e=gmFairPriceOver(s,line,mx)-pOver; return e*e;},0.3,7);
     }
+    function gmFairPriceAhHome(lh,la,ah,mx=GM_MAX){
+      if(lh<=0||la<=0) return 0.5;
+      const m=gmMatrix(lh,la,mx);
+      const u=gmAccum(m,(i,j)=>gmAhHome(i,j,ah));
+      return gmCond(u[0],u[1]);
+    }
     function gmInferD(ah,pHome,S,mx=GM_MAX,eps=0.05){
       pHome=Math.min(Math.max(pHome,1e-4),1-1e-4);
-      const model=d=>{ const lh=(S+d)/2,la=(S-d)/2; if(lh<=0||la<=0) return d>0?1:0; const m=gmMatrix(lh,la,mx); const u=gmAccum(m,(i,j)=>gmAhHome(i,j,ah)); return gmCond(u[0],u[1]); };
+      const model=d=>{ const lh=(S+d)/2,la=(S-d)/2; return gmFairPriceAhHome(lh,la,ah,mx); };
       return gmMin(d=>{const e=model(d)-pHome; return e*e;},-S+eps,S-eps);
     }
     function gmClampD(d,S,eps=0.05){ return Math.max(-S+eps,Math.min(d,S-eps)); }
