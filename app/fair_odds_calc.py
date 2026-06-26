@@ -1402,7 +1402,11 @@ def build_app():
             edits = hist_edited.setdefault(mid, {})
             edits.update(ubo.odds_to_ui_edits(odds))
             hist_row_status.pop(mid, None)
+            hist_manual_edit.discard(mid)
             _hist_refresh_row(mid)
+            if not _hist_persist_row(mid, allow_empty=True):
+                hist_manual_edit.add(mid)
+                _hist_refresh_row(mid)
         finally:
             hist_fetch_btn.config(state="normal", text="Получить данные")
 
@@ -1414,6 +1418,7 @@ def build_app():
     hist_edited: dict[int, dict[str, str]] = {}
     hist_row_status: dict[int, str] = {}
     hist_row_saving: set[int] = set()
+    hist_manual_edit: set[int] = set()
     hist_fetch_mid: int | None = None
     hist_external_ids: dict[int, str] = {}
     _hist_edit_entry: tk.Entry | None = None
@@ -1441,10 +1446,13 @@ def build_app():
                 dirty.add(field)
         return dirty
 
+    def _hist_is_manual_dirty(mid: int) -> bool:
+        return mid in hist_manual_edit and bool(_hist_dirty_fields(mid))
+
     def _hist_row_values(mid: int) -> tuple:
         m = hist_match_by_id[mid]
         edits = hist_edited.get(mid, {})
-        dirty = _hist_dirty_fields(mid)
+        dirty = _hist_is_manual_dirty(mid)
         saving = mid in hist_row_saving
 
         def cell(ui_col: str) -> str:
@@ -1483,7 +1491,7 @@ def build_app():
         iid = str(mid)
         if not hist_matches_tree.exists(iid):
             return
-        tags = ("dirty",) if _hist_dirty_fields(mid) else ()
+        tags = ("dirty",) if _hist_is_manual_dirty(mid) else ()
         hist_matches_tree.item(iid, values=_hist_row_values(mid), tags=tags)
 
     def _hist_destroy_edit_entry():
@@ -1518,6 +1526,7 @@ def build_app():
             val = entry.get()
             edits = hist_edited.setdefault(mid, {})
             edits[ui_col] = val
+            hist_manual_edit.add(mid)
             hist_row_status.pop(mid, None)
             _hist_destroy_edit_entry()
             _hist_refresh_row(mid)
@@ -1527,24 +1536,31 @@ def build_app():
         _hist_edit_entry = entry
         _hist_edit_ctx = (mid, ui_col)
 
-    def _hist_save_row(mid: int):
+    def _hist_persist_row(mid: int, *, allow_empty: bool = False) -> bool:
         if mid in hist_row_saving:
-            return
+            return False
         orig = hist_match_by_id.get(mid)
         if orig is None:
-            return
+            return False
         edits = hist_edited.get(mid, {})
         try:
             payload = sbh.build_dirty_patch(orig, edits)
         except ValueError as exc:
             hist_row_status[mid] = str(exc)
             _hist_refresh_row(mid)
-            return
+            return False
         if not payload:
+            if not allow_empty:
+                hist_edited.pop(mid, None)
+                hist_row_status.pop(mid, None)
+                hist_manual_edit.discard(mid)
+                _hist_refresh_row(mid)
+                return True
             hist_edited.pop(mid, None)
-            hist_row_status.pop(mid, None)
+            hist_row_status[mid] = "Сохранено"
+            hist_manual_edit.discard(mid)
             _hist_refresh_row(mid)
-            return
+            return True
         hist_row_saving.add(mid)
         hist_row_status[mid] = ""
         _hist_refresh_row(mid)
@@ -1552,8 +1568,10 @@ def build_app():
             updated = sbh.patch_match(mid, payload, original=orig)
         except sb.SupabaseError:
             hist_row_status[mid] = "Не удалось сохранить коэффициенты в БД"
+            return False
         except ValueError as exc:
             hist_row_status[mid] = str(exc)
+            return False
         else:
             hist_match_by_id[mid] = updated
             for i, ent in enumerate(hist_matches_cache):
@@ -1562,9 +1580,16 @@ def build_app():
                     break
             hist_edited.pop(mid, None)
             hist_row_status[mid] = "Сохранено"
+            hist_manual_edit.discard(mid)
+            return True
         finally:
             hist_row_saving.discard(mid)
             _hist_refresh_row(mid)
+
+    def _hist_save_row(mid: int):
+        if mid not in hist_manual_edit:
+            return
+        _hist_persist_row(mid)
 
     def _hist_show_weights_dialog(mid: int):
         _hist_destroy_edit_entry()
@@ -1595,6 +1620,7 @@ def build_app():
         def apply_and_close():
             for ui_col, var in vars_by_col.items():
                 edits[ui_col] = var.get()
+            hist_manual_edit.add(mid)
             hist_row_status.pop(mid, None)
             dlg.destroy()
             _hist_refresh_row(mid)
@@ -1621,7 +1647,7 @@ def build_app():
         if col_id == "fetch":
             _hist_show_fetch_bar(mid)
             return
-        if col_id == "action" and _hist_dirty_fields(mid) and mid not in hist_row_saving:
+        if col_id == "action" and _hist_is_manual_dirty(mid) and mid not in hist_row_saving:
             _hist_save_row(mid)
 
     def _hist_on_matches_dblclick(event):
@@ -1655,6 +1681,7 @@ def build_app():
         hist_edited.clear()
         hist_row_status.clear()
         hist_row_saving.clear()
+        hist_manual_edit.clear()
         hist_fetch_mid = None
         hist_fetch_bar.pack_forget()
         for item in hist_matches_tree.get_children():

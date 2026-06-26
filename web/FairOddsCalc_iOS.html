@@ -728,7 +728,9 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <!-- TAB HISTORY (Supabase) -->
     <section id="tab-hist" class="panel">
       <div class="small">
-        Просмотр и редактирование матчей из Supabase. Измените коэффициент в ячейке и нажмите «Сохранить».
+        Просмотр и редактирование матчей из Supabase.
+        <b>▼ Данные</b> → «Получить данные» сразу сохраняет коэффициенты в БД.
+        При ручной правке ячейки появится кнопка «Сохранить».
         Флаги <b>нейтральное поле</b> и <b>дерби</b> — в блоке <b>▼ Веса</b> под строкой матча.
       </div>
       <div class="help-card" style="margin-top:10px">
@@ -3302,6 +3304,7 @@ bash scripts/update_and_serve.sh --start</div>
           original: Object.assign({}, m), edited: {}, isSaving: false,
           saveError: '', savedMsg: '', weightsOpen: false, fetchOpen: false,
           externalMatchId: '', fetchError: '', fetchLoading: false,
+          manualEdit: false,
         };
       }
       return window.__SB.matchRows[mid];
@@ -3312,6 +3315,9 @@ bash scripts/update_and_serve.sh --start</div>
       } catch (_e){
         return true;
       }
+    }
+    function sbHistIsManualDirty(st){
+      return !!st.manualEdit && sbHistIsDirty(st);
     }
     async function sbPatchMatch(matchId, payload){
       const q = `id=eq.${encodeURIComponent(matchId)}`;
@@ -3379,11 +3385,11 @@ bash scripts/update_and_serve.sh --start</div>
       const tr = document.querySelector(`#clhViewTable tr[data-hist-mid="${mid}"]`);
       const st = window.__SB.matchRows[mid];
       if (!tr || !st) return;
-      const dirty = sbHistIsDirty(st);
+      const dirty = sbHistIsManualDirty(st);
       tr.classList.toggle('hist-dirty', dirty);
       const act = tr.querySelector('[data-hist-save]');
       if (act){
-        act.style.display = dirty || st.isSaving ? '' : 'none';
+        act.style.display = dirty || (st.isSaving && st.manualEdit) ? '' : 'none';
         act.disabled = !!st.isSaving;
         act.textContent = st.isSaving ? 'Сохранение...' : 'Сохранить';
       }
@@ -3429,7 +3435,7 @@ bash scripts/update_and_serve.sh --start</div>
       Object.keys(window.__SB.matchRows).forEach(k => { if (!mids.has(Number(k))) delete window.__SB.matchRows[k]; });
       tb.innerHTML = matches.map(m => {
         const st = sbHistRowState(m);
-        const dirty = sbHistIsDirty(st);
+        const dirty = sbHistIsManualDirty(st);
         const weightsOpen = !!st.weightsOpen;
         const fetchOpen = !!st.fetchOpen;
         const mainRow = `<tr data-hist-mid="${m.match_id}" class="${dirty ? 'hist-dirty' : ''}">` +
@@ -3448,7 +3454,7 @@ bash scripts/update_and_serve.sh --start</div>
           `<td class="hist-col-action">` +
             `<button type="button" class="btn hist-fetch-toggle" data-hist-fetch-toggle="${m.match_id}" aria-expanded="${fetchOpen ? 'true' : 'false'}">${fetchOpen ? '▲ Данные' : '▼ Данные'}</button>` +
             `<button type="button" class="btn hist-weights-toggle" data-hist-weights-toggle="${m.match_id}" aria-expanded="${weightsOpen ? 'true' : 'false'}">${weightsOpen ? '▲ Веса' : '▼ Веса'}</button>` +
-            `<button type="button" class="btn hist-save" data-hist-save="${m.match_id}" style="display:${dirty || st.isSaving ? '' : 'none'}">${st.isSaving ? 'Сохранение...' : 'Сохранить'}</button>` +
+            `<button type="button" class="btn hist-save" data-hist-save="${m.match_id}" style="display:${dirty || (st.isSaving && st.manualEdit) ? '' : 'none'}">${st.isSaving ? 'Сохранение...' : 'Сохранить'}</button>` +
             `<span class="hist-row-err" data-hist-err>${escapeHtml(st.saveError || '')}</span>` +
             `<span class="hist-row-ok" data-hist-ok>${escapeHtml(st.savedMsg || '')}</span>` +
           `</td>` +
@@ -3480,6 +3486,12 @@ bash scripts/update_and_serve.sh --start</div>
         Object.assign(st.edited, userbetOddsToUiEdits(odds));
         st.saveError = '';
         st.savedMsg = '';
+        st.manualEdit = false;
+        sbHistRefreshRowInputs(mid);
+        const res = await sbHistPersistRow(mid, { allowEmpty: true });
+        if (!res.ok){
+          st.manualEdit = true;
+        }
       } catch (e){
         st.fetchError = e.message || 'Не удалось получить данные с внешнего сайта';
       } finally {
@@ -3490,9 +3502,9 @@ bash scripts/update_and_serve.sh --start</div>
       }
     }
 
-    async function sbHistSaveRow(mid){
+    async function sbHistPersistRow(mid, { allowEmpty = false } = {}){
       const st = window.__SB.matchRows[mid];
-      if (!st || st.isSaving) return;
+      if (!st || st.isSaving) return { ok: false, saved: false };
       let payload;
       try {
         payload = sbBuildDirtyPatch(st.original, st.edited);
@@ -3500,13 +3512,22 @@ bash scripts/update_and_serve.sh --start</div>
         st.saveError = e.message || 'Проверьте значения коэффициентов';
         st.savedMsg = '';
         sbHistUpdateRowUI(mid);
-        return;
+        return { ok: false, saved: false };
       }
       if (!Object.keys(payload).length){
+        if (!allowEmpty){
+          st.saveError = '';
+          st.savedMsg = '';
+          sbHistUpdateRowUI(mid);
+          return { ok: true, saved: false, empty: true };
+        }
+        st.edited = {};
         st.saveError = '';
-        st.savedMsg = '';
+        st.savedMsg = 'Сохранено';
+        st.manualEdit = false;
+        sbHistRefreshRowInputs(mid);
         sbHistUpdateRowUI(mid);
-        return;
+        return { ok: true, saved: true, empty: true };
       }
       st.isSaving = true;
       st.saveError = '';
@@ -3518,18 +3539,27 @@ bash scripts/update_and_serve.sh --start</div>
         st.original = Object.assign({}, updated);
         st.edited = {};
         st.savedMsg = 'Сохранено';
+        st.manualEdit = false;
         const key = window.__SB.histSelected ? sbSeasonKey(window.__SB.histSelected.selected_league_id, window.__SB.histSelected.selected_season_id) : null;
         if (key && window.__SB.matchesBySeason[key]){
           window.__SB.matchesBySeason[key] = window.__SB.matchesBySeason[key].map(r => Number(r.match_id) === Number(mid) ? updated : r);
         }
         sbHistRefreshRowInputs(mid);
+        return { ok: true, saved: true };
       } catch (e){
         console.error('PATCH match failed', e);
         st.saveError = 'Не удалось сохранить коэффициенты в БД';
+        return { ok: false, saved: false };
       } finally {
         st.isSaving = false;
         sbHistUpdateRowUI(mid);
       }
+    }
+
+    async function sbHistSaveRow(mid){
+      const st = window.__SB.matchRows[mid];
+      if (!st || st.isSaving || !st.manualEdit) return;
+      await sbHistPersistRow(mid);
     }
 
     document.getElementById('clhViewTable').addEventListener('input', e => {
@@ -3547,6 +3577,7 @@ bash scripts/update_and_serve.sh --start</div>
       const st = window.__SB.matchRows[mid];
       if (!st) return;
       st.edited[col] = el.value;
+      st.manualEdit = true;
       st.saveError = '';
       st.savedMsg = '';
       sbHistUpdateRowUI(mid);
@@ -3559,6 +3590,7 @@ bash scripts/update_and_serve.sh --start</div>
       const st = window.__SB.matchRows[mid];
       if (!st) return;
       st.edited[col] = el.value;
+      st.manualEdit = true;
       st.saveError = '';
       st.savedMsg = '';
       sbHistUpdateRowUI(mid);
