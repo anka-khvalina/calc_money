@@ -78,13 +78,13 @@
     }
     #clhViewTable td.hist-col-date{ min-width:92px; white-space:nowrap; }
     #goalSeasonWeightsTable .goal-season-w{
-      width:100%; max-width:72px; text-align:right; padding:5px 7px; font-size:13px;
+      width:100%; max-width:56px; text-align:right; padding:4px 6px; font-size:12px;
     }
     .goal-src-panel{
       display:grid;
-      grid-template-columns:minmax(160px,200px) minmax(180px,220px) minmax(260px,1fr) auto;
-      gap:12px 16px;
-      align-items:start;
+      grid-template-columns:minmax(120px, 1fr) minmax(140px, 1.1fr) auto auto;
+      gap:10px 12px;
+      align-items:end;
       background:#f2f6ff;
       border:1px solid #dbe3f7;
       border-radius:10px;
@@ -94,25 +94,42 @@
     .goal-src-panel label.block-label{
       display:block; font-size:12px; color:var(--muted); margin-bottom:5px; font-weight:600;
     }
-    .goal-src-league select{ font-size:13px; }
+    .goal-src-league select{ font-size:13px; width:100%; }
     .goal-src-seasons select#goalSrcSeasons{
-      min-height:132px; max-height:160px; font-size:12.5px; padding:4px 6px;
+      width:100%; min-height:0; max-height:none; height:auto;
+      font-size:12px; padding:3px 5px; line-height:1.35;
     }
     .goal-src-seasons .goal-all-seasons{
-      display:flex; align-items:center; gap:6px; margin-top:6px; font-size:12px;
+      display:flex; align-items:center; gap:6px; margin-top:4px; font-size:11px;
     }
     .goal-src-seasons .goal-all-seasons input{ width:auto; margin:0; }
-    .goal-src-weights .table-wrap{ margin-top:0; border-radius:8px; }
-    .goal-src-weights table{ min-width:0; width:100%; }
-    .goal-src-weights th, .goal-src-weights td{ padding:6px 10px; font-size:12.5px; vertical-align:middle; }
-    .goal-src-weights th{ white-space:nowrap; }
+    .goal-src-seasons .goal-seasons-hint{ margin-top:2px; font-size:10px; color:var(--muted); }
+    .goal-src-weights{ max-width:248px; width:max-content; }
+    .goal-src-weights .table-wrap{ margin-top:0; border-radius:8px; overflow:hidden; }
+    .goal-src-weights table.goal-sw-table{
+      width:auto; min-width:0; table-layout:fixed;
+    }
+    .goal-src-weights .goal-sw-table th,
+    .goal-src-weights .goal-sw-table td{
+      padding:5px 8px; font-size:12px; vertical-align:middle;
+    }
+    .goal-src-weights .goal-sw-table th{ white-space:nowrap; font-size:11px; }
+    .goal-src-weights .goal-sw-table .goal-sw-season{ width:7.5rem; max-width:7.5rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .goal-src-weights .goal-sw-table .goal-sw-n{ width:3.25rem; text-align:right; }
+    .goal-src-weights .goal-sw-table .goal-sw-w{ width:3.5rem; text-align:right; }
     .goal-src-weights td.num{ text-align:right; font-variant-numeric:tabular-nums; }
-    .goal-src-action{ align-self:end; padding-bottom:2px; }
-    .goal-src-action .btn{ white-space:nowrap; }
+    .goal-src-action{
+      align-self:end; min-width:108px; max-width:140px; width:100%;
+    }
+    .goal-src-action .btn{
+      width:100%; white-space:normal; line-height:1.25; padding:9px 10px; font-size:12px;
+    }
     @media (max-width:900px){
-      .goal-src-panel{ grid-template-columns:1fr 1fr; }
-      .goal-src-weights{ grid-column:1 / -1; }
-      .goal-src-action{ grid-column:1 / -1; justify-self:start; }
+      .goal-src-panel{ grid-template-columns:1fr 1fr; align-items:start; }
+      .goal-src-weights{ grid-column:1 / -1; max-width:100%; width:100%; }
+      .goal-src-weights table.goal-sw-table{ width:100%; max-width:280px; }
+      .goal-src-action{ grid-column:1 / -1; max-width:none; justify-self:stretch; }
+      .goal-src-action .btn{ max-width:220px; }
     }
     #clhViewTable th.hist-col-team,
     #clhViewTable td.hist-col-team{
@@ -608,7 +625,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div class="goal-section goal-section--train">
         <h3>Обучение модели</h3>
         <div class="small">
-          Closing-линии → S/D → λ → матрица → рынки. Рабочий профиль: <b>рыночный baseline</b> (S из OU, DC on, draw off).
+          Загрузите closing-линии из БД → обучите модель. Профиль по умолчанию: <b>рыночный baseline</b> (S из OU, DC on, draw off).
         </div>
       <div class="goal-src-panel">
         <div class="goal-src-league">
@@ -617,12 +634,12 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </div>
         <div class="goal-src-seasons">
           <label class="block-label" for="goalSrcSeasons">Сезоны</label>
-          <select id="goalSrcSeasons" multiple size="5"></select>
+          <select id="goalSrcSeasons" multiple size="3"></select>
           <label class="goal-all-seasons">
             <input id="goalSrcAllSeasons" type="checkbox" />
             <span>Все сезоны</span>
           </label>
-          <div class="hint" style="margin-top:4px;font-size:11px">Ctrl/Cmd + клик</div>
+          <div class="goal-seasons-hint">Ctrl/Cmd + клик</div>
         </div>
         <div class="goal-src-weights">
           <label class="block-label">Веса сезонов</label>
@@ -632,9 +649,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <button type="button" id="goalLoadHist" class="btn primary">Загрузить из БД</button>
         </div>
       </div>
-      <div class="hint" style="margin-top:8px">
-        Данные из Supabase (<code>v_matches_full</code>). Вес матча:
-        <b>вес сезона × match_weight × neutral_weight</b> (дерби влияет на <b>H</b>, не на вес).
+      <div class="hint" style="margin-top:6px">
+        Источник: Supabase. Вес матча = <b>вес сезона × match_weight × neutral_weight</b>. Дерби меняет только <b>H</b> при прогнозе.
       </div>
 
       <div class="goal-profile-bar">
@@ -4820,15 +4836,15 @@ bash scripts/update_and_serve.sh --start</div>
         return;
       }
       const byId = new Map(goalLineSeasons.map(s => [s.season_id, s]));
-      box.innerHTML = '<div class="table-wrap"><table><thead><tr>'
-        + '<th>Сезон</th><th class="right">Матчей</th><th class="right" style="width:88px">Вес</th>'
+      box.innerHTML = '<div class="table-wrap"><table class="goal-sw-table"><thead><tr>'
+        + '<th class="goal-sw-season">Сезон</th><th class="goal-sw-n">Матч.</th><th class="goal-sw-w">Вес</th>'
         + '</tr></thead><tbody>'
         + ids.map(sid => {
           const s = byId.get(sid);
           if (!s) return '';
           const w = goalSeasonWeightById[sid] != null ? goalSeasonWeightById[sid] : 1;
-          return `<tr><td>${escapeHtml(s.season_label)}</td>`
-            + `<td class="num">${escapeHtml(String(s.matches_count))}</td>`
+          return `<tr><td class="goal-sw-season" title="${escapeHtml(s.season_label)}">${escapeHtml(s.season_label)}</td>`
+            + `<td class="num goal-sw-n">${escapeHtml(String(s.matches_count))}</td>`
             + `<td class="num"><input class="goal-season-w" data-sid="${escapeHtml(String(sid))}" value="${escapeHtml(String(w).replace('.', ','))}" /></td></tr>`;
         }).join('') + '</tbody></table></div>';
     }
