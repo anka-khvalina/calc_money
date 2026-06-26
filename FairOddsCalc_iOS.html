@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
   <title>FairOddsCalc iOS</title>
   <!-- build: cursor/goal-model-17b5 goal-model-v1 -->
   <style>
@@ -3396,6 +3398,13 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
 
     async function sbInitHistTab(){
       const meta = document.getElementById('clhMeta');
+      if (window.__SB.configError){
+        const msg = window.__SB.configError;
+        alert(msg);
+        renderHistSeasonsTable();
+        if (meta) meta.textContent = msg;
+        return;
+      }
       try {
         await loadSupabaseConfig();
         const firstLoad = !window.__SB.histLoaded;
@@ -3602,6 +3611,11 @@ P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма сн�
     try { refreshShinTeamSelects(); } catch (e) { console.error(e); }
     try { gmFillTeams(); } catch (e) { console.error(e); }
     try { /* История: Supabase загружается при открытии вкладки */ } catch (e) { console.error(e); }
+    loadSupabaseConfig().catch(e => {
+      console.error('Supabase config preload failed', e);
+      window.__SB.configError = sbHistErrorMessage(e, 'загрузить конфигурацию Supabase');
+    });
+    loadApiConfig().catch(e => console.error('API config preload failed', e));
     window.refreshGoalTeams = gmFillTeams;
     window.goalFillSrcSeasons = goalFillSrcSeasons;
     setJsStatus('Версия goal-model-v1 — Линия (голы): closing → S/D → λ → матрица → рынки');
