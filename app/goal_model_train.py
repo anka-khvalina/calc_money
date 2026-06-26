@@ -1123,6 +1123,7 @@ class TrainedModel:
     d_clamp: Optional[DClampDiagnostics] = None
     cal_diag: Optional[CalibrationDiagnostics] = None
     draw_q_diag: Optional["DrawQDiagnostics"] = None
+    sd_diag: Optional["Sd1x2Diagnostics"] = None
 
 
 def train_full_model(
@@ -1144,11 +1145,13 @@ def train_full_model(
     calibration = calibrate(matches, strength, goals, cfg)
     cal_diag = assess_calibration_stability(calibration)
     draw = fit_draw_model(matches, cfg) if cfg.use_draw_model else _DRAW_DEFAULT
-    model = TrainedModel(strength, goals, calibration, draw, cfg, d_clamp, cal_diag, None)
+    model = TrainedModel(strength, goals, calibration, draw, cfg, d_clamp, cal_diag, None, None)
     draw_q_diag = draw_q_diagnostics(model, matches)
     log_draw_q_diagnostics(draw_q_diag)
+    sd_diag = sd_1x2_diagnostics(model, matches)
+    log_sd_1x2_diagnostics(sd_diag)
     return TrainedModel(
-        strength, goals, calibration, draw, cfg, d_clamp, cal_diag, draw_q_diag,
+        strength, goals, calibration, draw, cfg, d_clamp, cal_diag, draw_q_diag, sd_diag,
     ), matches
 
 
@@ -1357,6 +1360,301 @@ def log_draw_q_diagnostics(diag: DrawQDiagnostics) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Диагностика S/D → матрица → 1X2 (до и после калибровки)
+# --------------------------------------------------------------------------- #
+
+def _prob_1x2_from_sd(
+    s: float,
+    d: float,
+    cfg: ModelConfig,
+    *,
+    gamma: float = 0.0,
+) -> Tuple[float, float, float]:
+    """1X2 из S,D без draw-q: чистая Poisson-матрица (+ DC при gamma≠0)."""
+    d_use = gm.clamp_goal_diff(d, s, cfg.lambda_epsilon)
+    lh = (s + d_use) / 2.0
+    la = (s - d_use) / 2.0
+    if lh <= 0 or la <= 0:
+        return 0.0, 0.0, 0.0
+    matrix = gm.build_score_matrix(lh, la, cfg.max_goals)
+    if cfg.use_dixon_coles and gamma:
+        matrix = gm.apply_dixon_coles(matrix, lh, la, gamma)
+    return gm.compute_1x2(matrix)
+
+
+@dataclass
+class Sd1x2DiagnosticRow:
+    date: Optional[date]
+    home_team: str
+    away_team: str
+    closing_total_line: Optional[float]
+    over_odds: Optional[float]
+    under_odds: Optional[float]
+    s_market: float
+    closing_ah_home: Optional[float]
+    d_market: float
+    p1_market: float
+    px_market: float
+    p2_market: float
+    p1_market_sd: float
+    px_market_sd: float
+    p2_market_sd: float
+    err_x_market: float
+    s_model: float
+    d_model: float
+    p1_model: float
+    px_model: float
+    p2_model: float
+    err_x_model: float
+    s_cal: float
+    d_cal: float
+    p1_cal: float
+    px_cal: float
+    p2_cal: float
+    err_x_cal: float
+    delta_s_cal: float
+    d_infer_source: str
+    d_clamp_hit: bool
+
+
+@dataclass
+class Sd1x2GroupStat:
+    label: str
+    n: int
+    avg_err_x_market: float
+    avg_err_x_model: float
+    avg_err_x_cal: float
+
+
+@dataclass
+class Sd1x2Diagnostics:
+    n_eval: int
+    bias_px_market_sd: float   # A: рынок S/D → матрица
+    bias_px_model: float       # B: модель S/D → матрица (до калибровки)
+    bias_px_cal: float         # C: после калибровки
+    mae_px_model: float
+    mae_p1_model: float
+    mae_p2_model: float
+    mae_px_cal: float
+    avg_s_market: float
+    avg_s_model: float
+    avg_s_cal: float
+    avg_delta_s: float
+    avg_s_minus_line: float    # S_from_OU − closing_total_line
+    n_px_under_model: int      # PX_matrix < PX_market (вариант B)
+    pct_px_under_model: float
+    stable: bool
+    summary: str
+    by_s: List[Sd1x2GroupStat] = field(default_factory=list)
+    by_d: List[Sd1x2GroupStat] = field(default_factory=list)
+    rows: List[Sd1x2DiagnosticRow] = field(default_factory=list)
+
+
+def _sd_group_stats(
+    rows: Sequence[Sd1x2DiagnosticRow],
+    key_fn: Callable[[Sd1x2DiagnosticRow], float],
+    buckets: Sequence[Tuple[str, Callable[[float], bool]]],
+) -> List[Sd1x2GroupStat]:
+    out: List[Sd1x2GroupStat] = []
+    for label, pred in buckets:
+        grp = [r for r in rows if pred(key_fn(r))]
+        if not grp:
+            continue
+        n = len(grp)
+        out.append(Sd1x2GroupStat(
+            label=label,
+            n=n,
+            avg_err_x_market=sum(r.err_x_market for r in grp) / n,
+            avg_err_x_model=sum(r.err_x_model for r in grp) / n,
+            avg_err_x_cal=sum(r.err_x_cal for r in grp) / n,
+        ))
+    return out
+
+
+def sd_1x2_diagnostics(
+    model: TrainedModel,
+    prepared: Sequence[PreparedMatch],
+    *,
+    bias_warn: float = -0.015,
+    s_line_warn: float = 0.20,
+) -> Sd1x2Diagnostics:
+    """Сравнение 1X2: рынок S/D, модель S/D и калибровка vs Shin 1X2."""
+    cfg = model.config
+    cal = model.calibration
+    strength = model.strength
+    goals = model.goals
+    gamma = cal.gamma if cfg.use_dixon_coles else 0.0
+
+    rows: List[Sd1x2DiagnosticRow] = []
+    for m in prepared:
+        if (
+            m.p1_shin is None or m.px_shin is None or m.p2_shin is None
+            or m.sum_goals is None or m.diff_goals is None
+        ):
+            continue
+        d_model, s_model = _model_d_s(m, strength, goals, cfg)
+        s_cal = cal.c + cal.d * s_model
+        d_cal = gm.clamp_goal_diff(cal.a + cal.b * d_model, s_cal, cfg.lambda_epsilon)
+
+        p1_mkt_sd, px_mkt_sd, p2_mkt_sd = _prob_1x2_from_sd(
+            m.sum_goals, m.diff_goals, cfg, gamma=0.0,
+        )
+        p1_mod, px_mod, p2_mod = _prob_1x2_from_sd(
+            s_model, d_model, cfg, gamma=0.0,
+        )
+        p1_cal, px_cal, p2_cal = _prob_1x2_from_sd(
+            s_cal, cal.a + cal.b * d_model, cfg, gamma=gamma,
+        )
+
+        r = m.raw
+        rows.append(Sd1x2DiagnosticRow(
+            date=r.date,
+            home_team=m.home_team,
+            away_team=m.away_team,
+            closing_total_line=r.closing_total_line,
+            over_odds=r.over_odds,
+            under_odds=r.under_odds,
+            s_market=m.sum_goals,
+            closing_ah_home=r.closing_ah_home,
+            d_market=m.diff_goals,
+            p1_market=m.p1_shin,
+            px_market=m.px_shin,
+            p2_market=m.p2_shin,
+            p1_market_sd=p1_mkt_sd,
+            px_market_sd=px_mkt_sd,
+            p2_market_sd=p2_mkt_sd,
+            err_x_market=px_mkt_sd - m.px_shin,
+            s_model=s_model,
+            d_model=d_model,
+            p1_model=p1_mod,
+            px_model=px_mod,
+            p2_model=p2_mod,
+            err_x_model=px_mod - m.px_shin,
+            s_cal=s_cal,
+            d_cal=d_cal,
+            p1_cal=p1_cal,
+            px_cal=px_cal,
+            p2_cal=p2_cal,
+            err_x_cal=px_cal - m.px_shin,
+            delta_s_cal=s_cal - s_model,
+            d_infer_source=m.d_infer_source or "",
+            d_clamp_hit=m.d_clamp_hit,
+        ))
+
+    rows.sort(key=lambda r: r.err_x_model)
+    n = len(rows)
+    if n == 0:
+        return Sd1x2Diagnostics(
+            n_eval=0, bias_px_market_sd=0.0, bias_px_model=0.0, bias_px_cal=0.0,
+            mae_px_model=0.0, mae_p1_model=0.0, mae_p2_model=0.0, mae_px_cal=0.0,
+            avg_s_market=0.0, avg_s_model=0.0, avg_s_cal=0.0, avg_delta_s=0.0,
+            avg_s_minus_line=0.0, n_px_under_model=0, pct_px_under_model=0.0,
+            stable=True, summary="нет матчей с 1X2 и S/D",
+        )
+
+    def _avg(vals: Sequence[float]) -> float:
+        return sum(vals) / len(vals)
+
+    bias_mkt = _avg([r.err_x_market for r in rows])
+    bias_mod = _avg([r.err_x_model for r in rows])
+    bias_cal = _avg([r.err_x_cal for r in rows])
+    n_under = sum(1 for r in rows if r.err_x_model < -1e-9)
+    pct_under = 100.0 * n_under / n
+
+    line_diffs = [
+        r.s_market - r.closing_total_line
+        for r in rows
+        if r.closing_total_line is not None
+    ]
+    avg_s_line = _avg(line_diffs) if line_diffs else 0.0
+
+    by_s = _sd_group_stats(
+        rows, lambda r: r.s_market,
+        [
+            ("S<2.3", lambda s: s < 2.3),
+            ("2.3≤S≤2.7", lambda s: 2.3 <= s <= 2.7),
+            ("S>2.7", lambda s: s > 2.7),
+        ],
+    )
+    by_d = _sd_group_stats(
+        rows, lambda r: abs(r.d_market),
+        [
+            ("|D|<0.25", lambda ad: ad < 0.25),
+            ("0.25≤|D|≤0.75", lambda ad: 0.25 <= ad <= 0.75),
+            ("|D|>0.75", lambda ad: ad > 0.75),
+        ],
+    )
+
+    stable = not (bias_mod < bias_warn or abs(avg_s_line) > s_line_warn)
+    parts = [
+        f"PX до калибр.: {bias_mod:+.3f} (модель S/D)",
+        f"после: {bias_cal:+.3f}",
+        f"заниж. ничьи {pct_under:.0f}%",
+    ]
+    if line_diffs:
+        parts.append(f"S−линия {avg_s_line:+.3f}")
+    if not stable:
+        if bias_mod < bias_warn:
+            parts.append("матрица занижает ничью")
+        if abs(avg_s_line) > s_line_warn:
+            parts.append("проверьте OU settlement")
+    summary = "; ".join(parts)
+
+    return Sd1x2Diagnostics(
+        n_eval=n,
+        bias_px_market_sd=bias_mkt,
+        bias_px_model=bias_mod,
+        bias_px_cal=bias_cal,
+        mae_px_model=_avg([abs(r.err_x_model) for r in rows]),
+        mae_p1_model=_avg([abs(r.p1_model - r.p1_market) for r in rows]),
+        mae_p2_model=_avg([abs(r.p2_model - r.p2_market) for r in rows]),
+        mae_px_cal=_avg([abs(r.err_x_cal) for r in rows]),
+        avg_s_market=_avg([r.s_market for r in rows]),
+        avg_s_model=_avg([r.s_model for r in rows]),
+        avg_s_cal=_avg([r.s_cal for r in rows]),
+        avg_delta_s=_avg([r.delta_s_cal for r in rows]),
+        avg_s_minus_line=avg_s_line,
+        n_px_under_model=n_under,
+        pct_px_under_model=pct_under,
+        stable=stable,
+        summary=summary,
+        by_s=by_s,
+        by_d=by_d,
+        rows=rows,
+    )
+
+
+def log_sd_1x2_diagnostics(diag: Sd1x2Diagnostics) -> None:
+    log = logging.getLogger(__name__)
+    if diag.n_eval == 0:
+        log.info("S/D→1X2: %s", diag.summary)
+        return
+    level = logging.WARNING if not diag.stable else logging.INFO
+    log.log(level, "S/D→1X2: %s", diag.summary)
+    for g in diag.by_s:
+        log.log(
+            level,
+            "  по S %s (%d): err_X mkt=%+.3f model=%+.3f cal=%+.3f",
+            g.label, g.n, g.avg_err_x_market, g.avg_err_x_model, g.avg_err_x_cal,
+        )
+    for g in diag.by_d:
+        log.log(
+            level,
+            "  по |D| %s (%d): err_X mkt=%+.3f model=%+.3f cal=%+.3f",
+            g.label, g.n, g.avg_err_x_market, g.avg_err_x_model, g.avg_err_x_cal,
+        )
+    for row in diag.rows[:10]:
+        log.log(
+            level,
+            "  %s — %s: err_X=%+.3f (S_m=%.2f S_mod=%.2f ΔS=%+.2f)",
+            row.home_team, row.away_team, row.err_x_model,
+            row.s_market, row.s_model, row.delta_s_cal,
+        )
+    if len(diag.rows) > 10:
+        log.log(level, "  … и ещё %d матчей", len(diag.rows) - 10)
+
+
+# --------------------------------------------------------------------------- #
 # Диагностика рейтинга силы (§17): D_market vs D_model по матчам
 # --------------------------------------------------------------------------- #
 
@@ -1501,6 +1799,11 @@ def _cmd_train(args: argparse.Namespace) -> None:
     else:
         cal_line += "  Dixon-Coles: выкл, γ не используется"
     print(cal_line)
+    if model.sd_diag and model.sd_diag.n_eval > 0:
+        sd = model.sd_diag
+        print(f"S/D→1X2: {sd.summary}")
+        print(f"  средн. S: рынок={_fmt(sd.avg_s_market,3)} модель={_fmt(sd.avg_s_model,3)} "
+              f"калибр.={_fmt(sd.avg_s_cal,3)} ΔS={_fmt(sd.avg_delta_s,3)}")
     print("\nРейтинги (сила, нейтраль):")
     for t, r in sorted(model.strength.ratings.items(), key=lambda kv: kv[1], reverse=True):
         print(f"  {t:<20} r={_fmt(r,3):>7}  A={_fmt(model.goals.attack[t],3):>7}  "
