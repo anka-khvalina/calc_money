@@ -74,11 +74,20 @@ class ModelConfig:
 
     # калибровка
     draw_loss_weight: float = 1.5
+    # S_cal = c + d·S_model: off=фикс c=0,d=1; soft=штраф+лимит ΔS; free=как раньше
+    s_calibration_mode: str = "soft"  # off | soft | free
+    s_cal_penalty_c: float = 2.0
+    s_cal_penalty_d: float = 2.0
+    s_cal_max_delta: float = 0.15  # |S_cal−S_model| на матч (soft); free — без лимита
+
+    # Dixon–Coles γ
+    dc_gamma_min: float = -0.20
+    dc_gamma_max: float = 0.20
 
     # модель ничьей (отдельная) + коррекция диагонали матрицы
     use_draw_model: bool = True
-    draw_diag_multiplier_min: float = 0.90
-    draw_diag_multiplier_max: float = 1.10
+    draw_diag_multiplier_min: float = 0.95
+    draw_diag_multiplier_max: float = 1.05
     w_1x2_normal: float = 1.0
     w_1x2_suspicious: float = 0.5
     w_1x2_missing: float = 0.0
@@ -853,6 +862,7 @@ def assess_calibration_stability(
     tol_c: float = 0.35,
     tol_d: float = 0.30,
     min_1x2_stable: int = 30,
+    cfg: Optional[ModelConfig] = None,
 ) -> CalibrationDiagnostics:
     """Калибровка стабильна, если a≈0, b≈1, c≈0, d≈1 в пределах допусков."""
     if cal.n_1x2 == 0:
@@ -865,10 +875,16 @@ def assess_calibration_stability(
         dev.append(f"a={cal.a:+.3f} (ожид. ≈0, допуск ±{tol_a})")
     if abs(cal.b - 1.0) > tol_b:
         dev.append(f"b={cal.b:.3f} (ожид. ≈1, допуск ±{tol_b})")
-    if abs(cal.c) > tol_c:
-        dev.append(f"c={cal.c:+.3f} (ожид. ≈0, допуск ±{tol_c})")
-    if abs(cal.d - 1.0) > tol_d:
-        dev.append(f"d={cal.d:.3f} (ожид. ≈1, допуск ±{tol_d})")
+    skip_cd = cfg is not None and cfg.s_calibration_mode == S_CALIBRATION_OFF
+    if not skip_cd:
+        if abs(cal.c) > tol_c:
+            dev.append(f"c={cal.c:+.3f} (ожид. ≈0, допуск ±{tol_c})")
+        if abs(cal.d - 1.0) > tol_d:
+            dev.append(f"d={cal.d:.3f} (ожид. ≈1, допуск ±{tol_d})")
+    if cfg and cfg.use_dixon_coles:
+        g_lim = max(abs(cfg.dc_gamma_min), abs(cfg.dc_gamma_max))
+        if abs(cal.gamma) > g_lim + 1e-9:
+            dev.append(f"γ={cal.gamma:+.3f} (лимит ±{g_lim:.2f})")
     if cal.n_1x2 < min_1x2_stable:
         dev.append(f"мало 1X2: {cal.n_1x2} матч. (<{min_1x2_stable})")
     stable = len(dev) == 0
@@ -900,6 +916,40 @@ def _model_d_s(
     la = math.exp(goals.mu + goals.attack.get(m.away_team, 0.0)
                   - goals.defense.get(m.home_team, 0.0))
     return d_model, lh + la
+
+
+S_CALIBRATION_OFF = "off"
+S_CALIBRATION_SOFT = "soft"
+S_CALIBRATION_FREE = "free"
+
+
+def apply_s_calibration(
+    s_model: float,
+    c: float,
+    d: float,
+    cfg: ModelConfig,
+) -> float:
+    """S после калибровки: off держит S_model; soft/free — c+d·S с опц. лимитом ΔS."""
+    if cfg.s_calibration_mode == S_CALIBRATION_OFF:
+        return s_model
+    s_lin = c + d * s_model
+    if cfg.s_calibration_mode == S_CALIBRATION_SOFT and cfg.s_cal_max_delta > 0:
+        lo = s_model - cfg.s_cal_max_delta
+        hi = s_model + cfg.s_cal_max_delta
+        return max(lo, min(hi, s_lin))
+    return s_lin
+
+
+def calibrate_s_penalty(c: float, d: float, cfg: ModelConfig) -> float:
+    if cfg.s_calibration_mode != S_CALIBRATION_SOFT:
+        return 0.0
+    return cfg.s_cal_penalty_c * c * c + cfg.s_cal_penalty_d * (d - 1.0) ** 2
+
+
+def clip_dc_gamma(gamma: float, cfg: ModelConfig) -> float:
+    if not cfg.use_dixon_coles:
+        return 0.0
+    return max(cfg.dc_gamma_min, min(cfg.dc_gamma_max, gamma))
 
 
 def nelder_mead(
@@ -959,14 +1009,15 @@ def calibrate(
     if not used:
         return Calibration()
     pre = [(m, *_model_d_s(m, strength, goals, cfg), m.w_base) for m in used]
+    s_off = cfg.s_calibration_mode == S_CALIBRATION_OFF
 
-    def loss(params: List[float]) -> float:
-        a, b, c, d, gamma = params
+    def loss_core(a: float, b: float, c: float, d: float, gamma: float) -> float:
         if d <= 0:
             return 1e9
-        total = 0.0
+        g = clip_dc_gamma(gamma, cfg)
+        total = calibrate_s_penalty(c, d, cfg)
         for m, d_model, s_model, w in pre:
-            s_final = c + d * s_model
+            s_final = apply_s_calibration(s_model, c, d, cfg)
             if s_final <= 0.2:
                 return 1e9
             d_final = gm.clamp_goal_diff(a + b * d_model, s_final, cfg.lambda_epsilon)
@@ -975,8 +1026,8 @@ def calibrate(
             if lh <= 0 or la <= 0:
                 return 1e9
             matrix = gm.build_score_matrix(lh, la, cfg.max_goals)
-            if cfg.use_dixon_coles and gamma:
-                matrix = gm.apply_dixon_coles(matrix, lh, la, gamma)
+            if cfg.use_dixon_coles and g:
+                matrix = gm.apply_dixon_coles(matrix, lh, la, g)
             p1, px, p2 = gm.compute_1x2(matrix)
             total += w * (
                 (p1 - m.p1_shin) ** 2
@@ -985,19 +1036,30 @@ def calibrate(
             )
         return total
 
-    if cfg.use_dixon_coles:
-        x = nelder_mead(loss, [0.0, 1.0, 0.0, 1.0, 0.0])
-        return Calibration(
-            a=x[0], b=x[1], c=x[2], d=x[3], gamma=x[4], loss=loss(x), n_1x2=len(used),
+    if s_off:
+        if cfg.use_dixon_coles:
+            x = nelder_mead(lambda p: loss_core(p[0], p[1], 0.0, 1.0, p[2]), [0.0, 1.0, 0.0])
+            full = [x[0], x[1], 0.0, 1.0, clip_dc_gamma(x[2], cfg)]
+        else:
+            x = nelder_mead(lambda p: loss_core(p[0], p[1], 0.0, 1.0, 0.0), [0.0, 1.0])
+            full = [x[0], x[1], 0.0, 1.0, 0.0]
+    elif cfg.use_dixon_coles:
+        x = nelder_mead(
+            lambda p: loss_core(p[0], p[1], p[2], p[3], p[4]),
+            [0.0, 1.0, 0.0, 1.0, 0.0],
         )
+        full = [x[0], x[1], x[2], x[3], clip_dc_gamma(x[4], cfg)]
+    else:
+        x4 = nelder_mead(
+            lambda p: loss_core(p[0], p[1], p[2], p[3], 0.0),
+            [0.0, 1.0, 0.0, 1.0],
+        )
+        full = [x4[0], x4[1], x4[2], x4[3], 0.0]
 
-    def loss_abcd(params: List[float]) -> float:
-        return loss([params[0], params[1], params[2], params[3], 0.0])
-
-    x4 = nelder_mead(loss_abcd, [0.0, 1.0, 0.0, 1.0])
-    full = [x4[0], x4[1], x4[2], x4[3], 0.0]
     return Calibration(
-        a=x4[0], b=x4[1], c=x4[2], d=x4[3], gamma=0.0, loss=loss(full), n_1x2=len(used),
+        a=full[0], b=full[1], c=full[2], d=full[3], gamma=full[4],
+        loss=loss_core(full[0], full[1], full[2], full[3], full[4]),
+        n_1x2=len(used),
     )
 
 
@@ -1143,7 +1205,7 @@ def train_full_model(
     strength = fit_strength_ratings(matches, cfg, prior_ratings=prior_r)
     goals = fit_attack_defense(matches, cfg, prior_attack=prior_a, prior_defense=prior_d)
     calibration = calibrate(matches, strength, goals, cfg)
-    cal_diag = assess_calibration_stability(calibration)
+    cal_diag = assess_calibration_stability(calibration, cfg=cfg)
     draw = fit_draw_model(matches, cfg) if cfg.use_draw_model else _DRAW_DEFAULT
     model = TrainedModel(strength, goals, calibration, draw, cfg, d_clamp, cal_diag, None, None)
     draw_q_diag = draw_q_diagnostics(model, matches)
@@ -1211,7 +1273,7 @@ def predict_match(
     s_model = lh_ad + la_ad
 
     d_final = cal.a + cal.b * d_model
-    s_final = cal.c + cal.d * s_model
+    s_final = apply_s_calibration(s_model, cal.c, cal.d, cfg)
     d_final = gm.clamp_goal_diff(d_final, s_final, cfg.lambda_epsilon)
     lambda_home = (s_final + d_final) / 2.0
     lambda_away = (s_final - d_final) / 2.0
@@ -1328,7 +1390,7 @@ def draw_q_diagnostics(
             f"q≈1 у {near_one_pct:.0f}%"
         )
     else:
-        dc_note = " (DC+ничья)" if cfg.use_dixon_coles else ""
+        dc_note = " (DC+ничья)" if cfg.use_dixon_coles else " (матрица→ничья)"
         summary = (
             f"q clamp {clamp_pct:.0f}% ({n_clamped}/{n_eval}) — >{warn_pct:.0f}%, "
             f"проверьте базовую матрицу и draw model{dc_note}"
@@ -1493,7 +1555,7 @@ def sd_1x2_diagnostics(
         ):
             continue
         d_model, s_model = _model_d_s(m, strength, goals, cfg)
-        s_cal = cal.c + cal.d * s_model
+        s_cal = apply_s_calibration(s_model, cal.c, cal.d, cfg)
         d_cal = gm.clamp_goal_diff(cal.a + cal.b * d_model, s_cal, cfg.lambda_epsilon)
 
         p1_mkt_sd, px_mkt_sd, p2_mkt_sd = _prob_1x2_from_sd(

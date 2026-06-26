@@ -1926,12 +1926,25 @@ def build_app():
                hint="Сила стягивания рейтингов к прошлому сезону. 0 = выкл. Больше → сильнее держим прошлогоднюю оценку (полезно в начале сезона).")
     _cfg_entry(goal_cfg_frame, 1, 2, "новичок: N слабейших:", "promoted_n", 3,
                hint="Команде без матчей (новичок лиги) рейтинг = среднее N слабейших команд.")
-    _cfg_entry(goal_cfg_frame, 2, 0, "ничья q_min:", "q_min", 0.90,
-               hint="Насколько можно УМЕНЬШИТЬ ничью из матрицы. 0.90 = максимум −10%. Широкий 0.85 — только для экспериментов.")
-    _cfg_entry(goal_cfg_frame, 2, 1, "ничья q_max:", "q_max", 1.10,
-               hint="Насколько можно УВЕЛИЧИТЬ ничью из матрицы. 1.10 = максимум +10%. Широкий 1.15 — только для экспериментов.")
-    _cfg_entry(goal_cfg_frame, 2, 2, "default сезон:", "w_season_def", 1.0,
-               hint="Множитель для матча, чья date не попала ни в один диапазон таблицы сезонов ниже (или столбца date нет).")
+    _cfg_entry(goal_cfg_frame, 2, 0, "ничья q_min:", "q_min", 0.95,
+               hint="Насколько можно УМЕНЬШИТЬ ничью из матрицы. 0.95 = максимум −5%.")
+    _cfg_entry(goal_cfg_frame, 2, 1, "ничья q_max:", "q_max", 1.05,
+               hint="Насколько можно УВЕЛИЧИТЬ ничью из матрицы. 1.05 = максимум +5%.")
+    _cfg_entry(goal_cfg_frame, 2, 2, "max |ΔS|:", "s_cal_max_delta", 0.15,
+               hint="Лимит сдвига тотала при soft-калибровке S (голы на матч).")
+    _cfg_entry(goal_cfg_frame, 2, 3, "default сезон:", "w_season_def", 1.0,
+               hint="Множитель для матча, чья date не попала ни в один диапазон таблицы сезонов ниже.")
+
+    goal_s_cal_mode_var = tk.StringVar(value="soft")
+    ttk.Label(goal_cfg_frame, text="калибр. S:").grid(row=3, column=6, sticky="w", padx=(0, 4))
+    s_cal_combo = ttk.Combobox(
+        goal_cfg_frame, textvariable=goal_s_cal_mode_var, width=6,
+        values=("off", "soft", "free"), state="readonly",
+    )
+    s_cal_combo.grid(row=3, column=7, sticky="w", padx=(0, 8))
+    _attach_tip(s_cal_combo, "off: c=0,d=1; soft: штраф+лимит ΔS; free: без ограничений.")
+    _cfg_entry(goal_cfg_frame, 3, 4, "γ max:", "gamma_max", 0.20,
+               hint="Dixon–Coles: |γ| не выше (±).")
 
     goal_use_draw_var = tk.BooleanVar(value=True)
     goal_use_dc_var = tk.BooleanVar(value=True)
@@ -1986,6 +1999,10 @@ def build_app():
                 return float(_gv[key].get().replace(",", "."))
             except (ValueError, KeyError):
                 return default
+        gmax = f("gamma_max", 0.20)
+        mode = goal_s_cal_mode_var.get().strip().lower()
+        if mode not in ("off", "soft", "free"):
+            mode = "soft"
         return gmt.ModelConfig(
             default_season_weight=f("w_season_def", 1.0),
             season_weights=_parse_season_weights(),
@@ -1995,8 +2012,12 @@ def build_app():
             prior_alpha=f("prior_alpha", 0.7),
             prior_weight=f("prior_weight", 0.0),
             promoted_reference_n=int(f("promoted_n", 3)),
-            draw_diag_multiplier_min=f("q_min", 0.90),
-            draw_diag_multiplier_max=f("q_max", 1.10),
+            draw_diag_multiplier_min=f("q_min", 0.95),
+            draw_diag_multiplier_max=f("q_max", 1.05),
+            s_calibration_mode=mode,
+            s_cal_max_delta=f("s_cal_max_delta", 0.15),
+            dc_gamma_min=-gmax,
+            dc_gamma_max=gmax,
             derby_h_default_ratio=f("derby_h_default", 0.7),
             reg_lambda_attack=f("reg_lambda_attack", 0.10),
             reg_lambda_defense=f("reg_lambda_defense", 0.10),

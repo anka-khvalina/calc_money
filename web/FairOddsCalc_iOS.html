@@ -629,12 +629,29 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <div class="hint">Если в обучении &lt;3 дерби: H_eff = этот коэфф. × H. 0.7 — default; 0.4 — сильное ослабление дома.</div>
         </div>
         <div class="field" style="min-width:150px;flex:1">
-          <label>ничья q_min</label><input id="goalQmin" value="0.90" />
-          <div class="hint">Насколько сильно МОЖНО уменьшить ничью из матрицы. 0.90 = максимум −10%. Широкий диапазон 0.85 — только для экспериментов.</div>
+          <label>ничья q_min</label><input id="goalQmin" value="0.95" />
+          <div class="hint">Насколько сильно МОЖНО уменьшить ничью из матрицы. 0.95 = максимум −5%. Рабочий режим вместе с DC.</div>
         </div>
         <div class="field" style="min-width:150px;flex:1">
-          <label>ничья q_max</label><input id="goalQmax" value="1.10" />
-          <div class="hint">Насколько сильно МОЖНО увеличить ничью из матрицы. 1.10 = максимум +10%. Широкий диапазон 1.15 — только для экспериментов.</div>
+          <label>ничья q_max</label><input id="goalQmax" value="1.05" />
+          <div class="hint">Насколько сильно МОЖНО увеличить ничью из матрицы. 1.05 = максимум +5%.</div>
+        </div>
+        <div class="field" style="min-width:150px;flex:1">
+          <label>калибр. S</label>
+          <select id="goalSCalMode">
+            <option value="soft" selected>soft</option>
+            <option value="off">off</option>
+            <option value="free">free</option>
+          </select>
+          <div class="hint">off: c=0,d=1 (S из OU). soft: штраф c,d + |ΔS|≤лимит. free: без ограничений (эксперимент).</div>
+        </div>
+        <div class="field" style="min-width:120px;flex:1">
+          <label>max |ΔS|</label><input id="goalSCalMaxDelta" value="0.15" />
+          <div class="hint">Лимит сдвига тотала при soft-калибровке (голы на матч).</div>
+        </div>
+        <div class="field" style="min-width:120px;flex:1">
+          <label>γ max</label><input id="goalGammaMax" value="0.20" />
+          <div class="hint">Dixon–Coles: |γ| не выше (±). 0.20 — рабочий потолок.</div>
         </div>
       </div>
       <div class="row" style="flex-wrap:wrap;gap:16px;">
@@ -3077,18 +3094,45 @@ bash scripts/update_and_serve.sh --start</div>
         else { const xc=cen.map((c,i)=>c+0.5*(simplex[n][i]-c)); const fc=f(xc); if(fc<fv[n]){simplex[n]=xc;fv[n]=fc;} else { for(let k=1;k<=n;k++){ simplex[k]=simplex[k].map((v,i)=>simplex[0][i]+0.5*(v-simplex[0][i])); fv[k]=f(simplex[k]); } } } }
       let best=0; for(let k=1;k<=n;k++) if(fv[k]<fv[best]) best=k; return simplex[best];
     }
-    function gmAssessCalibration(cal){
+    function gmAssessCalibration(cal, cfg){
       const n1x2=cal.n1x2!=null?cal.n1x2:0;
       if(!n1x2) return { stable:true, deviations:[], n1x2:0, summary:'нет 1X2 в выборке (калибровка не выполнялась)' };
       const tolA=0.35,tolB=0.30,tolC=0.35,tolD=0.30,min1x2=30;
       const dev=[];
       if(Math.abs(cal.a)>tolA) dev.push(`a=${cal.a.toFixed(3)} (ожид. ≈0)`);
       if(Math.abs(cal.b-1)>tolB) dev.push(`b=${cal.b.toFixed(3)} (ожид. ≈1)`);
-      if(Math.abs(cal.c)>tolC) dev.push(`c=${cal.c.toFixed(3)} (ожид. ≈0)`);
-      if(Math.abs(cal.d-1)>tolD) dev.push(`d=${cal.d.toFixed(3)} (ожид. ≈1)`);
+      const skipCd=cfg&&cfg.sCalMode==='off';
+      if(!skipCd){
+        if(Math.abs(cal.c)>tolC) dev.push(`c=${cal.c.toFixed(3)} (ожид. ≈0)`);
+        if(Math.abs(cal.d-1)>tolD) dev.push(`d=${cal.d.toFixed(3)} (ожид. ≈1)`);
+      }
+      if(cfg&&cfg.useDc){
+        const gLim=cfg.gammaMax!=null?cfg.gammaMax:0.20;
+        if(Math.abs(cal.gamma)>gLim+1e-9) dev.push(`γ=${cal.gamma.toFixed(3)} (лимит ±${gLim})`);
+      }
       if(n1x2<min1x2) dev.push(`мало 1X2: ${n1x2} матч.`);
       const stable=dev.length===0;
       return { stable, deviations:dev, n1x2, summary: stable?`стабильна (${n1x2} матч. с 1X2)`:'нестабильна — '+dev.join('; ') };
+    }
+    function gmApplySCal(sModel,c,d,cfg){
+      if(cfg.sCalMode==='off') return sModel;
+      const sLin=c+d*sModel;
+      if(cfg.sCalMode==='soft'&&cfg.sCalMaxDelta>0){
+        const lo=sModel-cfg.sCalMaxDelta, hi=sModel+cfg.sCalMaxDelta;
+        return Math.max(lo, Math.min(hi, sLin));
+      }
+      return sLin;
+    }
+    function gmSCalPenalty(c,d,cfg){
+      if(cfg.sCalMode!=='soft') return 0;
+      const lc=cfg.sCalPenaltyC!=null?cfg.sCalPenaltyC:2;
+      const ld=cfg.sCalPenaltyD!=null?cfg.sCalPenaltyD:2;
+      return lc*c*c+ld*(d-1)*(d-1);
+    }
+    function gmClipGamma(g,cfg){
+      if(!cfg.useDc) return 0;
+      const mx=cfg.gammaMax!=null?cfg.gammaMax:0.20;
+      return Math.max(-mx, Math.min(mx, g));
     }
     function gmCalibrate(ms,st,gl,cfg){
       const used=ms.filter(m=>m.p1!=null);
@@ -3098,18 +3142,37 @@ bash scripts/update_and_serve.sh --start</div>
         const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
         const lh=Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*m.iHome*kHg);
         const la=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0)); return [m,dm,lh+la,m.wBase]; });
-      function loss5(pp){ const [a,b,c,d,g]=pp; if(d<=0) return 1e9; let tot=0;
-        for(const [m,dm,sm,w] of pre){ const sf=c+d*sm; if(sf<=0.2) return 1e9; const df=gmClampD(a+b*dm,sf); const lh=(sf+df)/2,la=(sf-df)/2; if(lh<=0||la<=0) return 1e9;
-          let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&g) mat=gmDC(mat,lh,la,g); const [p1,px,p2]=gm1x2(mat);
-          tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2); }
-        return tot; }
-      function loss4(pp){ return loss5([pp[0],pp[1],pp[2],pp[3],0]); }
-      if(cfg.useDc){
-        const x=gmNelder(loss5,[0,1,0,1,0]);
-        return {a:x[0],b:x[1],c:x[2],d:x[3],gamma:x[4],n1x2:used.length};
+      const sOff=cfg.sCalMode==='off';
+      function lossCore(a,b,c,d,g){
+        if(d<=0) return 1e9;
+        const gc=gmClipGamma(g,cfg);
+        let tot=gmSCalPenalty(c,d,cfg);
+        for(const [m,dm,sm,w] of pre){
+          const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
+          const df=gmClampD(a+b*dm,sf); const lh=(sf+df)/2,la=(sf-df)/2; if(lh<=0||la<=0) return 1e9;
+          let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&gc) mat=gmDC(mat,lh,la,gc);
+          const [p1,px,p2]=gm1x2(mat);
+          tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
+        }
+        return tot;
       }
-      const x=gmNelder(loss4,[0,1,0,1]);
-      return {a:x[0],b:x[1],c:x[2],d:x[3],gamma:0,n1x2:used.length};
+      let full;
+      if(sOff){
+        if(cfg.useDc){
+          const x=gmNelder(p=>lossCore(p[0],p[1],0,1,p[2]),[0,1,0]);
+          full=[x[0],x[1],0,1,gmClipGamma(x[2],cfg)];
+        } else {
+          const x=gmNelder(p=>lossCore(p[0],p[1],0,1,0),[0,1]);
+          full=[x[0],x[1],0,1,0];
+        }
+      } else if(cfg.useDc){
+        const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],p[4]),[0,1,0,1,0]);
+        full=[x[0],x[1],x[2],x[3],gmClipGamma(x[4],cfg)];
+      } else {
+        const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],0),[0,1,0,1]);
+        full=[x[0],x[1],x[2],x[3],0];
+      }
+      return {a:full[0],b:full[1],c:full[2],d:full[3],gamma:full[4],n1x2:used.length};
     }
     function gmFitDraw(ms,cfg){
       const rows=[];
@@ -3157,7 +3220,7 @@ bash scripts/update_and_serve.sh --start</div>
       const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
       const dm=R(home)-R(away)+hEff;
       const lhAD=Math.exp(gl.mu+A(home)-Df(away)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(away)-Df(home)); const sm=lhAD+laAD;
-      let df=cal.a+cal.b*dm, sf=cal.c+cal.d*sm; df=gmClampD(df,sf); const lh=(sf+df)/2, la=(sf-df)/2;
+      let df=cal.a+cal.b*dm, sf=gmApplySCal(sm,cal.c,cal.d,cfg); df=gmClampD(df,sf); const lh=(sf+df)/2, la=(sf-df)/2;
       let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
       let dtarget=null,diag=null;
       if(cfg.useDraw){ dtarget=gmDrawTarget(draw,df,sf); [mat,diag]=gmAdjustDraw(mat,dtarget,cfg.qmin,cfg.qmax); }
@@ -3228,7 +3291,7 @@ bash scripts/update_and_serve.sh --start</div>
       let summary;
       if(!nEval) summary='нет матчей для оценки q';
       else if(stable) summary=`стабильно: q clamp ${clampPct.toFixed(0)}% (${nClamped}/${nEval}), q≈1 у ${nearOnePct.toFixed(0)}%`;
-      else summary=`q clamp ${clampPct.toFixed(0)}% (${nClamped}/${nEval}) — >${warnPct}%, проверьте DC+ничья`;
+      else summary=`q clamp ${clampPct.toFixed(0)}% (${nClamped}/${nEval}) — >${warnPct}%, проверьте ${model.cfg.useDc?'DC+ничья':'матрица→ничья'}`;
       return { nEval, nClamped, clampPct, nNearOne, nearOnePct, stable, summary, rows };
     }
     function gmProb1x2FromSd(s, d, cfg, gamma=0){
@@ -3263,7 +3326,7 @@ bash scripts/update_and_serve.sh --start</div>
         const lhAD=Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*m.iHome*kHg);
         const laAD=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0));
         const sModel=lhAD+laAD;
-        const sCal=cal.c+cal.d*sModel;
+        const sCal=gmApplySCal(sModel,cal.c,cal.d,cfg);
         const dCalRaw=cal.a+cal.b*dModel;
         const [p1MktSd,pxMktSd,p2MktSd]=gmProb1x2FromSd(m.S,m.D,cfg,0);
         const [p1Mod,pxMod,p2Mod]=gmProb1x2FromSd(sModel,dModel,cfg,0);
@@ -3325,7 +3388,7 @@ bash scripts/update_and_serve.sh --start</div>
       const dClamp=gmDClampDiagnostics(ms, cfg);
       const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
       const draw=cfg.useDraw?gmFitDraw(ms,cfg):{alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default'};
-      const calDiag=gmAssessCalibration(cal);
+      const calDiag=gmAssessCalibration(cal,cfg);
       const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag};
       model.drawQDiag=gmDrawQDiagnostics(model, ms);
       model.sdDiag=gmSd1x2Diagnostics(model, ms);
@@ -3352,7 +3415,9 @@ bash scripts/update_and_serve.sh --start</div>
         dClampLowTeam:3, dClampEarlyFraction:0.25,
         derbyShrinkTau:30, derbyHDefault:f('goalDerbyHDefault',0.7), derbyMinMatches:3,
         useDraw:document.getElementById('goalUseDraw').checked, useDc:document.getElementById('goalUseDc').checked,
-        qmin:f('goalQmin',0.90), qmax:f('goalQmax',1.10) };
+        qmin:f('goalQmin',0.95), qmax:f('goalQmax',1.05),
+        sCalMode:(document.getElementById('goalSCalMode')||{}).value||'soft',
+        sCalMaxDelta:f('goalSCalMaxDelta',0.15), gammaMax:f('goalGammaMax',0.20) };
     }
     function gmSeasonWeight(rec, cfg){
       const def = cfg.seasonDefault != null ? cfg.seasonDefault : 1.0;
@@ -4160,6 +4225,9 @@ bash scripts/update_and_serve.sh --start</div>
           ['дерби H×', goalFmtTrainNum(cfg.derbyHDefault, 2), 'num'],
           ['Модель ничьи', cfg.useDraw ? 'вкл' : 'выкл', ''],
           ['Dixon-Coles', cfg.useDc ? 'вкл' : 'выкл', ''],
+          ['калибр. S', cfg.sCalMode || 'soft', ''],
+          ['max |ΔS|', goalFmtTrainNum(cfg.sCalMaxDelta, 2), 'num'],
+          ['γ max', goalFmtTrainNum(cfg.gammaMax, 2), 'num'],
           ['Вес ничьи (loss)', goalFmtTrainNum(cfg.drawLoss, 2), 'num'],
           ['q_min / q_max', `${goalFmtTrainNum(cfg.qmin, 2)} / ${goalFmtTrainNum(cfg.qmax, 2)}`, 'num'],
         ]);
@@ -4191,7 +4259,8 @@ bash scripts/update_and_serve.sh --start</div>
         ['Калибровка 1X2', escapeHtml(calDiag ? calDiag.summary : '—'), calDiag && !calDiag.stable ? 'warn' : ''],
       ];
       if (drawQDiag && drawQDiag.nEval > 0){
-        rows.push(['q clamp (DC→ничья)', escapeHtml(drawQDiag.summary), drawQDiag.stable ? '' : 'warn']);
+        const qLabel = gmModel.cfg && gmModel.cfg.useDc ? 'q clamp (DC→ничья)' : 'q clamp (матрица→ничья)';
+        rows.push([qLabel, escapeHtml(drawQDiag.summary), drawQDiag.stable ? '' : 'warn']);
       }
       if (sdDiag && sdDiag.nEval > 0){
         rows.push(['S/D→1X2 (ничья)', escapeHtml(sdDiag.summary), sdDiag.stable ? '' : 'warn']);
@@ -4329,7 +4398,8 @@ bash scripts/update_and_serve.sh --start</div>
           }
           let qNote = '';
           if (qWarn){
-            qNote = ` q clamp ${goalFmtTrainNum(drawQDiag.clampPct,0)}% — DC+ничья расходятся.`;
+            const qSrc = gmModel.cfg && gmModel.cfg.useDc ? 'DC+ничья' : 'матрица→ничья';
+            qNote = ` q clamp ${goalFmtTrainNum(drawQDiag.clampPct,0)}% — ${qSrc} расходятся.`;
           }
           let sdNote = '';
           if (sdWarn){

@@ -382,6 +382,23 @@ def test_draw_diagnostics_present():
     assert all(r.p_draw_shin > 0 for r in diag)
 
 
+def test_s_calibration_off_fixes_cd():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    cfg = gmt.ModelConfig(s_calibration_mode="off", use_dixon_coles=False, use_draw_model=False)
+    model, _ = gmt.train_full_model(raw, cfg)
+    assert abs(model.calibration.c) < 1e-9
+    assert abs(model.calibration.d - 1.0) < 1e-9
+
+
+def test_dc_gamma_bounded():
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    cfg = gmt.ModelConfig(dc_gamma_max=0.20, dc_gamma_min=-0.20, use_dixon_coles=True)
+    model, _ = gmt.train_full_model(raw, cfg)
+    assert abs(model.calibration.gamma) <= 0.20 + 1e-6
+
+
 def test_calibration_gamma_zero_when_dc_off():
     csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
     raw = gmt.load_raw_matches(csv_path)
