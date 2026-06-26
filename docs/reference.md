@@ -130,7 +130,7 @@ CORS: `HISTORY_API_CORS` (default `*`).
 | X | `ox` | `draw_odds` | да |
 | 2 | `o2` | `away_odds` | да |
 | Нейтральное поле | `neutral` | `is_neutral` | да (в блоке **▼ Веса**) |
-| Дерби | `derby` | `derby_weight` | да (в блоке **▼ Веса**; при «да» в БД **0.7**) |
+| Дерби | `derby` | `derby_weight` | да (флаг в **▼ Веса**; влияет на **H**, не на вес) |
 | Вес матча | `match_w` | `match_weight` | да |
 | Нейтр. вес | `neutr_w` | `neutral_weight` | да (только если нейтральное поле = да) |
 | Дата | — | `match_date` | нет |
@@ -151,7 +151,7 @@ is_neutral, match_weight, derby_weight, neutral_weight
 
 - Коэффициенты (`ah_*`, `over_odds`, `under_odds`, `home_odds`, `draw_odds`, `away_odds`): **> 1**
 - `match_weight`, `neutral_weight`: **≥ 0**
-- `derby_weight`: **0.7** (дерби) или **1.0** (не дерби) — задаётся из булева «Дерби» в UI
+- `derby_weight`: **0.7** (флаг дерби) или **1.0** (не дерби) — не множитель веса
 - `is_neutral`: boolean
 
 ---
@@ -174,7 +174,7 @@ is_neutral, match_weight, derby_weight, neutral_weight
 | `away_odds` | `ao` |
 | `is_neutral` | `neu` (i_home = 0) |
 | `match_weight` | `mw` |
-| `derby_weight` | `der` + `derw` | факт: `derby_weight ≠ 1`; множитель **0.7** в коде |
+| `derby_weight` | `der` | факт дерби (`derby_weight ≠ 1`); **H_derby** оценивается при обучении |
 | `neutral_weight` | `neuw` |
 | `season_id` | `seasonId` → `season_weight` |
 
@@ -200,18 +200,27 @@ ah_home_odds, ah_away_odds, over_odds, under_odds
 ## Итоговый вес матча
 
 ```text
-final_match_weight = season_weight × match_weight × derby_mult × neutral_mult
+final_match_weight = season_weight × match_weight × neutral_mult
 
-derby_mult   = is_derby ? 0.7 : 1.0        # факт «Дерби» в UI; 0.7 — константа
 neutral_mult = is_neutral ? neutral_weight : 1.0
+```
+
+Дерби **не** входит в вес матча. Флаг дерби используется при обучении для оценки поправки к домашнему преимуществу `H`:
+
+```text
+D = r_home - r_away + H_eff
+
+H_eff = H_league                         # обычный матч
+H_eff = shrink(H_league + δ_derby)       # дерби (δ_derby из регрессии по истории)
+H_eff = 0                                # нейтральное поле
 ```
 
 | Параметр | Где задаётся |
 |----------|--------------|
 | `season_weight` | вкладка «Линия», таблица весов по `season_id` |
 | `match_weight` | БД, вкладка «История» |
-| Дерби (да/нет) | БД (`derby_weight` 0.7 или 1), вкладка «История» |
-| `neutral_weight` | БД, вкладка «История» (только если нейтральное поле) |
+| Дерби (да/нет) | БД, блок **▼ Веса** — влияет на **H** при прогнозе |
+| `neutral_weight` | БД, блок **▼ Веса** (только если нейтральное поле = да) |
 
 Defaults весов сезонов (если не меняли): новый → **1**, предыдущий → **0.7**, старше → **0.5**.
 

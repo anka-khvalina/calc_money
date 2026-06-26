@@ -184,9 +184,9 @@ def test_build_dirty_patch_derby_bool():
         note=None,
     )
     payload = sbh.build_dirty_patch(m, {"derby": "да"})
-    assert payload == {"derby_weight": sbh.DERBY_MATCH_WEIGHT}
+    assert payload == {"derby_weight": sbh.DERBY_FLAG_WEIGHT}
     payload2 = sbh.build_dirty_patch(
-        replace(m, derby_weight=sbh.DERBY_MATCH_WEIGHT),
+        replace(m, derby_weight=sbh.DERBY_FLAG_WEIGHT),
         {"derby": "нет"},
     )
     assert payload2 == {"derby_weight": 1.0}

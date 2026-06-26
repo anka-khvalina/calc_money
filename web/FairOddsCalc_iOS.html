@@ -567,7 +567,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
       <div class="hint" style="margin-top:8px">
         Данные из Supabase (<code>v_matches_full</code>). Вес матча:
-        <b>вес сезона × match_weight × derby_weight × neutral_weight</b>.
+        <b>вес сезона × match_weight × neutral_weight</b> (дерби влияет на <b>H</b>, не на вес).
       </div>
       <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
         <div class="field" style="min-width:150px;flex:1">
@@ -624,7 +624,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </label>
         <label style="display:flex;align-items:flex-start;gap:6px;">
           <input id="goalDerby" type="checkbox" style="width:auto;margin-top:2px" />
-          <span><span class="small">Дерби</span><span class="hint" style="display:block">Помечает матч как дерби (влияет на вес в обучении; на прогноз — через множитель домашнего преимущества).</span></span>
+          <span><span class="small">Дерби</span><span class="hint" style="display:block">Снижает домашнее преимущество H (оценивается по истории дерби в обучении).</span></span>
         </label>
         <label style="display:flex;align-items:flex-start;gap:6px;">
           <input id="goalMargin" type="checkbox" style="width:auto;margin-top:2px" />
@@ -736,7 +736,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <ul class="small" style="margin:0;padding-left:18px;line-height:1.55">
           <li><b>Нейтральное поле</b> — факт: «матч был на нейтральном?» (да/нет). При «да» в модели нет домашнего преимущества.</li>
           <li><b>Нейтр. вес</b> — коэффициент ослабления при обучении; работает <b>только</b> при «Нейтральное поле» = да (обычно 0,8).</li>
-          <li><b>Дерби</b> — факт дерби (да/нет); при «да» вклад матча ослабляется ×0,7 (константа в коде).</li>
+          <li><b>Дерби</b> — факт дерби (да/нет); при обучении оценивается поправка к <b>H</b> (домашнее преимущество), не множитель веса.</li>
           <li><b>Вес матча</b> — общий множитель важности строки (по умолчанию 1).</li>
         </ul>
       </div>
@@ -803,7 +803,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <li><b>match_weight</b> — вес матча (по умолчанию 1).</li>
         <li><b>Нейтральное поле</b> (<code>is_neutral</code>) — факт: матч был на нейтральном? При «да» нет домашнего преимущества.</li>
         <li><b>Нейтр. вес</b> (<code>neutral_weight</code>) — коэффициент ослабления при обучении; учитывается <b>только</b> если нейтральное поле = да (обычно 0,8).</li>
-        <li><b>Дерби</b> — факт дерби (да/нет); при «да» вес матча умножается на <b>0.7</b> (константа в коде).</li>
+        <li><b>Дерби</b> — факт дерби (да/нет); при обучении оценивается поправка <b>δ_derby</b> к домашнему преимуществу <b>H</b> (не множитель веса).</li>
       </ul>
       <p class="small">Полный маппинг UI ↔ БД: <code>docs/reference.md</code> в репозитории.</p>
 
@@ -867,13 +867,14 @@ P<sub>X</sub><sup>target</sup> = 1 / (1 + e<sup>−logit</sup>)</div>
 P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма снова = 1</span></div>
 
       <h3>Веса матча при обучении</h3>
-      <div class="formula">w<sub>base</sub> = W<sub>сезон</sub> × match_weight × derby_weight × neutral_weight</div>
+      <div class="formula">w<sub>base</sub> = W<sub>сезон</sub> × match_weight × neutral_mult
+D = r<sub>h</sub> − r<sub>a</sub> + H<sub>eff</sub>    <span class="m"># H<sub>eff</sub> = H<sub>league</sub> или H<sub>derby</sub> (shrinkage)</span></div>
       <div class="table-wrap"><table>
         <thead><tr><th>Множитель</th><th>Где задаётся</th><th>Пример</th></tr></thead>
         <tbody>
           <tr><td>W<sub>сезон</sub></td><td>таблица весов на «Линии»</td><td>прошлый сезон 0.7</td></tr>
           <tr><td>match_weight</td><td>История → «Вес»</td><td>низкая мотивация 0.5 (бывш. CSV <code>value</code>)</td></tr>
-          <tr><td>Дерби (факт)</td><td>История</td><td>да → множитель 0.7</td></tr>
+          <tr><td>Дерби</td><td>История → ▼ Веса</td><td>факт; H_derby ≈ k×H, k оценивается</td></tr>
           <tr><td>neutral_weight</td><td>История</td><td>нейтральное поле 0.8</td></tr>
         </tbody>
       </table></div>
@@ -914,7 +915,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
           <tr><td>ничья q_min / q_max</td><td>Предел изменения ничьи из матрицы (±15% по умолчанию).</td></tr>
           <tr><td>Модель ничьи</td><td>Вкл — отдельная модель ничьи + коррекция диагонали. Выкл — ничья как из Пуассона.</td></tr>
           <tr><td>Dixon-Coles</td><td>Поправка низких счетов (0:0, 1:0, 0:1, 1:1).</td></tr>
-          <tr><td>match_weight / neutral_weight</td><td>Веса матча из БД (вкладка «История»). Дерби — только факт да/нет, коэффициент 0.7 в коде.</td></tr>
+          <tr><td>match_weight / neutral_weight</td><td>Веса матча (▼ Веса). Дерби меняет H при прогнозе, не вес.</td></tr>
           <tr><td>Веса сезонов</td><td>Множитель для каждого выбранного сезона при загрузке из Supabase.</td></tr>
           <tr><td>новичок: N слабейших</td><td>Команде без матчей рейтинг = среднее N слабейших команд лиги.</td></tr>
           <tr><td>Нейтраль / Дерби / Маржа</td><td>Параметры конкретного прогноза: без домашнего преимущества / дерби / кэфы с маржой.</td></tr>
@@ -2834,10 +2835,9 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     }
     function gmMatchWeight(r, cfg){
       const wq = r.mw != null ? r.mw : 1.0;
-      const wd = r.der ? (r.derw != null && r.derw !== 1 ? r.derw : DERBY_MATCH_WEIGHT) : 1.0;
       const wn = r.neu ? (r.neuw != null ? r.neuw : 1.0) : 1.0;
       const ws = gmSeasonWeight(r, cfg);
-      return ws * wq * wd * wn;
+      return ws * wq * wn;
     }
     function gmPrepare(raw,cfg){
       const ms=[];
@@ -2860,15 +2860,33 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       return ms;
     }
     function gmTeams(ms,pred){ const s=new Set(); ms.forEach(m=>{ if(pred(m)){ s.add(m.home); s.add(m.away); } }); return [...s].sort(); }
+    function gmDerbyHome(m){ return !!(m.raw && m.raw.der) && m.iHome === 1; }
+    function gmEffectiveH(st, cfg, neutral, derby){
+      if (neutral) return 0;
+      const h = st.H;
+      if (!derby) return h;
+      if (!st.derbyN){
+        return h * (cfg.derbyHDefault != null ? cfg.derbyHDefault : 0.4);
+      }
+      const hObs = h + (st.deltaDerby || 0);
+      const w = st.derbyShrinkW != null ? st.derbyShrinkW : 0;
+      return w * hObs + (1 - w) * h;
+    }
     function gmFitStrength(ms,cfg){
       const used=ms.filter(m=>m.D!=null);
       if(used.length<2) throw new Error('Мало матчей с D');
       const teams=[...new Set(used.flatMap(m=>[m.home,m.away]))].sort();
-      const idx=new Map(teams.map((t,i)=>[t,i])); const p=teams.length+1;
+      const idx=new Map(teams.map((t,i)=>[t,i]));
+      const derbyN=used.filter(gmDerbyHome).length;
+      const useDerbyCoef=derbyN>=(cfg.derbyMinMatches!=null?cfg.derbyMinMatches:3);
+      const p=teams.length+(useDerbyCoef?2:1);
+      const hCol=useDerbyCoef?p-2:p-1;
+      const dCol=useDerbyCoef?p-1:null;
       const coeffs=[],tg=[];
-      used.forEach(m=>{ const c=Array(p).fill(0); c[idx.get(m.home)]+=1; c[idx.get(m.away)]-=1; c[p-1]=m.iHome; coeffs.push(c); tg.push(m.D);
+      used.forEach(m=>{ const c=Array(p).fill(0); c[idx.get(m.home)]+=1; c[idx.get(m.away)]-=1; c[hCol]=m.iHome;
+        if(dCol!=null) c[dCol]=gmDerbyHome(m)?1:0; coeffs.push(c); tg.push(m.D);
         m.wLineAh=Math.min(cfg.maxWAh,Math.max(cfg.minWAh,1/(1+cfg.alphaAh*Math.pow(Math.abs(m.D),cfg.pAh)))); m.wRob=1; });
-      const gauge=[...Array(teams.length).fill(1),0];
+      const gauge=[...Array(teams.length).fill(1),...Array(p-teams.length).fill(0)];
       function run(W){ const rows=used.map((m,i)=>[coeffs[i],tg[i],W[i]]); rows.push([gauge,0,GM_GAUGE]); const sol=gmWls(rows,p);
         const res=used.map((m,i)=>{ let pr=0; for(let k=0;k<p;k++) pr+=coeffs[i][k]*sol[k]; return pr-tg[i]; }); return [sol,res]; }
       let W=used.map(m=>m.wBase*m.wLineAh); let [sol,res]=run(W);
@@ -2877,7 +2895,13 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       const ratings={}; teams.forEach(t=>ratings[t]=sol[idx.get(t)]); const mr=Object.values(ratings).reduce((a,b)=>a+b,0)/teams.length;
       teams.forEach(t=>ratings[t]-=mr);
       const rmse=Math.sqrt(res.reduce((a,e)=>a+e*e,0)/res.length);
-      return {ratings, H:sol[p-1], rmse};
+      const hLeague=sol[hCol], deltaRaw=dCol!=null?sol[dCol]:0;
+      const tau=cfg.derbyShrinkTau != null ? cfg.derbyShrinkTau : 30;
+      const derbyShrinkW=(derbyN>0 && useDerbyCoef) ? derbyN/(derbyN+tau) : 0;
+      const deltaDerby=(derbyN>0 && useDerbyCoef) ? derbyShrinkW*deltaRaw : 0;
+      const hDerby=derbyN>0 ? gmEffectiveH({H:hLeague,deltaDerby,derbyN,derbyShrinkW},cfg,false,true) : hLeague;
+      const kDerby=Math.abs(hLeague)>1e-9 ? hDerby/hLeague : 1;
+      return {ratings, H:hLeague, deltaDerby, derbyN, derbyShrinkW, hDerby, kDerby, rmse};
     }
     function gmFitAD(ms,cfg){
       const used=ms.filter(m=>m.lh>0&&m.la>0);
@@ -2912,8 +2936,10 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     function gmCalibrate(ms,st,gl,cfg){
       const used=ms.filter(m=>m.p1!=null);
       if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0};
-      const pre=used.map(m=>{ const dm=(st.ratings[m.home]||0)-(st.ratings[m.away]||0)+st.H*m.iHome;
-        const lh=Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*m.iHome);
+      const pre=used.map(m=>{ const derby=gmDerbyHome(m); const hEff=gmEffectiveH(st,cfg,m.iHome===0,derby);
+        const dm=(st.ratings[m.home]||0)-(st.ratings[m.away]||0)+hEff;
+        const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
+        const lh=Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*m.iHome*kHg);
         const la=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0)); return [m,dm,lh+la,m.wBase]; });
       function loss(pp){ const [a,b,c,d,g]=pp; if(d<=0) return 1e9; let tot=0;
         for(const [m,dm,sm,w] of pre){ const sf=c+d*sm; if(sf<=0.2) return 1e9; const df=gmClampD(a+b*dm,sf); const lh=(sf+df)/2,la=(sf-df)/2; if(lh<=0||la<=0) return 1e9;
@@ -2960,12 +2986,14 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     }
     function gmPromoted(vals,n){ const arr=Object.values(vals); if(!arr.length) return 0; const w=arr.slice().sort((a,b)=>a-b).slice(0,Math.max(1,n)); return w.reduce((a,b)=>a+b,0)/w.length; }
     function gmPredict(model,home,away,opt){
-      const {st,gl,cal,draw,cfg}=model; const iHome=opt.neutral?0:1; const hm=opt.derby?cfg.derbyHmult:1;
+      const {st,gl,cal,draw,cfg}=model; const iHome=opt.neutral?0:1;
+      const hEff=gmEffectiveH(st,cfg,opt.neutral,!!opt.derby);
       const R=t=>t in st.ratings?st.ratings[t]:gmPromoted(st.ratings,cfg.promotedN);
       const A=t=>t in gl.attack?gl.attack[t]:gmPromoted(gl.attack,cfg.promotedN);
       const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
-      const dm=R(home)-R(away)+st.H*iHome*hm;
-      const lhAD=Math.exp(gl.mu+A(home)-Df(away)+gl.hg*iHome), laAD=Math.exp(gl.mu+A(away)-Df(home)); const sm=lhAD+laAD;
+      const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
+      const dm=R(home)-R(away)+hEff;
+      const lhAD=Math.exp(gl.mu+A(home)-Df(away)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(away)-Df(home)); const sm=lhAD+laAD;
       let df=cal.a+cal.b*dm, sf=cal.c+cal.d*sm; df=gmClampD(df,sf); const lh=(sf+df)/2, la=(sf-df)/2;
       let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
       let dtarget=null,diag=null;
@@ -2994,7 +3022,8 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         alphaT:f('goalAlphaT',0.5), deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
         seasonDefault:1.0,
         seasonWeightsById: goalSeasonWeightById || {},
-        priorAlpha:f('goalPriorAlpha',0.7), promotedN:3, derbyHmult:1.0,
+        priorAlpha:f('goalPriorAlpha',0.7), promotedN:3,
+        derbyShrinkTau:30, derbyHDefault:0.4, derbyMinMatches:3,
         useDraw:document.getElementById('goalUseDraw').checked, useDc:document.getElementById('goalUseDc').checked,
         qmin:f('goalQmin',0.85), qmax:f('goalQmax',1.15) };
     }
@@ -3109,7 +3138,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     };
     const SB_HIST_WEIGHT_COLS = [
       { col:'neutral', label:'Нейтральное поле', hint:'факт: матч был на нейтральном? да → без домашнего преимущества' },
-      { col:'derby', label:'Дерби', hint:'факт дерби; да → ослабить вклад в обучение (×0.7)' },
+      { col:'derby', label:'Дерби', hint:'факт дерби; при обучении снижает H (дом. преимущество)' },
       { col:'match_w', label:'Вес матча', hint:'общий множитель важности матча' },
       { col:'neutr_w', label:'Нейтр. вес', hint:'коэфф. ослабления при обучении; только если «Нейтральное поле» = да' },
     ];
@@ -3918,7 +3947,8 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         const meta = goalLoadedMeta;
         const excl = meta && meta.excluded ? ` (исключено ${meta.excluded} с неполной линией)` : '';
         document.getElementById('goalMeta').textContent =
-          `Обучено на ${goalLoadedRaw.length} матчах из Supabase${excl}. Команд: ${Object.keys(st.ratings).length}  H=${st.H.toFixed(3)}\n` +
+          `Обучено на ${goalLoadedRaw.length} матчах из Supabase${excl}. Команд: ${Object.keys(st.ratings).length}  ` +
+          `H=${st.H.toFixed(3)}  H_derby=${(st.hDerby!=null?st.hDerby:st.H).toFixed(3)}  k=${(st.kDerby!=null?st.kDerby:1).toFixed(3)}  n_derby=${st.derbyN||0}\n` +
           `μ=${gl.mu.toFixed(3)} H_g=${gl.hg.toFixed(3)}  калибр a=${cal.a.toFixed(3)} b=${cal.b.toFixed(3)} c=${cal.c.toFixed(3)} d=${cal.d.toFixed(3)} γ=${cal.gamma.toFixed(4)}  ничья:${draw.source}`;
         document.getElementById('goalOut').textContent = 'Рейтинги (сила / атака / оборона):\n' + rk;
         gmFillTeams();

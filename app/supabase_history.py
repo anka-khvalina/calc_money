@@ -12,8 +12,7 @@ from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Set, Union
 
 from supabase_teams import SupabaseError, _request
 
-# Множитель веса матча при дерби (факт «дерби» задаёт пользователь, коэффициент — в коде).
-DERBY_MATCH_WEIGHT: float = 0.7
+DERBY_FLAG_WEIGHT: float = 0.7  # маркер «дерби» в БД (derby_weight ≠ 1); на вес матча не влияет
 
 PATCH_WHITELIST: FrozenSet[str] = frozenset(
     {
@@ -118,7 +117,7 @@ def is_derby_match(match: MatchFull) -> bool:
 
 
 def derby_weight_from_bool(is_derby: bool) -> float:
-    return DERBY_MATCH_WEIGHT if is_derby else 1.0
+    return DERBY_FLAG_WEIGHT if is_derby else 1.0
 
 
 def format_imported_at(iso: Optional[str]) -> str:

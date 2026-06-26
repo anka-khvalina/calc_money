@@ -207,7 +207,23 @@ Inter,Roma,-0.5,2.5,1.9,1.9,1.9,1.9,2.0,3.5,3.5,true
 """
     raw = gmt.parse_raw_matches(csv)
     cfg = gmt.ModelConfig(default_season_weight=1.0)
-    assert gmt.base_weight(raw[0], cfg) == gmt.DERBY_MATCH_WEIGHT
+    assert gmt.base_weight(raw[0], cfg) == 1.0
+
+
+def test_effective_home_advantage_derby_shrinkage():
+    st = gmt.StrengthModel(
+        ratings={},
+        home_advantage=0.30,
+        derby_home_delta=-0.18,
+        derby_n=8,
+        derby_shrink_w=8 / 38,
+    )
+    cfg = gmt.ModelConfig(derby_h_default_ratio=0.4)
+    assert gmt.effective_home_advantage(st, cfg, neutral=True, derby=True) == 0.0
+    assert abs(gmt.effective_home_advantage(st, cfg, neutral=False, derby=False) - 0.30) < 1e-9
+    h_derby = gmt.effective_home_advantage(st, cfg, neutral=False, derby=True)
+    expected = (8 / 38) * 0.12 + (1 - 8 / 38) * 0.30
+    assert abs(h_derby - expected) < 1e-6
 
 
 def test_per_match_weights_from_csv():
@@ -224,7 +240,7 @@ Roma,Lazio,-0.5,3.0,2.05,1.9,2.03,1.91,2.0,4.15,3.34,,,
     assert m1.quality_flag is None
     assert m1.quality_match_weight is None
     cfg = gmt.ModelConfig(default_season_weight=1.0)
-    assert gmt.base_weight(m0, cfg) == 0.5 * 0.7
+    assert gmt.base_weight(m0, cfg) == 0.5
     assert gmt.base_weight(m1, cfg) == 1.0
 
 

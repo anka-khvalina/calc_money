@@ -88,9 +88,11 @@ class ModelConfig:
     promoted_reference_n: int = 3       # сколько слабейших усреднять для новичка
     allow_unknown_teams: bool = True    # подставлять fallback для новичков
 
-    # прогноз
+    # прогноз / дерби
     lambda_epsilon: float = 0.05
-    derby_home_advantage_multiplier: float = 1.0
+    derby_shrink_tau: float = 30.0       # τ в w = n/(n+τ) для shrinkage δ_derby
+    derby_h_default_ratio: float = 0.40  # H_derby ≈ ratio×H_league если мало дерби в выборке
+    derby_min_matches: int = 3           # минимум дерби-матчей для оценки δ_derby
 
 
 # --------------------------------------------------------------------------- #
@@ -258,9 +260,6 @@ def _match_weight(flag: bool, weight: Optional[float]) -> float:
     return 1.0 if weight is None else weight
 
 
-DERBY_MATCH_WEIGHT: float = 0.7
-
-
 def _is_derby_match(m: RawMatch) -> bool:
     if m.derby_flag:
         return True
@@ -269,26 +268,44 @@ def _is_derby_match(m: RawMatch) -> bool:
     return abs(m.derby_match_weight - 1.0) > 1e-9
 
 
-def _derby_weight_mult(m: RawMatch) -> float:
-    if not _is_derby_match(m):
-        return 1.0
-    if m.derby_match_weight is not None:
-        return m.derby_match_weight
-    return DERBY_MATCH_WEIGHT
-
-
 def _neutral_weight_mult(m: RawMatch) -> float:
     if not m.neutral_flag:
         return 1.0
     return 1.0 if m.neutral_match_weight is None else m.neutral_match_weight
 
 
+def _derby_home_indicator(m: "PreparedMatch") -> int:
+    """1 если матч дерби на домашнем поле (не нейтраль)."""
+    if m.i_home != 1:
+        return 0
+    return 1 if _is_derby_match(m.raw) else 0
+
+
+def effective_home_advantage(
+    strength: "StrengthModel",
+    cfg: ModelConfig,
+    *,
+    neutral: bool,
+    derby: bool,
+) -> float:
+    """H для прогноза: 0 на нейтрали; для дерби — H_league + shrinkage(δ_derby)."""
+    if neutral:
+        return 0.0
+    h = strength.home_advantage
+    if not derby:
+        return h
+    if strength.derby_n <= 0:
+        return h * cfg.derby_h_default_ratio
+    h_obs = h + strength.derby_home_delta
+    w = strength.derby_shrink_w
+    return w * h_obs + (1.0 - w) * h
+
+
 def base_weight(m: RawMatch, cfg: ModelConfig) -> float:
     w_s = season_weight(m.date, cfg)
     w_m = 1.0 if m.quality_match_weight is None else m.quality_match_weight
-    w_d = _derby_weight_mult(m)
     w_n = _neutral_weight_mult(m)
-    return w_s * w_m * w_d * w_n
+    return w_s * w_m * w_n
 
 
 # --------------------------------------------------------------------------- #
@@ -365,9 +382,27 @@ def devig_and_infer(matches: Sequence[PreparedMatch], cfg: ModelConfig) -> None:
 class StrengthModel:
     ratings: Dict[str, float]
     home_advantage: float
+    derby_home_delta: float = 0.0
+    derby_n: int = 0
+    derby_shrink_w: float = 0.0
     mae: float = 0.0
     rmse: float = 0.0
     n: int = 0
+
+    @property
+    def home_advantage_derby(self) -> float:
+        """H_derby после shrinkage (для отчётов)."""
+        if self.derby_n <= 0:
+            return self.home_advantage
+        h_obs = self.home_advantage + self.derby_home_delta
+        return self.derby_shrink_w * h_obs + (1.0 - self.derby_shrink_w) * self.home_advantage
+
+    @property
+    def derby_h_ratio(self) -> float:
+        h = self.home_advantage
+        if abs(h) < 1e-9:
+            return 1.0
+        return self.home_advantage_derby / h
 
 
 def _huber_weight(e: float, delta: float) -> float:
@@ -385,7 +420,11 @@ def fit_strength_ratings(
         raise ValueError("Недостаточно матчей с восстановленной разницей D_m")
     teams = sorted({m.home_team for m in used} | {m.away_team for m in used})
     idx = {t: i for i, t in enumerate(teams)}
-    p = len(teams) + 1  # + H
+    n_derby = sum(_derby_home_indicator(m) for m in used)
+    use_derby_coef = n_derby >= cfg.derby_min_matches
+    p = len(teams) + (2 if use_derby_coef else 1)
+    h_col = p - 2 if use_derby_coef else p - 1
+    d_col = p - 1 if use_derby_coef else None
 
     # ridge-привязка к prior прошлого сезона: r_t ≈ α·prior_t
     prior_rows: List[Tuple[List[float], float, float]] = []
@@ -402,7 +441,9 @@ def fit_strength_ratings(
         row = [0.0] * p
         row[idx[m.home_team]] += 1.0
         row[idx[m.away_team]] -= 1.0
-        row[-1] = float(m.i_home)
+        row[h_col] = float(m.i_home)
+        if d_col is not None:
+            row[d_col] = float(_derby_home_indicator(m))
         coeffs.append(row)
         targets.append(m.diff_goals)
         m.w_line_ah = min(
@@ -411,7 +452,7 @@ def fit_strength_ratings(
         )
         m.w_robust = 1.0
 
-    gauge = [1.0] * len(teams) + [0.0]
+    gauge = [1.0] * len(teams) + [0.0] * (p - len(teams))
 
     def solve(weights: Sequence[float]) -> Tuple[List[float], List[float]]:
         rows = [(coeffs[i], targets[i], weights[i]) for i in range(len(used))]
@@ -442,7 +483,24 @@ def fit_strength_ratings(
     ratings = {t: r - mean_r for t, r in ratings.items()}
     mae = sum(abs(e) for e in resid) / len(resid)
     rmse = math.sqrt(sum(e * e for e in resid) / len(resid))
-    return StrengthModel(ratings=ratings, home_advantage=sol[-1], mae=mae, rmse=rmse, n=len(used))
+    h_league = sol[h_col]
+    delta_raw = sol[d_col] if d_col is not None else 0.0
+    if n_derby > 0 and use_derby_coef:
+        shrink_w = n_derby / (n_derby + cfg.derby_shrink_tau)
+        delta_shrunk = shrink_w * delta_raw
+    else:
+        shrink_w = 0.0
+        delta_shrunk = 0.0
+    return StrengthModel(
+        ratings=ratings,
+        home_advantage=h_league,
+        derby_home_delta=delta_shrunk,
+        derby_n=n_derby,
+        derby_shrink_w=shrink_w,
+        mae=mae,
+        rmse=rmse,
+        n=len(used),
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -576,14 +634,24 @@ class Calibration:
     loss: float = 0.0
 
 
-def _model_d_s(m: PreparedMatch, strength: StrengthModel, goals: GoalModel) -> Tuple[float, float]:
+def _model_d_s(
+    m: PreparedMatch,
+    strength: StrengthModel,
+    goals: GoalModel,
+    cfg: ModelConfig,
+) -> Tuple[float, float]:
+    derby = _is_derby_match(m.raw) and m.i_home == 1
+    h_eff = effective_home_advantage(
+        strength, cfg, neutral=m.i_home == 0, derby=derby,
+    )
     d_model = (
         strength.ratings.get(m.home_team, 0.0)
         - strength.ratings.get(m.away_team, 0.0)
-        + strength.home_advantage * m.i_home
+        + h_eff
     )
+    k_hg = (h_eff / strength.home_advantage) if strength.home_advantage > 1e-9 else 1.0
     lh = math.exp(goals.mu + goals.attack.get(m.home_team, 0.0)
-                  - goals.defense.get(m.away_team, 0.0) + goals.home_goal_adv * m.i_home)
+                  - goals.defense.get(m.away_team, 0.0) + goals.home_goal_adv * m.i_home * k_hg)
     la = math.exp(goals.mu + goals.attack.get(m.away_team, 0.0)
                   - goals.defense.get(m.home_team, 0.0))
     return d_model, lh + la
@@ -645,7 +713,7 @@ def calibrate(
     used = [m for m in matches if m.p1_shin is not None]
     if not used:
         return Calibration()
-    pre = [(m, *_model_d_s(m, strength, goals), m.w_base) for m in used]
+    pre = [(m, *_model_d_s(m, strength, goals, cfg), m.w_base) for m in used]
 
     def loss(params: List[float]) -> float:
         a, b, c, d, gamma = params
@@ -850,7 +918,7 @@ def predict_match(
     cfg = model.config
     s, g, cal = model.strength, model.goals, model.calibration
     i_home = 0 if neutral else 1
-    h_mult = cfg.derby_home_advantage_multiplier if derby else 1.0
+    h_eff = effective_home_advantage(s, cfg, neutral=neutral, derby=derby)
 
     unknown = [t for t in (home_team, away_team) if t not in s.ratings]
     if unknown and not cfg.allow_unknown_teams:
@@ -865,8 +933,9 @@ def predict_match(
     def defense(t: str) -> float:
         return g.defense[t] if t in g.defense else _promoted_rating(g.defense, cfg.promoted_reference_n)
 
-    d_model = rating(home_team) - rating(away_team) + s.home_advantage * i_home * h_mult
-    lh_ad = math.exp(g.mu + attack(home_team) - defense(away_team) + g.home_goal_adv * i_home)
+    k_hg = (h_eff / s.home_advantage) if s.home_advantage > 1e-9 else 1.0
+    d_model = rating(home_team) - rating(away_team) + h_eff
+    lh_ad = math.exp(g.mu + attack(home_team) - defense(away_team) + g.home_goal_adv * i_home * k_hg)
     la_ad = math.exp(g.mu + attack(away_team) - defense(home_team))
     s_model = lh_ad + la_ad
 
@@ -928,7 +997,14 @@ def strength_diagnostics(
             continue
         if m.home_team not in s.ratings or m.away_team not in s.ratings:
             continue
-        d_model = s.ratings[m.home_team] - s.ratings[m.away_team] + s.home_advantage * m.i_home
+        d_model = (
+            s.ratings[m.home_team] - s.ratings[m.away_team]
+            + effective_home_advantage(
+                s, model.config,
+                neutral=m.i_home == 0,
+                derby=_is_derby_match(m.raw) and m.i_home == 1,
+            )
+        )
         out.append(StrengthDiagnosticRow(
             date=m.raw.date, home_team=m.home_team, away_team=m.away_team,
             d_market=m.diff_goals, d_model=d_model, error=m.diff_goals - d_model,
@@ -1023,6 +1099,9 @@ def _cmd_train(args: argparse.Namespace) -> None:
     model, _ = train_full_model(raw)
     print(f"Матчей: {model.strength.n}  команд: {len(model.strength.ratings)}")
     print(f"H (сила): {_fmt(model.strength.home_advantage,3)}  "
+          f"H_derby: {_fmt(model.strength.home_advantage_derby,3)}  "
+          f"k={_fmt(model.strength.derby_h_ratio,3)}  "
+          f"n_derby={model.strength.derby_n}  "
           f"RMSE_D: {_fmt(model.strength.rmse,4)}")
     print(f"μ: {_fmt(model.goals.mu,3)}  H_g: {_fmt(model.goals.home_goal_adv,3)}  "
           f"RMSE_logλ: {_fmt(model.goals.rmse,4)}")
