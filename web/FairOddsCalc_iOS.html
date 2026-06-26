@@ -164,6 +164,30 @@
       font-size:11px; line-height:1.45; white-space:pre-wrap;
       max-height:420px; overflow:auto; color:#1a1a1a;
     }
+    .goal-train-banner{
+      margin-top:10px; padding:10px 12px; border-radius:10px; font-size:13px; line-height:1.45;
+      border:1px solid var(--line); background:#f8fafc;
+    }
+    .goal-train-banner.ok{ background:#f0fdf4; border-color:#86efac; color:#14532d; }
+    .goal-train-banner.warn{ background:#fffbeb; border-color:#fcd34d; color:#92400e; }
+    .goal-train-banner.idle{ background:#f8fafc; border-color:var(--line); color:var(--muted); }
+    .goal-train-card{
+      margin-top:10px; padding:10px 12px; border:1px solid #dbe3f7;
+      border-radius:10px; background:#f7f9ff;
+    }
+    .goal-train-card h4{ margin:0 0 8px; font-size:13px; color:#10204a; }
+    .goal-train-table{ width:100%; border-collapse:collapse; font-size:12px; }
+    .goal-train-table th,.goal-train-table td{
+      border-bottom:1px solid #e2e8f0; padding:5px 8px; text-align:left; vertical-align:top;
+    }
+    .goal-train-table th{ color:var(--muted); font-weight:600; width:38%; }
+    .goal-train-table td.num{ text-align:right; font-variant-numeric:tabular-nums; }
+    .goal-train-table tr:last-child td,.goal-train-table tr:last-child th{ border-bottom:none; }
+    .goal-train-actions{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px; }
+    .goal-train-stale-tag{
+      display:inline-block; background:#fef3c7; color:#92400e; border:1px solid #fcd34d;
+      border-radius:6px; padding:2px 8px; font-size:11px; font-weight:600;
+    }
     .small{ font-size:12px; color:var(--muted); }
     .hint{ font-size:11px; color:#8a93a0; margin-top:3px; line-height:1.3; }
     /* --- Справка --- */
@@ -601,10 +625,21 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <span><span class="small">Dixon-Coles</span><span class="hint" style="display:block">Поправка вероятностей низких счетов (0:0, 1:0, 0:1, 1:1) — рынок их оценивает иначе, чем чистый Пуассон.</span></span>
         </label>
       </div>
-      <div class="row">
+      <div class="goal-train-actions">
         <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
+        <button type="button" id="goalRetrain" class="btn" style="display:none">Переобучить</button>
+        <span id="goalTrainStaleTag" class="goal-train-stale-tag" style="display:none">Нужно переобучение</span>
       </div>
-      <div id="goalMeta" class="meta">Выберите лигу и сезоны, нажмите «Загрузить из БД», затем «Обучить модель».</div>
+      <div id="goalTrainBanner" class="goal-train-banner idle">Загрузите матчи из БД и обучите модель.</div>
+      <div id="goalTrainDataCard" class="goal-train-card" style="display:none">
+        <h4>Данные обучения</h4>
+        <div id="goalTrainDataBody"></div>
+      </div>
+      <div id="goalTrainCoefCard" class="goal-train-card" style="display:none">
+        <h4>Коэффициенты модели</h4>
+        <div id="goalTrainCoefBody"></div>
+      </div>
+      <div id="goalMeta" class="meta" style="display:none"></div>
       <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
         <div class="field" style="min-width:150px">
           <label>Лига (справочник)</label>
@@ -948,7 +983,7 @@ bash scripts/update_and_serve.sh --start</div>
         <li><b>Нейтральное поле</b> и <b>Нейтр. вес</b> — разные вещи: первое отключает H, второе ослабляет вклад строки при обучении.</li>
         <li><b>Дерби</b> по умолчанию выключено у всех матчей. Отметьте в Истории → ▼ Веса → перезагрузите и переобучите модель.</li>
         <li>Низкая мотивация → уменьшите <b>match_weight</b> в Истории (не отдельный флаг).</li>
-        <li>Чем больше матчей (несколько сезонов), тем стабильнее рейтинги. В «Линии» можно выбрать «Все сезоны».</li>
+        <li>После правок в <b>Истории</b> или смены весов сезонов — снова «Загрузить из БД» → «Переобучить модель». Жёлтый баннер = модель устарела.</li>
         <li>«Нужно ≥2 матчей» — мало загруженных матчей или не заполнены обязательные рынки.</li>
         <li><b>Где хранятся данные:</b> матчи, коэффициенты и веса — в <b>Supabase</b> (общие для всех устройств с доступом к БД). Локально в Safari (localStorage) — только логотипы команд, история расчётов на «Линии» и мелкие настройки UI. Обученная модель живёт в памяти вкладки — после перезагрузки страницы снова «Загрузить из БД» → «Обучить модель».</li>
         <li>Открывайте в Safari напрямую, не во встроенном браузере мессенджера.</li>
@@ -3751,6 +3786,202 @@ bash scripts/update_and_serve.sh --start</div>
     let goalLineSeasons = [];
     let goalSeasonWeightById = {};
     let goalLineLeaguesLoaded = false;
+    let goalTrainState = { modelDataSig: null, modelCfgSig: null, trainedAt: null, loadedAt: null };
+
+    function goalSimpleHash(str){
+      let h = 0;
+      for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+      return String(h);
+    }
+    function goalComputeDataSignature(raw){
+      if (!raw || !raw.length) return '';
+      const parts = raw.map(r => [
+        r.matchId, r.date, r.home, r.away,
+        r.ah, r.tot, r.aho, r.aha, r.ovr, r.und,
+        r.ho, r.dо, r.ao, r.mw, r.der ? 1 : 0, r.neu ? 1 : 0, r.neuw, r.seasonId,
+      ].map(v => v == null ? '' : String(v)).join(':'));
+      parts.sort();
+      return goalSimpleHash(parts.join('\n'));
+    }
+    function goalComputeCfgSignature(cfg){
+      const sw = cfg.seasonWeightsById || {};
+      const swKeys = Object.keys(sw).sort();
+      const swFlat = swKeys.map(k => `${k}=${sw[k]}`).join(',');
+      return goalSimpleHash([
+        cfg.alphaAh, cfg.alphaT, cfg.drawLoss, cfg.priorAlpha, cfg.promotedN,
+        cfg.useDraw, cfg.useDc, cfg.qmin, cfg.qmax,
+        cfg.derbyShrinkTau, cfg.derbyHDefault, cfg.derbyMinMatches, swFlat,
+      ].join('|'));
+    }
+    function goalIsModelStale(){
+      if (!gmModel || !goalLoadedRaw || !goalLoadedRaw.length) return false;
+      if (!goalTrainState.modelDataSig) return true;
+      goalReadSeasonWeightsFromUI();
+      const ds = goalComputeDataSignature(goalLoadedRaw);
+      const cs = goalComputeCfgSignature(gmCfg());
+      return ds !== goalTrainState.modelDataSig || cs !== goalTrainState.modelCfgSig;
+    }
+    function goalFmtTrainNum(v, d){
+      if (v == null || isNaN(v)) return '—';
+      return Number(v).toFixed(d != null ? d : 3);
+    }
+    function goalFmtTrainDt(iso){
+      if (!iso) return '—';
+      try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        const pad = n => String(n).padStart(2, '0');
+        return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      } catch (_e){ return iso; }
+    }
+    function goalTrainDateRange(raw){
+      const ds = raw.map(r => r.date).filter(Boolean).sort();
+      if (!ds.length) return '—';
+      const fmt = s => sbFmtDate(s) || s;
+      return ds.length === 1 ? fmt(ds[0]) : `${fmt(ds[0])} … ${fmt(ds[ds.length-1])}`;
+    }
+    function goalRenderTrainTable(rows){
+      return '<table class="goal-train-table"><tbody>'
+        + rows.map(([k, v, cls]) => `<tr><th>${escapeHtml(k)}</th><td class="${cls || ''}">${v}</td></tr>`).join('')
+        + '</tbody></table>';
+    }
+    function goalRenderTrainDataPanel(){
+      const box = document.getElementById('goalTrainDataBody');
+      const card = document.getElementById('goalTrainDataCard');
+      if (!box || !card) return;
+      if (!goalLoadedRaw || !goalLoadedRaw.length || !goalLoadedMeta){
+        card.style.display = 'none';
+        return;
+      }
+      goalReadSeasonWeightsFromUI();
+      const meta = goalLoadedMeta;
+      const cfg = gmCfg();
+      const seasonRows = (meta.seasonIds || []).map(sid => {
+        const s = goalLineSeasons.find(x => x.season_id === sid);
+        const w = goalSeasonWeightById[sid] != null ? goalSeasonWeightById[sid] : 1;
+        const label = s ? s.season_label : String(sid);
+        const cnt = goalLoadedRaw.filter(r => r.seasonId === sid).length;
+        return [label, `${cnt} матч., вес <b>${goalFmtTrainNum(w, 2)}</b>`, ''];
+      });
+      const derbyN = goalLoadedRaw.filter(r => r.der).length;
+      const neuN = goalLoadedRaw.filter(r => r.neu).length;
+      const rows = [
+        ['Лига', escapeHtml(meta.leagueName || ''), ''],
+        ['Сезоны', escapeHtml((meta.seasonLabels || []).join(', ')), ''],
+        ['Матчей в обучении', `<b>${goalLoadedRaw.length}</b>${meta.excluded ? ` <span class="small">(исключено ${meta.excluded} без полной линии)</span>` : ''}`, 'num'],
+        ['Период матчей', escapeHtml(goalTrainDateRange(goalLoadedRaw)), ''],
+        ['Загружено из БД', escapeHtml(goalFmtTrainDt(goalTrainState.loadedAt)), ''],
+        ['Дерби в выборке', String(derbyN), 'num'],
+        ['Нейтральных матчей', String(neuN), 'num'],
+        ['Подпись данных', `<code>${escapeHtml(goalComputeDataSignature(goalLoadedRaw))}</code>`, ''],
+      ];
+      let html = goalRenderTrainTable(rows);
+      if (seasonRows.length){
+        html += '<div class="small" style="margin-top:8px;font-weight:600">Веса сезонов</div>'
+          + goalRenderTrainTable(seasonRows.map(([a,b]) => [a, b, 'num'])));
+      }
+      html += '<div class="small" style="margin-top:8px;font-weight:600">Параметры обучения (вход)</div>'
+        + goalRenderTrainTable([
+          ['α форы', goalFmtTrainNum(cfg.alphaAh, 2), 'num'],
+          ['α тотала', goalFmtTrainNum(cfg.alphaT, 2), 'num'],
+          ['Модель ничьи', cfg.useDraw ? 'вкл' : 'выкл', ''],
+          ['Dixon-Coles', cfg.useDc ? 'вкл' : 'выкл', ''],
+          ['Вес ничьи (loss)', goalFmtTrainNum(cfg.drawLoss, 2), 'num'],
+          ['q_min / q_max', `${goalFmtTrainNum(cfg.qmin, 2)} / ${goalFmtTrainNum(cfg.qmax, 2)}`, 'num'],
+        ]);
+      box.innerHTML = html;
+      card.style.display = '';
+    }
+    function goalRenderTrainCoefPanel(){
+      const box = document.getElementById('goalTrainCoefBody');
+      const card = document.getElementById('goalTrainCoefCard');
+      if (!box || !card) return;
+      if (!gmModel){
+        card.style.display = 'none';
+        return;
+      }
+      const { st, gl, cal, draw, cfg } = gmModel;
+      const stale = goalIsModelStale();
+      const rows = [
+        ['Статус модели', stale
+          ? '<span class="goal-train-stale-tag">Устарела — переобучите</span>'
+          : '<span style="color:#16a34a;font-weight:600">Актуальна</span>', ''],
+        ['Обучено', escapeHtml(goalFmtTrainDt(goalTrainState.trainedAt)), ''],
+        ['Подпись данных модели', goalTrainState.modelDataSig
+          ? `<code>${escapeHtml(goalTrainState.modelDataSig)}</code>` : '—', ''],
+        ['Команд в модели', String(Object.keys(st.ratings).length), 'num'],
+        ['H (лига)', goalFmtTrainNum(st.H, 3), 'num'],
+        ['δ_derby', goalFmtTrainNum(st.deltaDerby, 3), 'num'],
+        ['n_derby', String(st.derbyN || 0), 'num'],
+        ['H_derby', goalFmtTrainNum(st.hDerby != null ? st.hDerby : st.H, 3), 'num'],
+        ['k_derby', goalFmtTrainNum(st.kDerby != null ? st.kDerby : 1, 3), 'num'],
+        ['RMSE (сила D)', goalFmtTrainNum(st.rmse, 3), 'num'],
+        ['μ (голы)', goalFmtTrainNum(gl.mu, 3), 'num'],
+        ['H_g (голы)', goalFmtTrainNum(gl.hg, 3), 'num'],
+        ['Калибр. a, b', `${goalFmtTrainNum(cal.a, 3)}, ${goalFmtTrainNum(cal.b, 3)}`, 'num'],
+        ['Калибр. c, d', `${goalFmtTrainNum(cal.c, 3)}, ${goalFmtTrainNum(cal.d, 3)}`, 'num'],
+        ['Dixon-Coles γ', goalFmtTrainNum(cal.gamma, 4), 'num'],
+        ['Ничья (источник)', escapeHtml(draw.source || '—'), ''],
+      ];
+      if (draw.source === 'fitted'){
+        rows.push(['Ничья α', goalFmtTrainNum(draw.alpha, 3), 'num']);
+        rows.push(['β_D, β_S', `${goalFmtTrainNum(draw.betaD, 3)}, ${goalFmtTrainNum(draw.betaS, 3)}`, 'num']);
+        rows.push(['β_S2, β_D×S', `${goalFmtTrainNum(draw.betaS2, 3)}, ${goalFmtTrainNum(draw.betaDxS, 3)}`, 'num']);
+      }
+      box.innerHTML = goalRenderTrainTable(rows);
+      card.style.display = '';
+    }
+    function goalUpdateTrainUI(){
+      const banner = document.getElementById('goalTrainBanner');
+      const staleTag = document.getElementById('goalTrainStaleTag');
+      const btnTrain = document.getElementById('goalTrain');
+      const btnRetrain = document.getElementById('goalRetrain');
+      const hasData = !!(goalLoadedRaw && goalLoadedRaw.length);
+      const hasModel = !!gmModel;
+      const stale = goalIsModelStale();
+      if (staleTag) staleTag.style.display = (hasModel && stale) ? '' : 'none';
+      if (btnRetrain) btnRetrain.style.display = (hasModel && stale) ? '' : 'none';
+      if (btnTrain){
+        btnTrain.textContent = (hasModel && stale) ? 'Переобучить модель' : 'Обучить модель';
+      }
+      if (banner){
+        banner.classList.remove('ok', 'warn', 'idle');
+        if (!hasData){
+          banner.classList.add('idle');
+          banner.textContent = 'Выберите лигу и сезоны → «Загрузить из БД» → «Обучить модель».';
+        } else if (!hasModel){
+          banner.classList.add('warn');
+          banner.textContent = `Данные загружены (${goalLoadedRaw.length} матчей). Модель ещё не обучена — нажмите «Обучить модель».`;
+        } else if (stale){
+          banner.classList.add('warn');
+          banner.textContent = 'Данные или настройки изменились после последнего обучения. Нажмите «Переобучить модель» перед расчётом линии.';
+        } else {
+          banner.classList.add('ok');
+          banner.textContent = `Модель актуальна: обучена ${goalFmtTrainDt(goalTrainState.trainedAt)} на ${goalLoadedRaw.length} матчах. Можно «Рассчитать линию».`;
+        }
+      }
+      goalRenderTrainDataPanel();
+      goalRenderTrainCoefPanel();
+    }
+    function goalRunTrain(){
+      if (!goalLoadedRaw || !goalLoadedRaw.length){
+        throw new Error('Сначала загрузите матчи из БД.');
+      }
+      if (goalLoadedRaw.length < 2) throw new Error('Недостаточно матчей с полной линией для обучения модели');
+      goalReadSeasonWeightsFromUI();
+      const cfg = gmCfg();
+      gmModel = gmTrain(goalLoadedRaw, cfg);
+      goalTrainState.modelDataSig = goalComputeDataSignature(goalLoadedRaw);
+      goalTrainState.modelCfgSig = goalComputeCfgSignature(cfg);
+      goalTrainState.trainedAt = new Date().toISOString();
+      const { st, gl, cal, draw } = gmModel;
+      const rk = Object.entries(st.ratings).sort((a, b) => b[1] - a[1])
+        .map(([t, r]) => `  ${t}: r=${r.toFixed(3)} A=${(gl.attack[t] || 0).toFixed(3)} Df=${(gl.defense[t] || 0).toFixed(3)}`).join('\n');
+      document.getElementById('goalOut').textContent = 'Рейтинги (сила / атака / оборона):\n' + rk;
+      goalUpdateTrainUI();
+      gmFillTeams();
+      return gmModel;
+    }
 
     function goalDefaultSeasonWeight(index){
       if (index === 0) return 1;
@@ -3940,6 +4171,7 @@ bash scripts/update_and_serve.sh --start</div>
         goalPopulateLeagueSelect();
         const leagueId = document.getElementById('goalSrcLeague').value;
         if (leagueId && !goalLineSeasons.length) await goalOnLeagueChange();
+        goalUpdateTrainUI();
       } catch (e){
         console.error('goalInitTab', e);
         const sel = document.getElementById('goalSrcLeague');
@@ -3981,11 +4213,10 @@ bash scripts/update_and_serve.sh --start</div>
           leagueId, leagueName, seasonIds, seasonLabels,
           total: parsed.total, valid: parsed.valid, excluded: parsed.excluded,
         };
+        goalTrainState.loadedAt = new Date().toISOString();
         goalApplyDefaultSeasonWeights();
         goalRenderSeasonWeights();
-        const excl = parsed.excluded ? `, исключено ${parsed.excluded} из-за неполной линии` : '';
-        document.getElementById('goalMeta').textContent =
-          `Загружено ${parsed.total} матчей, к обучению допущено ${parsed.valid}${excl}. Лига: ${leagueName}, сезоны: ${seasonLabels.join(', ')}. Нажмите «Обучить модель».`;
+        goalUpdateTrainUI();
       } catch (e){
         console.error('goalLoadHist', e);
         alert('Не удалось загрузить матчи из Supabase');
@@ -3993,31 +4224,32 @@ bash scripts/update_and_serve.sh --start</div>
     });
 
     bindClick('goalTrain', () => {
-      try {
-        if (!goalLoadedRaw || !goalLoadedRaw.length){
-          throw new Error('Сначала загрузите матчи из БД.');
-        }
-        if (goalLoadedRaw.length < 2) throw new Error('Недостаточно матчей с полной линией для обучения модели');
-        goalReadSeasonWeightsFromUI();
-        const cfg = gmCfg();
-        gmModel = gmTrain(goalLoadedRaw, cfg);
-        const { st, gl, cal, draw } = gmModel;
-        const rk = Object.entries(st.ratings).sort((a, b) => b[1] - a[1])
-          .map(([t, r]) => `  ${t}: r=${r.toFixed(3)} A=${(gl.attack[t] || 0).toFixed(3)} Df=${(gl.defense[t] || 0).toFixed(3)}`).join('\n');
-        const meta = goalLoadedMeta;
-        const excl = meta && meta.excluded ? ` (исключено ${meta.excluded} с неполной линией)` : '';
-        document.getElementById('goalMeta').textContent =
-          `Обучено на ${goalLoadedRaw.length} матчах из Supabase${excl}. Команд: ${Object.keys(st.ratings).length}  ` +
-          `H=${st.H.toFixed(3)}  H_derby=${(st.hDerby!=null?st.hDerby:st.H).toFixed(3)}  k=${(st.kDerby!=null?st.kDerby:1).toFixed(3)}  n_derby=${st.derbyN||0}\n` +
-          `μ=${gl.mu.toFixed(3)} H_g=${gl.hg.toFixed(3)}  калибр a=${cal.a.toFixed(3)} b=${cal.b.toFixed(3)} c=${cal.c.toFixed(3)} d=${cal.d.toFixed(3)} γ=${cal.gamma.toFixed(4)}  ничья:${draw.source}`;
-        document.getElementById('goalOut').textContent = 'Рейтинги (сила / атака / оборона):\n' + rk;
-        gmFillTeams();
-      } catch (e){ alert(e.message || e); }
+      try { goalRunTrain(); }
+      catch (e){ alert(e.message || e); }
+    });
+    bindClick('goalRetrain', () => {
+      try { goalRunTrain(); }
+      catch (e){ alert(e.message || e); }
+    });
+
+    ['goalAlphaAh','goalAlphaT','goalPriorAlpha','goalQmin','goalQmax'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', () => goalUpdateTrainUI());
+    });
+    ['goalUseDraw','goalUseDc'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', () => goalUpdateTrainUI());
+    });
+    document.getElementById('goalSeasonWeightsTable')?.addEventListener('input', e => {
+      if (e.target.classList.contains('goal-season-w')) goalUpdateTrainUI();
     });
 
     window.goalInitTab = goalInitTab;
     bindClick('goalPredict',()=>{
       if(!gmModel){ alert('Сначала обучите модель.'); return; }
+      if(goalIsModelStale()){
+        if(!confirm('Модель устарела (данные или настройки изменились). Всё равно рассчитать по старой модели?\n\nРекомендуется: «Переобучить модель».')) return;
+      }
       const home=document.getElementById('goalHome').value, away=document.getElementById('goalAway').value;
       if(!home||!away||home===away){ alert('Выберите разные команды.'); return; }
       try{

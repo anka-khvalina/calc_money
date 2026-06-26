@@ -2081,12 +2081,16 @@ def build_app():
                 raise ValueError("В файле меньше 2 матчей.")
             model = _goal_train(raw, f"Загружено: {path}  ({len(raw)} матчей)")
             c = model.calibration
+            st = model.strength
+            dr = model.draw
             goal_meta_var.set(
-                f"Команд: {len(model.strength.ratings)}   H(сила)={model.strength.home_advantage:.3f}   "
-                f"RMSE_D={model.strength.rmse:.3f}\n"
+                f"Обучено: {len(raw)} матчей, команд {len(st.ratings)}\n"
+                f"H={st.home_advantage:.3f}  δ_derby={st.derby_home_delta:.3f}  "
+                f"n_derby={st.derby_n}  RMSE_D={st.rmse:.3f}\n"
                 f"μ={model.goals.mu:.3f}  H_g={model.goals.home_goal_adv:.3f}  "
                 f"RMSE_logλ={model.goals.rmse:.3f}\n"
-                f"Калибровка: a={c.a:.3f} b={c.b:.3f} c={c.c:.3f} d={c.d:.3f} γ={c.gamma:.4f}"
+                f"Калибр: a={c.a:.3f} b={c.b:.3f} c={c.c:.3f} d={c.d:.3f} γ={c.gamma:.4f}  "
+                f"Ничья: {dr.source}"
             )
             _goal_refresh_teams()
             lines = ["Рейтинги (сила на нейтрали) / атака / оборона:"]
@@ -2115,12 +2119,16 @@ def build_app():
         try:
             model = _goal_train(raw, f"Пересчитано ({len(raw)} матчей, новые настройки)")
             c = model.calibration
+            st = model.strength
+            dr = model.draw
             goal_meta_var.set(
-                f"Команд: {len(model.strength.ratings)}   H(сила)={model.strength.home_advantage:.3f}   "
-                f"RMSE_D={model.strength.rmse:.3f}\n"
-                f"μ={model.goals.mu:.3f}  H_g={model.goals.home_goal_adv:.3f}\n"
-                f"Калибровка: a={c.a:.3f} b={c.b:.3f} c={c.c:.3f} d={c.d:.3f} γ={c.gamma:.4f}   "
-                f"Ничья: {model.draw.source}"
+                f"Обучено: {len(raw)} матчей, команд {len(st.ratings)}\n"
+                f"H={st.home_advantage:.3f}  δ_derby={st.derby_home_delta:.3f}  "
+                f"n_derby={st.derby_n}  RMSE_D={st.rmse:.3f}\n"
+                f"μ={model.goals.mu:.3f}  H_g={model.goals.home_goal_adv:.3f}  "
+                f"RMSE_logλ={model.goals.rmse:.3f}\n"
+                f"Калибр: a={c.a:.3f} b={c.b:.3f} c={c.c:.3f} d={c.d:.3f} γ={c.gamma:.4f}  "
+                f"Ничья: {dr.source}"
             )
             _goal_refresh_teams()
         except Exception as exc:
