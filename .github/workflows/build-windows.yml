@@ -1,0 +1,47 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches:
+      - cursor/team-registry-17b5
+      - cursor/team-logos-17b5
+      - cursor/build-exe-17b5
+      - main
+    paths:
+      - 'app/**'
+      - 'data/**'
+      - 'scripts/FairOddsCalc.spec'
+      - '.github/workflows/build-windows.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build FairOddsCalc.exe
+        run: pyinstaller --noconfirm scripts/FairOddsCalc.spec
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FairOddsCalc-Windows
+          path: dist/FairOddsCalc.exe
+          retention-days: 90
+
+      - name: Upload data folder template
+        uses: actions/upload-artifact@v4
+        with:
+          name: FairOddsCalc-data-seed
+          path: |
+            data/teams/registry.json
+            data/history/index.json
+          retention-days: 90
