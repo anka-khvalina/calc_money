@@ -1,0 +1,6 @@
+derby_id,label_ru,flip_coefficient,applies_flip_s2,notes
+no,No,1.00,false,Обычный матч — перевертыш по derby не применяется
+city_derby,City derby,0.95,true,MVP-заглушка — уточнить коэффициент
+regional_derby,Regional derby,0.96,true,MVP-заглушка
+rivalry,Rivalry,0.97,true,MVP-заглушка
+other,Other,1.00,true,Особые случаи — коэфф. настраивается
