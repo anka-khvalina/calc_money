@@ -3609,7 +3609,7 @@ bash scripts/update_and_serve.sh --start</div>
       });
       return payload;
     }
-    function sbHistRowState(m){
+    function sbHistRowState(m, { refresh = false } = {}){
       const mid = Number(m.match_id);
       if (!window.__SB.matchRows[mid]){
         window.__SB.matchRows[mid] = {
@@ -3618,6 +3618,14 @@ bash scripts/update_and_serve.sh --start</div>
           externalMatchId: '', fetchError: '', fetchLoading: false,
           manualEdit: false,
         };
+      } else if (refresh) {
+        const st = window.__SB.matchRows[mid];
+        if (!sbHistIsManualDirty(st)) {
+          st.original = Object.assign({}, m);
+          st.edited = {};
+          st.saveError = '';
+          st.savedMsg = '';
+        }
       }
       return window.__SB.matchRows[mid];
     }
@@ -3630,6 +3638,12 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function sbHistIsManualDirty(st){
       return !!st.manualEdit && sbHistIsDirty(st);
+    }
+    async function sbFetchMatchFromDb(mid){
+      const q = `select=${SB_MATCH_SELECT}&match_id=eq.${encodeURIComponent(mid)}`;
+      const rows = await sbFetch(`/v_matches_full?${q}`);
+      if (!Array.isArray(rows) || !rows.length) throw new Error('match not found');
+      return rows[0];
     }
     async function sbPatchMatch(matchId, payload){
       const q = `id=eq.${encodeURIComponent(matchId)}`;
@@ -3746,7 +3760,7 @@ bash scripts/update_and_serve.sh --start</div>
       const mids = new Set(matches.map(m => Number(m.match_id)));
       Object.keys(window.__SB.matchRows).forEach(k => { if (!mids.has(Number(k))) delete window.__SB.matchRows[k]; });
       tb.innerHTML = matches.map(m => {
-        const st = sbHistRowState(m);
+        const st = sbHistRowState(m, { refresh: true });
         const dirty = sbHistIsManualDirty(st);
         const weightsOpen = !!st.weightsOpen;
         const fetchOpen = !!st.fetchOpen;
@@ -3847,7 +3861,13 @@ bash scripts/update_and_serve.sh --start</div>
       sbHistUpdateRowUI(mid);
       try {
         await sbPatchMatch(mid, payload);
-        const updated = sbApplyPatchToMatch(st.original, payload);
+        let updated = sbApplyPatchToMatch(st.original, payload);
+        try {
+          const fresh = await sbFetchMatchFromDb(mid);
+          updated = Object.assign({}, fresh);
+        } catch (reloadErr){
+          console.warn('derby reload after PATCH', reloadErr);
+        }
         st.original = Object.assign({}, updated);
         st.edited = {};
         st.savedMsg = 'Сохранено';
@@ -4376,7 +4396,7 @@ bash scripts/update_and_serve.sh --start</div>
         neu: !!m.is_neutral,
         mw: gmF(m.match_weight) != null ? gmF(m.match_weight) : 1.0,
         der: sbIsDerby(m),
-        derw: DERBY_FLAG_NO,
+        derw: sbIsDerby(m) ? DERBY_FLAG_YES : DERBY_FLAG_NO,
         neuw: gmF(m.neutral_weight) != null ? gmF(m.neutral_weight) : 1.0,
         seasonId: m.season_id,
         seasonLabel: m.season_label || '',
