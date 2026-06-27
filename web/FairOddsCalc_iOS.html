@@ -29,6 +29,10 @@
       cursor:pointer; touch-action:manipulation;
       -webkit-tap-highlight-color:rgba(37,90,214,0.15);
     }
+    .tab-btn{ transition:background .15s ease, color .15s ease, border-color .15s ease; }
+    .tab-btn:hover{ background:#e0e8ff; }
+    .tab-btn.active:hover{ background:var(--accent); }
+    .tab-btn .tab-ico{ font-size:13px; }
     .tab-btn.active{ background:var(--accent); color:#fff; border-color:var(--accent); }
     .panel{
       background:var(--card); border:1px solid var(--line); border-radius:14px;
@@ -52,7 +56,9 @@
       padding:9px 12px; font-size:14px; font-weight:600;
       cursor:pointer; touch-action:manipulation;
       -webkit-tap-highlight-color:rgba(37,90,214,0.15);
+      transition:filter .15s ease, box-shadow .15s ease, transform .05s ease;
     }
+    .btn.primary:hover{ filter:brightness(1.06); box-shadow:0 2px 8px rgba(37,90,214,0.25); }
     .js-status{
       font-size:11px; color:var(--muted); margin:-4px 0 10px;
       padding:6px 10px; background:#fff; border:1px solid var(--line);
@@ -423,24 +429,24 @@
     <h1>FairOddsCalc (iOS / Safari)</h1>
     <div id="jsStatus" class="js-status">Инициализация…</div>
     <div class="tabs">
-      <button type="button" class="tab-btn active" data-tab="goal">Линия</button>
-      <button type="button" class="tab-btn" data-tab="teams">Справочник</button>
-      <button type="button" class="tab-btn" data-tab="hist">История</button>
-      <button type="button" class="tab-btn" data-tab="help">Справка</button>
+      <button type="button" class="tab-btn active" data-tab="goal"><span class="tab-ico" aria-hidden="true">📈</span> Линия</button>
+      <button type="button" class="tab-btn" data-tab="teams"><span class="tab-ico" aria-hidden="true">📋</span> Справочник</button>
+      <button type="button" class="tab-btn" data-tab="hist"><span class="tab-ico" aria-hidden="true">🕓</span> История</button>
+      <button type="button" class="tab-btn" data-tab="help"><span class="tab-ico" aria-hidden="true">❓</span> Справка</button>
     </div>
 
     <!-- TAB A -->
     <section id="tab-a" class="panel">
       <div class="grid">
         <div class="field">
-          <label>Коэф дома (по одному в строке)</label>
+          <label>Коэф. дома (по одному в строке)</label>
           <textarea id="homeOdds">2.02
 1.88
 2.42
 2.07</textarea>
         </div>
         <div class="field">
-          <label>Коэф гости (по одному в строке)</label>
+          <label>Коэф. гостей (по одному в строке)</label>
           <textarea id="awayOdds">2.21
 2.11
 2.79
@@ -660,7 +666,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <!-- TAB GOAL (линия из голевой модели) -->
     <section id="tab-goal" class="panel active">
       <div class="goal-section goal-section--train">
-        <h3>Обучение модели</h3>
+        <h3><span aria-hidden="true">🎯</span> Обучение модели</h3>
         <div class="small">
           Загрузите данные → проверьте блок «Данные обучения» → нажмите «Обучить модель».
         </div>
@@ -690,7 +696,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               </div>
             </div>
             <div class="goal-src-row goal-src-row--action goal-src-action">
-              <button type="button" id="goalLoadHist" class="btn primary">Загрузить из БД</button>
+              <button type="button" id="goalLoadHist" class="btn primary"><span aria-hidden="true">⬇</span> Загрузить из БД</button>
             </div>
           </div>
           <div class="hint" style="margin-top:6px">
@@ -778,20 +784,20 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 
       <div id="goalTrainBanner" class="goal-train-banner idle">Загрузите матчи из БД и обучите модель.</div>
       <div id="goalTrainDataCard" class="goal-train-card" style="display:none">
-        <h4>Данные обучения</h4>
+        <h4><span aria-hidden="true">📊</span> Данные обучения</h4>
         <div id="goalTrainDataBody"></div>
       </div>
       <div class="goal-train-actions goal-train-actions--main">
-        <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
+        <button type="button" id="goalTrain" class="btn primary"><span aria-hidden="true">🎯</span> Обучить модель</button>
         <div id="goalTrainChips" class="goal-train-chips" aria-live="polite"></div>
       </div>
       <div class="goal-train-results">
         <div id="goalTrainCoefCard" class="goal-train-card" style="display:none">
-          <h4>Коэффициенты модели</h4>
+          <h4><span aria-hidden="true">⚙️</span> Коэффициенты модели</h4>
           <div id="goalTrainCoefBody"></div>
         </div>
         <div id="goalTrainRatingsCard" class="goal-train-card" style="display:none">
-          <h4>Рейтинги команд</h4>
+          <h4><span aria-hidden="true">🏆</span> Рейтинги команд</h4>
           <div id="goalTrainRatingsBody"></div>
         </div>
       </div>
@@ -799,7 +805,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
 
       <div class="goal-section goal-section--predict">
-        <h3>Расчёт линии</h3>
+        <h3><span aria-hidden="true">📈</span> Расчёт линии</h3>
         <div class="small" style="margin-bottom:8px">Прогноз будущего матча по обученной модели.</div>
         <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
           <div class="field" style="min-width:150px;flex:1">
@@ -829,11 +835,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <div class="field" style="max-width:80px"><label>%</label><input id="goalMarginPct" value="3" /></div>
       </div>
       <div class="row">
-        <button type="button" id="goalPredict" class="btn primary">Рассчитать линию</button>
+        <button type="button" id="goalPredict" class="btn primary"><span aria-hidden="true">📈</span> Рассчитать линию</button>
       </div>
       <pre id="goalOut" class="shin-details"></pre>
       <div style="margin-top:12px">
-        <div class="small" style="font-weight:600;margin-bottom:6px">История расчётов</div>
+        <div class="small" style="font-weight:600;margin-bottom:6px"><span aria-hidden="true">🕓</span> История расчётов</div>
         <div class="table-wrap">
           <table id="goalHistTable">
             <thead>
