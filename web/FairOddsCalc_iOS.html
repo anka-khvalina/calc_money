@@ -995,7 +995,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <h2>Поля матча (Supabase → модель)</h2>
       <p>Для обучения из <code>v_matches_full</code> используются closing-линии и веса:</p>
       <ul>
-        <li><b>home_team, away_team</b> — команды (имена из справочника <code>team</code>).</li>
+        <li><b>home_team_id, away_team_id</b> — идентификаторы команд из справочника <code>team</code>. <b>Модель опирается на id</b>, а не на имя, поэтому переименование команды в справочнике не ломает рейтинги и прогноз.</li>
+        <li><b>home_team, away_team</b> — имена (для отображения). В интерфейсе команда всегда показывается как <code>id — название</code>.</li>
         <li><b>closing_ah_home</b> + <b>ah_home_odds / ah_away_odds</b> — фора.</li>
         <li><b>closing_total_line</b> + <b>over_odds / under_odds</b> — тотал.</li>
         <li><b>home_odds / draw_odds / away_odds</b> — 1X2 (калибровка).</li>
@@ -1004,6 +1005,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <li><b>Нейтр. вес</b> (<code>neutral_weight</code>) — коэффициент ослабления при обучении; учитывается <b>только</b> если нейтральное поле = да (обычно 0,8).</li>
           <li><b>Дерби</b> — факт (да/нет); в БД <code>derby_weight</code> = 1 или 0. Поправка к H считается при обучении.</li>
       </ul>
+      <p class="small">Команды и лиги в модели хранятся по <b>id</b> (рейтинги, атака, оборона). Имена берутся из карты <code>team_names</code> только для подписей. CSV-импорт без колонок <code>*_team_id</code> использует имя как ключ (совместимость со старым форматом).</p>
       <p class="small">Полный маппинг UI ↔ БД: <code>docs/reference.md</code> в репозитории.</p>
 
       <p class="small">Полная версия в репозитории: <code>docs/training-and-calculation.md</code></p>
@@ -3853,7 +3855,7 @@ bash scripts/update_and_serve.sh --start</div>
     }
 
     function sbMatchesToGoalCsv(matches, leagueName=''){
-      const header = 'date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight';
+      const header = 'date,league,league_id,home_team_id,home_team,away_team_id,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight';
       const cell = v => (v == null ? '' : String(v));
       const lg = leagueName;
       const lines = [header];
@@ -3861,7 +3863,8 @@ bash scripts/update_and_serve.sh --start</div>
         const league = lg || m.league_name || '';
         const derbyFlag = sbIsDerby(m);
         lines.push([
-          cell(m.match_date), cell(league), cell(m.home_team), cell(m.away_team),
+          cell(m.match_date), cell(league), cell(m.league_id),
+          cell(m.home_team_id), cell(m.home_team), cell(m.away_team_id), cell(m.away_team),
           cell(m.closing_ah_home), cell(m.closing_total_line),
           cell(m.ah_home_odds), cell(m.ah_away_odds), cell(m.over_odds), cell(m.under_odds),
           cell(m.home_odds), cell(m.draw_odds), cell(m.away_odds),
