@@ -19,8 +19,7 @@
       background:var(--bg); color:var(--text);
     }
     .wrap{ max-width:980px; margin:0 auto; padding:14px 12px 24px; }
-    body.tab-hist-wide .wrap,
-    body.tab-goal-wide .wrap{ max-width:min(1520px, 98vw); padding-left:10px; padding-right:10px; }
+    body.tab-wide .wrap{ max-width:min(1520px, 98vw); padding-left:10px; padding-right:10px; }
     h1{ font-size:20px; margin:8px 0 12px; }
     .tabs{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
     .tab-btn{
@@ -391,8 +390,7 @@
             for (var j = 0; j < panels.length; j++) {
               panels[j].classList.toggle('active', panels[j].id === panelId);
             }
-            document.body.classList.toggle('tab-hist-wide', id === 'hist');
-            document.body.classList.toggle('tab-goal-wide', id === 'goal');
+            document.body.classList.toggle('tab-wide', id === 'goal' || id === 'hist' || id === 'teams' || id === 'help');
             if (id === 'hist' && window.sbInitHistTab) window.sbInitHistTab();
             if (id === 'goal') {
               if (window.goalInitTab) window.goalInitTab();
@@ -420,7 +418,7 @@
     })();
   </script>
 </head>
-<body class="tab-goal-wide">
+<body class="tab-wide">
   <div class="wrap">
     <h1>FairOddsCalc (iOS / Safari)</h1>
     <div id="jsStatus" class="js-status">Инициализация…</div>
