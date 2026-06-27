@@ -121,12 +121,24 @@ class ModelConfig:
 # Историческая запись матча
 # --------------------------------------------------------------------------- #
 
+def team_key(team_id: Optional[object], name: str) -> str:
+    """Стабильный ключ команды: id из БД, иначе имя (legacy CSV)."""
+    if team_id is not None:
+        s = str(team_id).strip()
+        if s:
+            return s
+    return (name or "").strip()
+
+
 @dataclass
 class RawMatch:
     date: Optional[date]
     league: str
     home_team: str
     away_team: str
+    home_team_id: Optional[str] = None
+    away_team_id: Optional[str] = None
+    league_id: Optional[str] = None
     closing_ah_home: Optional[float] = None
     closing_total_line: Optional[float] = None
     ah_home_odds: Optional[float] = None
@@ -147,7 +159,10 @@ class RawMatch:
 _CSV_ALIASES: Dict[str, str] = {
     "date": "date", "league": "league",
     "home_team": "home_team", "home": "home_team", "team_home": "home_team",
+    "home_team_id": "home_team_id", "homeid": "home_team_id",
     "away_team": "away_team", "away": "away_team", "team_away": "away_team",
+    "away_team_id": "away_team_id", "awayid": "away_team_id",
+    "league_id": "league_id",
     "closing_ah_home": "closing_ah_home", "ah_home_line": "closing_ah_home",
     "ah_line": "closing_ah_home", "handicap": "closing_ah_home",
     "closing_total_line": "closing_total_line", "total_line": "closing_total_line",
@@ -213,11 +228,18 @@ def parse_raw_matches(text: str) -> List["RawMatch"]:
                 rec[col] = val
         if not rec.get("home_team") or not rec.get("away_team"):
             continue
+        home_name = rec["home_team"].strip()
+        away_name = rec["away_team"].strip()
+        home_tid = (rec.get("home_team_id") or "").strip() or None
+        away_tid = (rec.get("away_team_id") or "").strip() or None
         out.append(RawMatch(
             date=_to_date(rec.get("date")),
             league=(rec.get("league") or "").strip(),
-            home_team=rec["home_team"].strip(),
-            away_team=rec["away_team"].strip(),
+            home_team=home_name,
+            away_team=away_name,
+            home_team_id=home_tid,
+            away_team_id=away_tid,
+            league_id=(rec.get("league_id") or "").strip() or None,
             closing_ah_home=_to_float(rec.get("closing_ah_home")),
             closing_total_line=_to_float(rec.get("closing_total_line")),
             ah_home_odds=_to_float(rec.get("ah_home_odds")),
@@ -244,6 +266,8 @@ def load_raw_matches(path: Path) -> List["RawMatch"]:
 @dataclass
 class PreparedMatch:
     raw: RawMatch
+    home_id: str
+    away_id: str
     home_team: str
     away_team: str
     i_home: int
@@ -355,6 +379,8 @@ def prepare_matches(raw: Sequence[RawMatch], cfg: ModelConfig) -> List[PreparedM
             continue
         pm = PreparedMatch(
             raw=r,
+            home_id=team_key(r.home_team_id, r.home_team),
+            away_id=team_key(r.away_team_id, r.away_team),
             home_team=r.home_team.strip(),
             away_team=r.away_team.strip(),
             i_home=0 if r.neutral_flag else 1,
@@ -456,8 +482,8 @@ def _team_match_counts(matches: Sequence[PreparedMatch]) -> Dict[str, int]:
     for m in matches:
         if m.diff_goals is None:
             continue
-        counts[m.home_team] = counts.get(m.home_team, 0) + 1
-        counts[m.away_team] = counts.get(m.away_team, 0) + 1
+        counts[m.home_id] = counts.get(m.home_id, 0) + 1
+        counts[m.away_id] = counts.get(m.away_id, 0) + 1
     return counts
 
 
@@ -485,8 +511,8 @@ def _d_clamp_sensitive_tags(
     if _derby_home_indicator(m):
         tags.append("дерби")
     thr = cfg.d_clamp_low_team_matches
-    hc = team_counts.get(m.home_team, 0)
-    ac = team_counts.get(m.away_team, 0)
+    hc = team_counts.get(m.home_id, 0)
+    ac = team_counts.get(m.away_id, 0)
     tmin = min(hc, ac)
     if tmin <= thr:
         tags.append(f"новичок/мало матчей ({tmin})")
@@ -609,7 +635,7 @@ def fit_strength_ratings(
     used = [m for m in matches if m.diff_goals is not None]
     if len(used) < 2:
         raise ValueError("Недостаточно матчей с восстановленной разницей D_m")
-    teams = sorted({m.home_team for m in used} | {m.away_team for m in used})
+    teams = sorted({m.home_id for m in used} | {m.away_id for m in used})
     idx = {t: i for i, t in enumerate(teams)}
     n_derby = sum(_derby_home_indicator(m) for m in used)
     use_derby_coef = n_derby >= cfg.derby_min_matches
@@ -630,8 +656,8 @@ def fit_strength_ratings(
     targets: List[float] = []
     for m in used:
         row = [0.0] * p
-        row[idx[m.home_team]] += 1.0
-        row[idx[m.away_team]] -= 1.0
+        row[idx[m.home_id]] += 1.0
+        row[idx[m.away_id]] -= 1.0
         row[h_col] = float(m.i_home)
         if d_col is not None:
             row[d_col] = float(_derby_home_indicator(m))
@@ -727,7 +753,7 @@ def fit_attack_defense(
             and m.lambda_home > 0 and m.lambda_away > 0]
     if len(used) < 2:
         raise ValueError("Недостаточно матчей с восстановленными λ")
-    teams = sorted({m.home_team for m in used} | {m.away_team for m in used})
+    teams = sorted({m.home_id for m in used} | {m.away_id for m in used})
     nt = len(teams)
     a_idx = {t: i for i, t in enumerate(teams)}            # attack
     d_idx = {t: nt + i for i, t in enumerate(teams)}       # defense
@@ -741,8 +767,8 @@ def fit_attack_defense(
     for m in used:
         # строка хозяев: log λ_h = μ + A_home − Df_away + H_g·I_home
         rh = [0.0] * p
-        rh[a_idx[m.home_team]] += 1.0
-        rh[d_idx[m.away_team]] -= 1.0
+        rh[a_idx[m.home_id]] += 1.0
+        rh[d_idx[m.away_id]] -= 1.0
         rh[mu_col] = 1.0
         rh[hg_col] = float(m.i_home)
         rows.append(rh)
@@ -750,8 +776,8 @@ def fit_attack_defense(
         base_w.append(m.w_base * m.w_line_t)
         # строка гостей: log λ_a = μ + A_away − Df_home
         ra = [0.0] * p
-        ra[a_idx[m.away_team]] += 1.0
-        ra[d_idx[m.home_team]] -= 1.0
+        ra[a_idx[m.away_id]] += 1.0
+        ra[d_idx[m.home_id]] -= 1.0
         ra[mu_col] = 1.0
         rows.append(ra)
         targets.append(math.log(m.lambda_away))
@@ -909,15 +935,15 @@ def _model_d_s(
         strength, cfg, neutral=m.i_home == 0, derby=derby,
     )
     d_model = (
-        strength.ratings.get(m.home_team, 0.0)
-        - strength.ratings.get(m.away_team, 0.0)
+        strength.ratings.get(m.home_id, 0.0)
+        - strength.ratings.get(m.away_id, 0.0)
         + h_eff
     )
     k_hg = (h_eff / strength.home_advantage) if strength.home_advantage > 1e-9 else 1.0
-    lh = math.exp(goals.mu + goals.attack.get(m.home_team, 0.0)
-                  - goals.defense.get(m.away_team, 0.0) + goals.home_goal_adv * m.i_home * k_hg)
-    la = math.exp(goals.mu + goals.attack.get(m.away_team, 0.0)
-                  - goals.defense.get(m.home_team, 0.0))
+    lh = math.exp(goals.mu + goals.attack.get(m.home_id, 0.0)
+                  - goals.defense.get(m.away_id, 0.0) + goals.home_goal_adv * m.i_home * k_hg)
+    la = math.exp(goals.mu + goals.attack.get(m.away_id, 0.0)
+                  - goals.defense.get(m.home_id, 0.0))
     return d_model, lh + la
 
 
@@ -1298,11 +1324,20 @@ class TrainedModel:
     calibration: Calibration
     draw: DrawModel
     config: ModelConfig
+    team_names: Dict[str, str] = field(default_factory=dict)
     d_clamp: Optional[DClampDiagnostics] = None
     cal_diag: Optional[CalibrationDiagnostics] = None
     draw_q_diag: Optional["DrawQDiagnostics"] = None
     sd_diag: Optional["Sd1x2Diagnostics"] = None
     draw_harm_diag: Optional["DrawHarmDiagnostics"] = None
+
+
+def _build_team_names(matches: Sequence[PreparedMatch]) -> Dict[str, str]:
+    names: Dict[str, str] = {}
+    for m in matches:
+        names[m.home_id] = m.home_team
+        names[m.away_id] = m.away_team
+    return names
 
 
 def train_full_model(
@@ -1324,8 +1359,9 @@ def train_full_model(
     calibration = calibrate(matches, strength, goals, cfg)
     cal_diag = assess_calibration_stability(calibration, cfg=cfg)
     draw = fit_draw_for_config(matches, strength, goals, calibration, cfg)
+    team_names = _build_team_names(matches)
     model = TrainedModel(
-        strength, goals, calibration, draw, cfg, d_clamp, cal_diag, None, None, None,
+        strength, goals, calibration, draw, cfg, team_names, d_clamp, cal_diag, None, None, None,
     )
     draw_q_diag = draw_q_diagnostics(model, matches)
     log_draw_q_diagnostics(draw_q_diag)
@@ -1334,13 +1370,15 @@ def train_full_model(
     draw_harm_diag = draw_harm_diagnostics(model, matches)
     log_draw_harm_diagnostics(draw_harm_diag)
     return TrainedModel(
-        strength, goals, calibration, draw, cfg,
+        strength, goals, calibration, draw, cfg, team_names,
         d_clamp, cal_diag, draw_q_diag, sd_diag, draw_harm_diag,
     ), matches
 
 
 @dataclass
 class Prediction:
+    home_team_id: str
+    away_team_id: str
     home_team: str
     away_team: str
     lambda_home: float
@@ -1364,8 +1402,8 @@ def _promoted_rating(values: Dict[str, float], n: int) -> float:
 
 def predict_match(
     model: TrainedModel,
-    home_team: str,
-    away_team: str,
+    home_id: str,
+    away_id: str,
     *,
     neutral: bool = False,
     derby: bool = False,
@@ -1374,10 +1412,14 @@ def predict_match(
     s, g, cal = model.strength, model.goals, model.calibration
     i_home = 0 if neutral else 1
     h_eff = effective_home_advantage(s, cfg, neutral=neutral, derby=derby)
+    names = model.team_names or {}
+    home_name = names.get(home_id, home_id)
+    away_name = names.get(away_id, away_id)
 
-    unknown = [t for t in (home_team, away_team) if t not in s.ratings]
+    unknown = [t for t in (home_id, away_id) if t not in s.ratings]
     if unknown and not cfg.allow_unknown_teams:
-        raise ValueError(f"Команда не найдена в модели: {', '.join(unknown)}")
+        missing = ", ".join(names.get(t, t) for t in unknown)
+        raise ValueError(f"Команда не найдена в модели: {missing}")
 
     def rating(t: str) -> float:
         return s.ratings[t] if t in s.ratings else _promoted_rating(s.ratings, cfg.promoted_reference_n)
@@ -1389,9 +1431,9 @@ def predict_match(
         return g.defense[t] if t in g.defense else _promoted_rating(g.defense, cfg.promoted_reference_n)
 
     k_hg = (h_eff / s.home_advantage) if s.home_advantage > 1e-9 else 1.0
-    d_model = rating(home_team) - rating(away_team) + h_eff
-    lh_ad = math.exp(g.mu + attack(home_team) - defense(away_team) + g.home_goal_adv * i_home * k_hg)
-    la_ad = math.exp(g.mu + attack(away_team) - defense(home_team))
+    d_model = rating(home_id) - rating(away_id) + h_eff
+    lh_ad = math.exp(g.mu + attack(home_id) - defense(away_id) + g.home_goal_adv * i_home * k_hg)
+    la_ad = math.exp(g.mu + attack(away_id) - defense(home_id))
     s_model = lh_ad + la_ad
 
     d_final = cal.a + cal.b * d_model
@@ -1422,7 +1464,8 @@ def predict_match(
 
     markets = gm.markets_from_matrix(matrix)
     return Prediction(
-        home_team=home_team, away_team=away_team,
+        home_team_id=home_id, away_team_id=away_id,
+        home_team=home_name, away_team=away_name,
         lambda_home=lambda_home, lambda_away=lambda_away,
         d_model=d_model, s_model=s_model, d_final=d_final, s_final=s_final,
         markets=markets,
@@ -1483,7 +1526,7 @@ def draw_q_diagnostics(
     n_near_one = 0
     for m in prepared:
         pred = predict_match(
-            model, m.home_team, m.away_team,
+            model, m.home_id, m.away_id,
             neutral=m.i_home == 0,
             derby=_is_derby_match(m.raw) and m.i_home == 1,
         )
@@ -1589,7 +1632,7 @@ def _match_draw_px_stages(
     _, px_poisson, _ = _prob_1x2_from_sd(s_cal, d_cal, cfg, gamma=0.0)
     _, px_after_dc, _ = _prob_1x2_from_sd(s_cal, d_cal, cfg, gamma=gamma)
     pred = predict_match(
-        model, m.home_team, m.away_team,
+        model, m.home_id, m.away_id,
         neutral=m.i_home == 0,
         derby=_is_derby_match(m.raw) and m.i_home == 1,
     )
@@ -2037,10 +2080,10 @@ def strength_diagnostics(
     for m in prepared:
         if m.diff_goals is None:
             continue
-        if m.home_team not in s.ratings or m.away_team not in s.ratings:
+        if m.home_id not in s.ratings or m.away_id not in s.ratings:
             continue
         d_model = (
-            s.ratings[m.home_team] - s.ratings[m.away_team]
+            s.ratings[m.home_id] - s.ratings[m.away_id]
             + effective_home_advantage(
                 s, model.config,
                 neutral=m.i_home == 0,
@@ -2095,11 +2138,13 @@ def walk_forward_validate(
         if k < min_train:
             continue
         target = ordered[k]
+        home_id = team_key(target.home_team_id, target.home_team)
+        away_id = team_key(target.away_team_id, target.away_team)
         train = ordered[:k]
         try:
             model, _ = train_full_model(train, cfg)
             pred = predict_match(
-                model, target.home_team, target.away_team,
+                model, home_id, away_id,
                 neutral=target.neutral_flag, derby=target.derby_flag,
             )
         except (ValueError, ZeroDivisionError):
@@ -2163,9 +2208,11 @@ def _cmd_train(args: argparse.Namespace) -> None:
         print(f"  средн. S: рынок={_fmt(sd.avg_s_market,3)} модель={_fmt(sd.avg_s_model,3)} "
               f"калибр.={_fmt(sd.avg_s_cal,3)} ΔS={_fmt(sd.avg_delta_s,3)}")
     print("\nРейтинги (сила, нейтраль):")
-    for t, r in sorted(model.strength.ratings.items(), key=lambda kv: kv[1], reverse=True):
-        print(f"  {t:<20} r={_fmt(r,3):>7}  A={_fmt(model.goals.attack[t],3):>7}  "
-              f"Df={_fmt(model.goals.defense[t],3):>7}")
+    names = model.team_names or {}
+    for tid, r in sorted(model.strength.ratings.items(), key=lambda kv: kv[1], reverse=True):
+        label = f"{tid} — {names[tid]}" if names.get(tid) else tid
+        print(f"  {label:<28} r={_fmt(r,3):>7}  A={_fmt(model.goals.attack[tid],3):>7}  "
+              f"Df={_fmt(model.goals.defense[tid],3):>7}")
     if args.home and args.away:
         pred = predict_match(model, args.home, args.away,
                              neutral=args.neutral, derby=args.derby)

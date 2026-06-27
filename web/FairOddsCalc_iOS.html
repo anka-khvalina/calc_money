@@ -3037,8 +3037,11 @@ bash scripts/update_and_serve.sh --start</div>
     function gmSig(z){ return z>=0?1/(1+Math.exp(-z)):Math.exp(z)/(1+Math.exp(z)); }
 
     const GM_ALIAS = {
-      date:'date',league:'league',home_team:'home',home:'home',team_home:'home',
+      date:'date',league:'league',league_id:'leagueId',
+      home_team:'home',home:'home',team_home:'home',
+      home_team_id:'homeId',homeid:'homeId',
       away_team:'away',away:'away',team_away:'away',
+      away_team_id:'awayId',awayid:'awayId',
       closing_ah_home:'ah',ah_home_line:'ah',ah_line:'ah',handicap:'ah',
       closing_total_line:'tot',total_line:'tot',total:'tot',
       ah_home_odds:'aho',ah_away_odds:'aha',over_odds:'ovr',under_odds:'und',
@@ -3052,6 +3055,16 @@ bash scripts/update_and_serve.sh --start</div>
     };
     const DERBY_FLAG_YES = 1;
     const DERBY_FLAG_NO = 0;
+    function gmTeamKey(id, name){
+      const s = id != null ? String(id).trim() : '';
+      if (s) return s;
+      return String(name || '').trim();
+    }
+    function gmTeamLabel(id, names){
+      const nm = names && names[id];
+      if (nm && nm !== id) return `${id} — ${nm}`;
+      return id;
+    }
     function gmNumKey(s){ return String(s).trim().toLowerCase().replace(/[^a-z0-9_а-я]/gi,''); }
     function gmF(v){ if(v==null) return null; const t=String(v).trim().replace(',','.'); if(!t) return null; const n=parseFloat(t); return isNaN(n)?null:n; }
     function gmB(v){ return ['1','true','yes','y','да'].includes(String(v).trim().toLowerCase()); }
@@ -3065,8 +3078,12 @@ bash scripts/update_and_serve.sh --start</div>
         const cells=split(lines[i]); const rec={};
         header.forEach((k,idx)=>{ if(k) rec[k]=cells[idx]; });
         if(!rec.home||!rec.away) continue;
+        const homeName=String(rec.home).trim(), awayName=String(rec.away).trim();
         out.push({
-          date:rec.date||'', home:String(rec.home).trim(), away:String(rec.away).trim(),
+          date:rec.date||'',
+          homeId:gmTeamKey(rec.homeId, homeName), awayId:gmTeamKey(rec.awayId, awayName),
+          homeName, awayName,
+          leagueId:rec.leagueId?String(rec.leagueId).trim():'',
           ah:gmF(rec.ah), tot:gmF(rec.tot), aho:gmF(rec.aho), aha:gmF(rec.aha),
           ovr:gmF(rec.ovr), und:gmF(rec.und), ho:gmF(rec.ho), dо:gmF(rec.dо), ao:gmF(rec.ao),
           neu:gmB(rec.neu), der:gmB(rec.der), q:(rec.q||'').trim()||'',
@@ -3084,7 +3101,7 @@ bash scripts/update_and_serve.sh --start</div>
     function gmPrepare(raw,cfg){
       const ms=[];
       for(const r of raw){
-        const m={raw:r, home:r.home, away:r.away, iHome:r.neu?0:1, wBase:gmMatchWeight(r,cfg)};
+        const m={raw:r, home:r.homeId, away:r.awayId, homeName:r.homeName, awayName:r.awayName, iHome:r.neu?0:1, wBase:gmMatchWeight(r,cfg)};
         if(r.ovr&&r.und) m.pOver=gmDevig2(r.ovr,r.und)[0];
         if(r.aho&&r.aha) m.pAhHome=gmDevig2(r.aho,r.aha)[0];
         if(r.ho&&r.dо&&r.ao){ const s=shinDevig(r.ho,r.dо,r.ao); m.p1=s[0]; m.px=s[1]; m.p2=s[2]; }
@@ -3425,15 +3442,17 @@ bash scripts/update_and_serve.sh --start</div>
         top:gmTop(m,8)};
     }
     function gmPromoted(vals,n){ const arr=Object.values(vals); if(!arr.length) return 0; const w=arr.slice().sort((a,b)=>a-b).slice(0,Math.max(1,n)); return w.reduce((a,b)=>a+b,0)/w.length; }
-    function gmPredict(model,home,away,opt){
+    function gmPredict(model,homeId,awayId,opt){
       const {st,gl,cal,draw,cfg}=model; const iHome=opt.neutral?0:1;
+      const names=model.teamNames||{};
+      const homeName=names[homeId]||homeId, awayName=names[awayId]||awayId;
       const hEff=gmEffectiveH(st,cfg,opt.neutral,!!opt.derby);
       const R=t=>t in st.ratings?st.ratings[t]:gmPromoted(st.ratings,cfg.promotedN);
       const A=t=>t in gl.attack?gl.attack[t]:gmPromoted(gl.attack,cfg.promotedN);
       const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
       const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
-      const dm=R(home)-R(away)+hEff;
-      const lhAD=Math.exp(gl.mu+A(home)-Df(away)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(away)-Df(home)); const sm=lhAD+laAD;
+      const dm=R(homeId)-R(awayId)+hEff;
+      const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(awayId)-Df(homeId)); const sm=lhAD+laAD;
       let df=cal.a+cal.b*dm, sf=gmApplySCal(sm,cal.c,cal.d,cfg); df=gmClampD(df,sf); const lh=(sf+df)/2, la=(sf-df)/2;
       let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
       let dtarget=null,diag=null;
@@ -3444,7 +3463,7 @@ bash scripts/update_and_serve.sh --start</div>
         else dtarget=gmDrawTarget(draw,df,sf);
         [mat,diag]=gmAdjustDraw(mat,dtarget,qmin,qmax);
       }
-      return {lh,la,df,sf,markets:gmMarkets(mat),drawTarget:dtarget,drawDiag:diag};
+      return {homeId,awayId,homeName,awayName,lh,la,df,sf,markets:gmMarkets(mat),drawTarget:dtarget,drawDiag:diag};
     }
     function gmDClampSensitiveTags(m, teamCounts, earlyCutoff, cfg){
       const tags=[];
@@ -3473,7 +3492,7 @@ bash scripts/update_and_serve.sh --start</div>
       const rows=eligible.filter(m=>m.dClampHit).map(m=>{
         const tags=gmDClampSensitiveTags(m, teamCounts, earlyCutoff, cfg||{});
         return {
-          home:m.home, away:m.away, S:m.S, dRaw:m.dRaw!=null?m.dRaw:m.D, dUsed:m.D,
+          home:m.homeName||m.home, away:m.awayName||m.away, S:m.S, dRaw:m.dRaw!=null?m.dRaw:m.D, dUsed:m.D,
           trim:m.dClampTrim||0, atLo:!!m.dClampAtLo, atHi:!!m.dClampAtHi,
           ah:m.raw&&m.raw.ah!=null?m.raw.ah:null, source:m.dSource||'',
           tags, sensitive: tags.length>0,
@@ -3501,7 +3520,7 @@ bash scripts/update_and_serve.sh --start</div>
         const clamped=qr<qmin-1e-6||qr>qmax+1e-6;
         if(clamped){
           nClamped++;
-          rows.push({ home:m.home, away:m.away, qRaw:qr, q, clampLow:Math.abs(q-qmin)<1e-6, clampHigh:Math.abs(q-qmax)<1e-6 });
+          rows.push({ home:m.homeName||m.home, away:m.awayName||m.away, qRaw:qr, q, clampLow:Math.abs(q-qmin)<1e-6, clampHigh:Math.abs(q-qmax)<1e-6 });
         }
       }
       rows.sort((a,b)=>Math.abs(b.qRaw-b.q)-Math.abs(a.qRaw-a.q));
@@ -3602,7 +3621,7 @@ bash scripts/update_and_serve.sh --start</div>
         const [p1Cal,pxCal,p2Cal]=gmProb1x2FromSd(sCal,dCalRaw,cfg,gamma);
         const raw=m.raw||{};
         rows.push({
-          home:m.home, away:m.away, date:raw.date,
+          home:m.homeName||m.home, away:m.awayName||m.away, date:raw.date,
           closingTotal:raw.tot!=null?raw.tot:null, overOdds:raw.over, underOdds:raw.under,
           sMarket:m.S, closingAh:raw.ah!=null?raw.ah:null, dMarket:m.D,
           p1Market:m.p1, pxMarket:m.px, p2Market:m.p2,
@@ -3658,7 +3677,8 @@ bash scripts/update_and_serve.sh --start</div>
       const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
       const draw=gmFitDrawForConfig(ms,st,gl,cal,cfg);
       const calDiag=gmAssessCalibration(cal,cfg);
-      const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag};
+      const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag,teamNames:{}};
+      ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
       model.drawQDiag=gmDrawQDiagnostics(model, ms);
       model.sdDiag=gmSd1x2Diagnostics(model, ms);
       model.drawHarmDiag=gmDrawHarmDiagnostics(model, ms);
@@ -3699,11 +3719,7 @@ bash scripts/update_and_serve.sh --start</div>
       const homeId = document.getElementById('goalPredHome')?.value;
       const awayId = document.getElementById('goalPredAway')?.value;
       if (!leagueId || !homeId || !awayId || homeId === awayId) return null;
-      return {
-        leagueId,
-        home: sbTeamName(leagueId, homeId),
-        away: sbTeamName(leagueId, awayId),
-      };
+      return { leagueId, homeId, awayId };
     }
     function goalFillPredTeamSelects(leagueId){
       const homeSel = document.getElementById('goalPredHome');
@@ -4510,7 +4526,7 @@ bash scripts/update_and_serve.sh --start</div>
     function goalComputeDataSignature(raw){
       if (!raw || !raw.length) return '';
       const parts = raw.map(r => [
-        r.matchId, r.date, r.home, r.away,
+        r.matchId, r.date, r.homeId, r.awayId, r.leagueId,
         r.ah, r.tot, r.aho, r.aha, r.ovr, r.und,
         r.ho, r.dо, r.ao, r.mw, r.der ? 1 : 0, r.neu ? 1 : 0, r.neuw, r.seasonId,
       ].map(v => v == null ? '' : String(v)).join(':'));
@@ -4823,11 +4839,11 @@ bash scripts/update_and_serve.sh --start</div>
       const { st, gl } = gmModel;
       const rows = Object.entries(st.ratings)
         .sort((a, b) => b[1] - a[1])
-        .map(([t, r]) => [
-          escapeHtml(t),
+        .map(([tid, r]) => [
+          escapeHtml(gmTeamLabel(tid, gmModel.teamNames)),
           goalFmtTrainNum(r, 3),
-          goalFmtTrainNum(gl.attack[t] || 0, 3),
-          goalFmtTrainNum(gl.defense[t] || 0, 3),
+          goalFmtTrainNum(gl.attack[tid] || 0, 3),
+          goalFmtTrainNum(gl.defense[tid] || 0, 3),
         ]);
       box.innerHTML = '<table class="goal-train-table goal-train-ratings-table"><thead><tr>'
         + '<th>Команда</th><th>r</th><th>A</th><th>Df</th></tr></thead><tbody>'
@@ -4858,10 +4874,15 @@ bash scripts/update_and_serve.sh --start</div>
     }
 
     function goalDbMatchToRaw(m){
+      const homeName = String(m.home_team || '').trim();
+      const awayName = String(m.away_team || '').trim();
       return {
         date: m.match_date || '',
-        home: String(m.home_team || '').trim(),
-        away: String(m.away_team || '').trim(),
+        homeId: gmTeamKey(m.home_team_id, homeName),
+        awayId: gmTeamKey(m.away_team_id, awayName),
+        homeName,
+        awayName,
+        leagueId: m.league_id != null ? String(m.league_id) : '',
         ah: gmF(m.closing_ah_home),
         tot: gmF(m.closing_total_line),
         aho: gmF(m.ah_home_odds),
@@ -4883,7 +4904,7 @@ bash scripts/update_and_serve.sh --start</div>
     }
 
     function goalRawHasFullLine(r){
-      return !!(r.home && r.away
+      return !!(r.homeId && r.awayId
         && r.ah != null && r.tot != null
         && r.aho != null && r.aha != null
         && r.ovr != null && r.und != null);
@@ -5141,10 +5162,11 @@ bash scripts/update_and_serve.sh --start</div>
       if(!gmModel){ alert('Сначала обучите модель.'); return; }
       const picked = goalPredSelectedTeams();
       if(!picked){ alert('Выберите лигу и две разные команды.'); return; }
-      const { leagueId, home, away } = picked;
+      const { leagueId, homeId, awayId } = picked;
       try{
         const neutral=document.getElementById('goalNeutral').checked, derby=document.getElementById('goalDerby').checked;
-        const pred=gmPredict(gmModel,home,away,{neutral,derby});
+        const pred=gmPredict(gmModel,homeId,awayId,{neutral,derby});
+        const home=pred.homeName, away=pred.awayName;
         const useM=document.getElementById('goalMargin').checked;
         const mg=(parseFloat((document.getElementById('goalMarginPct').value||'3').replace(',','.'))||0)/100;
         const {lines,summary}=gmFormatPredict(pred,home,away,neutral,useM,mg);

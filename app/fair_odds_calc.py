@@ -2085,14 +2085,26 @@ def build_app():
             goal_history.clear()
             _goal_refresh_history()
 
+    def _goal_team_option(model, tid: str) -> str:
+        nm = (model.team_names or {}).get(tid)
+        if nm and nm != tid:
+            return f"{tid} — {nm}"
+        return tid
+
+    def _goal_team_from_option(opt: str) -> str:
+        if " — " in opt:
+            return opt.split(" — ", 1)[0].strip()
+        return opt.strip()
+
     def _goal_refresh_teams():
         model = goal_state["model"]
         teams = sorted(model.strength.ratings) if model else []
-        goal_home_combo["values"] = teams
-        goal_away_combo["values"] = teams
-        if len(teams) >= 2:
-            goal_home_var.set(teams[0])
-            goal_away_var.set(teams[1])
+        opts = [_goal_team_option(model, t) for t in teams] if model else []
+        goal_home_combo["values"] = opts
+        goal_away_combo["values"] = opts
+        if len(opts) >= 2:
+            goal_home_var.set(opts[0])
+            goal_away_var.set(opts[1])
 
     def _goal_train(raw, path_label):
         cfg = _goal_cfg()
@@ -2157,10 +2169,12 @@ def build_app():
             goal_meta_var.set(_goal_format_meta(model, len(raw)))
             _goal_refresh_teams()
             lines = ["Рейтинги (сила на нейтрали) / атака / оборона:"]
-            for t, r in sorted(model.strength.ratings.items(), key=lambda kv: kv[1], reverse=True):
+            names = model.team_names or {}
+            for tid, r in sorted(model.strength.ratings.items(), key=lambda kv: kv[1], reverse=True):
+                label = f"{tid} — {names[tid]}" if names.get(tid) else tid
                 lines.append(
-                    f"  {t:<22} r={r:+.3f}   A={model.goals.attack[t]:+.3f}   "
-                    f"Df={model.goals.defense[t]:+.3f}"
+                    f"  {label:<28} r={r:+.3f}   A={model.goals.attack[tid]:+.3f}   "
+                    f"Df={model.goals.defense[tid]:+.3f}"
                 )
             _goal_set_text("\n".join(lines))
         except Exception as exc:
@@ -2191,14 +2205,14 @@ def build_app():
         if model is None:
             messagebox.showwarning("Линия (голы)", "Сначала загрузите CSV и обучите модель.")
             return
-        home = goal_home_var.get().strip()
-        away = goal_away_var.get().strip()
-        if not home or not away or home == away:
+        home_id = _goal_team_from_option(goal_home_var.get())
+        away_id = _goal_team_from_option(goal_away_var.get())
+        if not home_id or not away_id or home_id == away_id:
             messagebox.showwarning("Линия (голы)", "Выберите разные команды.")
             return
         try:
             pred = gmt.predict_match(
-                model, home, away,
+                model, home_id, away_id,
                 neutral=goal_neutral_var.get(), derby=goal_derby_var.get(),
             )
         except Exception as exc:
@@ -2218,8 +2232,8 @@ def build_app():
         _goal_set_text("\n".join(lines))
         goal_history.add(
             league=_goal_league_key(),
-            home_team=home,
-            away_team=away,
+            home_team=pred.home_team,
+            away_team=pred.away_team,
             summary=summary,
         )
         _goal_refresh_history()
