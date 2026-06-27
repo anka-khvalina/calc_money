@@ -491,7 +491,8 @@ def fetch_matches(league_id: str, season_id: Union[int, str]) -> List[MatchFull]
 def matches_to_goal_csv(matches: List[MatchFull], *, league_name: str = "") -> str:
     """Конвертация матчей в CSV closing-линий для вкладки «Линия»."""
     header = (
-        "date,league,home_team,away_team,closing_ah_home,closing_total_line,"
+        "date,league,league_id,home_team_id,home_team,away_team_id,away_team,"
+        "closing_ah_home,closing_total_line,"
         "ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,"
         "neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight"
     )
@@ -511,7 +512,10 @@ def matches_to_goal_csv(matches: List[MatchFull], *, league_name: str = "") -> s
                 [
                     cell(m.match_date),
                     cell(lg),
+                    cell(m.league_id),
+                    cell(m.home_team_id),
                     cell(m.home_team),
+                    cell(m.away_team_id),
                     cell(m.away_team),
                     cell(m.closing_ah_home),
                     cell(m.closing_total_line),

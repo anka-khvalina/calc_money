@@ -654,6 +654,147 @@ def test_promoted_team_fallback():
     assert raised
 
 
+def test_team_key_prefers_id_falls_back_to_name():
+    assert gmt.team_key("42", "Inter") == "42"
+    assert gmt.team_key(42, "Inter") == "42"
+    assert gmt.team_key(None, "Inter") == "Inter"
+    assert gmt.team_key("", "Inter") == "Inter"
+    assert gmt.team_key("  ", "Empoli") == "Empoli"
+
+
+def test_parse_raw_matches_keeps_team_ids():
+    csv = (
+        "home_team_id,home_team,away_team_id,away_team,league_id,"
+        "closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds\n"
+        "10,Inter,20,Empoli,serie_a,-1.0,2.5,1.9,1.9,1.9,1.9\n"
+    )
+    raw = gmt.parse_raw_matches(csv)
+    assert len(raw) == 1
+    m = raw[0]
+    assert m.home_team_id == "10"
+    assert m.away_team_id == "20"
+    assert m.league_id == "serie_a"
+    assert m.home_team == "Inter" and m.away_team == "Empoli"
+
+
+def test_prepared_match_keys_use_ids():
+    csv = (
+        "home_team_id,home_team,away_team_id,away_team,"
+        "closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds\n"
+        "10,Inter,20,Empoli,-1.0,2.5,1.9,1.9,1.9,1.9\n"
+    )
+    raw = gmt.parse_raw_matches(csv)
+    prepared = gmt.prepare_matches(raw, gmt.ModelConfig())
+    assert prepared[0].home_id == "10"
+    assert prepared[0].away_id == "20"
+    # имена сохранены для отображения
+    assert prepared[0].home_team == "Inter"
+
+
+def test_model_keyed_by_id_with_team_names_map():
+    csv = (
+        "home_team_id,home_team,away_team_id,away_team,"
+        "closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,"
+        "over_odds,under_odds,home_odds,draw_odds,away_odds\n"
+        "10,Inter,20,Empoli,-1.0,3.0,1.9,2.0,1.95,1.95,1.5,4.5,6.0\n"
+        "20,Empoli,10,Inter,0.5,2.5,1.95,1.95,2.0,1.9,3.2,3.4,2.2\n"
+        "10,Inter,30,Roma,-0.5,3.0,1.9,2.0,1.95,1.95,1.8,3.7,4.2\n"
+        "30,Roma,20,Empoli,-0.75,2.75,1.92,1.98,1.95,1.95,1.7,3.8,4.6\n"
+    )
+    raw = gmt.parse_raw_matches(csv)
+    model, _ = gmt.train_full_model(raw)
+    # ключи рейтингов — id, не имена
+    assert set(model.strength.ratings).issubset({"10", "20", "30"})
+    assert "Inter" not in model.strength.ratings
+    # карта id → имя заполнена
+    assert model.team_names["10"] == "Inter"
+    assert model.team_names["20"] == "Empoli"
+    # прогноз по id, имена в результате — из карты
+    pred = gmt.predict_match(model, "10", "20")
+    assert pred.home_team_id == "10" and pred.away_team_id == "20"
+    assert pred.home_team == "Inter" and pred.away_team == "Empoli"
+
+
+def test_predict_rename_safe_by_id():
+    """Та же команда (id), другое отображаемое имя → тот же рейтинг."""
+    csv = (
+        "home_team_id,home_team,away_team_id,away_team,"
+        "closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,"
+        "over_odds,under_odds,home_odds,draw_odds,away_odds\n"
+        "10,Inter,20,Empoli,-1.0,3.0,1.9,2.0,1.95,1.95,1.5,4.5,6.0\n"
+        "20,Empoli,10,Inter,0.5,2.5,1.95,1.95,2.0,1.9,3.2,3.4,2.2\n"
+        "10,Inter,30,Roma,-0.5,3.0,1.9,2.0,1.95,1.95,1.8,3.7,4.2\n"
+        "30,Roma,20,Empoli,-0.75,2.75,1.92,1.98,1.95,1.95,1.7,3.8,4.6\n"
+    )
+    raw = gmt.parse_raw_matches(csv)
+    model, _ = gmt.train_full_model(raw)
+    pred = gmt.predict_match(model, "10", "30")
+    # id известны → не fallback на «новичка»
+    assert pred.home_team_id in model.strength.ratings
+    assert pred.away_team_id in model.strength.ratings
+    assert abs(pred.markets.p1 + pred.markets.px + pred.markets.p2 - 1.0) < 1e-9
+
+
+def test_legacy_csv_without_ids_uses_name_as_key():
+    """Старый CSV без *_team_id: имя становится ключом (совместимость)."""
+    csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
+    raw = gmt.load_raw_matches(csv_path)
+    # без id-колонок RawMatch.*_team_id = None, ключ берётся из имени в prepare
+    assert raw[0].home_team_id is None
+    prepared = gmt.prepare_matches(raw, gmt.ModelConfig())
+    assert prepared[0].home_id == prepared[0].home_team
+    model, _ = gmt.train_full_model(raw)
+    assert "Inter" in model.strength.ratings
+    assert model.team_names["Inter"] == "Inter"
+    pred = gmt.predict_match(model, "Inter", "Empoli")
+    assert pred.home_team == "Inter"
+
+
+def test_unknown_id_blocked_when_disallowed():
+    csv = (
+        "home_team_id,home_team,away_team_id,away_team,"
+        "closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,"
+        "over_odds,under_odds,home_odds,draw_odds,away_odds\n"
+        "10,Inter,20,Empoli,-1.0,3.0,1.9,2.0,1.95,1.95,1.5,4.5,6.0\n"
+        "20,Empoli,10,Inter,0.5,2.5,1.95,1.95,2.0,1.9,3.2,3.4,2.2\n"
+        "10,Inter,30,Roma,-0.5,3.0,1.9,2.0,1.95,1.95,1.8,3.7,4.2\n"
+        "30,Roma,20,Empoli,-0.75,2.75,1.92,1.98,1.95,1.95,1.7,3.8,4.6\n"
+    )
+    raw = gmt.parse_raw_matches(csv)
+    cfg = gmt.ModelConfig(allow_unknown_teams=False)
+    model, _ = gmt.train_full_model(raw, cfg)
+    raised = False
+    try:
+        gmt.predict_match(model, "10", "999")
+    except ValueError as exc:
+        raised = True
+        # в сообщении — имя или id неизвестной команды
+        assert "999" in str(exc)
+    assert raised
+
+
+def test_matches_to_goal_csv_round_trip_preserves_ids():
+    import supabase_history as sbh  # noqa: E402
+    m = sbh.MatchFull(
+        match_id=1, match_date="2025-09-15",
+        league_id="serie_a", league_name="Serie A",
+        season_id=1, season_label="2025-26",
+        home_team_id=10, home_team="Inter",
+        away_team_id=20, away_team="Empoli",
+        closing_ah_home=-1.0, closing_total_line=3.0,
+        ah_home_odds=1.9, ah_away_odds=2.0,
+        over_odds=1.95, under_odds=1.95,
+        home_odds=1.5, draw_odds=4.5, away_odds=6.0,
+        is_neutral=False, match_weight=1.0,
+        derby_weight=0.0, neutral_weight=1.0, note=None,
+    )
+    csv = sbh.matches_to_goal_csv([m])
+    raw = gmt.parse_raw_matches(csv)
+    assert raw[0].home_team_id == "10"
+    assert raw[0].away_team_id == "20"
+    assert raw[0].home_team == "Inter"
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

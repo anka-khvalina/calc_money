@@ -374,6 +374,7 @@ def test_matches_to_goal_csv():
         note=None,
     )
     csv = sbh.matches_to_goal_csv([m])
-    assert csv.startswith("date,league,home_team")
-    assert "Liverpool,Bournemouth" in csv
+    assert csv.startswith("date,league,league_id,home_team_id,home_team")
+    # id команд сохраняются для ключей модели
+    assert "1,Liverpool,2,Bournemouth" in csv
     assert ",2.5," in csv

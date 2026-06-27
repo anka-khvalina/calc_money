@@ -161,11 +161,16 @@ is_neutral, match_weight, derby_weight, neutral_weight
 
 ## Маппинг «Линия» — DB → модель
 
+Команды и лиги в модели хранятся **по id** (`home_team_id`/`away_team_id`/`league_id`). Имена идут в параллельные поля для отображения (`id — name`). CSV без `*_team_id` использует имя как ключ (legacy).
+
 | Поле `v_matches_full` | Внутреннее (JS / обучение) |
 |-----------------------|----------------------------|
 | `match_date` | `date` |
-| `home_team` | `home` |
-| `away_team` | `away` |
+| `home_team_id` | `homeId` → ключ `home` (рейтинги) |
+| `away_team_id` | `awayId` → ключ `away` (рейтинги) |
+| `league_id` | `leagueId` |
+| `home_team` | `homeName` (отображение) |
+| `away_team` | `awayName` (отображение) |
 | `closing_ah_home` | `ah` |
 | `closing_total_line` | `tot` |
 | `ah_home_odds` | `aho` |
@@ -194,9 +199,13 @@ ah_home_odds, ah_away_odds, over_odds, under_odds
 
 | CSV-колонка | Поле БД / модели |
 |-------------|------------------|
+| `home_team_id`, `away_team_id` | ключи команд (если есть; иначе имя) |
+| `league_id` | id лиги |
 | `value`, `quality_weight` | `match_weight` |
 | `neutral_flag` | `is_neutral` |
 | `derby_flag` | факт дерби (legacy CSV); в UI — колонка «Дерби» |
+
+Экспорт `matches_to_goal_csv` теперь пишет `*_team_id` и `league_id`, чтобы ключи модели переживали round-trip CSV.
 
 ---
 

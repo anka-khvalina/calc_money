@@ -29,6 +29,10 @@
       cursor:pointer; touch-action:manipulation;
       -webkit-tap-highlight-color:rgba(37,90,214,0.15);
     }
+    .tab-btn{ transition:background .15s ease, color .15s ease, border-color .15s ease; }
+    .tab-btn:hover{ background:#e0e8ff; }
+    .tab-btn.active:hover{ background:var(--accent); }
+    .tab-btn .tab-ico{ font-size:13px; }
     .tab-btn.active{ background:var(--accent); color:#fff; border-color:var(--accent); }
     .panel{
       background:var(--card); border:1px solid var(--line); border-radius:14px;
@@ -52,7 +56,9 @@
       padding:9px 12px; font-size:14px; font-weight:600;
       cursor:pointer; touch-action:manipulation;
       -webkit-tap-highlight-color:rgba(37,90,214,0.15);
+      transition:filter .15s ease, box-shadow .15s ease, transform .05s ease;
     }
+    .btn.primary:hover{ filter:brightness(1.06); box-shadow:0 2px 8px rgba(37,90,214,0.25); }
     .js-status{
       font-size:11px; color:var(--muted); margin:-4px 0 10px;
       padding:6px 10px; background:#fff; border:1px solid var(--line);
@@ -66,11 +72,17 @@
       font-size:13px; padding:5px 7px; box-sizing:border-box;
     }
     #tab-hist .hist-matches-wrap{
-      overflow-x:auto; -webkit-overflow-scrolling:touch;
+      overflow:auto; -webkit-overflow-scrolling:touch;
       margin-left:-6px; margin-right:-6px;
+      max-height:min(72vh, calc(100dvh - 220px));
     }
     #clhViewTable{
       min-width:1180px; table-layout:auto;
+    }
+    #clhViewTable thead th{
+      position:sticky; top:0; z-index:2;
+      background:#f8fafc;
+      box-shadow:0 1px 0 var(--line);
     }
     #clhViewTable th, #clhViewTable td{
       padding:7px 9px; font-size:12.5px; vertical-align:middle;
@@ -423,24 +435,24 @@
     <h1>FairOddsCalc (iOS / Safari)</h1>
     <div id="jsStatus" class="js-status">Инициализация…</div>
     <div class="tabs">
-      <button type="button" class="tab-btn active" data-tab="goal">Линия</button>
-      <button type="button" class="tab-btn" data-tab="teams">Справочник</button>
-      <button type="button" class="tab-btn" data-tab="hist">История</button>
-      <button type="button" class="tab-btn" data-tab="help">Справка</button>
+      <button type="button" class="tab-btn active" data-tab="goal"><span class="tab-ico" aria-hidden="true">📈</span> Линия</button>
+      <button type="button" class="tab-btn" data-tab="teams"><span class="tab-ico" aria-hidden="true">📋</span> Справочник</button>
+      <button type="button" class="tab-btn" data-tab="hist"><span class="tab-ico" aria-hidden="true">🕓</span> История</button>
+      <button type="button" class="tab-btn" data-tab="help"><span class="tab-ico" aria-hidden="true">❓</span> Справка</button>
     </div>
 
     <!-- TAB A -->
     <section id="tab-a" class="panel">
       <div class="grid">
         <div class="field">
-          <label>Коэф дома (по одному в строке)</label>
+          <label>Коэф. дома (по одному в строке)</label>
           <textarea id="homeOdds">2.02
 1.88
 2.42
 2.07</textarea>
         </div>
         <div class="field">
-          <label>Коэф гости (по одному в строке)</label>
+          <label>Коэф. гостей (по одному в строке)</label>
           <textarea id="awayOdds">2.21
 2.11
 2.79
@@ -660,7 +672,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <!-- TAB GOAL (линия из голевой модели) -->
     <section id="tab-goal" class="panel active">
       <div class="goal-section goal-section--train">
-        <h3>Обучение модели</h3>
+        <h3><span aria-hidden="true">🎯</span> Обучение модели</h3>
         <div class="small">
           Загрузите данные → проверьте блок «Данные обучения» → нажмите «Обучить модель».
         </div>
@@ -690,7 +702,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               </div>
             </div>
             <div class="goal-src-row goal-src-row--action goal-src-action">
-              <button type="button" id="goalLoadHist" class="btn primary">Загрузить из БД</button>
+              <button type="button" id="goalLoadHist" class="btn primary"><span aria-hidden="true">⬇</span> Загрузить из БД</button>
             </div>
           </div>
           <div class="hint" style="margin-top:6px">
@@ -778,20 +790,20 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 
       <div id="goalTrainBanner" class="goal-train-banner idle">Загрузите матчи из БД и обучите модель.</div>
       <div id="goalTrainDataCard" class="goal-train-card" style="display:none">
-        <h4>Данные обучения</h4>
+        <h4><span aria-hidden="true">📊</span> Данные обучения</h4>
         <div id="goalTrainDataBody"></div>
       </div>
       <div class="goal-train-actions goal-train-actions--main">
-        <button type="button" id="goalTrain" class="btn primary">Обучить модель</button>
+        <button type="button" id="goalTrain" class="btn primary"><span aria-hidden="true">🎯</span> Обучить модель</button>
         <div id="goalTrainChips" class="goal-train-chips" aria-live="polite"></div>
       </div>
       <div class="goal-train-results">
         <div id="goalTrainCoefCard" class="goal-train-card" style="display:none">
-          <h4>Коэффициенты модели</h4>
+          <h4><span aria-hidden="true">⚙️</span> Коэффициенты модели</h4>
           <div id="goalTrainCoefBody"></div>
         </div>
         <div id="goalTrainRatingsCard" class="goal-train-card" style="display:none">
-          <h4>Рейтинги команд</h4>
+          <h4><span aria-hidden="true">🏆</span> Рейтинги команд</h4>
           <div id="goalTrainRatingsBody"></div>
         </div>
       </div>
@@ -799,7 +811,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
 
       <div class="goal-section goal-section--predict">
-        <h3>Расчёт линии</h3>
+        <h3><span aria-hidden="true">📈</span> Расчёт линии</h3>
         <div class="small" style="margin-bottom:8px">Прогноз будущего матча по обученной модели.</div>
         <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
           <div class="field" style="min-width:150px;flex:1">
@@ -829,11 +841,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <div class="field" style="max-width:80px"><label>%</label><input id="goalMarginPct" value="3" /></div>
       </div>
       <div class="row">
-        <button type="button" id="goalPredict" class="btn primary">Рассчитать линию</button>
+        <button type="button" id="goalPredict" class="btn primary"><span aria-hidden="true">📈</span> Рассчитать линию</button>
       </div>
       <pre id="goalOut" class="shin-details"></pre>
       <div style="margin-top:12px">
-        <div class="small" style="font-weight:600;margin-bottom:6px">История расчётов</div>
+        <div class="small" style="font-weight:600;margin-bottom:6px"><span aria-hidden="true">🕓</span> История расчётов</div>
         <div class="table-wrap">
           <table id="goalHistTable">
             <thead>
@@ -995,7 +1007,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <h2>Поля матча (Supabase → модель)</h2>
       <p>Для обучения из <code>v_matches_full</code> используются closing-линии и веса:</p>
       <ul>
-        <li><b>home_team, away_team</b> — команды (имена из справочника <code>team</code>).</li>
+        <li><b>home_team_id, away_team_id</b> — идентификаторы команд из справочника <code>team</code>. <b>Модель опирается на id</b>, а не на имя, поэтому переименование команды в справочнике не ломает рейтинги и прогноз.</li>
+        <li><b>home_team, away_team</b> — имена (для отображения). В интерфейсе команда всегда показывается как <code>id — название</code>.</li>
         <li><b>closing_ah_home</b> + <b>ah_home_odds / ah_away_odds</b> — фора.</li>
         <li><b>closing_total_line</b> + <b>over_odds / under_odds</b> — тотал.</li>
         <li><b>home_odds / draw_odds / away_odds</b> — 1X2 (калибровка).</li>
@@ -1004,6 +1017,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <li><b>Нейтр. вес</b> (<code>neutral_weight</code>) — коэффициент ослабления при обучении; учитывается <b>только</b> если нейтральное поле = да (обычно 0,8).</li>
           <li><b>Дерби</b> — факт (да/нет); в БД <code>derby_weight</code> = 1 или 0. Поправка к H считается при обучении.</li>
       </ul>
+      <p class="small">Команды и лиги в модели хранятся по <b>id</b> (рейтинги, атака, оборона). Имена берутся из карты <code>team_names</code> только для подписей. CSV-импорт без колонок <code>*_team_id</code> использует имя как ключ (совместимость со старым форматом).</p>
       <p class="small">Полный маппинг UI ↔ БД: <code>docs/reference.md</code> в репозитории.</p>
 
       <p class="small">Полная версия в репозитории: <code>docs/training-and-calculation.md</code></p>
@@ -3036,9 +3050,14 @@ bash scripts/update_and_serve.sh --start</div>
     function gmHuber(e,delta){ const ae=Math.abs(e); return ae<=delta?1:delta/ae; }
     function gmSig(z){ return z>=0?1/(1+Math.exp(-z)):Math.exp(z)/(1+Math.exp(z)); }
 
+    /* CSV-загрузка матчей отключена: «Линия» берёт данные только из БД (Supabase).
+       Маппинг колонок CSV для голевой модели больше не используется (см. gmParseCsv ниже).
     const GM_ALIAS = {
-      date:'date',league:'league',home_team:'home',home:'home',team_home:'home',
+      date:'date',league:'league',league_id:'leagueId',
+      home_team:'home',home:'home',team_home:'home',
+      home_team_id:'homeId',homeid:'homeId',
       away_team:'away',away:'away',team_away:'away',
+      away_team_id:'awayId',awayid:'awayId',
       closing_ah_home:'ah',ah_home_line:'ah',ah_line:'ah',handicap:'ah',
       closing_total_line:'tot',total_line:'tot',total:'tot',
       ah_home_odds:'aho',ah_away_odds:'aha',over_odds:'ovr',under_odds:'und',
@@ -3050,11 +3069,24 @@ bash scripts/update_and_serve.sh --start</div>
       derby_weight:'derw',derby_value:'derw',
       neutral_weight:'neuw',neutral_value:'neuw',
     };
+    */
     const DERBY_FLAG_YES = 1;
     const DERBY_FLAG_NO = 0;
+    function gmTeamKey(id, name){
+      const s = id != null ? String(id).trim() : '';
+      if (s) return s;
+      return String(name || '').trim();
+    }
+    function gmTeamLabel(id, names){
+      const nm = names && names[id];
+      if (nm && nm !== id) return `${id} — ${nm}`;
+      return id;
+    }
     function gmNumKey(s){ return String(s).trim().toLowerCase().replace(/[^a-z0-9_а-я]/gi,''); }
     function gmF(v){ if(v==null) return null; const t=String(v).trim().replace(',','.'); if(!t) return null; const n=parseFloat(t); return isNaN(n)?null:n; }
     function gmB(v){ return ['1','true','yes','y','да'].includes(String(v).trim().toLowerCase()); }
+    /* CSV-загрузка матчей голевой модели отключена — данные берём только из БД (sbLoadMatchesForSeasons → goalMatchesToRaw).
+       Парсер CSV сохранён в комментарии на случай возврата офлайн-импорта.
     function gmParseCsv(text){
       const lines=text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
       if(!lines.length) return [];
@@ -3065,8 +3097,12 @@ bash scripts/update_and_serve.sh --start</div>
         const cells=split(lines[i]); const rec={};
         header.forEach((k,idx)=>{ if(k) rec[k]=cells[idx]; });
         if(!rec.home||!rec.away) continue;
+        const homeName=String(rec.home).trim(), awayName=String(rec.away).trim();
         out.push({
-          date:rec.date||'', home:String(rec.home).trim(), away:String(rec.away).trim(),
+          date:rec.date||'',
+          homeId:gmTeamKey(rec.homeId, homeName), awayId:gmTeamKey(rec.awayId, awayName),
+          homeName, awayName,
+          leagueId:rec.leagueId?String(rec.leagueId).trim():'',
           ah:gmF(rec.ah), tot:gmF(rec.tot), aho:gmF(rec.aho), aha:gmF(rec.aha),
           ovr:gmF(rec.ovr), und:gmF(rec.und), ho:gmF(rec.ho), dо:gmF(rec.dо), ao:gmF(rec.ao),
           neu:gmB(rec.neu), der:gmB(rec.der), q:(rec.q||'').trim()||'',
@@ -3075,6 +3111,7 @@ bash scripts/update_and_serve.sh --start</div>
       }
       return out;
     }
+    */
     function gmMatchWeight(r, cfg){
       const wq = r.mw != null ? r.mw : 1.0;
       const wn = r.neu ? (r.neuw != null ? r.neuw : 1.0) : 1.0;
@@ -3084,7 +3121,7 @@ bash scripts/update_and_serve.sh --start</div>
     function gmPrepare(raw,cfg){
       const ms=[];
       for(const r of raw){
-        const m={raw:r, home:r.home, away:r.away, iHome:r.neu?0:1, wBase:gmMatchWeight(r,cfg)};
+        const m={raw:r, home:r.homeId, away:r.awayId, homeName:r.homeName, awayName:r.awayName, iHome:r.neu?0:1, wBase:gmMatchWeight(r,cfg)};
         if(r.ovr&&r.und) m.pOver=gmDevig2(r.ovr,r.und)[0];
         if(r.aho&&r.aha) m.pAhHome=gmDevig2(r.aho,r.aha)[0];
         if(r.ho&&r.dо&&r.ao){ const s=shinDevig(r.ho,r.dо,r.ao); m.p1=s[0]; m.px=s[1]; m.p2=s[2]; }
@@ -3425,15 +3462,17 @@ bash scripts/update_and_serve.sh --start</div>
         top:gmTop(m,8)};
     }
     function gmPromoted(vals,n){ const arr=Object.values(vals); if(!arr.length) return 0; const w=arr.slice().sort((a,b)=>a-b).slice(0,Math.max(1,n)); return w.reduce((a,b)=>a+b,0)/w.length; }
-    function gmPredict(model,home,away,opt){
+    function gmPredict(model,homeId,awayId,opt){
       const {st,gl,cal,draw,cfg}=model; const iHome=opt.neutral?0:1;
+      const names=model.teamNames||{};
+      const homeName=names[homeId]||homeId, awayName=names[awayId]||awayId;
       const hEff=gmEffectiveH(st,cfg,opt.neutral,!!opt.derby);
       const R=t=>t in st.ratings?st.ratings[t]:gmPromoted(st.ratings,cfg.promotedN);
       const A=t=>t in gl.attack?gl.attack[t]:gmPromoted(gl.attack,cfg.promotedN);
       const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
       const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
-      const dm=R(home)-R(away)+hEff;
-      const lhAD=Math.exp(gl.mu+A(home)-Df(away)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(away)-Df(home)); const sm=lhAD+laAD;
+      const dm=R(homeId)-R(awayId)+hEff;
+      const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(awayId)-Df(homeId)); const sm=lhAD+laAD;
       let df=cal.a+cal.b*dm, sf=gmApplySCal(sm,cal.c,cal.d,cfg); df=gmClampD(df,sf); const lh=(sf+df)/2, la=(sf-df)/2;
       let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
       let dtarget=null,diag=null;
@@ -3444,7 +3483,7 @@ bash scripts/update_and_serve.sh --start</div>
         else dtarget=gmDrawTarget(draw,df,sf);
         [mat,diag]=gmAdjustDraw(mat,dtarget,qmin,qmax);
       }
-      return {lh,la,df,sf,markets:gmMarkets(mat),drawTarget:dtarget,drawDiag:diag};
+      return {homeId,awayId,homeName,awayName,lh,la,df,sf,markets:gmMarkets(mat),drawTarget:dtarget,drawDiag:diag};
     }
     function gmDClampSensitiveTags(m, teamCounts, earlyCutoff, cfg){
       const tags=[];
@@ -3473,7 +3512,7 @@ bash scripts/update_and_serve.sh --start</div>
       const rows=eligible.filter(m=>m.dClampHit).map(m=>{
         const tags=gmDClampSensitiveTags(m, teamCounts, earlyCutoff, cfg||{});
         return {
-          home:m.home, away:m.away, S:m.S, dRaw:m.dRaw!=null?m.dRaw:m.D, dUsed:m.D,
+          home:m.homeName||m.home, away:m.awayName||m.away, S:m.S, dRaw:m.dRaw!=null?m.dRaw:m.D, dUsed:m.D,
           trim:m.dClampTrim||0, atLo:!!m.dClampAtLo, atHi:!!m.dClampAtHi,
           ah:m.raw&&m.raw.ah!=null?m.raw.ah:null, source:m.dSource||'',
           tags, sensitive: tags.length>0,
@@ -3501,7 +3540,7 @@ bash scripts/update_and_serve.sh --start</div>
         const clamped=qr<qmin-1e-6||qr>qmax+1e-6;
         if(clamped){
           nClamped++;
-          rows.push({ home:m.home, away:m.away, qRaw:qr, q, clampLow:Math.abs(q-qmin)<1e-6, clampHigh:Math.abs(q-qmax)<1e-6 });
+          rows.push({ home:m.homeName||m.home, away:m.awayName||m.away, qRaw:qr, q, clampLow:Math.abs(q-qmin)<1e-6, clampHigh:Math.abs(q-qmax)<1e-6 });
         }
       }
       rows.sort((a,b)=>Math.abs(b.qRaw-b.q)-Math.abs(a.qRaw-a.q));
@@ -3602,7 +3641,7 @@ bash scripts/update_and_serve.sh --start</div>
         const [p1Cal,pxCal,p2Cal]=gmProb1x2FromSd(sCal,dCalRaw,cfg,gamma);
         const raw=m.raw||{};
         rows.push({
-          home:m.home, away:m.away, date:raw.date,
+          home:m.homeName||m.home, away:m.awayName||m.away, date:raw.date,
           closingTotal:raw.tot!=null?raw.tot:null, overOdds:raw.over, underOdds:raw.under,
           sMarket:m.S, closingAh:raw.ah!=null?raw.ah:null, dMarket:m.D,
           p1Market:m.p1, pxMarket:m.px, p2Market:m.p2,
@@ -3658,7 +3697,8 @@ bash scripts/update_and_serve.sh --start</div>
       const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
       const draw=gmFitDrawForConfig(ms,st,gl,cal,cfg);
       const calDiag=gmAssessCalibration(cal,cfg);
-      const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag};
+      const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag,teamNames:{}};
+      ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
       model.drawQDiag=gmDrawQDiagnostics(model, ms);
       model.sdDiag=gmSd1x2Diagnostics(model, ms);
       model.drawHarmDiag=gmDrawHarmDiagnostics(model, ms);
@@ -3699,11 +3739,7 @@ bash scripts/update_and_serve.sh --start</div>
       const homeId = document.getElementById('goalPredHome')?.value;
       const awayId = document.getElementById('goalPredAway')?.value;
       if (!leagueId || !homeId || !awayId || homeId === awayId) return null;
-      return {
-        leagueId,
-        home: sbTeamName(leagueId, homeId),
-        away: sbTeamName(leagueId, awayId),
-      };
+      return { leagueId, homeId, awayId };
     }
     function goalFillPredTeamSelects(leagueId){
       const homeSel = document.getElementById('goalPredHome');
@@ -3837,7 +3873,7 @@ bash scripts/update_and_serve.sh --start</div>
     }
 
     function sbMatchesToGoalCsv(matches, leagueName=''){
-      const header = 'date,league,home_team,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight';
+      const header = 'date,league,league_id,home_team_id,home_team,away_team_id,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight';
       const cell = v => (v == null ? '' : String(v));
       const lg = leagueName;
       const lines = [header];
@@ -3845,7 +3881,8 @@ bash scripts/update_and_serve.sh --start</div>
         const league = lg || m.league_name || '';
         const derbyFlag = sbIsDerby(m);
         lines.push([
-          cell(m.match_date), cell(league), cell(m.home_team), cell(m.away_team),
+          cell(m.match_date), cell(league), cell(m.league_id),
+          cell(m.home_team_id), cell(m.home_team), cell(m.away_team_id), cell(m.away_team),
           cell(m.closing_ah_home), cell(m.closing_total_line),
           cell(m.ah_home_odds), cell(m.ah_away_odds), cell(m.over_odds), cell(m.under_odds),
           cell(m.home_odds), cell(m.draw_odds), cell(m.away_odds),
@@ -4510,7 +4547,7 @@ bash scripts/update_and_serve.sh --start</div>
     function goalComputeDataSignature(raw){
       if (!raw || !raw.length) return '';
       const parts = raw.map(r => [
-        r.matchId, r.date, r.home, r.away,
+        r.matchId, r.date, r.homeId, r.awayId, r.leagueId,
         r.ah, r.tot, r.aho, r.aha, r.ovr, r.und,
         r.ho, r.dо, r.ao, r.mw, r.der ? 1 : 0, r.neu ? 1 : 0, r.neuw, r.seasonId,
       ].map(v => v == null ? '' : String(v)).join(':'));
@@ -4823,11 +4860,11 @@ bash scripts/update_and_serve.sh --start</div>
       const { st, gl } = gmModel;
       const rows = Object.entries(st.ratings)
         .sort((a, b) => b[1] - a[1])
-        .map(([t, r]) => [
-          escapeHtml(t),
+        .map(([tid, r]) => [
+          escapeHtml(gmTeamLabel(tid, gmModel.teamNames)),
           goalFmtTrainNum(r, 3),
-          goalFmtTrainNum(gl.attack[t] || 0, 3),
-          goalFmtTrainNum(gl.defense[t] || 0, 3),
+          goalFmtTrainNum(gl.attack[tid] || 0, 3),
+          goalFmtTrainNum(gl.defense[tid] || 0, 3),
         ]);
       box.innerHTML = '<table class="goal-train-table goal-train-ratings-table"><thead><tr>'
         + '<th>Команда</th><th>r</th><th>A</th><th>Df</th></tr></thead><tbody>'
@@ -4858,10 +4895,15 @@ bash scripts/update_and_serve.sh --start</div>
     }
 
     function goalDbMatchToRaw(m){
+      const homeName = String(m.home_team || '').trim();
+      const awayName = String(m.away_team || '').trim();
       return {
         date: m.match_date || '',
-        home: String(m.home_team || '').trim(),
-        away: String(m.away_team || '').trim(),
+        homeId: gmTeamKey(m.home_team_id, homeName),
+        awayId: gmTeamKey(m.away_team_id, awayName),
+        homeName,
+        awayName,
+        leagueId: m.league_id != null ? String(m.league_id) : '',
         ah: gmF(m.closing_ah_home),
         tot: gmF(m.closing_total_line),
         aho: gmF(m.ah_home_odds),
@@ -4883,7 +4925,7 @@ bash scripts/update_and_serve.sh --start</div>
     }
 
     function goalRawHasFullLine(r){
-      return !!(r.home && r.away
+      return !!(r.homeId && r.awayId
         && r.ah != null && r.tot != null
         && r.aho != null && r.aha != null
         && r.ovr != null && r.und != null);
@@ -5141,10 +5183,11 @@ bash scripts/update_and_serve.sh --start</div>
       if(!gmModel){ alert('Сначала обучите модель.'); return; }
       const picked = goalPredSelectedTeams();
       if(!picked){ alert('Выберите лигу и две разные команды.'); return; }
-      const { leagueId, home, away } = picked;
+      const { leagueId, homeId, awayId } = picked;
       try{
         const neutral=document.getElementById('goalNeutral').checked, derby=document.getElementById('goalDerby').checked;
-        const pred=gmPredict(gmModel,home,away,{neutral,derby});
+        const pred=gmPredict(gmModel,homeId,awayId,{neutral,derby});
+        const home=pred.homeName, away=pred.awayName;
         const useM=document.getElementById('goalMargin').checked;
         const mg=(parseFloat((document.getElementById('goalMarginPct').value||'3').replace(',','.'))||0)/100;
         const {lines,summary}=gmFormatPredict(pred,home,away,neutral,useM,mg);
