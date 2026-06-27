@@ -3044,6 +3044,8 @@ bash scripts/update_and_serve.sh --start</div>
     function gmHuber(e,delta){ const ae=Math.abs(e); return ae<=delta?1:delta/ae; }
     function gmSig(z){ return z>=0?1/(1+Math.exp(-z)):Math.exp(z)/(1+Math.exp(z)); }
 
+    /* CSV-загрузка матчей отключена: «Линия» берёт данные только из БД (Supabase).
+       Маппинг колонок CSV для голевой модели больше не используется (см. gmParseCsv ниже).
     const GM_ALIAS = {
       date:'date',league:'league',league_id:'leagueId',
       home_team:'home',home:'home',team_home:'home',
@@ -3061,6 +3063,7 @@ bash scripts/update_and_serve.sh --start</div>
       derby_weight:'derw',derby_value:'derw',
       neutral_weight:'neuw',neutral_value:'neuw',
     };
+    */
     const DERBY_FLAG_YES = 1;
     const DERBY_FLAG_NO = 0;
     function gmTeamKey(id, name){
@@ -3076,6 +3079,8 @@ bash scripts/update_and_serve.sh --start</div>
     function gmNumKey(s){ return String(s).trim().toLowerCase().replace(/[^a-z0-9_а-я]/gi,''); }
     function gmF(v){ if(v==null) return null; const t=String(v).trim().replace(',','.'); if(!t) return null; const n=parseFloat(t); return isNaN(n)?null:n; }
     function gmB(v){ return ['1','true','yes','y','да'].includes(String(v).trim().toLowerCase()); }
+    /* CSV-загрузка матчей голевой модели отключена — данные берём только из БД (sbLoadMatchesForSeasons → goalMatchesToRaw).
+       Парсер CSV сохранён в комментарии на случай возврата офлайн-импорта.
     function gmParseCsv(text){
       const lines=text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
       if(!lines.length) return [];
@@ -3100,6 +3105,7 @@ bash scripts/update_and_serve.sh --start</div>
       }
       return out;
     }
+    */
     function gmMatchWeight(r, cfg){
       const wq = r.mw != null ? r.mw : 1.0;
       const wn = r.neu ? (r.neuw != null ? r.neuw : 1.0) : 1.0;
