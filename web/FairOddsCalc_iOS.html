@@ -72,11 +72,17 @@
       font-size:13px; padding:5px 7px; box-sizing:border-box;
     }
     #tab-hist .hist-matches-wrap{
-      overflow-x:auto; -webkit-overflow-scrolling:touch;
+      overflow:auto; -webkit-overflow-scrolling:touch;
       margin-left:-6px; margin-right:-6px;
+      max-height:min(72vh, calc(100dvh - 220px));
     }
     #clhViewTable{
       min-width:1180px; table-layout:auto;
+    }
+    #clhViewTable thead th{
+      position:sticky; top:0; z-index:2;
+      background:#f8fafc;
+      box-shadow:0 1px 0 var(--line);
     }
     #clhViewTable th, #clhViewTable td{
       padding:7px 9px; font-size:12.5px; vertical-align:middle;
