@@ -43,7 +43,7 @@ D_m = λ_h − λ_a   — разница (из форы + AH-odds)
 
 ## 3. Веса матча
 
-### Базовый вес
+### Базовый вес при обучении
 
 ```text
 w_base = season_weight × match_weight × neutral_mult
@@ -51,25 +51,53 @@ w_base = season_weight × match_weight × neutral_mult
 neutral_mult = is_neutral ? neutral_weight : 1.0
 ```
 
-**Дерби не входит в вес.** Флаг дерби (`derby_weight` = 1 в БД) используется только при оценке поправки к домашнему преимуществу `H` (см. §4).
+| Множитель | Где задаётся | Пример |
+|-----------|--------------|--------|
+| `season_weight` | таблица весов на вкладке «Линия» | прошлый сезон 0.7 |
+| `match_weight` | БД / «История» → «Вес» | низкая мотивация 0.5 (legacy CSV: колонка `value`) |
+| `neutral_weight` | БД / «История» → ▼ Веса | 0.8, **только** если нейтральное поле = да |
+| Дерби | «История» → ▼ Веса | флаг 1/0; `δ_derby` при обучении, `H_eff` при прогнозе |
 
-### На этапе «сила» (D_m = r_h − r_a + H_eff)
+**Дерби не входит в `w_base`.** В БД `derby_weight` = **1** (дерби) или **0** / пусто (не дерби).  
+Флаг участвует в регрессии силы как `δ_derby · I_derby_home` (§4).
+
+`match_weight = 0` — матч не влияет на обучение.  
+Метка `low_motivation` в `note` — только заметка; в формулу входит **число** `match_weight`.
+
+### Прогноз: дерби меняет H, не вес
+
+```text
+H_eff = 0                              # нейтральное поле
+H_eff = H_league                       # обычный матч
+H_eff = shrink(H_league + δ_used)      # дерби (если δ оценена)
+H_eff = derbyDefaultFactor × H_league  # дерби, мало данных (default 0.7; 0.4 — агрессивно)
+
+D_pred = r_home − r_away + H_eff
+```
+
+### Автоматические множители (в коде)
+
+**Этап «сила»** (`D_m = r_h − r_a + H_eff`):
 
 ```text
 w_line_AH = clamp(1 / (1 + α_AH · |D_m|^p), 0.15, 1)
 w_strength = w_base × w_line_AH × w_robust_Huber
 ```
 
-Defaults: `α_AH = 0.25`, `p = 2`.
+Большой перевес по форе → матч слабее влияет на рейтинг. Defaults: `α_AH = 0.25`, `p = 2`.
 
-### На этапе attack/defense (log λ)
+**Этап attack/defense** (log λ):
 
 ```text
 w_line_T = clamp(1 / (1 + α_T · (S_m − S̄)²), 0.3, 1)
 w_attack = w_base × w_line_T × w_robust_Huber
 ```
 
-Default: `α_T = 0.5`.
+Экстремальный тотал → меньший вес. Default: `α_T = 0.5`.
+
+`w_robust_Huber` — итеративный Huber: выбросы по остаткам ослабляются.
+
+**Нейтральное поле vs нейтр. вес:** `is_neutral` меняет формулу (`I_home = 0`, нет H); `neutral_weight` — только множитель в `w_base` при обучении.
 
 ---
 
