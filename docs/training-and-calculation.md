@@ -1,7 +1,58 @@
 # Обучение и расчёт линии — подробная справка
 
 Полное описание голевой модели во вкладке **«Линия»** (web/iOS и desktop).  
-Краткие формулы: [calculation.md](calculation.md). Маппинги БД: [reference.md](reference.md).
+Краткие формулы: [calculation.md](calculation.md). Маппинги БД: [reference.md](reference.md). Архитектура: [architecture.md](architecture.md).
+
+---
+
+## 0. Обзор pipeline
+
+```mermaid
+flowchart TB
+    subgraph load [Загрузка]
+        SB[(Supabase v_matches_full)]
+        RAW[goalMatchesToRaw / parse_raw_matches]
+    end
+
+    subgraph train [Обучение train_full_model / gmTrain]
+        P1[prepare_matches + de-vig]
+        P2[infer S_m, D_m → λ]
+        P3[fit_strength_ratings]
+        P4[fit_attack_defense]
+        P5[calibrate 1X2]
+        P6[fit_draw optional]
+    end
+
+    subgraph pred [Прогноз predict_match / gmPredict]
+        PR1[H_eff, D_pred, S_pred]
+        PR2[Poisson matrix + DC]
+        PR3[draw adjust optional]
+        PR4[markets 1X2 AH totals]
+    end
+
+    SB --> RAW --> P1 --> P2 --> P3 --> P4 --> P5 --> P6
+    P6 --> PR1 --> PR2 --> PR3 --> PR4
+```
+
+```mermaid
+sequenceDiagram
+    participant M as Матч
+    participant Shin as Shin de-vig
+    participant SD as infer S, D
+    participant W as w_base × w_line
+    participant R as регрессия r, H
+
+    M->>Shin: AH1/AH2, O/U, 1X2
+    Shin->>SD: P_fair
+    SD->>SD: S_m, D_m, λ_h, λ_a
+    M->>W: season × match_weight × neutral_mult
+    W->>R: веса WLS + Huber
+    R->>R: r_team, H_league, δ_derby
+```
+
+> **Web:** матчи только из Supabase (CSV для «Линии» отключён).  
+> **Desktop «Линия (голы)»:** CSV через `load_raw_matches`.  
+> **Ключи команд:** `home_team_id` / `away_team_id` (int) → строка в модели; без id — имя.
 
 ---
 
@@ -26,7 +77,8 @@
 
 | Поле БД | UI | Смысл |
 |---------|-----|--------|
-| `home_team`, `away_team` | Хоз / Гост | имена как в справочнике |
+| `home_team_id`, `away_team_id` | — | **ключи модели** (int → string) |
+| `home_team`, `away_team` | Хоз / Гост | отображаемые имена |
 | `closing_ah_home` | AH | линия форы **на хозяев** |
 | `ah_home_odds`, `ah_away_odds` | AH1, AH2 | кэфы на покрытие форы |
 | `closing_total_line` | Тот | линия тотала |
@@ -279,7 +331,7 @@ S_cal = c + d · S_model
 Poisson → DC → q = clamp(P_X^target / P_X^matrix, q_min, q_max)
 ```
 
-Defaults: q_min = 0.90, q_max = 1.10 (±10%). Широкий диапазон 0.85–1.15 — только для экспериментов.
+Defaults: **legacy** 0.95/1.05; **residual_dc** 0.98/1.03. Модель **выкл** в профиле baseline. Широкий 0.85–1.15 — experimental.
 
 **Контроль двойной коррекции (DC + модель ничьи):**
 - норма: q ≈ 1 (0.98–1.03) у большинства матчей
@@ -308,13 +360,14 @@ S_final = c + d · S_pred
 λ_a = (S_final − D_final) / 2
 ```
 
-**H_eff при дерби:**
+**H_eff при дерби** (`effective_home_advantage` / `gmEffectiveH`):
 
 ```text
-H_eff = shrink(H_league + δ_used)     # если δ оценена (≥3 дерби в обучении)
-H_eff = derbyDefaultFactor × H_league      # мало дерби в обучении (default 0.7; 0.4 — агрессивно)
-H_eff = H_league                      # не дерби
-H_eff = 0                             # нейтраль
+δ_stored = w · δ_raw,   w = n_derby / (n_derby + τ)
+H_eff = w·(H_league + δ_stored) + (1−w)·H_league = H_league + w²·δ_raw
+H_eff = ratio × H_league     # derby, но n_derby = 0 (ratio default 0.7)
+H_eff = H_league             # не дерби
+H_eff = 0                    # нейтраль
 ```
 
 Команда без матчей в обучении → рейтинг **новичка** (среднее N слабейших в лиге).
@@ -343,16 +396,35 @@ P(i,j) = Pois(i; λ_h) · Pois(j; λ_a)   [+ DC, + коррекция ничьи
 
 ## 6. Настройки вкладки «Линия»
 
+### Web-профиль `baseline` (default)
+
+| Параметр | Значение | Где в коде |
+|----------|----------|------------|
+| Профиль | `baseline` | `#goalModelProfile`, `goalApplyModelProfile` |
+| Dixon–Coles | **вкл** | `use_dixon_coles = true` |
+| Модель ничьи | **выкл** | `use_draw_model = false` |
+| S-калибровка | **off** | `s_calibration_mode = "off"` |
+| Режим ничьи (если вкл) | `residual_dc` | `draw_model_mode` |
+| q_min / q_max (legacy) | 0.95 / 1.05 | `draw_diag_multiplier_*` |
+| q_min / q_max (residual_dc) | 0.98 / 1.03 | `draw_residual_multiplier_*` |
+
+Подсказка в UI: «S cal off · DC on · draw off».
+
+Экспериментальные опции (draw, S-cal free, широкие q) — только профиль **«Свои настройки»** + experimental.
+
+### Общие defaults (`ModelConfig`)
+
 | Параметр | Default | Эффект |
 |----------|---------|--------|
 | α форы | 0.25 | ослабление матчей с большим \|D\| в рейтинге |
 | α тотала | 0.5 | ослабление экстремальных S в A/Df |
-| prior α | 0.7 | стягивание к прошлому сезону (desktop/расшир.) |
-| q_min / q_max | 0.90 / 1.10 | лимит коррекции ничьи (±10%) |
-| Модель ничьи | вкл | отдельная P(X), иначе чистый Пуассон |
-| Dixon-Coles | вкл | низкие счёты |
+| λ A / Df / r | 0.10 | L2-регуляризация |
+| prior_weight | 0 | prior ridge **выкл** (prior α=0.7 только если включить) |
+| derby H× (fallback) | 0.7 | `derby_h_default_ratio` при малом n_derby |
 | N слабейших (новичок) | 3 | рейтинг незнакомой команды |
-| Маржа % | 3 | только в прогнозе, не в обучении |
+| Маржа % | 3 | только в прогнозе |
+
+Desktop «Линия (голы)»: q_min/q_max в UI = **0.95 / 1.05** (как Python defaults).
 
 ---
 
@@ -368,7 +440,7 @@ P(i,j) = Pois(i; λ_h) · Pois(j; λ_a)   [+ DC, + коррекция ничьи
 Нет, если это фора **хозяев** как у бука.
 
 **Почему «мало матчей»?**  
-Нет полной линии (AH + тотал + 4 кэфа) или пустая выборка сезонов.
+Нет полной линии (AH + тотал + 4 кэфа), `quality_flag=data_error` (исключается), `match_weight=0`, или пустая выборка сезонов. Web: фильтр `goalRawHasFullLine`.
 
 **Чем отличается «Нейтральное поле» от «Нейтр. вес»?**  
 Нейтральное поле — факт матча: без домашнего преимущества. Нейтр. вес — только ослабление вклада строки при обучении (если нейтраль = да).

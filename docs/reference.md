@@ -94,8 +94,16 @@ PATCH /matches?id=eq.{match_id}
 Prefer: return=representation
 ```
 
+**Важно:** во view поле называется `match_id`, в таблице `matches` PK-колонка — **`id`**.  
+Фильтр PATCH: `id=eq.<match_id>` (значения совпадают). Код: `patch_match()`, `sbPatchMatch()`.
+
 Только поля из **PATCH whitelist** (см. ниже).  
-`home_team`, `away_team`, `match_date` и др. read-only — из view `v_matches_full`.
+`home_team`, `away_team`, `match_date`, `note` — **read-only** через PATCH.
+
+### Сброс флагов дерби (bulk)
+
+Python (`supabase_history.reset_all_derby_flags`): PATCH всех строк `derby_weight = 0`.  
+CLI: `python3 scripts/reset_derby_flags.py`. SQL: [sql/reset_derby_flags.sql](sql/reset_derby_flags.sql).
 
 ---
 
@@ -136,8 +144,10 @@ CORS: `HISTORY_API_CORS` (default `*`).
 
 **Сохранение:** «▼ Данные» → «Получить данные» сразу PATCH в БД (статус «Сохранено»).  
 Кнопка «Сохранить» в строке — только после **ручной** правки ячейки или весов.
+
 | Дата | — | `match_date` | нет |
 | Дома / Гости | — | `home_team` / `away_team` | нет |
+| Заметка | — | `note` | нет (read-only) |
 
 Константы в коде: `app/supabase_history.py` — `UI_COL_TO_FIELD`, `PATCH_WHITELIST`, `HIST_LINE_UI_COLS`, `HIST_WEIGHT_UI_COLS`.
 
@@ -197,6 +207,8 @@ ah_home_odds, ah_away_odds, over_odds, under_odds
 
 ### Legacy CSV (CLI / desktop)
 
+> **Web «Линия»:** импорт CSV **отключён** (`gmParseCsv` закомментирован). Только Supabase.
+
 | CSV-колонка | Поле БД / модели |
 |-------------|------------------|
 | `home_team_id`, `away_team_id` | ключи команд (если есть; иначе имя) |
@@ -217,14 +229,15 @@ final_match_weight = season_weight × match_weight × neutral_mult
 neutral_mult = is_neutral ? neutral_weight : 1.0
 ```
 
-Дерби **не** входит в вес матча. Флаг дерби используется при обучении для оценки поправки к домашнему преимуществу `H`:
+Дерби **не** входит в вес матча. Флаг дерби → поправка **H** (`effective_home_advantage`):
 
 ```text
-D = r_home - r_away + H_eff
+D_pred = r_home - r_away + H_eff
 
-H_eff = H_league                         # обычный матч
-H_eff = shrink(H_league + δ_derby)       # дерби (δ_derby из регрессии по истории)
-H_eff = 0                                # нейтральное поле
+H_eff = 0                         # нейтраль
+H_eff = H_league                  # обычный матч
+H_eff = H_league + w²·δ_raw       # derby (см. calculation.md §3)
+H_eff = ratio × H_league          # derby, мало данных (ratio default 0.7)
 ```
 
 | Параметр | Где задаётся |
