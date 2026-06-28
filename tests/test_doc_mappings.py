@@ -15,6 +15,13 @@ from supabase_history import (  # noqa: E402
 )
 
 
+def test_calculation_md_match_weight_formula():
+    text = (ROOT / "docs" / "calculation.md").read_text(encoding="utf-8")
+    assert "season_weight × match_weight × neutral_mult" in text
+    assert "derby_weight × neutral_weight" not in text
+    assert "Дерби не входит в `w_base`" in text or "Дерби не входит в вес" in text
+
+
 def test_patch_whitelist_matches_ui_map_values():
     mapped = set(UI_COL_TO_FIELD.values())
     assert mapped <= PATCH_WHITELIST
