@@ -1313,6 +1313,8 @@ def build_app():
             "ox",
             "o2",
             "neutral",
+            "home_rot",
+            "away_rot",
             "weights",
             "fetch",
             "action",
@@ -1335,6 +1337,8 @@ def build_app():
         ("ox", "X", 56, "e"),
         ("o2", "2", 56, "e"),
         ("neutral", "Нейтр", 60, "center"),
+        ("home_rot", "Рот. хоз", 108, "w"),
+        ("away_rot", "Рот. гост", 108, "w"),
         ("weights", "Веса", 52, "center"),
         ("fetch", "Данные", 56, "center"),
         ("action", "Действие", 88, "center"),
@@ -1421,8 +1425,39 @@ def build_app():
     hist_manual_edit: set[int] = set()
     hist_fetch_mid: int | None = None
     hist_external_ids: dict[int, str] = {}
+    hist_rotation_levels: list[dict] = []
     _hist_edit_entry: tk.Entry | None = None
     _hist_edit_ctx: tuple[int, str] | None = None
+
+    def _hist_rotation_labels() -> list[str]:
+        return [lev["name_ru"] for lev in hist_rotation_levels]
+
+    def _hist_rotation_label_from_code(code: str) -> str:
+        norm = sbh.normalize_rotation_code(code)
+        for lev in hist_rotation_levels:
+            if lev["code"] == norm:
+                return lev["name_ru"]
+        return sbh.rotation_label(norm)
+
+    def _hist_rotation_code_from_label(label: str) -> str:
+        text = str(label or "").strip()
+        for lev in hist_rotation_levels:
+            if lev["name_ru"] == text:
+                return lev["code"]
+        return sbh.normalize_rotation_code(text)
+
+    def _hist_rotation_cell(mid: int, ui_col: str) -> str:
+        m = hist_match_by_id[mid]
+        edits = hist_edited.get(mid, {})
+        if ui_col in edits:
+            try:
+                code = sbh.parse_rotation_input(edits[ui_col])
+            except ValueError:
+                return str(edits[ui_col])
+            return _hist_rotation_label_from_code(code)
+        if ui_col == "home_rot":
+            return sbh.rotation_display_home(m)
+        return sbh.rotation_display_away(m)
 
     def _hist_mid(iid: str) -> int:
         return int(iid)
@@ -1481,6 +1516,8 @@ def build_app():
             cell("ox"),
             cell("o2"),
             cell("neutral"),
+            _hist_rotation_cell(mid, "home_rot"),
+            _hist_rotation_cell(mid, "away_rot"),
             "⚙",
             fetch_mark,
             action,
@@ -1609,24 +1646,47 @@ def build_app():
                 ("derby", "Дерби"),
                 ("match_w", "Вес матча"),
                 ("neutr_w", "Нейтр. вес"),
+                ("home_rot", "Ротация хозяев"),
+                ("away_rot", "Ротация гостей"),
             )
         ):
             ttk.Label(dlg, text=f"{label}:").grid(row=row_i, column=0, sticky="w", padx=8, pady=6)
-            initial = edits.get(ui_col, sbh.edit_display_value(m, ui_col))
-            var = tk.StringVar(value=initial)
-            vars_by_col[ui_col] = var
-            ttk.Entry(dlg, textvariable=var, width=12).grid(row=row_i, column=1, sticky="w", padx=8, pady=6)
+            if ui_col in ("home_rot", "away_rot"):
+                code = edits.get(ui_col, sbh.edit_display_value(m, ui_col))
+                try:
+                    code = sbh.parse_rotation_input(str(code))
+                except ValueError:
+                    code = sbh.ROTATION_DEFAULT_CODE
+                var = tk.StringVar(value=_hist_rotation_label_from_code(code))
+                vars_by_col[ui_col] = var
+                ttk.Combobox(
+                    dlg,
+                    textvariable=var,
+                    values=_hist_rotation_labels(),
+                    state="readonly",
+                    width=22,
+                ).grid(row=row_i, column=1, sticky="w", padx=8, pady=6)
+            else:
+                initial = edits.get(ui_col, sbh.edit_display_value(m, ui_col))
+                var = tk.StringVar(value=initial)
+                vars_by_col[ui_col] = var
+                ttk.Entry(dlg, textvariable=var, width=12).grid(
+                    row=row_i, column=1, sticky="w", padx=8, pady=6
+                )
 
         def apply_and_close():
             for ui_col, var in vars_by_col.items():
-                edits[ui_col] = var.get()
+                if ui_col in ("home_rot", "away_rot"):
+                    edits[ui_col] = _hist_rotation_code_from_label(var.get())
+                else:
+                    edits[ui_col] = var.get()
             hist_manual_edit.add(mid)
             hist_row_status.pop(mid, None)
             dlg.destroy()
             _hist_refresh_row(mid)
 
         btns = ttk.Frame(dlg)
-        btns.grid(row=3, column=0, columnspan=2, pady=(4, 10))
+        btns.grid(row=5, column=0, columnspan=2, pady=(4, 10))
         ttk.Button(btns, text="Готово", command=apply_and_close).pack(side="left", padx=6)
         ttk.Button(btns, text="Отмена", command=dlg.destroy).pack(side="left", padx=6)
         dlg.bind("<Escape>", lambda _e: dlg.destroy())
@@ -1659,7 +1719,7 @@ def build_app():
         if not iid:
             return
         col_id = hist_matches_tree["columns"][int(col.replace("#", "")) - 1]
-        if col_id in sbh.EDITABLE_UI_COLS:
+        if col_id in sbh.EDITABLE_UI_COLS and col_id not in ("home_rot", "away_rot"):
             _hist_begin_edit(_hist_mid(iid), col_id)
 
     hist_matches_tree.bind("<Button-1>", _hist_on_matches_click)
@@ -1789,6 +1849,7 @@ def build_app():
         if hist_loaded:
             return
         hist_loaded = True
+        hist_rotation_levels[:] = sbh.fetch_rotation_levels()
         refresh_history_tree(auto_select_first=True)
 
     def on_hist_tab_selected(_event=None):

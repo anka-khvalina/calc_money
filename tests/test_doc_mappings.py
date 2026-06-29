@@ -47,5 +47,7 @@ def test_ui_col_map_covers_history_editable_columns():
         "match_w",
         "neutr_w",
         "neutral",
+        "home_rot",
+        "away_rot",
     }
     assert expected <= set(UI_COL_TO_FIELD.keys())

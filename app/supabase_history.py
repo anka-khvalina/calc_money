@@ -17,6 +17,14 @@ from supabase_teams import SupabaseError, _request
 DERBY_FLAG_YES: float = 1.0
 DERBY_FLAG_NO: float = 0.0
 
+ROTATION_DEFAULT_CODE: str = "none"
+ROTATION_CODES: FrozenSet[str] = frozenset({"none", "middle", "high"})
+ROTATION_LEVELS_FALLBACK: tuple[tuple[str, str], ...] = (
+    ("none", "Нет ротации"),
+    ("middle", "Умеренная ротация"),
+    ("high", "Сильная ротация"),
+)
+
 PATCH_WHITELIST: FrozenSet[str] = frozenset(
     {
         "ah_home_odds",
@@ -32,6 +40,8 @@ PATCH_WHITELIST: FrozenSet[str] = frozenset(
         "match_weight",
         "derby_weight",
         "neutral_weight",
+        "home_rotation_code",
+        "away_rotation_code",
     }
 )
 
@@ -61,13 +71,22 @@ UI_COL_TO_FIELD: Dict[str, str] = {
     "derby": "derby_weight",
     "match_w": "match_weight",
     "neutr_w": "neutral_weight",
+    "home_rot": "home_rotation_code",
+    "away_rot": "away_rotation_code",
 }
 
 # Порядок столбцов линии в UI (AH1 → AH → AH2 → O → Тот → U)
 HIST_LINE_UI_COLS: tuple[str, ...] = ("ah1", "ah", "ah2", "over", "tot", "under")
 
 # Поля весов и флагов в раскрываемом блоке «Веса»
-HIST_WEIGHT_UI_COLS: tuple[str, ...] = ("neutral", "derby", "match_w", "neutr_w")
+HIST_WEIGHT_UI_COLS: tuple[str, ...] = (
+    "neutral",
+    "derby",
+    "match_w",
+    "neutr_w",
+    "home_rot",
+    "away_rot",
+)
 
 EDITABLE_UI_COLS: FrozenSet[str] = frozenset(UI_COL_TO_FIELD)
 
@@ -111,7 +130,11 @@ class MatchFull:
     match_weight: Optional[float]
     derby_weight: Optional[float]
     neutral_weight: Optional[float]
-    note: Optional[str]
+    home_rotation_code: str = ROTATION_DEFAULT_CODE
+    home_rotation_name: Optional[str] = None
+    away_rotation_code: str = ROTATION_DEFAULT_CODE
+    away_rotation_name: Optional[str] = None
+    note: Optional[str] = None
 
 
 def is_derby_match(match: MatchFull) -> bool:
@@ -132,6 +155,82 @@ def normalized_derby_weight(raw: Optional[float]) -> float:
     if abs(float(raw) - DERBY_FLAG_YES) < 1e-9:
         return DERBY_FLAG_YES
     return DERBY_FLAG_NO
+
+
+def normalize_rotation_code(code: Optional[str]) -> str:
+    raw = str(code or "").strip().lower()
+    if raw in ROTATION_CODES:
+        return raw
+    return ROTATION_DEFAULT_CODE
+
+
+def rotation_label(code: Optional[str], name: Optional[str] = None) -> str:
+    if name and str(name).strip():
+        return str(name).strip()
+    norm = normalize_rotation_code(code)
+    for c, lbl in ROTATION_LEVELS_FALLBACK:
+        if c == norm:
+            return lbl
+    return ROTATION_LEVELS_FALLBACK[0][1]
+
+
+def rotation_display_home(match: MatchFull) -> str:
+    return rotation_label(match.home_rotation_code, match.home_rotation_name)
+
+
+def rotation_display_away(match: MatchFull) -> str:
+    return rotation_label(match.away_rotation_code, match.away_rotation_name)
+
+
+def fetch_rotation_levels() -> List[Dict[str, Any]]:
+    """Справочник уровней ротации из match_rotation_levels (fallback — константа)."""
+    try:
+        q = urllib.parse.urlencode(
+            {
+                "select": "code,name_ru,name_en,sort_order,active",
+                "active": "eq.true",
+                "order": "sort_order.asc",
+            }
+        )
+        rows = _request("GET", f"/match_rotation_levels?{q}")
+        if isinstance(rows, list) and rows:
+            out: List[Dict[str, Any]] = []
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                code = normalize_rotation_code(row.get("code"))
+                name_ru = str(row.get("name_ru") or "").strip()
+                if not name_ru:
+                    name_ru = rotation_label(code)
+                out.append(
+                    {
+                        "code": code,
+                        "name_ru": name_ru,
+                        "name_en": str(row.get("name_en") or "").strip(),
+                        "sort_order": int(row.get("sort_order") or 0),
+                        "active": bool(row.get("active", True)),
+                    }
+                )
+            if out:
+                return out
+    except SupabaseError:
+        pass
+    return [
+        {
+            "code": code,
+            "name_ru": name_ru,
+            "name_en": name_en,
+            "sort_order": i,
+            "active": True,
+        }
+        for i, (code, name_ru, name_en) in enumerate(
+            (
+                ("none", "Нет ротации", "No rotation"),
+                ("middle", "Умеренная ротация", "Moderate rotation"),
+                ("high", "Сильная ротация", "High rotation"),
+            )
+        )
+    ]
 
 
 def count_matches_for_derby_reset() -> int:
@@ -205,6 +304,8 @@ def edit_display_value(match: MatchFull, ui_col: str) -> str:
         return "да" if match.is_neutral else "нет"
     if ui_col == "derby":
         return "да" if is_derby_match(match) else "нет"
+    if ui_col in ("home_rot", "away_rot"):
+        return normalize_rotation_code(getattr(match, _match_attr(field)))
     val = getattr(match, _match_attr(field), None)
     if val is None:
         return ""
@@ -228,6 +329,8 @@ def _match_attr(db_field: str) -> str:
         "derby_weight": "derby_weight",
         "match_weight": "match_weight",
         "neutral_weight": "neutral_weight",
+        "home_rotation_code": "home_rotation_code",
+        "away_rotation_code": "away_rotation_code",
     }
     return mapping[db_field]
 
@@ -252,8 +355,22 @@ def parse_bool_input(text: str) -> bool:
     raise ValueError("Проверьте значения коэффициентов")
 
 
+def parse_rotation_input(text: str) -> str:
+    raw = str(text or "").strip().lower()
+    if not raw:
+        return ROTATION_DEFAULT_CODE
+    if raw in ROTATION_CODES:
+        return raw
+    for code, label in ROTATION_LEVELS_FALLBACK:
+        if raw == label.lower():
+            return code
+    raise ValueError("Проверьте значения ротации")
+
+
 def parse_field_input(ui_col: str, text: str) -> Any:
     field = UI_COL_TO_FIELD[ui_col]
+    if field in ("home_rotation_code", "away_rotation_code"):
+        return parse_rotation_input(text)
     if field == "is_neutral" or ui_col == "derby":
         return parse_bool_input(text)
     return parse_numeric_input(text)
@@ -268,6 +385,10 @@ def validate_match_patch(changes: Mapping[str, Any]) -> None:
         if key == "is_neutral":
             if not isinstance(val, bool):
                 raise ValueError("Проверьте значения коэффициентов")
+            continue
+        if key in ("home_rotation_code", "away_rotation_code"):
+            if str(val).strip().lower() not in ROTATION_CODES:
+                raise ValueError("Проверьте значения ротации")
             continue
         if not isinstance(val, (int, float)):
             raise ValueError("Проверьте значения коэффициентов")
@@ -287,6 +408,10 @@ def field_value_from_match(match: MatchFull, db_field: str) -> Any:
         return match.is_neutral
     if db_field == "derby_weight":
         return is_derby_match(match)
+    if db_field == "home_rotation_code":
+        return normalize_rotation_code(match.home_rotation_code)
+    if db_field == "away_rotation_code":
+        return normalize_rotation_code(match.away_rotation_code)
     return getattr(match, _match_attr(db_field))
 
 
@@ -314,6 +439,8 @@ def build_dirty_patch(original: MatchFull, edited: Mapping[str, str]) -> Dict[st
 def _values_equal(field: str, old: Any, new: Any) -> bool:
     if old is None and new is None:
         return True
+    if field in ("home_rotation_code", "away_rotation_code"):
+        return normalize_rotation_code(old) == normalize_rotation_code(new)
     if field == "is_neutral" or field == "derby_weight":
         return bool(old) == bool(new)
     try:
@@ -345,6 +472,11 @@ def apply_patch_to_match(original: MatchFull, changes: Mapping[str, Any]) -> Mat
         attr = _match_attr(field)
         if field == "is_neutral":
             kw[attr] = bool(val)
+        elif field in ("home_rotation_code", "away_rotation_code"):
+            code = normalize_rotation_code(str(val) if val is not None else None)
+            kw[attr] = code
+            name_attr = "home_rotation_name" if field == "home_rotation_code" else "away_rotation_name"
+            kw[name_attr] = rotation_label(code)
         elif val is None:
             kw[attr] = None
         else:
@@ -427,6 +559,18 @@ def _parse_match_row(row: dict) -> Optional[MatchFull]:
             match_weight=_opt_float(row.get("match_weight")),
             derby_weight=normalized_derby_weight(_opt_float(row.get("derby_weight"))),
             neutral_weight=_opt_float(row.get("neutral_weight")),
+            home_rotation_code=normalize_rotation_code(row.get("home_rotation_code")),
+            home_rotation_name=(
+                str(row["home_rotation_name"]).strip()
+                if row.get("home_rotation_name") not in (None, "")
+                else None
+            ),
+            away_rotation_code=normalize_rotation_code(row.get("away_rotation_code")),
+            away_rotation_name=(
+                str(row["away_rotation_name"]).strip()
+                if row.get("away_rotation_name") not in (None, "")
+                else None
+            ),
             note=str(row["note"]).strip() if row.get("note") not in (None, "") else None,
         )
     except (KeyError, TypeError, ValueError):
@@ -457,7 +601,9 @@ _MATCH_SELECT = (
     "home_team_id,home_team,away_team_id,away_team,"
     "closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,"
     "over_odds,under_odds,home_odds,draw_odds,away_odds,"
-    "is_neutral,match_weight,derby_weight,neutral_weight,note"
+    "is_neutral,match_weight,derby_weight,neutral_weight,"
+    "home_rotation_code,home_rotation_name,away_rotation_code,away_rotation_name,"
+    "note"
 )
 
 

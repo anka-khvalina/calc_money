@@ -133,6 +133,8 @@ CORS: `HISTORY_API_CORS` (default `*`).
 | Дерби | `derby` | `derby_weight` | да (флаг в **▼ Веса**; влияет на **H**, не на вес) |
 | Вес матча | `match_w` | `match_weight` | да |
 | Нейтр. вес | `neutr_w` | `neutral_weight` | да (только если нейтральное поле = да) |
+| Ротация хозяев | `home_rot` | `home_rotation_code` | да (в блоке **▼ Веса**; не влияет на модель) |
+| Ротация гостей | `away_rot` | `away_rotation_code` | да (в блоке **▼ Веса**; не влияет на модель) |
 
 **Сохранение:** «▼ Данные» → «Получить данные» сразу PATCH в БД (статус «Сохранено»).  
 Кнопка «Сохранить» в строке — только после **ручной** правки ячейки или весов.
@@ -147,8 +149,11 @@ CORS: `HISTORY_API_CORS` (default `*`).
 ah_home_odds, closing_ah_home, ah_away_odds,
 over_odds, closing_total_line, under_odds,
 home_odds, draw_odds, away_odds,
-is_neutral, match_weight, derby_weight, neutral_weight
+is_neutral, match_weight, derby_weight, neutral_weight,
+home_rotation_code, away_rotation_code
 ```
+
+Справочник уровней ротации: таблица `match_rotation_levels` (коды `none` / `middle` / `high`). В PATCH и БД — только код; на UI — `name_ru` из view или справочника.
 
 ### Валидация PATCH
 
@@ -156,6 +161,7 @@ is_neutral, match_weight, derby_weight, neutral_weight
 - `match_weight`, `neutral_weight`: **≥ 0**
 - `derby_weight`: **1** (дерби) или **0** / `null` (не дерби); поправка H — при обучении
 - `is_neutral`: boolean
+- `home_rotation_code`, `away_rotation_code`: `none` | `middle` | `high` (пустое → `none`)
 
 ---
 

@@ -157,7 +157,10 @@
     }
     #clhViewTable td.hist-col-num{ min-width:68px; }
     #clhViewTable td.hist-col-neutral{ min-width:72px; }
-    #clhViewTable td.hist-col-action{ min-width:168px; white-space:normal; }
+    #clhViewTable th.hist-col-rotation,
+    #clhViewTable td.hist-col-rotation{
+      min-width:108px; max-width:140px; white-space:normal; line-height:1.25; font-size:12px;
+    }
     .hist-weights-row td{ background:#f8fafc; padding:8px 12px; border-bottom:1px solid var(--line); }
     .hist-fetch-row td{ background:#f7f9ff; padding:8px 12px; border-bottom:1px solid var(--line); }
     .hist-fetch-panel{ display:flex; flex-wrap:wrap; gap:8px 12px; align-items:flex-end; }
@@ -966,6 +969,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <th class="right hist-col-ah">AH1</th><th class="right hist-col-ah">AH</th><th class="right hist-col-ah">AH2</th>
             <th class="right hist-col-tot">O</th><th class="right hist-col-tot">Тот</th><th class="right hist-col-tot">U</th>
             <th class="right hist-col-1x2">1</th><th class="right hist-col-1x2">X</th><th class="right hist-col-1x2">2</th>
+            <th class="hist-col-rotation">Рот. хоз</th><th class="hist-col-rotation">Рот. гост</th>
             <th>Действие</th>
           </tr></thead>
           <tbody></tbody>
@@ -3861,8 +3865,55 @@ bash scripts/update_and_serve.sh --start</div>
       'home_team_id','home_team','away_team_id','away_team',
       'closing_ah_home','closing_total_line','ah_home_odds','ah_away_odds',
       'over_odds','under_odds','home_odds','draw_odds','away_odds',
-      'is_neutral','match_weight','derby_weight','neutral_weight','note',
+      'is_neutral','match_weight','derby_weight','neutral_weight',
+      'home_rotation_code','home_rotation_name','away_rotation_code','away_rotation_name',
+      'note',
     ].join(',');
+
+    const SB_ROTATION_FALLBACK = [
+      { code: 'none', name_ru: 'Нет ротации' },
+      { code: 'middle', name_ru: 'Умеренная ротация' },
+      { code: 'high', name_ru: 'Сильная ротация' },
+    ];
+    const SB_ROTATION_CODES = new Set(['none', 'middle', 'high']);
+    window.__SB.rotationLevels = SB_ROTATION_FALLBACK.slice();
+
+    function sbNormalizeRotationCode(code){
+      const raw = String(code || '').trim().toLowerCase();
+      return SB_ROTATION_CODES.has(raw) ? raw : 'none';
+    }
+    function sbRotationLabel(code, name){
+      if (name && String(name).trim()) return String(name).trim();
+      const c = sbNormalizeRotationCode(code);
+      const row = (window.__SB.rotationLevels || SB_ROTATION_FALLBACK).find(r => r.code === c);
+      return row ? (row.name_ru || row.label || 'Нет ротации') : 'Нет ротации';
+    }
+    function sbRotationDisplayHome(m){
+      return sbRotationLabel(m.home_rotation_code, m.home_rotation_name);
+    }
+    function sbRotationDisplayAway(m){
+      return sbRotationLabel(m.away_rotation_code, m.away_rotation_name);
+    }
+    async function sbLoadRotationLevels(){
+      if (window.__SB.rotationLevelsLoaded) return window.__SB.rotationLevels;
+      try {
+        const q = 'select=code,name_ru,name_en,sort_order,active&active=eq.true&order=sort_order.asc';
+        const rows = await sbFetch(`/match_rotation_levels?${q}`);
+        if (Array.isArray(rows) && rows.length){
+          window.__SB.rotationLevels = rows.map(r => ({
+            code: sbNormalizeRotationCode(r.code),
+            name_ru: String(r.name_ru || sbRotationLabel(r.code)).trim(),
+            name_en: r.name_en,
+            sort_order: r.sort_order,
+          }));
+        }
+      } catch (e){
+        console.warn('match_rotation_levels', e);
+        window.__SB.rotationLevels = SB_ROTATION_FALLBACK.slice();
+      }
+      window.__SB.rotationLevelsLoaded = true;
+      return window.__SB.rotationLevels;
+    }
 
     async function sbLoadSeasonMatches(leagueId, seasonId){
       const q = `select=${SB_MATCH_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=eq.${encodeURIComponent(seasonId)}&order=match_date.asc`;
@@ -3921,6 +3972,7 @@ bash scripts/update_and_serve.sh --start</div>
       'over_odds','closing_total_line','under_odds',
       'home_odds','draw_odds','away_odds',
       'is_neutral','match_weight','derby_weight','neutral_weight',
+      'home_rotation_code','away_rotation_code',
     ]);
     const SB_ODDS_GT_ONE = new Set([
       'ah_home_odds','ah_away_odds','over_odds','under_odds','home_odds','draw_odds','away_odds',
@@ -3930,12 +3982,15 @@ bash scripts/update_and_serve.sh --start</div>
       over:'over_odds', tot:'closing_total_line', under:'under_odds',
       o1:'home_odds', ox:'draw_odds', o2:'away_odds',
       neutral:'is_neutral', derby:'derby_weight', match_w:'match_weight', neutr_w:'neutral_weight',
+      home_rot:'home_rotation_code', away_rot:'away_rotation_code',
     };
     const SB_HIST_WEIGHT_COLS = [
       { col:'neutral', label:'Нейтральное поле', hint:'факт: матч был на нейтральном? да → без домашнего преимущества' },
       { col:'derby', label:'Дерби', hint:'факт дерби (да→1, нет→0 в БД); вес H считается при обучении' },
       { col:'match_w', label:'Вес матча', hint:'общий множитель важности матча' },
       { col:'neutr_w', label:'Нейтр. вес', hint:'коэфф. ослабления при обучении; только если «Нейтральное поле» = да' },
+      { col:'home_rot', label:'Ротация хозяев', hint:'уровень ротации состава хозяев (не влияет на модель)' },
+      { col:'away_rot', label:'Ротация гостей', hint:'уровень ротации состава гостей (не влияет на модель)' },
     ];
     const USERBET_FIELD_TO_UI = {
       ah_home_odds:'ah1', closing_ah_home:'ah', ah_away_odds:'ah2',
@@ -4011,6 +4066,8 @@ bash scripts/update_and_serve.sh --start</div>
     function sbFieldFromMatch(m, field){
       if (field === 'is_neutral') return !!m.is_neutral;
       if (field === 'derby_weight') return sbIsDerby(m);
+      if (field === 'home_rotation_code') return sbNormalizeRotationCode(m.home_rotation_code);
+      if (field === 'away_rotation_code') return sbNormalizeRotationCode(m.away_rotation_code);
       const v = m[field];
       return v == null ? null : Number(v);
     }
@@ -4018,6 +4075,7 @@ bash scripts/update_and_serve.sh --start</div>
       const field = SB_UI_COL_MAP[col];
       if (field === 'is_neutral') return m.is_neutral ? 'да' : 'нет';
       if (col === 'derby') return sbIsDerby(m) ? 'да' : 'нет';
+      if (col === 'home_rot' || col === 'away_rot') return sbNormalizeRotationCode(m[field]);
       const v = m[field];
       if (v == null) return '';
       return String(v).replace('.', ',');
@@ -4035,13 +4093,27 @@ bash scripts/update_and_serve.sh --start</div>
       if (['нет','false','0','no','n',''].includes(raw)) return false;
       throw new Error('Проверьте значения коэффициентов');
     }
+    function sbParseRotation(text){
+      const raw = String(text || '').trim().toLowerCase();
+      if (!raw) return 'none';
+      if (SB_ROTATION_CODES.has(raw)) return raw;
+      const hit = (window.__SB.rotationLevels || SB_ROTATION_FALLBACK).find(r =>
+        String(r.name_ru || '').trim().toLowerCase() === raw
+      );
+      if (hit) return sbNormalizeRotationCode(hit.code);
+      throw new Error('Проверьте значения ротации');
+    }
     function sbParseField(col, text){
       const field = SB_UI_COL_MAP[col];
+      if (field === 'home_rotation_code' || field === 'away_rotation_code') return sbParseRotation(text);
       if (field === 'is_neutral' || col === 'derby') return sbParseBool(text);
       return sbParseNumeric(text);
     }
     function sbValuesEqual(field, oldV, newV){
       if (oldV == null && newV == null) return true;
+      if (field === 'home_rotation_code' || field === 'away_rotation_code'){
+        return sbNormalizeRotationCode(oldV) === sbNormalizeRotationCode(newV);
+      }
       if (field === 'is_neutral' || field === 'derby_weight') return !!oldV === !!newV;
       return oldV != null && newV != null && Math.abs(Number(oldV) - Number(newV)) < 1e-9;
     }
@@ -4067,6 +4139,9 @@ bash scripts/update_and_serve.sh --start</div>
         if (SB_ODDS_GT_ONE.has(field) && v <= 1) throw new Error('Проверьте значения коэффициентов');
         if (field === 'derby_weight' && (v < 0 || v > 1)) throw new Error('Проверьте значения коэффициентов');
         if ((field === 'match_weight' || field === 'neutral_weight') && v < 0) throw new Error('Проверьте значения коэффициентов');
+        if ((field === 'home_rotation_code' || field === 'away_rotation_code') && !SB_ROTATION_CODES.has(String(v))){
+          throw new Error('Проверьте значения ротации');
+        }
       });
       return payload;
     }
@@ -4114,7 +4189,15 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function sbApplyPatchToMatch(original, payload){
       const updated = Object.assign({}, original);
-      Object.keys(payload).forEach(field => { updated[field] = payload[field]; });
+      Object.keys(payload).forEach(field => {
+        updated[field] = payload[field];
+        if (field === 'home_rotation_code'){
+          updated.home_rotation_name = sbRotationLabel(payload[field]);
+        }
+        if (field === 'away_rotation_code'){
+          updated.away_rotation_name = sbRotationLabel(payload[field]);
+        }
+      });
       return updated;
     }
     function sbHistInput(col, m, st){
@@ -4123,6 +4206,13 @@ bash scripts/update_and_serve.sh --start</div>
         return `<select class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}">` +
           `<option value="нет"${val === 'нет' ? ' selected' : ''}>нет</option>` +
           `<option value="да"${val === 'да' ? ' selected' : ''}>да</option></select>`;
+      }
+      if (col === 'home_rot' || col === 'away_rot'){
+        const code = sbNormalizeRotationCode(val);
+        const opts = (window.__SB.rotationLevels || SB_ROTATION_FALLBACK).map(r =>
+          `<option value="${escapeHtml(r.code)}"${r.code === code ? ' selected' : ''}>${escapeHtml(r.name_ru || sbRotationLabel(r.code))}</option>`
+        ).join('');
+        return `<select class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}">${opts}</select>`;
       }
       return `<input class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}" value="${escapeHtml(val)}" />`;
     }
@@ -4184,6 +4274,11 @@ bash scripts/update_and_serve.sh --start</div>
       const ok = tr.querySelector('[data-hist-ok]');
       if (err) err.textContent = st.saveError || '';
       if (ok) ok.textContent = st.savedMsg || '';
+      const tds = tr.querySelectorAll('td.hist-col-rotation');
+      if (tds.length >= 2 && st.original){
+        tds[0].textContent = sbRotationDisplayHome(st.original);
+        tds[1].textContent = sbRotationDisplayAway(st.original);
+      }
     }
 
     function sbHistFetchPanel(m, st){
@@ -4238,6 +4333,8 @@ bash scripts/update_and_serve.sh --start</div>
           `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o1', m, st)}</td>` +
           `<td class="num hist-col-num hist-col-1x2">${sbHistInput('ox', m, st)}</td>` +
           `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o2', m, st)}</td>` +
+          `<td class="hist-col-rotation">${escapeHtml(sbRotationDisplayHome(m))}</td>` +
+          `<td class="hist-col-rotation">${escapeHtml(sbRotationDisplayAway(m))}</td>` +
           `<td class="hist-col-action">` +
             `<button type="button" class="btn hist-fetch-toggle" data-hist-fetch-toggle="${m.match_id}" aria-expanded="${fetchOpen ? 'true' : 'false'}">${fetchOpen ? '▲ Данные' : '▼ Данные'}</button>` +
             `<button type="button" class="btn hist-weights-toggle" data-hist-weights-toggle="${m.match_id}" aria-expanded="${weightsOpen ? 'true' : 'false'}">${weightsOpen ? '▲ Веса' : '▼ Веса'}</button>` +
@@ -4247,10 +4344,10 @@ bash scripts/update_and_serve.sh --start</div>
           `</td>` +
         `</tr>`;
         const weightsRow = `<tr class="hist-weights-row" data-hist-weights-for="${m.match_id}" style="display:${weightsOpen ? '' : 'none'}">` +
-          `<td colspan="13">${sbHistWeightsPanel(m, st)}</td>` +
+          `<td colspan="15">${sbHistWeightsPanel(m, st)}</td>` +
         `</tr>`;
         const fetchRow = `<tr class="hist-fetch-row" data-hist-fetch-for="${m.match_id}" style="display:${fetchOpen ? '' : 'none'}">` +
-          `<td colspan="13">${sbHistFetchPanel(m, st)}</td>` +
+          `<td colspan="15">${sbHistFetchPanel(m, st)}</td>` +
         `</tr>`;
         return mainRow + fetchRow + weightsRow;
       }).join('');
@@ -4438,6 +4535,7 @@ bash scripts/update_and_serve.sh --start</div>
       renderHistSeasonsTable(key);
       renderHistMatchesTable([], `${leagueName || leagueId} / ${seasonLabel || seasonId} — загрузка матчей…`);
       try {
+        await sbLoadRotationLevels();
         const matches = await sbLoadSeasonMatches(leagueId, seasonId);
         if (!matches.length){
           renderHistMatchesTable([], 'Нет данных по сезону.');
@@ -4476,6 +4574,7 @@ bash scripts/update_and_serve.sh --start</div>
       }
       try {
         await loadSupabaseConfig();
+        await sbLoadRotationLevels();
         const firstLoad = !window.__SB.histLoaded;
         if (firstLoad){
           if (meta) meta.textContent = 'Загрузка сезонов…';
