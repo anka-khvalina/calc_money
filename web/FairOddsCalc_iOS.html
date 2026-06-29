@@ -76,6 +76,10 @@
       margin-left:-6px; margin-right:-6px;
       max-height:min(72vh, calc(100dvh - 220px));
     }
+    #tab-hist .hist-matches-caption{
+      padding:8px 10px; font-weight:600; font-size:12px;
+      background:#f1f5f9; border-bottom:1px solid var(--line);
+    }
     #clhViewTable{
       min-width:1180px; table-layout:auto;
     }
@@ -961,8 +965,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <tbody></tbody>
         </table>
       </div>
-      <div class="small" style="margin-top:10px;font-weight:600;">Матчи выбранного сезона</div>
       <div class="table-wrap hist-matches-wrap">
+        <div class="hist-matches-caption small">Матчи выбранного сезона</div>
         <table id="clhViewTable">
           <thead><tr>
             <th>Дата</th><th class="hist-col-team">Дома</th><th class="hist-col-team">Гости</th>
