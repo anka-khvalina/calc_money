@@ -25,6 +25,8 @@ ROTATION_LEVELS_FALLBACK: tuple[tuple[str, str], ...] = (
     ("high", "Сильная ротация"),
 )
 
+SOURCE_DEFAULT: str = "Pinnacle"
+
 PATCH_WHITELIST: FrozenSet[str] = frozenset(
     {
         "ah_home_odds",
@@ -42,6 +44,7 @@ PATCH_WHITELIST: FrozenSet[str] = frozenset(
         "neutral_weight",
         "home_rotation_code",
         "away_rotation_code",
+        "note",
     }
 )
 
@@ -73,6 +76,7 @@ UI_COL_TO_FIELD: Dict[str, str] = {
     "neutr_w": "neutral_weight",
     "home_rot": "home_rotation_code",
     "away_rot": "away_rotation_code",
+    "source": "note",
 }
 
 # Порядок столбцов линии в UI (AH1 → AH → AH2 → O → Тот → U)
@@ -86,6 +90,7 @@ HIST_WEIGHT_UI_COLS: tuple[str, ...] = (
     "neutr_w",
     "home_rot",
     "away_rot",
+    "source",
 )
 
 EDITABLE_UI_COLS: FrozenSet[str] = frozenset(UI_COL_TO_FIELD)
@@ -180,6 +185,37 @@ def rotation_display_home(match: MatchFull) -> str:
 
 def rotation_display_away(match: MatchFull) -> str:
     return rotation_label(match.away_rotation_code, match.away_rotation_name)
+
+
+def match_note_raw(match: MatchFull) -> Optional[str]:
+    """Значение note в БД (без подстановки default)."""
+    raw = match.note
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def normalize_source(text: Optional[str], *, apply_default: bool = True) -> str:
+    value = str(text or "").strip()
+    if value:
+        return value
+    return SOURCE_DEFAULT if apply_default else ""
+
+
+def source_display(match: MatchFull) -> str:
+    return normalize_source(match_note_raw(match))
+
+
+def parse_source_input(text: str) -> str:
+    return normalize_source(text, apply_default=True)
+
+
+# legacy aliases (tests / internal)
+match_comment_raw = match_note_raw
+normalize_comment = normalize_source
+comment_display = source_display
+parse_comment_input = parse_source_input
 
 
 def fetch_rotation_levels() -> List[Dict[str, Any]]:
@@ -306,6 +342,8 @@ def edit_display_value(match: MatchFull, ui_col: str) -> str:
         return "да" if is_derby_match(match) else "нет"
     if ui_col in ("home_rot", "away_rot"):
         return normalize_rotation_code(getattr(match, _match_attr(field)))
+    if field == "note":
+        return source_display(match)
     val = getattr(match, _match_attr(field), None)
     if val is None:
         return ""
@@ -331,6 +369,7 @@ def _match_attr(db_field: str) -> str:
         "neutral_weight": "neutral_weight",
         "home_rotation_code": "home_rotation_code",
         "away_rotation_code": "away_rotation_code",
+        "note": "note",
     }
     return mapping[db_field]
 
@@ -369,6 +408,8 @@ def parse_rotation_input(text: str) -> str:
 
 def parse_field_input(ui_col: str, text: str) -> Any:
     field = UI_COL_TO_FIELD[ui_col]
+    if field == "note":
+        return parse_source_input(text)
     if field in ("home_rotation_code", "away_rotation_code"):
         return parse_rotation_input(text)
     if field == "is_neutral" or ui_col == "derby":
@@ -389,6 +430,10 @@ def validate_match_patch(changes: Mapping[str, Any]) -> None:
         if key in ("home_rotation_code", "away_rotation_code"):
             if str(val).strip().lower() not in ROTATION_CODES:
                 raise ValueError("Проверьте значения ротации")
+            continue
+        if key == "note":
+            if val is not None and not isinstance(val, str):
+                raise ValueError("Проверьте значение источника")
             continue
         if not isinstance(val, (int, float)):
             raise ValueError("Проверьте значения коэффициентов")
@@ -412,6 +457,8 @@ def field_value_from_match(match: MatchFull, db_field: str) -> Any:
         return normalize_rotation_code(match.home_rotation_code)
     if db_field == "away_rotation_code":
         return normalize_rotation_code(match.away_rotation_code)
+    if db_field == "note":
+        return match_note_raw(match)
     return getattr(match, _match_attr(db_field))
 
 
@@ -441,6 +488,10 @@ def _values_equal(field: str, old: Any, new: Any) -> bool:
         return True
     if field in ("home_rotation_code", "away_rotation_code"):
         return normalize_rotation_code(old) == normalize_rotation_code(new)
+    if field == "note":
+        return normalize_source(old if isinstance(old, str) else None) == normalize_source(
+            new if isinstance(new, str) else None
+        )
     if field == "is_neutral" or field == "derby_weight":
         return bool(old) == bool(new)
     try:
@@ -477,6 +528,8 @@ def apply_patch_to_match(original: MatchFull, changes: Mapping[str, Any]) -> Mat
             kw[attr] = code
             name_attr = "home_rotation_name" if field == "home_rotation_code" else "away_rotation_name"
             kw[name_attr] = rotation_label(code)
+        elif field == "note":
+            kw[attr] = parse_source_input(str(val) if val is not None else "")
         elif val is None:
             kw[attr] = None
         else:
@@ -518,12 +571,20 @@ def _opt_float(val: Any) -> Optional[float]:
 
 
 def _opt_int(val: Any) -> Optional[int]:
-    if val is None:
+    if val is None or val == "":
         return None
     try:
         return int(val)
     except (TypeError, ValueError):
         return None
+
+
+def _parse_note_row(row: Mapping[str, Any]) -> Optional[str]:
+    raw = row.get("note")
+    if raw in (None, ""):
+        return None
+    text = str(raw).strip()
+    return text or None
 
 
 def _parse_match_row(row: dict) -> Optional[MatchFull]:
@@ -571,7 +632,7 @@ def _parse_match_row(row: dict) -> Optional[MatchFull]:
                 if row.get("away_rotation_name") not in (None, "")
                 else None
             ),
-            note=str(row["note"]).strip() if row.get("note") not in (None, "") else None,
+            note=_parse_note_row(row),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -674,7 +735,7 @@ def matches_to_goal_csv(matches: List[MatchFull], *, league_name: str = "") -> s
                     cell(m.away_odds),
                     "true" if m.is_neutral else "false",
                     "true" if derby_flag else "false",
-                    cell(m.note or ""),
+                    cell(source_display(m)),
                     cell(m.match_weight if m.match_weight is not None else 1),
                     cell(m.derby_weight if m.derby_weight is not None else 0),
                     cell(m.neutral_weight if m.neutral_weight is not None else 1),

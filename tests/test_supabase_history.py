@@ -283,5 +283,23 @@ def test_fetch_rotation_levels_fallback():
 def test_hist_weight_ui_cols_include_rotation():
     assert "home_rot" in sbh.HIST_WEIGHT_UI_COLS
     assert "away_rot" in sbh.HIST_WEIGHT_UI_COLS
+    assert "source" in sbh.HIST_WEIGHT_UI_COLS
+    assert sbh.UI_COL_TO_FIELD["source"] == "note"
     assert sbh.UI_COL_TO_FIELD["home_rot"] == "home_rotation_code"
     assert "home_rotation_code" in sbh.PATCH_WHITELIST
+    assert "note" in sbh.PATCH_WHITELIST
+
+
+def test_source_default_and_patch():
+    assert sbh.source_display(_sample_match()) == sbh.SOURCE_DEFAULT
+    m = _sample_match(note="Bet365")
+    assert sbh.source_display(m) == "Bet365"
+    payload = sbh.build_dirty_patch(m, {"source": "Pinnacle"})
+    assert payload == {"note": "Pinnacle"}
+    updated = sbh.apply_patch_to_match(m, {"note": "Pinnacle"})
+    assert updated.note == "Pinnacle"
+
+
+def test_parse_note_row():
+    assert sbh._parse_note_row({"note": "Pinnacle"}) == "Pinnacle"
+    assert sbh._parse_note_row({"note": None}) is None
