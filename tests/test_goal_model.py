@@ -786,7 +786,7 @@ def test_matches_to_goal_csv_round_trip_preserves_ids():
         over_odds=1.95, under_odds=1.95,
         home_odds=1.5, draw_odds=4.5, away_odds=6.0,
         is_neutral=False, match_weight=1.0,
-        derby_weight=0.0, neutral_weight=1.0, note=None,
+        derby_weight=0.0, neutral_weight=1.0, comment=None,
     )
     csv = sbh.matches_to_goal_csv([m])
     raw = gmt.parse_raw_matches(csv)

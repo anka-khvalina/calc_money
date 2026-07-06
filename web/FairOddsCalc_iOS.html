@@ -3871,8 +3871,10 @@ bash scripts/update_and_serve.sh --start</div>
       'over_odds','under_odds','home_odds','draw_odds','away_odds',
       'is_neutral','match_weight','derby_weight','neutral_weight',
       'home_rotation_code','home_rotation_name','away_rotation_code','away_rotation_name',
-      'note',
+      'comment','note',
     ].join(',');
+
+    const SB_SOURCE_DEFAULT = 'Pinnacle';
 
     const SB_ROTATION_FALLBACK = [
       { code: 'none', name_ru: 'Нет ротации' },
@@ -3941,7 +3943,7 @@ bash scripts/update_and_serve.sh --start</div>
           cell(m.closing_ah_home), cell(m.closing_total_line),
           cell(m.ah_home_odds), cell(m.ah_away_odds), cell(m.over_odds), cell(m.under_odds),
           cell(m.home_odds), cell(m.draw_odds), cell(m.away_odds),
-          m.is_neutral ? 'true' : 'false', derbyFlag ? 'true' : 'false', cell(m.note || ''),
+          m.is_neutral ? 'true' : 'false', derbyFlag ? 'true' : 'false', cell(sbCommentDisplay(m)),
           cell(m.match_weight != null ? m.match_weight : 1),
           cell(sbIsDerby(m) ? 1 : 0),
           cell(m.neutral_weight != null ? m.neutral_weight : 1),
@@ -3977,6 +3979,7 @@ bash scripts/update_and_serve.sh --start</div>
       'home_odds','draw_odds','away_odds',
       'is_neutral','match_weight','derby_weight','neutral_weight',
       'home_rotation_code','away_rotation_code',
+      'comment',
     ]);
     const SB_ODDS_GT_ONE = new Set([
       'ah_home_odds','ah_away_odds','over_odds','under_odds','home_odds','draw_odds','away_odds',
@@ -3987,6 +3990,7 @@ bash scripts/update_and_serve.sh --start</div>
       o1:'home_odds', ox:'draw_odds', o2:'away_odds',
       neutral:'is_neutral', derby:'derby_weight', match_w:'match_weight', neutr_w:'neutral_weight',
       home_rot:'home_rotation_code', away_rot:'away_rotation_code',
+      source:'comment',
     };
     const SB_HIST_WEIGHT_COLS = [
       { col:'neutral', label:'Нейтральное поле', hint:'факт: матч был на нейтральном? да → без домашнего преимущества' },
@@ -3995,6 +3999,7 @@ bash scripts/update_and_serve.sh --start</div>
       { col:'neutr_w', label:'Нейтр. вес', hint:'коэфф. ослабления при обучении; только если «Нейтральное поле» = да' },
       { col:'home_rot', label:'Ротация хозяев', hint:'уровень ротации состава хозяев (не влияет на модель)' },
       { col:'away_rot', label:'Ротация гостей', hint:'уровень ротации состава гостей (не влияет на модель)' },
+      { col:'source', label:'Источник', hint:'источник closing-линии (по умолчанию Pinnacle)' },
     ];
     const USERBET_FIELD_TO_UI = {
       ah_home_odds:'ah1', closing_ah_home:'ah', ah_away_odds:'ah2',
@@ -4059,6 +4064,22 @@ bash scripts/update_and_serve.sh --start</div>
     }
     window.__SB.matchRows = window.__SB.matchRows || {};
 
+    function sbMatchCommentRaw(m){
+      const raw = m.comment != null ? String(m.comment).trim() : '';
+      if (raw) return raw;
+      const legacy = m.note != null ? String(m.note).trim() : '';
+      return legacy || null;
+    }
+    function sbNormalizeComment(text){
+      const value = String(text || '').trim();
+      return value || SB_SOURCE_DEFAULT;
+    }
+    function sbCommentDisplay(m){
+      return sbNormalizeComment(sbMatchCommentRaw(m));
+    }
+    function sbParseComment(text){
+      return sbNormalizeComment(text);
+    }
     function sbIsDerby(m){
       const w = m.derby_weight;
       if (w == null) return false;
@@ -4072,6 +4093,7 @@ bash scripts/update_and_serve.sh --start</div>
       if (field === 'derby_weight') return sbIsDerby(m);
       if (field === 'home_rotation_code') return sbNormalizeRotationCode(m.home_rotation_code);
       if (field === 'away_rotation_code') return sbNormalizeRotationCode(m.away_rotation_code);
+      if (field === 'comment') return sbMatchCommentRaw(m);
       const v = m[field];
       return v == null ? null : Number(v);
     }
@@ -4079,6 +4101,7 @@ bash scripts/update_and_serve.sh --start</div>
       const field = SB_UI_COL_MAP[col];
       if (field === 'is_neutral') return m.is_neutral ? 'да' : 'нет';
       if (col === 'derby') return sbIsDerby(m) ? 'да' : 'нет';
+      if (col === 'source') return sbCommentDisplay(m);
       if (col === 'home_rot' || col === 'away_rot') return sbNormalizeRotationCode(m[field]);
       const v = m[field];
       if (v == null) return '';
@@ -4110,6 +4133,7 @@ bash scripts/update_and_serve.sh --start</div>
     function sbParseField(col, text){
       const field = SB_UI_COL_MAP[col];
       if (field === 'home_rotation_code' || field === 'away_rotation_code') return sbParseRotation(text);
+      if (field === 'comment') return sbParseComment(text);
       if (field === 'is_neutral' || col === 'derby') return sbParseBool(text);
       return sbParseNumeric(text);
     }
@@ -4117,6 +4141,9 @@ bash scripts/update_and_serve.sh --start</div>
       if (oldV == null && newV == null) return true;
       if (field === 'home_rotation_code' || field === 'away_rotation_code'){
         return sbNormalizeRotationCode(oldV) === sbNormalizeRotationCode(newV);
+      }
+      if (field === 'comment'){
+        return sbNormalizeComment(oldV) === sbNormalizeComment(newV);
       }
       if (field === 'is_neutral' || field === 'derby_weight') return !!oldV === !!newV;
       return oldV != null && newV != null && Math.abs(Number(oldV) - Number(newV)) < 1e-9;
@@ -4146,6 +4173,7 @@ bash scripts/update_and_serve.sh --start</div>
         if ((field === 'home_rotation_code' || field === 'away_rotation_code') && !SB_ROTATION_CODES.has(String(v))){
           throw new Error('Проверьте значения ротации');
         }
+        if (field === 'comment' && typeof v !== 'string') throw new Error('Проверьте значение источника');
       });
       return payload;
     }
@@ -4217,6 +4245,9 @@ bash scripts/update_and_serve.sh --start</div>
           `<option value="${escapeHtml(r.code)}"${r.code === code ? ' selected' : ''}>${escapeHtml(r.name_ru || sbRotationLabel(r.code))}</option>`
         ).join('');
         return `<select class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}">${opts}</select>`;
+      }
+      if (col === 'source'){
+        return `<input class="hist-cell-input hist-source-input" data-hist-col="${col}" data-hist-mid="${m.match_id}" value="${escapeHtml(val)}" placeholder="${escapeHtml(SB_SOURCE_DEFAULT)}" />`;
       }
       return `<input class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}" value="${escapeHtml(val)}" />`;
     }
