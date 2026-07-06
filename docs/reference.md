@@ -136,7 +136,7 @@ CORS: `HISTORY_API_CORS` (default `*`).
 | Ротация хозяев | `home_rot` | `home_rotation_code` | да (в блоке **▼ Веса**; не влияет на модель) |
 | Ротация гостей | `away_rot` | `away_rotation_code` | да (в блоке **▼ Веса**; не влияет на модель) |
 | Источник | `source` | `note` | да (в блоке **▼ Веса**; default `Pinnacle`) |
-| Мотивация | `motivation` | `motivation` | да (в блоке **▼ Веса**; не влияет на модель) |
+| Мотивация | `motivation` | `motivation` | да (в блоке **▼ Веса**; boolean да/нет; не влияет на модель) |
 
 **Сохранение:** «▼ Данные» → «Получить данные» сразу PATCH в БД (статус «Сохранено»).  
 Кнопка «Сохранить» в строке — только после **ручной** правки ячейки или весов.
@@ -165,6 +165,7 @@ note, motivation
 - `derby_weight`: **1** (дерби) или **0** / `null` (не дерби); поправка H — при обучении
 - `is_neutral`: boolean
 - `home_rotation_code`, `away_rotation_code`: `none` | `middle` | `high` (пустое → `none`)
+- `motivation`: boolean (`да` / `нет` на UI)
 
 ---
 

@@ -1668,13 +1668,24 @@ def build_app():
                     state="readonly",
                     width=22,
                 ).grid(row=row_i, column=1, sticky="w", padx=8, pady=6)
-            elif ui_col in ("source", "motivation"):
+            elif ui_col == "source":
                 initial = edits.get(ui_col, sbh.edit_display_value(m, ui_col))
                 var = tk.StringVar(value=initial)
                 vars_by_col[ui_col] = var
                 ttk.Entry(dlg, textvariable=var, width=22).grid(
                     row=row_i, column=1, sticky="w", padx=8, pady=6
                 )
+            elif ui_col == "motivation":
+                initial = edits.get(ui_col, sbh.edit_display_value(m, ui_col))
+                var = tk.StringVar(value=initial)
+                vars_by_col[ui_col] = var
+                ttk.Combobox(
+                    dlg,
+                    textvariable=var,
+                    values=("нет", "да"),
+                    state="readonly",
+                    width=22,
+                ).grid(row=row_i, column=1, sticky="w", padx=8, pady=6)
             else:
                 initial = edits.get(ui_col, sbh.edit_display_value(m, ui_col))
                 var = tk.StringVar(value=initial)

@@ -143,7 +143,7 @@ class MatchFull:
     away_rotation_code: str = ROTATION_DEFAULT_CODE
     away_rotation_name: Optional[str] = None
     note: Optional[str] = None
-    motivation: Optional[str] = None
+    motivation: Optional[bool] = None
 
 
 def is_derby_match(match: MatchFull) -> bool:
@@ -215,21 +215,31 @@ def parse_source_input(text: str) -> str:
     return normalize_source(text, apply_default=True)
 
 
-def match_motivation_raw(match: MatchFull) -> Optional[str]:
+def match_motivation_raw(match: MatchFull) -> Optional[bool]:
     raw = match.motivation
     if raw is None:
         return None
-    text = str(raw).strip()
-    return text or None
+    if isinstance(raw, bool):
+        return raw
+    text = str(raw).strip().lower()
+    if not text:
+        return None
+    if text in ("да", "true", "1", "yes", "y"):
+        return True
+    if text in ("нет", "false", "0", "no", "n"):
+        return False
+    return True
 
 
 def motivation_display(match: MatchFull) -> str:
-    return match_motivation_raw(match) or ""
+    raw = match_motivation_raw(match)
+    if raw is None:
+        return "нет"
+    return "да" if raw else "нет"
 
 
-def parse_motivation_input(text: str) -> Optional[str]:
-    raw = str(text or "").strip()
-    return raw or None
+def parse_motivation_input(text: str) -> bool:
+    return parse_bool_input(text)
 
 
 # legacy aliases (tests / internal)
@@ -462,7 +472,7 @@ def validate_match_patch(changes: Mapping[str, Any]) -> None:
                 raise ValueError("Проверьте значение источника")
             continue
         if key == "motivation":
-            if val is not None and not isinstance(val, str):
+            if val is not None and not isinstance(val, bool):
                 raise ValueError("Проверьте значение мотивации")
             continue
         if not isinstance(val, (int, float)):
@@ -521,7 +531,7 @@ def _values_equal(field: str, old: Any, new: Any) -> bool:
     if field in ("home_rotation_code", "away_rotation_code"):
         return normalize_rotation_code(old) == normalize_rotation_code(new)
     if field == "motivation":
-        return (old or None) == (new or None)
+        return bool(old) == bool(new)
     if field == "note":
         return normalize_source(old if isinstance(old, str) else None) == normalize_source(
             new if isinstance(new, str) else None
@@ -565,7 +575,7 @@ def apply_patch_to_match(original: MatchFull, changes: Mapping[str, Any]) -> Mat
         elif field == "note":
             kw[attr] = parse_source_input(str(val) if val is not None else "")
         elif field == "motivation":
-            kw[attr] = parse_motivation_input(str(val) if val is not None else "")
+            kw[attr] = None if val is None else bool(val)
         elif val is None:
             kw[attr] = None
         else:
@@ -623,12 +633,20 @@ def _parse_note_row(row: Mapping[str, Any]) -> Optional[str]:
     return text or None
 
 
-def _parse_motivation_row(row: Mapping[str, Any]) -> Optional[str]:
+def _parse_motivation_row(row: Mapping[str, Any]) -> Optional[bool]:
     raw = row.get("motivation")
-    if raw in (None, ""):
+    if raw is None:
         return None
-    text = str(raw).strip()
-    return text or None
+    if isinstance(raw, bool):
+        return raw
+    text = str(raw).strip().lower()
+    if not text:
+        return None
+    if text in ("да", "true", "1", "yes", "y"):
+        return True
+    if text in ("нет", "false", "0", "no", "n"):
+        return False
+    return True
 
 
 def _parse_match_row(row: dict) -> Optional[MatchFull]:
@@ -702,15 +720,69 @@ def fetch_season_summary() -> List[SeasonSummary]:
     return out
 
 
-_MATCH_SELECT = (
+_MATCH_VIEW_SELECT = (
     "match_id,match_date,league_id,league_name,season_id,season_label,"
     "home_team_id,home_team,away_team_id,away_team,"
     "closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,"
     "over_odds,under_odds,home_odds,draw_odds,away_odds,"
     "is_neutral,match_weight,derby_weight,neutral_weight,"
-    "home_rotation_code,home_rotation_name,away_rotation_code,away_rotation_name,"
     "note,motivation"
 )
+_ROTATION_ENRICH_CHUNK = 150
+
+
+def _fetch_rotation_map(match_ids: List[int]) -> Dict[int, Dict[str, str]]:
+    """Ротация хранится в matches, но может отсутствовать в v_matches_full."""
+    out: Dict[int, Dict[str, str]] = {}
+    if not match_ids:
+        return out
+    unique = sorted({int(mid) for mid in match_ids})
+    for i in range(0, len(unique), _ROTATION_ENRICH_CHUNK):
+        chunk = unique[i : i + _ROTATION_ENRICH_CHUNK]
+        id_list = ",".join(str(mid) for mid in chunk)
+        q = urllib.parse.urlencode(
+            {
+                "select": "id,home_rotation_code,away_rotation_code",
+                "id": f"in.({id_list})",
+            }
+        )
+        try:
+            rows = _request("GET", f"/matches?{q}")
+        except SupabaseError:
+            continue
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            try:
+                mid = int(row["id"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            out[mid] = {
+                "home_rotation_code": normalize_rotation_code(row.get("home_rotation_code")),
+                "away_rotation_code": normalize_rotation_code(row.get("away_rotation_code")),
+            }
+    return out
+
+
+def _enrich_match_rows_with_rotation(rows: List[dict]) -> None:
+    ids = [int(row["match_id"]) for row in rows if isinstance(row, dict) and row.get("match_id") is not None]
+    rot_map = _fetch_rotation_map(ids)
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            mid = int(row["match_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        rot = rot_map.get(mid)
+        if not rot:
+            continue
+        row["home_rotation_code"] = rot["home_rotation_code"]
+        row["away_rotation_code"] = rot["away_rotation_code"]
+        row["home_rotation_name"] = rotation_label(rot["home_rotation_code"])
+        row["away_rotation_name"] = rotation_label(rot["away_rotation_code"])
 
 
 def fetch_matches(league_id: str, season_id: Union[int, str]) -> List[MatchFull]:
@@ -723,7 +795,7 @@ def fetch_matches(league_id: str, season_id: Union[int, str]) -> List[MatchFull]
         return []
     q = urllib.parse.urlencode(
         {
-            "select": _MATCH_SELECT,
+            "select": _MATCH_VIEW_SELECT,
             "league_id": f"eq.{lid}",
             "season_id": f"eq.{sid}",
             "order": "match_date.asc",
@@ -732,6 +804,7 @@ def fetch_matches(league_id: str, season_id: Union[int, str]) -> List[MatchFull]
     rows = _request("GET", f"/v_matches_full?{q}")
     if not isinstance(rows, list):
         raise SupabaseError("Некорректный ответ v_matches_full")
+    _enrich_match_rows_with_rotation(rows)
     out: List[MatchFull] = []
     for row in rows:
         ent = _parse_match_row(row)
