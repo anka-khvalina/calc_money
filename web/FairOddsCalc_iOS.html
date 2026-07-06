@@ -3891,7 +3891,7 @@ bash scripts/update_and_serve.sh --start</div>
       'over_odds','under_odds','home_odds','draw_odds','away_odds',
       'is_neutral','match_weight','derby_weight','neutral_weight',
       'home_rotation_code','home_rotation_name','away_rotation_code','away_rotation_name',
-      'note',
+      'note','motivation',
     ].join(',');
 
     const SB_SOURCE_DEFAULT = 'Pinnacle';
@@ -3999,7 +3999,7 @@ bash scripts/update_and_serve.sh --start</div>
       'home_odds','draw_odds','away_odds',
       'is_neutral','match_weight','derby_weight','neutral_weight',
       'home_rotation_code','away_rotation_code',
-      'note',
+      'note','motivation',
     ]);
     const SB_ODDS_GT_ONE = new Set([
       'ah_home_odds','ah_away_odds','over_odds','under_odds','home_odds','draw_odds','away_odds',
@@ -4011,6 +4011,7 @@ bash scripts/update_and_serve.sh --start</div>
       neutral:'is_neutral', derby:'derby_weight', match_w:'match_weight', neutr_w:'neutral_weight',
       home_rot:'home_rotation_code', away_rot:'away_rotation_code',
       source:'note',
+      motivation:'motivation',
     };
     const SB_HIST_WEIGHT_COLS = [
       { col:'neutral', label:'Нейтральное поле', hint:'факт: матч был на нейтральном? да → без домашнего преимущества' },
@@ -4020,6 +4021,7 @@ bash scripts/update_and_serve.sh --start</div>
       { col:'home_rot', label:'Ротация хозяев', hint:'уровень ротации состава хозяев (не влияет на модель)' },
       { col:'away_rot', label:'Ротация гостей', hint:'уровень ротации состава гостей (не влияет на модель)' },
       { col:'source', label:'Источник', hint:'источник closing-линии (по умолчанию Pinnacle)' },
+      { col:'motivation', label:'Мотивация', hint:'мотивация матча (не влияет на модель)' },
     ];
     const USERBET_FIELD_TO_UI = {
       ah_home_odds:'ah1', closing_ah_home:'ah', ah_away_odds:'ah2',
@@ -4098,6 +4100,14 @@ bash scripts/update_and_serve.sh --start</div>
     function sbParseSource(text){
       return sbNormalizeSource(text);
     }
+    function sbMotivationDisplay(m){
+      const raw = m.motivation != null ? String(m.motivation).trim() : '';
+      return raw;
+    }
+    function sbParseMotivation(text){
+      const raw = String(text || '').trim();
+      return raw || null;
+    }
     function sbIsDerby(m){
       const w = m.derby_weight;
       if (w == null) return false;
@@ -4112,6 +4122,7 @@ bash scripts/update_and_serve.sh --start</div>
       if (field === 'home_rotation_code') return sbNormalizeRotationCode(m.home_rotation_code);
       if (field === 'away_rotation_code') return sbNormalizeRotationCode(m.away_rotation_code);
       if (field === 'note') return sbMatchNoteRaw(m);
+      if (field === 'motivation') return sbMotivationDisplay(m) || null;
       const v = m[field];
       return v == null ? null : Number(v);
     }
@@ -4120,6 +4131,7 @@ bash scripts/update_and_serve.sh --start</div>
       if (field === 'is_neutral') return m.is_neutral ? 'да' : 'нет';
       if (col === 'derby') return sbIsDerby(m) ? 'да' : 'нет';
       if (col === 'source') return sbSourceDisplay(m);
+      if (col === 'motivation') return sbMotivationDisplay(m);
       if (col === 'home_rot' || col === 'away_rot') return sbNormalizeRotationCode(m[field]);
       const v = m[field];
       if (v == null) return '';
@@ -4152,6 +4164,7 @@ bash scripts/update_and_serve.sh --start</div>
       const field = SB_UI_COL_MAP[col];
       if (field === 'home_rotation_code' || field === 'away_rotation_code') return sbParseRotation(text);
       if (field === 'note') return sbParseSource(text);
+      if (field === 'motivation') return sbParseMotivation(text);
       if (field === 'is_neutral' || col === 'derby') return sbParseBool(text);
       return sbParseNumeric(text);
     }
@@ -4159,6 +4172,9 @@ bash scripts/update_and_serve.sh --start</div>
       if (oldV == null && newV == null) return true;
       if (field === 'home_rotation_code' || field === 'away_rotation_code'){
         return sbNormalizeRotationCode(oldV) === sbNormalizeRotationCode(newV);
+      }
+      if (field === 'motivation'){
+        return (oldV || null) === (newV || null);
       }
       if (field === 'note'){
         return sbNormalizeSource(oldV) === sbNormalizeSource(newV);
@@ -4192,6 +4208,7 @@ bash scripts/update_and_serve.sh --start</div>
           throw new Error('Проверьте значения ротации');
         }
         if (field === 'note' && typeof v !== 'string') throw new Error('Проверьте значение источника');
+        if (field === 'motivation' && v != null && typeof v !== 'string') throw new Error('Проверьте значение мотивации');
       });
       return payload;
     }
@@ -4266,6 +4283,9 @@ bash scripts/update_and_serve.sh --start</div>
       }
       if (col === 'source'){
         return `<input class="hist-cell-input hist-source-input" data-hist-col="${col}" data-hist-mid="${m.match_id}" value="${escapeHtml(val)}" placeholder="${escapeHtml(SB_SOURCE_DEFAULT)}" />`;
+      }
+      if (col === 'motivation'){
+        return `<input class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}" value="${escapeHtml(val)}" />`;
       }
       return `<input class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}" value="${escapeHtml(val)}" />`;
     }
@@ -4607,6 +4627,9 @@ bash scripts/update_and_serve.sh --start</div>
 
     function sbHistErrorMessage(e, what){
       if (!e) return `Не удалось ${what}.`;
+      if (e && e.name === 'TimeoutError'){
+        return `Таймаут при попытке ${what}. Проверьте интернет на этом устройстве и доступ к Supabase.`;
+      }
       if (e.message && e.message.includes('supabase.config')) return e.message;
       if (e.status === 401 || e.status === 403) return `Нет доступа к Supabase (HTTP ${e.status}). Проверьте anon_key в supabase.config.json.`;
       if (e.message === 'Failed to fetch' || (e.name === 'TypeError' && String(e.message).includes('fetch'))){

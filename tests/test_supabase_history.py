@@ -44,6 +44,7 @@ def _sample_match(**overrides) -> sbh.MatchFull:
         away_rotation_code="none",
         away_rotation_name=None,
         note=None,
+        motivation=None,
     )
     base.update(overrides)
     return sbh.MatchFull(**base)
@@ -123,6 +124,7 @@ def test_fetch_matches_filters_by_league_and_season():
                 "away_rotation_code": "none",
                 "away_rotation_name": "Нет ротации",
                 "note": None,
+                "motivation": "high",
             }
         ]
     ).encode()
@@ -134,6 +136,7 @@ def test_fetch_matches_filters_by_league_and_season():
     assert "season_id=eq.4" in url
     assert matches[0].home_team == "Liverpool"
     assert matches[0].home_rotation_code == "middle"
+    assert matches[0].motivation == "high"
     assert sbh.rotation_display_home(matches[0]) == "Умеренная ротация"
     assert sbh.format_cell(matches[0].home_odds, kind="num") == "1.3"
     assert sbh.format_cell(matches[0].is_neutral, kind="bool") == "нет"
@@ -288,6 +291,17 @@ def test_hist_weight_ui_cols_include_rotation():
     assert sbh.UI_COL_TO_FIELD["home_rot"] == "home_rotation_code"
     assert "home_rotation_code" in sbh.PATCH_WHITELIST
     assert "note" in sbh.PATCH_WHITELIST
+    assert "motivation" in sbh.PATCH_WHITELIST
+
+
+def test_motivation_patch():
+    m = _sample_match(motivation="relegation")
+    payload = sbh.build_dirty_patch(m, {"motivation": "title_race"})
+    assert payload == {"motivation": "title_race"}
+    updated = sbh.apply_patch_to_match(m, {"motivation": "title_race"})
+    assert updated.motivation == "title_race"
+    cleared = sbh.build_dirty_patch(updated, {"motivation": ""})
+    assert cleared == {"motivation": None}
 
 
 def test_source_default_and_patch():

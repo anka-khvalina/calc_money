@@ -136,6 +136,7 @@ CORS: `HISTORY_API_CORS` (default `*`).
 | Ротация хозяев | `home_rot` | `home_rotation_code` | да (в блоке **▼ Веса**; не влияет на модель) |
 | Ротация гостей | `away_rot` | `away_rotation_code` | да (в блоке **▼ Веса**; не влияет на модель) |
 | Источник | `source` | `note` | да (в блоке **▼ Веса**; default `Pinnacle`) |
+| Мотивация | `motivation` | `motivation` | да (в блоке **▼ Веса**; не влияет на модель) |
 
 **Сохранение:** «▼ Данные» → «Получить данные» сразу PATCH в БД (статус «Сохранено»).  
 Кнопка «Сохранить» в строке — только после **ручной** правки ячейки или весов.
@@ -152,7 +153,7 @@ over_odds, closing_total_line, under_odds,
 home_odds, draw_odds, away_odds,
 is_neutral, match_weight, derby_weight, neutral_weight,
 home_rotation_code, away_rotation_code,
-note
+note, motivation
 ```
 
 Справочник уровней ротации: таблица `match_rotation_levels` (коды `none` / `middle` / `high`). В PATCH и БД — только код; на UI — `name_ru` из view или справочника.
