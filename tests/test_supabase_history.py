@@ -43,7 +43,7 @@ def _sample_match(**overrides) -> sbh.MatchFull:
         home_rotation_name=None,
         away_rotation_code="none",
         away_rotation_name=None,
-        comment=None,
+        note=None,
     )
     base.update(overrides)
     return sbh.MatchFull(**base)
@@ -140,13 +140,13 @@ def test_fetch_matches_filters_by_league_and_season():
 
 
 def test_build_dirty_patch_only_changed():
-    m = _sample_match(match_id=1, match_date="2025-08-15", league_id="uuid", league_name="PL", season_id=4, season_label="2025-26", home_team_id=1, home_team="Arsenal", away_team_id=2, away_team="Chelsea", closing_ah_home=None, closing_total_line=2.5, ah_home_odds=None, ah_away_odds=None, over_odds=1.9, under_odds=2.0, home_odds=1.3, draw_odds=6.0, away_odds=9.0, is_neutral=False, match_weight=1.0, derby_weight=1.0, neutral_weight=1.0, comment=None)
+    m = _sample_match(match_id=1, match_date="2025-08-15", league_id="uuid", league_name="PL", season_id=4, season_label="2025-26", home_team_id=1, home_team="Arsenal", away_team_id=2, away_team="Chelsea", closing_ah_home=None, closing_total_line=2.5, ah_home_odds=None, ah_away_odds=None, over_odds=1.9, under_odds=2.0, home_odds=1.3, draw_odds=6.0, away_odds=9.0, is_neutral=False, match_weight=1.0, derby_weight=1.0, neutral_weight=1.0, note=None)
     payload = sbh.build_dirty_patch(m, {"o1": "1,27", "ox": "6,0"})
     assert payload == {"home_odds": 1.27}
 
 
 def test_build_dirty_patch_rejects_bad_odds():
-    m = _sample_match(match_id=1, match_date="2025-08-15", league_id="uuid", league_name="PL", season_id=4, season_label="2025-26", home_team_id=1, home_team="A", away_team_id=2, away_team="B", closing_ah_home=None, closing_total_line=None, ah_home_odds=None, ah_away_odds=None, over_odds=None, under_odds=None, home_odds=1.3, draw_odds=6.0, away_odds=9.0, is_neutral=False, match_weight=1.0, derby_weight=1.0, neutral_weight=1.0, comment=None)
+    m = _sample_match(match_id=1, match_date="2025-08-15", league_id="uuid", league_name="PL", season_id=4, season_label="2025-26", home_team_id=1, home_team="A", away_team_id=2, away_team="B", closing_ah_home=None, closing_total_line=None, ah_home_odds=None, ah_away_odds=None, over_odds=None, under_odds=None, home_odds=1.3, draw_odds=6.0, away_odds=9.0, is_neutral=False, match_weight=1.0, derby_weight=1.0, neutral_weight=1.0, note=None)
     try:
         sbh.build_dirty_patch(m, {"o1": "0,95"})
         assert False, "expected ValueError"
@@ -155,7 +155,7 @@ def test_build_dirty_patch_rejects_bad_odds():
 
 
 def test_build_dirty_patch_derby_bool():
-    m = _sample_match(match_id=1, match_date="2025-08-15", league_id="uuid", league_name="PL", season_id=4, season_label="2025-26", home_team_id=1, home_team="A", away_team_id=2, away_team="B", closing_ah_home=None, closing_total_line=None, ah_home_odds=None, ah_away_odds=None, over_odds=None, under_odds=None, home_odds=1.3, draw_odds=6.0, away_odds=9.0, is_neutral=False, match_weight=1.0, derby_weight=0.0, neutral_weight=1.0, comment=None)
+    m = _sample_match(match_id=1, match_date="2025-08-15", league_id="uuid", league_name="PL", season_id=4, season_label="2025-26", home_team_id=1, home_team="A", away_team_id=2, away_team="B", closing_ah_home=None, closing_total_line=None, ah_home_odds=None, ah_away_odds=None, over_odds=None, under_odds=None, home_odds=1.3, draw_odds=6.0, away_odds=9.0, is_neutral=False, match_weight=1.0, derby_weight=0.0, neutral_weight=1.0, note=None)
     payload = sbh.build_dirty_patch(m, {"derby": "да"})
     assert payload == {"derby_weight": sbh.DERBY_FLAG_YES}
     payload2 = sbh.build_dirty_patch(
@@ -166,7 +166,7 @@ def test_build_dirty_patch_derby_bool():
 
 
 def test_is_derby_default_not_derby():
-    m = _sample_match(match_id=1, match_date="2025-08-15", league_id="uuid", league_name="PL", season_id=4, season_label="2025-26", home_team_id=1, home_team="A", away_team_id=2, away_team="B", closing_ah_home=None, closing_total_line=None, ah_home_odds=None, ah_away_odds=None, over_odds=None, under_odds=None, home_odds=1.3, draw_odds=6.0, away_odds=9.0, is_neutral=False, match_weight=1.0, derby_weight=None, neutral_weight=1.0, comment=None)
+    m = _sample_match(match_id=1, match_date="2025-08-15", league_id="uuid", league_name="PL", season_id=4, season_label="2025-26", home_team_id=1, home_team="A", away_team_id=2, away_team="B", closing_ah_home=None, closing_total_line=None, ah_home_odds=None, ah_away_odds=None, over_odds=None, under_odds=None, home_odds=1.3, draw_odds=6.0, away_odds=9.0, is_neutral=False, match_weight=1.0, derby_weight=None, neutral_weight=1.0, note=None)
     assert not sbh.is_derby_match(m)
     assert not sbh.is_derby_match(replace(m, derby_weight=0))
     assert not sbh.is_derby_match(replace(m, derby_weight=0.7))
@@ -209,7 +209,7 @@ def test_reset_all_derby_flags_patch():
 
 
 def test_build_dirty_patch_match_and_neutral_weights():
-    m = _sample_match(match_id=1, match_date="2025-08-15", league_id="uuid", league_name="PL", season_id=4, season_label="2025-26", home_team_id=1, home_team="A", away_team_id=2, away_team="B", closing_ah_home=None, closing_total_line=None, ah_home_odds=None, ah_away_odds=None, over_odds=None, under_odds=None, home_odds=1.3, draw_odds=6.0, away_odds=9.0, is_neutral=False, match_weight=1.0, derby_weight=1.0, neutral_weight=1.0, comment=None)
+    m = _sample_match(match_id=1, match_date="2025-08-15", league_id="uuid", league_name="PL", season_id=4, season_label="2025-26", home_team_id=1, home_team="A", away_team_id=2, away_team="B", closing_ah_home=None, closing_total_line=None, ah_home_odds=None, ah_away_odds=None, over_odds=None, under_odds=None, home_odds=1.3, draw_odds=6.0, away_odds=9.0, is_neutral=False, match_weight=1.0, derby_weight=1.0, neutral_weight=1.0, note=None)
     payload = sbh.build_dirty_patch(m, {"match_w": "0,8", "neutr_w": "0,7"})
     assert payload == {"match_weight": 0.8, "neutral_weight": 0.7}
 
@@ -238,7 +238,7 @@ def test_patch_match_sends_whitelist_only():
 
 
 def test_matches_to_goal_csv():
-    m = _sample_match(match_id=1, match_date="2025-08-15", league_id="uuid-1", league_name="Premier League", season_id=4, season_label="2025-26", home_team_id=1, home_team="Liverpool", away_team_id=2, away_team="Bournemouth", closing_ah_home=None, closing_total_line=2.5, ah_home_odds=None, ah_away_odds=None, over_odds=1.9, under_odds=2.0, home_odds=1.3, draw_odds=6.25, away_odds=9.75, is_neutral=False, match_weight=1.0, derby_weight=1.0, neutral_weight=1.0, comment=None)
+    m = _sample_match(match_id=1, match_date="2025-08-15", league_id="uuid-1", league_name="Premier League", season_id=4, season_label="2025-26", home_team_id=1, home_team="Liverpool", away_team_id=2, away_team="Bournemouth", closing_ah_home=None, closing_total_line=2.5, ah_home_odds=None, ah_away_odds=None, over_odds=1.9, under_odds=2.0, home_odds=1.3, draw_odds=6.25, away_odds=9.75, is_neutral=False, match_weight=1.0, derby_weight=1.0, neutral_weight=1.0, note=None)
     csv = sbh.matches_to_goal_csv([m])
     assert csv.startswith("date,league,league_id,home_team_id,home_team")
     # id команд сохраняются для ключей модели
@@ -284,22 +284,22 @@ def test_hist_weight_ui_cols_include_rotation():
     assert "home_rot" in sbh.HIST_WEIGHT_UI_COLS
     assert "away_rot" in sbh.HIST_WEIGHT_UI_COLS
     assert "source" in sbh.HIST_WEIGHT_UI_COLS
-    assert sbh.UI_COL_TO_FIELD["source"] == "comment"
+    assert sbh.UI_COL_TO_FIELD["source"] == "note"
     assert sbh.UI_COL_TO_FIELD["home_rot"] == "home_rotation_code"
     assert "home_rotation_code" in sbh.PATCH_WHITELIST
-    assert "comment" in sbh.PATCH_WHITELIST
+    assert "note" in sbh.PATCH_WHITELIST
 
 
-def test_comment_default_and_patch():
-    assert sbh.comment_display(_sample_match()) == sbh.SOURCE_DEFAULT
-    m = _sample_match(comment="Bet365")
-    assert sbh.comment_display(m) == "Bet365"
+def test_source_default_and_patch():
+    assert sbh.source_display(_sample_match()) == sbh.SOURCE_DEFAULT
+    m = _sample_match(note="Bet365")
+    assert sbh.source_display(m) == "Bet365"
     payload = sbh.build_dirty_patch(m, {"source": "Pinnacle"})
-    assert payload == {"comment": "Pinnacle"}
-    updated = sbh.apply_patch_to_match(m, {"comment": "Pinnacle"})
-    assert updated.comment == "Pinnacle"
+    assert payload == {"note": "Pinnacle"}
+    updated = sbh.apply_patch_to_match(m, {"note": "Pinnacle"})
+    assert updated.note == "Pinnacle"
 
 
-def test_parse_comment_row_fallback_note():
-    row = {"comment": None, "note": "legacy"}
-    assert sbh._parse_comment_row(row) == "legacy"
+def test_parse_note_row():
+    assert sbh._parse_note_row({"note": "Pinnacle"}) == "Pinnacle"
+    assert sbh._parse_note_row({"note": None}) is None
