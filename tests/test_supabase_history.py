@@ -44,6 +44,7 @@ def _sample_match(**overrides) -> sbh.MatchFull:
         away_rotation_code="none",
         away_rotation_name=None,
         note=None,
+        motivation=None,
     )
     base.update(overrides)
     return sbh.MatchFull(**base)
@@ -92,7 +93,7 @@ def test_format_ui_date():
 
 
 def test_fetch_matches_filters_by_league_and_season():
-    payload = json.dumps(
+    view_payload = json.dumps(
         [
             {
                 "match_id": 1,
@@ -118,22 +119,29 @@ def test_fetch_matches_filters_by_league_and_season():
                 "match_weight": 1,
                 "derby_weight": 1,
                 "neutral_weight": 1,
-                "home_rotation_code": "middle",
-                "home_rotation_name": "Умеренная ротация",
-                "away_rotation_code": "none",
-                "away_rotation_name": "Нет ротации",
                 "note": None,
+                "motivation": True,
             }
         ]
     ).encode()
-    with patch("urllib.request.urlopen", return_value=_mock_urlopen(payload)) as opener:
+    rot_payload = json.dumps(
+        [{"id": 1, "home_rotation_code": "middle", "away_rotation_code": "none"}]
+    ).encode()
+    responses = [view_payload, rot_payload]
+    urls: list[str] = []
+
+    def _side_effect(req, *args, **kwargs):
+        url = getattr(req, "full_url", None) or req.get_full_url()
+        urls.append(url)
+        return _mock_urlopen(responses.pop(0))
+
+    with patch("urllib.request.urlopen", side_effect=_side_effect):
         matches = sbh.fetch_matches("uuid-1", 4)
-    req = opener.call_args[0][0]
-    url = getattr(req, "full_url", None) or req.get_full_url()
-    assert "league_id=eq.uuid-1" in url
-    assert "season_id=eq.4" in url
+    assert any("league_id=eq.uuid-1" in url for url in urls)
+    assert any("season_id=eq.4" in url for url in urls)
     assert matches[0].home_team == "Liverpool"
     assert matches[0].home_rotation_code == "middle"
+    assert matches[0].motivation is True
     assert sbh.rotation_display_home(matches[0]) == "Умеренная ротация"
     assert sbh.format_cell(matches[0].home_odds, kind="num") == "1.3"
     assert sbh.format_cell(matches[0].is_neutral, kind="bool") == "нет"
@@ -288,6 +296,17 @@ def test_hist_weight_ui_cols_include_rotation():
     assert sbh.UI_COL_TO_FIELD["home_rot"] == "home_rotation_code"
     assert "home_rotation_code" in sbh.PATCH_WHITELIST
     assert "note" in sbh.PATCH_WHITELIST
+    assert "motivation" in sbh.PATCH_WHITELIST
+
+
+def test_motivation_patch():
+    m = _sample_match(motivation=True)
+    payload = sbh.build_dirty_patch(m, {"motivation": "нет"})
+    assert payload == {"motivation": False}
+    updated = sbh.apply_patch_to_match(m, {"motivation": False})
+    assert updated.motivation is False
+    payload2 = sbh.build_dirty_patch(updated, {"motivation": "да"})
+    assert payload2 == {"motivation": True}
 
 
 def test_source_default_and_patch():
@@ -300,6 +319,55 @@ def test_source_default_and_patch():
     assert updated.note == "Pinnacle"
 
 
-def test_parse_note_row():
-    assert sbh._parse_note_row({"note": "Pinnacle"}) == "Pinnacle"
-    assert sbh._parse_note_row({"note": None}) is None
+def test_parse_motivation_row():
+    assert sbh._parse_motivation_row({"motivation": True}) is True
+    assert sbh._parse_motivation_row({"motivation": False}) is False
+    assert sbh._parse_motivation_row({"motivation": None}) is None
+
+
+def test_fetch_rotation_enrichment():
+    view_payload = json.dumps(
+        [
+            {
+                "match_id": 10,
+                "match_date": "2025-08-15",
+                "league_id": "uuid-1",
+                "league_name": "PL",
+                "season_id": 4,
+                "season_label": "2025-26",
+                "home_team_id": 1,
+                "home_team": "Arsenal",
+                "away_team_id": 2,
+                "away_team": "Chelsea",
+                "closing_ah_home": None,
+                "closing_total_line": 2.5,
+                "ah_home_odds": None,
+                "ah_away_odds": None,
+                "over_odds": 1.9,
+                "under_odds": 2.0,
+                "home_odds": 1.3,
+                "draw_odds": 6.0,
+                "away_odds": 9.0,
+                "is_neutral": False,
+                "match_weight": 1.0,
+                "derby_weight": 0.0,
+                "neutral_weight": 1.0,
+                "note": None,
+                "motivation": True,
+            }
+        ]
+    ).encode()
+    rot_payload = json.dumps(
+        [{"id": 10, "home_rotation_code": "high", "away_rotation_code": "none"}]
+    ).encode()
+    responses = [view_payload, rot_payload]
+
+    def _side_effect(req, *args, **kwargs):
+        url = getattr(req, "full_url", None) or req.get_full_url()
+        body = responses.pop(0)
+        return _mock_urlopen(body)
+
+    with patch("urllib.request.urlopen", side_effect=_side_effect):
+        matches = sbh.fetch_matches("uuid-1", 4)
+    assert matches[0].home_rotation_code == "high"
+    assert matches[0].away_rotation_code == "none"

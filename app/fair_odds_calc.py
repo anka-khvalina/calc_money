@@ -1649,6 +1649,7 @@ def build_app():
                 ("home_rot", "Ротация хозяев"),
                 ("away_rot", "Ротация гостей"),
                 ("source", "Источник"),
+                ("motivation", "Мотивация"),
             )
         ):
             ttk.Label(dlg, text=f"{label}:").grid(row=row_i, column=0, sticky="w", padx=8, pady=6)
@@ -1674,6 +1675,17 @@ def build_app():
                 ttk.Entry(dlg, textvariable=var, width=22).grid(
                     row=row_i, column=1, sticky="w", padx=8, pady=6
                 )
+            elif ui_col == "motivation":
+                initial = edits.get(ui_col, sbh.edit_display_value(m, ui_col))
+                var = tk.StringVar(value=initial)
+                vars_by_col[ui_col] = var
+                ttk.Combobox(
+                    dlg,
+                    textvariable=var,
+                    values=("нет", "да"),
+                    state="readonly",
+                    width=22,
+                ).grid(row=row_i, column=1, sticky="w", padx=8, pady=6)
             else:
                 initial = edits.get(ui_col, sbh.edit_display_value(m, ui_col))
                 var = tk.StringVar(value=initial)
@@ -1694,7 +1706,7 @@ def build_app():
             _hist_refresh_row(mid)
 
         btns = ttk.Frame(dlg)
-        btns.grid(row=6, column=0, columnspan=2, pady=(4, 10))
+        btns.grid(row=7, column=0, columnspan=2, pady=(4, 10))
         ttk.Button(btns, text="Готово", command=apply_and_close).pack(side="left", padx=6)
         ttk.Button(btns, text="Отмена", command=dlg.destroy).pack(side="left", padx=6)
         dlg.bind("<Escape>", lambda _e: dlg.destroy())

@@ -3884,15 +3884,51 @@ bash scripts/update_and_serve.sh --start</div>
       return window.__SB.seasons;
     }
 
-    const SB_MATCH_SELECT = [
+    const SB_MATCH_VIEW_SELECT = [
       'match_id','match_date','league_id','league_name','season_id','season_label',
       'home_team_id','home_team','away_team_id','away_team',
       'closing_ah_home','closing_total_line','ah_home_odds','ah_away_odds',
       'over_odds','under_odds','home_odds','draw_odds','away_odds',
       'is_neutral','match_weight','derby_weight','neutral_weight',
-      'home_rotation_code','home_rotation_name','away_rotation_code','away_rotation_name',
-      'note',
+      'note','motivation',
     ].join(',');
+    const SB_MATCH_SELECT = SB_MATCH_VIEW_SELECT;
+    const SB_ROTATION_ENRICH_CHUNK = 150;
+
+    async function sbEnrichMatchesRotation(matches){
+      if (!Array.isArray(matches) || !matches.length) return matches;
+      const ids = [...new Set(matches.map(m => Number(m.match_id)).filter(n => Number.isFinite(n)))];
+      const rotById = {};
+      for (let i = 0; i < ids.length; i += SB_ROTATION_ENRICH_CHUNK){
+        const chunk = ids.slice(i, i + SB_ROTATION_ENRICH_CHUNK);
+        const idList = chunk.map(n => encodeURIComponent(String(n))).join(',');
+        try {
+          const q = `select=id,home_rotation_code,away_rotation_code&id=in.(${idList})`;
+          const rows = await sbFetch(`/matches?${q}`);
+          if (!Array.isArray(rows)) continue;
+          rows.forEach(r => {
+            const mid = Number(r.id);
+            if (!Number.isFinite(mid)) return;
+            const home = sbNormalizeRotationCode(r.home_rotation_code);
+            const away = sbNormalizeRotationCode(r.away_rotation_code);
+            rotById[mid] = {
+              home_rotation_code: home,
+              home_rotation_name: sbRotationLabel(home),
+              away_rotation_code: away,
+              away_rotation_name: sbRotationLabel(away),
+            };
+          });
+        } catch (e){
+          console.warn('rotation enrich', e);
+        }
+      }
+      matches.forEach(m => {
+        const rot = rotById[Number(m.match_id)];
+        if (!rot) return;
+        Object.assign(m, rot);
+      });
+      return matches;
+    }
 
     const SB_SOURCE_DEFAULT = 'Pinnacle';
 
@@ -3942,10 +3978,12 @@ bash scripts/update_and_serve.sh --start</div>
     }
 
     async function sbLoadSeasonMatches(leagueId, seasonId){
-      const q = `select=${SB_MATCH_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=eq.${encodeURIComponent(seasonId)}&order=match_date.asc`;
+      const q = `select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=eq.${encodeURIComponent(seasonId)}&order=match_date.asc`;
       const rows = await sbFetch(`/v_matches_full?${q}`);
+      const list = Array.isArray(rows) ? rows : [];
+      await sbEnrichMatchesRotation(list);
       const key = sbSeasonKey(leagueId, seasonId);
-      window.__SB.matchesBySeason[key] = Array.isArray(rows) ? rows : [];
+      window.__SB.matchesBySeason[key] = list;
       return window.__SB.matchesBySeason[key];
     }
 
@@ -3999,7 +4037,7 @@ bash scripts/update_and_serve.sh --start</div>
       'home_odds','draw_odds','away_odds',
       'is_neutral','match_weight','derby_weight','neutral_weight',
       'home_rotation_code','away_rotation_code',
-      'note',
+      'note','motivation',
     ]);
     const SB_ODDS_GT_ONE = new Set([
       'ah_home_odds','ah_away_odds','over_odds','under_odds','home_odds','draw_odds','away_odds',
@@ -4011,6 +4049,7 @@ bash scripts/update_and_serve.sh --start</div>
       neutral:'is_neutral', derby:'derby_weight', match_w:'match_weight', neutr_w:'neutral_weight',
       home_rot:'home_rotation_code', away_rot:'away_rotation_code',
       source:'note',
+      motivation:'motivation',
     };
     const SB_HIST_WEIGHT_COLS = [
       { col:'neutral', label:'Нейтральное поле', hint:'факт: матч был на нейтральном? да → без домашнего преимущества' },
@@ -4020,6 +4059,7 @@ bash scripts/update_and_serve.sh --start</div>
       { col:'home_rot', label:'Ротация хозяев', hint:'уровень ротации состава хозяев (не влияет на модель)' },
       { col:'away_rot', label:'Ротация гостей', hint:'уровень ротации состава гостей (не влияет на модель)' },
       { col:'source', label:'Источник', hint:'источник closing-линии (по умолчанию Pinnacle)' },
+      { col:'motivation', label:'Мотивация', hint:'флаг мотивации да/нет (не влияет на модель)' },
     ];
     const USERBET_FIELD_TO_UI = {
       ah_home_odds:'ah1', closing_ah_home:'ah', ah_away_odds:'ah2',
@@ -4098,6 +4138,24 @@ bash scripts/update_and_serve.sh --start</div>
     function sbParseSource(text){
       return sbNormalizeSource(text);
     }
+    function sbMotivationRaw(m){
+      const raw = m.motivation;
+      if (raw == null) return null;
+      if (typeof raw === 'boolean') return raw;
+      const text = String(raw).trim().toLowerCase();
+      if (!text) return null;
+      if (['да','true','1','yes','y'].includes(text)) return true;
+      if (['нет','false','0','no','n'].includes(text)) return false;
+      return true;
+    }
+    function sbMotivationDisplay(m){
+      const raw = sbMotivationRaw(m);
+      if (raw == null) return 'нет';
+      return raw ? 'да' : 'нет';
+    }
+    function sbParseMotivation(text){
+      return sbParseBool(text);
+    }
     function sbIsDerby(m){
       const w = m.derby_weight;
       if (w == null) return false;
@@ -4112,6 +4170,7 @@ bash scripts/update_and_serve.sh --start</div>
       if (field === 'home_rotation_code') return sbNormalizeRotationCode(m.home_rotation_code);
       if (field === 'away_rotation_code') return sbNormalizeRotationCode(m.away_rotation_code);
       if (field === 'note') return sbMatchNoteRaw(m);
+      if (field === 'motivation') return sbMotivationRaw(m);
       const v = m[field];
       return v == null ? null : Number(v);
     }
@@ -4120,6 +4179,7 @@ bash scripts/update_and_serve.sh --start</div>
       if (field === 'is_neutral') return m.is_neutral ? 'да' : 'нет';
       if (col === 'derby') return sbIsDerby(m) ? 'да' : 'нет';
       if (col === 'source') return sbSourceDisplay(m);
+      if (col === 'motivation') return sbMotivationDisplay(m);
       if (col === 'home_rot' || col === 'away_rot') return sbNormalizeRotationCode(m[field]);
       const v = m[field];
       if (v == null) return '';
@@ -4152,6 +4212,7 @@ bash scripts/update_and_serve.sh --start</div>
       const field = SB_UI_COL_MAP[col];
       if (field === 'home_rotation_code' || field === 'away_rotation_code') return sbParseRotation(text);
       if (field === 'note') return sbParseSource(text);
+      if (field === 'motivation') return sbParseMotivation(text);
       if (field === 'is_neutral' || col === 'derby') return sbParseBool(text);
       return sbParseNumeric(text);
     }
@@ -4159,6 +4220,9 @@ bash scripts/update_and_serve.sh --start</div>
       if (oldV == null && newV == null) return true;
       if (field === 'home_rotation_code' || field === 'away_rotation_code'){
         return sbNormalizeRotationCode(oldV) === sbNormalizeRotationCode(newV);
+      }
+      if (field === 'motivation'){
+        return !!oldV === !!newV;
       }
       if (field === 'note'){
         return sbNormalizeSource(oldV) === sbNormalizeSource(newV);
@@ -4192,6 +4256,7 @@ bash scripts/update_and_serve.sh --start</div>
           throw new Error('Проверьте значения ротации');
         }
         if (field === 'note' && typeof v !== 'string') throw new Error('Проверьте значение источника');
+        if (field === 'motivation' && typeof v !== 'boolean') throw new Error('Проверьте значение мотивации');
       });
       return payload;
     }
@@ -4226,9 +4291,10 @@ bash scripts/update_and_serve.sh --start</div>
       return !!st.manualEdit && sbHistIsDirty(st);
     }
     async function sbFetchMatchFromDb(mid){
-      const q = `select=${SB_MATCH_SELECT}&match_id=eq.${encodeURIComponent(mid)}`;
+      const q = `select=${SB_MATCH_VIEW_SELECT}&match_id=eq.${encodeURIComponent(mid)}`;
       const rows = await sbFetch(`/v_matches_full?${q}`);
       if (!Array.isArray(rows) || !rows.length) throw new Error('match not found');
+      await sbEnrichMatchesRotation(rows);
       return rows[0];
     }
     async function sbPatchMatch(matchId, payload){
@@ -4266,6 +4332,11 @@ bash scripts/update_and_serve.sh --start</div>
       }
       if (col === 'source'){
         return `<input class="hist-cell-input hist-source-input" data-hist-col="${col}" data-hist-mid="${m.match_id}" value="${escapeHtml(val)}" placeholder="${escapeHtml(SB_SOURCE_DEFAULT)}" />`;
+      }
+      if (col === 'motivation'){
+        return `<select class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}">` +
+          `<option value="нет"${val === 'нет' ? ' selected' : ''}>нет</option>` +
+          `<option value="да"${val === 'да' ? ' selected' : ''}>да</option></select>`;
       }
       return `<input class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}" value="${escapeHtml(val)}" />`;
     }
@@ -4607,6 +4678,9 @@ bash scripts/update_and_serve.sh --start</div>
 
     function sbHistErrorMessage(e, what){
       if (!e) return `Не удалось ${what}.`;
+      if (e && e.name === 'TimeoutError'){
+        return `Таймаут при попытке ${what}. Проверьте интернет на этом устройстве и доступ к Supabase.`;
+      }
       if (e.message && e.message.includes('supabase.config')) return e.message;
       if (e.status === 401 || e.status === 403) return `Нет доступа к Supabase (HTTP ${e.status}). Проверьте anon_key в supabase.config.json.`;
       if (e.message === 'Failed to fetch' || (e.name === 'TypeError' && String(e.message).includes('fetch'))){
@@ -5105,9 +5179,11 @@ bash scripts/update_and_serve.sh --start</div>
     async function sbLoadMatchesForSeasons(leagueId, seasonIds){
       if (!seasonIds.length) return [];
       const ids = seasonIds.map(s => encodeURIComponent(String(s))).join(',');
-      const q = `select=${SB_MATCH_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=in.(${ids})&order=match_date.asc`;
+      const q = `select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=in.(${ids})&order=match_date.asc`;
       const rows = await sbFetch(`/v_matches_full?${q}`);
-      return Array.isArray(rows) ? rows : [];
+      const list = Array.isArray(rows) ? rows : [];
+      await sbEnrichMatchesRotation(list);
+      return list;
     }
 
     function goalPopulateLeagueSelect(selId='goalSrcLeague'){
