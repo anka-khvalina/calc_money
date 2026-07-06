@@ -5,9 +5,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 VENV="$ROOT/.venv-api"
-if [[ ! -d "$VENV" ]]; then
+if [[ ! -f "$VENV/bin/activate" ]]; then
+  if [[ -d "$VENV" ]]; then
+    echo "Повреждённое .venv-api — пересоздаю..."
+    rm -rf "$VENV"
+  fi
   echo "Создаю виртуальное окружение .venv-api ..."
-  python3 -m venv "$VENV"
+  if ! python3 -m venv "$VENV"; then
+    echo "Ошибка: не удалось создать venv. На Mac: brew install python3  или  apt install python3-venv" >&2
+    exit 1
+  fi
 fi
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"

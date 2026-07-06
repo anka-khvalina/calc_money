@@ -79,6 +79,14 @@ class LanHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(msg)
             sys.stderr.write(f"proxy error {self.path}: {exc}\n")
+        except urllib.error.URLError as exc:
+            msg = '{"detail":"History API not running. On Mac: bash scripts/run_history_api.sh"}'.encode()
+            self.send_response(502)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(msg)
+            sys.stderr.write(f"proxy error {self.path}: {exc}\n")
 
     def do_GET(self) -> None:
         if self.path == "/health" or self.path.startswith("/api/"):
