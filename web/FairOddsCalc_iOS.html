@@ -4488,28 +4488,34 @@ bash scripts/update_and_serve.sh --start</div>
       };
       restore();
       requestAnimationFrame(restore);
-    }
-    function sbHistActiveEffective(st){
-      if (!st) return true;
-      return sbIsMatchActive(st.original);
+      setTimeout(restore, 0);
     }
     function sbHistUpdateInactiveVisual(tr, st){
-      if (!tr || !st) return;
-      const active = sbHistActiveEffective(st);
+      if (!tr || !st || !st.original) return;
+      const active = sbIsMatchActive(st.original);
       tr.classList.toggle('hist-inactive', !active);
       const dateTd = tr.querySelector('.hist-col-date');
       if (!dateTd) return;
-      let badge = dateTd.querySelector('.hist-inactive-badge');
+      const dateText = sbFmtDate(st.original.match_date);
+      while (dateTd.firstChild) dateTd.removeChild(dateTd.firstChild);
+      dateTd.appendChild(document.createTextNode(dateText));
       if (!active){
-        if (!badge){
-          badge = document.createElement('span');
-          badge.className = 'hist-inactive-badge';
-          badge.textContent = 'неакт.';
-          dateTd.appendChild(badge);
-        }
-      } else if (badge){
-        badge.remove();
+        const badge = document.createElement('span');
+        badge.className = 'hist-inactive-badge';
+        badge.textContent = 'неакт.';
+        dateTd.appendChild(document.createTextNode(' '));
+        dateTd.appendChild(badge);
       }
+    }
+    function sbHistMergePatchResponse(original, payload, patchRows){
+      let updated = sbApplyPatchToMatch(original, payload);
+      const row = Array.isArray(patchRows) ? patchRows[0] : null;
+      if (row && typeof row === 'object'){
+        if (row.active != null) updated.active = !!row.active;
+        if (row.motivation != null) updated.motivation = !!row.motivation;
+        if (row.note !== undefined) updated.note = row.note;
+      }
+      return updated;
     }
     function sbHistUpdateRowUI(mid){
       sbHistPreserveScroll(() => {
@@ -4519,6 +4525,7 @@ bash scripts/update_and_serve.sh --start</div>
         const dirty = sbHistIsManualDirty(st);
         const saveVisible = dirty || (st.isSaving && st.manualEdit);
         tr.classList.toggle('hist-dirty', dirty);
+        sbHistUpdateInactiveVisual(tr, st);
         const act = tr.querySelector('[data-hist-save]');
         if (act){
           act.classList.toggle('hist-save--off', !saveVisible);
@@ -4677,13 +4684,13 @@ bash scripts/update_and_serve.sh --start</div>
       st.savedMsg = '';
       sbHistUpdateRowUI(mid);
       try {
-        await sbPatchMatch(mid, payload);
-        let updated = sbApplyPatchToMatch(st.original, payload);
+        const patchRows = await sbPatchMatch(mid, payload);
+        let updated = sbHistMergePatchResponse(st.original, payload, patchRows);
         try {
           const fresh = await sbFetchMatchFromDb(mid);
           updated = Object.assign({}, fresh);
         } catch (reloadErr){
-          console.warn('derby reload after PATCH', reloadErr);
+          console.warn('match reload after PATCH', reloadErr);
         }
         st.original = Object.assign({}, updated);
         st.edited = {};
@@ -4694,8 +4701,6 @@ bash scripts/update_and_serve.sh --start</div>
           window.__SB.matchesBySeason[key] = window.__SB.matchesBySeason[key].map(r => Number(r.match_id) === Number(mid) ? updated : r);
         }
         sbHistRefreshRowInputs(mid);
-        const tr = document.querySelector(`#clhViewTable tr[data-hist-mid="${mid}"]`);
-        if (tr) sbHistUpdateInactiveVisual(tr, st);
         return { ok: true, saved: true };
       } catch (e){
         console.error('PATCH match failed', e);
