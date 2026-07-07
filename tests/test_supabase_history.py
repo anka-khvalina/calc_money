@@ -371,3 +371,60 @@ def test_fetch_rotation_enrichment():
         matches = sbh.fetch_matches("uuid-1", 4)
     assert matches[0].home_rotation_code == "high"
     assert matches[0].away_rotation_code == "none"
+
+
+def test_fetch_active_match_counts():
+    payload = json.dumps(
+        [{"season_id": 4}, {"season_id": 4}, {"season_id": 5}]
+    ).encode()
+    with patch("urllib.request.urlopen", return_value=_mock_urlopen(payload)):
+        counts = sbh.fetch_active_match_counts("uuid-1")
+    assert counts == {4: 2, 5: 1}
+
+
+def test_fetch_matches_active_only_filter():
+    view_payload = json.dumps(
+        [
+            {
+                "match_id": 1,
+                "match_date": "2025-08-15",
+                "league_id": "uuid-1",
+                "league_name": "PL",
+                "season_id": 4,
+                "season_label": "2025-26",
+                "home_team_id": 12,
+                "home_team": "Liverpool",
+                "away_team_id": 3,
+                "away_team": "Bournemouth",
+                "closing_ah_home": None,
+                "closing_total_line": None,
+                "ah_home_odds": None,
+                "ah_away_odds": None,
+                "over_odds": None,
+                "under_odds": None,
+                "home_odds": 1.3,
+                "draw_odds": 6.25,
+                "away_odds": 9.75,
+                "is_neutral": False,
+                "match_weight": 1,
+                "derby_weight": 1,
+                "neutral_weight": 1,
+                "note": None,
+                "motivation": True,
+            }
+        ]
+    ).encode()
+    rot_payload = json.dumps(
+        [{"id": 1, "home_rotation_code": "none", "away_rotation_code": "none"}]
+    ).encode()
+    responses = [view_payload, rot_payload]
+    urls: list[str] = []
+
+    def _side_effect(req, *args, **kwargs):
+        url = getattr(req, "full_url", None) or req.get_full_url()
+        urls.append(url)
+        return _mock_urlopen(responses.pop(0))
+
+    with patch("urllib.request.urlopen", side_effect=_side_effect):
+        sbh.fetch_matches("uuid-1", 4, active_only=True)
+    assert any("active=eq.true" in url for url in urls)

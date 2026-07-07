@@ -771,7 +771,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             </div>
           </div>
           <div class="hint" style="margin-top:6px">
-            Supabase → closing-линии. Вес: <b>сезон × match_weight × neutral</b>.
+            Supabase → closing-линии (<b>только active</b>). Вес: <b>сезон × match_weight × neutral</b>.
           </div>
         </div>
 
@@ -5229,17 +5229,41 @@ bash scripts/update_and_serve.sh --start</div>
       return { raw, total, excluded, valid: raw.length };
     }
 
+    async function sbFetchActiveMatchCounts(leagueId){
+      const q = `select=season_id&league_id=eq.${encodeURIComponent(leagueId)}&active=eq.true`;
+      const rows = await sbFetch(`/v_matches_full?${q}`);
+      const counts = {};
+      if (!Array.isArray(rows)) return counts;
+      rows.forEach(r => {
+        const sid = Number(r.season_id);
+        if (!Number.isFinite(sid)) return;
+        counts[sid] = (counts[sid] || 0) + 1;
+      });
+      return counts;
+    }
+    function sbSeasonActiveCount(season){
+      if (!season) return 0;
+      if (season.active_matches_count != null) return Number(season.active_matches_count) || 0;
+      return Number(season.matches_count) || 0;
+    }
+
     async function sbLoadSeasonsForLeague(leagueId){
       const q = 'select=league_id,league_name,season_id,season_label,matches_count,imported_at'
         + `&league_id=eq.${encodeURIComponent(leagueId)}&matches_count=gt.0&order=season_label.desc`;
-      const rows = await sbFetch(`/v_season_summary?${q}`);
-      return Array.isArray(rows) ? rows : [];
+      const [rows, activeCounts] = await Promise.all([
+        sbFetch(`/v_season_summary?${q}`),
+        sbFetchActiveMatchCounts(leagueId),
+      ]);
+      const list = Array.isArray(rows) ? rows : [];
+      return list
+        .map(s => Object.assign({}, s, { active_matches_count: activeCounts[s.season_id] || 0 }))
+        .filter(s => sbSeasonActiveCount(s) > 0);
     }
 
     async function sbLoadMatchesForSeasons(leagueId, seasonIds){
       if (!seasonIds.length) return [];
       const ids = seasonIds.map(s => encodeURIComponent(String(s))).join(',');
-      const q = `select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=in.(${ids})&order=match_date.asc`;
+      const q = `select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=in.(${ids})&active=eq.true&order=match_date.asc`;
       const rows = await sbFetch(`/v_matches_full?${q}`);
       const list = Array.isArray(rows) ? rows : [];
       await sbEnrichMatchesRotation(list);
@@ -5272,7 +5296,7 @@ bash scripts/update_and_serve.sh --start</div>
         return;
       }
       sel.innerHTML = goalLineSeasons.map(s =>
-        `<option value="${escapeHtml(String(s.season_id))}">${escapeHtml(s.season_label)} — ${escapeHtml(String(s.matches_count))} матчей</option>`
+        `<option value="${escapeHtml(String(s.season_id))}">${escapeHtml(s.season_label)} — ${escapeHtml(String(sbSeasonActiveCount(s)))} активных</option>`
       ).join('');
       sel.disabled = !!useAll;
       if (useAll){
@@ -5318,14 +5342,14 @@ bash scripts/update_and_serve.sh --start</div>
       }
       const byId = new Map(goalLineSeasons.map(s => [s.season_id, s]));
       box.innerHTML = '<div class="table-wrap"><table class="goal-sw-table"><thead><tr>'
-        + '<th class="goal-sw-season">Сезон</th><th class="goal-sw-n">Матчей</th><th class="goal-sw-w">Вес</th>'
+        + '<th class="goal-sw-season">Сезон</th><th class="goal-sw-n">Активных</th><th class="goal-sw-w">Вес</th>'
         + '</tr></thead><tbody>'
         + ids.map(sid => {
           const s = byId.get(sid);
           if (!s) return '';
           const w = goalSeasonWeightById[sid] != null ? goalSeasonWeightById[sid] : 1;
           return `<tr><td class="goal-sw-season" title="${escapeHtml(s.season_label)}">${escapeHtml(s.season_label)}</td>`
-            + `<td class="num goal-sw-n">${escapeHtml(String(s.matches_count))}</td>`
+            + `<td class="num goal-sw-n">${escapeHtml(String(sbSeasonActiveCount(s)))}</td>`
             + `<td class="num"><input class="goal-season-w" data-sid="${escapeHtml(String(sid))}" value="${escapeHtml(String(w).replace('.', ','))}" /></td></tr>`;
         }).join('') + '</tbody></table></div>';
     }
