@@ -77,6 +77,24 @@ GET /v_matches_full?select={fields}&league_id=eq.{league_id}&season_id=eq.{seaso
 GET /v_matches_full?select={fields}&league_id=eq.{league_id}&season_id=in.(3,4)&order=match_date.asc
 ```
 
+### Эталон для сравнения (inactive, только UI)
+
+При «Рассчитать линию» — опциональное сравнение с closing-линией из view `v_inactive_matches_full` (не влияет на расчёт):
+
+```http
+GET /v_inactive_matches_full?select={fields}&league_id=eq.{league_id}&home_team_id=eq.{home}&away_team_id=eq.{away}&order=match_date.desc&limit=1
+```
+
+Если матч не найден — вывод как раньше, без блока сравнения.
+
+**Поля `select`:**
+
+```text
+match_id,match_date,season_label,home_team,away_team,
+closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,
+over_odds,under_odds,home_odds,draw_odds,away_odds
+```
+
 **Поля `select` (канонический список):**
 
 ```text

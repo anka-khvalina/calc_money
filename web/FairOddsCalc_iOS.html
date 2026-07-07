@@ -258,6 +258,15 @@
     }
     .goal-predict-score strong{ display:block; font-size:15px; color:#0f172a; }
     .goal-predict-score span{ font-size:11px; color:#64748b; }
+    .goal-predict-compare{
+      padding:10px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px;
+    }
+    .goal-predict-compare-note{
+      margin:-2px 0 8px; font-size:11px; color:#92400e;
+    }
+    .goal-predict-table--compare{ font-size:12px; }
+    .goal-predict-table--compare td.delta-ok{ color:#166534; }
+    .goal-predict-table--compare td.delta-warn{ color:#b45309; font-weight:600; }
     .shin-details{
       margin-top:10px; padding:10px 12px; background:#f8fafc;
       border:1px solid var(--line); border-radius:10px;
@@ -5270,6 +5279,22 @@ bash scripts/update_and_serve.sh --start</div>
       return list;
     }
 
+    const SB_INACTIVE_COMPARE_SELECT = [
+      'match_id','match_date','season_label','home_team','away_team',
+      'closing_ah_home','closing_total_line','ah_home_odds','ah_away_odds',
+      'over_odds','under_odds','home_odds','draw_odds','away_odds',
+    ].join(',');
+
+    async function sbFetchInactiveCompareMatch(leagueId, homeTeamId, awayTeamId){
+      const q = `select=${SB_INACTIVE_COMPARE_SELECT}`
+        + `&league_id=eq.${encodeURIComponent(leagueId)}`
+        + `&home_team_id=eq.${encodeURIComponent(homeTeamId)}`
+        + `&away_team_id=eq.${encodeURIComponent(awayTeamId)}`
+        + '&order=match_date.desc&limit=1';
+      const rows = await sbFetch(`/v_inactive_matches_full?${q}`);
+      return Array.isArray(rows) && rows.length ? rows[0] : null;
+    }
+
     function goalPopulateLeagueSelect(selId='goalSrcLeague'){
       const sel = document.getElementById(selId);
       if (!sel) return;
@@ -5491,7 +5516,7 @@ bash scripts/update_and_serve.sh --start</div>
     document.getElementById('goalPredAway')?.addEventListener('change', () => { goalOnPredAwayChange(); });
 
     window.goalInitTab = goalInitTab;
-    bindClick('goalPredict',()=>{
+    bindClick('goalPredict', async ()=>{
       if(!gmModel){ alert('Сначала обучите модель.'); return; }
       const picked = goalPredSelectedTeams();
       if(!picked){ alert('Выберите лигу и две разные команды.'); return; }
@@ -5502,7 +5527,14 @@ bash scripts/update_and_serve.sh --start</div>
         const home=pred.homeName, away=pred.awayName;
         const useM=document.getElementById('goalMargin').checked;
         const mg=(parseFloat((document.getElementById('goalMarginPct').value||'3').replace(',','.'))||0)/100;
-        const {html,summary}=gmFormatPredict(pred,home,away,neutral,useM,mg);
+        let compareMatch = null;
+        try {
+          await loadSupabaseConfig();
+          compareMatch = await sbFetchInactiveCompareMatch(leagueId, homeId, awayId);
+        } catch (cmpErr){
+          console.warn('inactive compare', cmpErr);
+        }
+        const {html,summary}=gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch);
         const outEl=document.getElementById('goalOut');
         outEl.classList.remove('goal-predict-out--empty');
         outEl.innerHTML=html;
@@ -5535,7 +5567,75 @@ bash scripts/update_and_serve.sh --start</div>
       const p=n=>String(n).padStart(2,'0');
       return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
     }
-    function gmFormatPredict(pred,home,away,neutral,useM,mg){
+    function gmFmtOddsNum(v){
+      if (v == null || v === '') return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    function gmFmtOddsStr(v){
+      const n = gmFmtOddsNum(v);
+      return n == null ? '—' : n.toFixed(2);
+    }
+    function gmOddsDeltaStr(calc, ref){
+      const c = gmFmtOddsNum(calc);
+      const r = gmFmtOddsNum(ref);
+      if (c == null || r == null) return '—';
+      const d = c - r;
+      return (d > 0 ? '+' : '') + d.toFixed(2);
+    }
+    function gmDeltaClass(calc, ref){
+      const c = gmFmtOddsNum(calc);
+      const r = gmFmtOddsNum(ref);
+      if (c == null || r == null) return '';
+      return Math.abs(c - r) > 0.2 ? 'delta-warn' : 'delta-ok';
+    }
+    function gmAhLineStr(line){
+      const n = Number(line);
+      if (!Number.isFinite(n)) return '—';
+      return (n >= 0 ? '+' : '') + n;
+    }
+    function gmBuildInactiveCompareBlock(compare, model){
+      if (!compare) return '';
+      const note = [
+        compare.match_date ? String(compare.match_date) : '',
+        compare.season_label ? String(compare.season_label) : '',
+      ].filter(Boolean).join(' · ');
+      const row = (label, mVal, rVal, showDelta) => {
+        const delta = showDelta ? gmOddsDeltaStr(mVal, rVal) : '—';
+        const cls = showDelta ? gmDeltaClass(mVal, rVal) : '';
+        return `<tr><td class="lbl">${escapeHtml(label)}</td>`
+          + `<td>${gmFmtOddsStr(mVal)}</td><td>${gmFmtOddsStr(rVal)}</td>`
+          + `<td class="${cls}">${escapeHtml(delta)}</td></tr>`;
+      };
+      const refTot = compare.closing_total_line;
+      const refAh = compare.closing_ah_home;
+      const sameTot = refTot != null && Math.abs(Number(model.totLine) - Number(refTot)) < 1e-6;
+      const sameAh = refAh != null && Math.abs(Number(model.ahLine) - Number(refAh)) < 1e-6;
+      const totLabel = sameTot
+        ? `Тотал ${model.totLine}`
+        : `Тотал модель ${model.totLine} / эталон ${refTot}`;
+      const ahLabel = sameAh
+        ? `Фора ${gmAhLineStr(model.ahLine)}`
+        : `Фора модель ${gmAhLineStr(model.ahLine)} / эталон ${gmAhLineStr(refAh)}`;
+      return `
+        <div class="goal-predict-block goal-predict-compare">
+          <h5>Сравнение с эталоном (inactive)</h5>
+          ${note ? `<div class="goal-predict-compare-note">${escapeHtml(note)}</div>` : ''}
+          <table class="goal-predict-table goal-predict-table--compare">
+            <thead><tr><th class="lbl">Рынок</th><th>Модель</th><th>Эталон</th><th>Δ</th></tr></thead>
+            <tbody>
+              ${row('П1', model.k1, compare.home_odds, true)}
+              ${row('X', model.kx, compare.draw_odds, true)}
+              ${row('П2', model.k2, compare.away_odds, true)}
+              ${row(`${totLabel} Over`, model.totOver, compare.over_odds, sameTot)}
+              ${row(`${totLabel} Under`, model.totUnder, compare.under_odds, sameTot)}
+              ${row(`${ahLabel} хоз`, model.ahHome, compare.ah_home_odds, sameAh)}
+              ${row(`${ahLabel} гост`, model.ahAway, compare.ah_away_odds, sameAh)}
+            </tbody>
+          </table>
+        </div>`;
+    }
+    function gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch=null){
       const mk=pred.markets;
       const k1x2=()=> useM&&mg>0?[1/(mk.p1*(1+mg)),1/(mk.px*(1+mg)),1/(mk.p2*(1+mg))]:[1/mk.p1,1/mk.px,1/mk.p2];
       const k2=(pa,pb,ka,kb)=> useM&&mg>0?[1/(pa*(1+mg)),1/(pb*(1+mg))]:[ka,kb];
@@ -5607,12 +5707,18 @@ bash scripts/update_and_serve.sh --start</div>
           <h5>Топ счетов</h5>
           <div class="goal-predict-scores">${scoreCards}</div>
         </div>`;
+      const compareBlock=gmBuildInactiveCompareBlock(compareMatch, {
+        k1: kk1, kx: kkx, k2: kk2,
+        totLine: t.line, totOver: ot, totUnder: ut,
+        ahLine: a.line, ahHome: ah, ahAway: aa,
+      });
       const html=`
         <div class="goal-predict-header">
           <h4>${title}</h4>
           <div class="goal-predict-meta">${meta}</div>
           ${drawLine}
         </div>
+        ${compareBlock}
         ${x1x2}
         ${mainMarkets}
         ${teamTotals}
