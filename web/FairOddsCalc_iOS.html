@@ -68,7 +68,7 @@
     .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
     .btn.hist-save{ background:#16a34a; color:#fff; border-color:#16a34a; padding:4px 10px; font-size:12px; }
     .btn.hist-save.hist-save--off{ visibility:hidden; pointer-events:none; }
-    #clhViewTable td.hist-col-action,#clhViewTable th:last-child{ min-width:248px; white-space:nowrap; }
+    #clhViewTable td.hist-col-action,#clhViewTable th:last-child{ min-width:188px; white-space:nowrap; }
     .hist-action-bar{ display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px; }
     .hist-cell-input{
       width:100%; min-width:54px; max-width:none;
@@ -1024,7 +1024,6 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <section id="tab-hist" class="panel">
       <div class="small">
         Просмотр и редактирование матчей из Supabase.
-        <b>▼ Данные</b> → «Получить данные» сразу сохраняет коэффициенты в БД.
         При ручной правке ячейки появится кнопка «Сохранить».
         Флаги <b>нейтральное поле</b> и <b>дерби</b> — в блоке <b>▼ Веса</b> под строкой матча.
       </div>
@@ -4110,6 +4109,8 @@ bash scripts/update_and_serve.sh --start</div>
       }).join('');
     }
 
+    const SB_HIST_SHOW_FETCH = false;
+
     const SB_PATCH_WHITELIST = new Set([
       'ah_home_odds','closing_ah_home','ah_away_odds',
       'over_odds','closing_total_line','under_odds',
@@ -4602,7 +4603,9 @@ bash scripts/update_and_serve.sh --start</div>
           `<td class="hist-col-rotation">${escapeHtml(sbRotationDisplayHome(m))}</td>` +
           `<td class="hist-col-rotation">${escapeHtml(sbRotationDisplayAway(m))}</td>` +
           `<td class="hist-col-action"><span class="hist-action-bar">` +
-            `<button type="button" class="btn hist-fetch-toggle" data-hist-fetch-toggle="${m.match_id}" aria-expanded="${fetchOpen ? 'true' : 'false'}">${fetchOpen ? '▲ Данные' : '▼ Данные'}</button>` +
+            (SB_HIST_SHOW_FETCH
+              ? `<button type="button" class="btn hist-fetch-toggle" data-hist-fetch-toggle="${m.match_id}" aria-expanded="${fetchOpen ? 'true' : 'false'}">${fetchOpen ? '▲ Данные' : '▼ Данные'}</button>`
+              : '') +
             `<button type="button" class="btn hist-weights-toggle" data-hist-weights-toggle="${m.match_id}" aria-expanded="${weightsOpen ? 'true' : 'false'}">${weightsOpen ? '▲ Веса' : '▼ Веса'}</button>` +
             `<button type="button" class="btn hist-save${saveOff ? ' hist-save--off' : ''}" data-hist-save="${m.match_id}">${st.isSaving ? 'Сохранение...' : 'Сохранить'}</button>` +
             `<span class="hist-row-err" data-hist-err>${escapeHtml(st.saveError || '')}</span>` +
@@ -4612,9 +4615,10 @@ bash scripts/update_and_serve.sh --start</div>
         const weightsRow = `<tr class="hist-weights-row" data-hist-weights-for="${m.match_id}" style="display:${weightsOpen ? '' : 'none'}">` +
           `<td colspan="15">${sbHistWeightsPanel(m, st)}</td>` +
         `</tr>`;
-        const fetchRow = `<tr class="hist-fetch-row" data-hist-fetch-for="${m.match_id}" style="display:${fetchOpen ? '' : 'none'}">` +
-          `<td colspan="15">${sbHistFetchPanel(m, st)}</td>` +
-        `</tr>`;
+        const fetchRow = SB_HIST_SHOW_FETCH
+          ? `<tr class="hist-fetch-row" data-hist-fetch-for="${m.match_id}" style="display:${fetchOpen ? '' : 'none'}">` +
+            `<td colspan="15">${sbHistFetchPanel(m, st)}</td></tr>`
+          : '';
         return mainRow + fetchRow + weightsRow;
       }).join('');
     }
@@ -4691,6 +4695,10 @@ bash scripts/update_and_serve.sh --start</div>
           updated = Object.assign({}, fresh);
         } catch (reloadErr){
           console.warn('match reload after PATCH', reloadErr);
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'active')){
+          const row = Array.isArray(patchRows) ? patchRows[0] : null;
+          updated.active = row && row.active != null ? !!row.active : !!payload.active;
         }
         st.original = Object.assign({}, updated);
         st.edited = {};
