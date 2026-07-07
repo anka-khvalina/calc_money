@@ -785,7 +785,36 @@ def _enrich_match_rows_with_rotation(rows: List[dict]) -> None:
         row["away_rotation_name"] = rotation_label(rot["away_rotation_code"])
 
 
-def fetch_matches(league_id: str, season_id: Union[int, str]) -> List[MatchFull]:
+def fetch_active_match_counts(league_id: str) -> Dict[int, int]:
+    """Число активных матчей по season_id (active=true в v_matches_full)."""
+    lid = str(league_id).strip()
+    if not lid:
+        return {}
+    q = urllib.parse.urlencode(
+        {
+            "select": "season_id",
+            "league_id": f"eq.{lid}",
+            "active": "eq.true",
+        }
+    )
+    rows = _request("GET", f"/v_matches_full?{q}")
+    if not isinstance(rows, list):
+        raise SupabaseError("Некорректный ответ v_matches_full")
+    out: Dict[int, int] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            sid = int(row["season_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        out[sid] = out.get(sid, 0) + 1
+    return out
+
+
+def fetch_matches(
+    league_id: str, season_id: Union[int, str], *, active_only: bool = False
+) -> List[MatchFull]:
     lid = str(league_id).strip()
     try:
         sid = int(season_id)
@@ -799,6 +828,7 @@ def fetch_matches(league_id: str, season_id: Union[int, str]) -> List[MatchFull]
             "league_id": f"eq.{lid}",
             "season_id": f"eq.{sid}",
             "order": "match_date.asc",
+            **({"active": "eq.true"} if active_only else {}),
         }
     )
     rows = _request("GET", f"/v_matches_full?{q}")
