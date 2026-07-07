@@ -67,12 +67,16 @@
     .js-status.err{ color:var(--danger); border-color:#f5c2c0; background:#fff5f5; }
     .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
     .btn.hist-save{ background:#16a34a; color:#fff; border-color:#16a34a; padding:4px 10px; font-size:12px; }
+    .btn.hist-save.hist-save--off{ visibility:hidden; pointer-events:none; }
+    #clhViewTable td.hist-col-action,#clhViewTable th:last-child{ min-width:248px; white-space:nowrap; }
+    .hist-action-bar{ display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px; }
     .hist-cell-input{
       width:100%; min-width:54px; max-width:none;
       font-size:13px; padding:5px 7px; box-sizing:border-box;
     }
     #tab-hist .hist-matches-wrap{
       overflow:auto; -webkit-overflow-scrolling:touch;
+      overflow-anchor:none;
       margin-left:-6px; margin-right:-6px;
       max-height:min(72vh, calc(100dvh - 220px));
     }
@@ -4471,27 +4475,66 @@ bash scripts/update_and_serve.sh --start</div>
         errEl.style.display = 'none';
       }
     }
-    function sbHistUpdateRowUI(mid){
-      const tr = document.querySelector(`#clhViewTable tr[data-hist-mid="${mid}"]`);
-      const st = window.__SB.matchRows[mid];
+    function sbHistMatchesScrollEl(){
+      return document.querySelector('#tab-hist .hist-matches-wrap');
+    }
+    function sbHistPreserveScroll(run){
+      const wrap = sbHistMatchesScrollEl();
+      const top = wrap ? wrap.scrollTop : (window.scrollY || document.documentElement.scrollTop || 0);
+      run();
+      const restore = () => {
+        if (wrap) wrap.scrollTop = top;
+        else window.scrollTo(0, top);
+      };
+      restore();
+      requestAnimationFrame(restore);
+    }
+    function sbHistActiveEffective(st){
+      if (!st) return true;
+      return sbIsMatchActive(st.original);
+    }
+    function sbHistUpdateInactiveVisual(tr, st){
       if (!tr || !st) return;
-      const dirty = sbHistIsManualDirty(st);
-      tr.classList.toggle('hist-dirty', dirty);
-      const act = tr.querySelector('[data-hist-save]');
-      if (act){
-        act.style.display = dirty || (st.isSaving && st.manualEdit) ? '' : 'none';
-        act.disabled = !!st.isSaving;
-        act.textContent = st.isSaving ? 'Сохранение...' : 'Сохранить';
+      const active = sbHistActiveEffective(st);
+      tr.classList.toggle('hist-inactive', !active);
+      const dateTd = tr.querySelector('.hist-col-date');
+      if (!dateTd) return;
+      let badge = dateTd.querySelector('.hist-inactive-badge');
+      if (!active){
+        if (!badge){
+          badge = document.createElement('span');
+          badge.className = 'hist-inactive-badge';
+          badge.textContent = 'неакт.';
+          dateTd.appendChild(badge);
+        }
+      } else if (badge){
+        badge.remove();
       }
-      const err = tr.querySelector('[data-hist-err]');
-      const ok = tr.querySelector('[data-hist-ok]');
-      if (err) err.textContent = st.saveError || '';
-      if (ok) ok.textContent = st.savedMsg || '';
-      const tds = tr.querySelectorAll('td.hist-col-rotation');
-      if (tds.length >= 2 && st.original){
-        tds[0].textContent = sbRotationDisplayHome(st.original);
-        tds[1].textContent = sbRotationDisplayAway(st.original);
-      }
+    }
+    function sbHistUpdateRowUI(mid){
+      sbHistPreserveScroll(() => {
+        const tr = document.querySelector(`#clhViewTable tr[data-hist-mid="${mid}"]`);
+        const st = window.__SB.matchRows[mid];
+        if (!tr || !st) return;
+        const dirty = sbHistIsManualDirty(st);
+        const saveVisible = dirty || (st.isSaving && st.manualEdit);
+        tr.classList.toggle('hist-dirty', dirty);
+        const act = tr.querySelector('[data-hist-save]');
+        if (act){
+          act.classList.toggle('hist-save--off', !saveVisible);
+          act.disabled = !!st.isSaving;
+          act.textContent = st.isSaving ? 'Сохранение...' : 'Сохранить';
+        }
+        const err = tr.querySelector('[data-hist-err]');
+        const ok = tr.querySelector('[data-hist-ok]');
+        if (err) err.textContent = st.saveError || '';
+        if (ok) ok.textContent = st.savedMsg || '';
+        const tds = tr.querySelectorAll('td.hist-col-rotation');
+        if (tds.length >= 2 && st.original){
+          tds[0].textContent = sbRotationDisplayHome(st.original);
+          tds[1].textContent = sbRotationDisplayAway(st.original);
+        }
+      });
     }
 
     function sbHistFetchPanel(m, st){
@@ -4535,6 +4578,7 @@ bash scripts/update_and_serve.sh --start</div>
         const fetchOpen = !!st.fetchOpen;
         const inactive = !sbIsMatchActive(m);
         const rowCls = [dirty ? 'hist-dirty' : '', inactive ? 'hist-inactive' : ''].filter(Boolean).join(' ');
+        const saveOff = !(dirty || (st.isSaving && st.manualEdit));
         const mainRow = `<tr data-hist-mid="${m.match_id}" class="${rowCls}">` +
           `<td class="hist-col-date">${escapeHtml(sbFmtDate(m.match_date))}${inactive ? '<span class="hist-inactive-badge">неакт.</span>' : ''}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.home_team || '')}</td>` +
@@ -4550,13 +4594,13 @@ bash scripts/update_and_serve.sh --start</div>
           `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o2', m, st)}</td>` +
           `<td class="hist-col-rotation">${escapeHtml(sbRotationDisplayHome(m))}</td>` +
           `<td class="hist-col-rotation">${escapeHtml(sbRotationDisplayAway(m))}</td>` +
-          `<td class="hist-col-action">` +
+          `<td class="hist-col-action"><span class="hist-action-bar">` +
             `<button type="button" class="btn hist-fetch-toggle" data-hist-fetch-toggle="${m.match_id}" aria-expanded="${fetchOpen ? 'true' : 'false'}">${fetchOpen ? '▲ Данные' : '▼ Данные'}</button>` +
             `<button type="button" class="btn hist-weights-toggle" data-hist-weights-toggle="${m.match_id}" aria-expanded="${weightsOpen ? 'true' : 'false'}">${weightsOpen ? '▲ Веса' : '▼ Веса'}</button>` +
-            `<button type="button" class="btn hist-save" data-hist-save="${m.match_id}" style="display:${dirty || (st.isSaving && st.manualEdit) ? '' : 'none'}">${st.isSaving ? 'Сохранение...' : 'Сохранить'}</button>` +
+            `<button type="button" class="btn hist-save${saveOff ? ' hist-save--off' : ''}" data-hist-save="${m.match_id}">${st.isSaving ? 'Сохранение...' : 'Сохранить'}</button>` +
             `<span class="hist-row-err" data-hist-err>${escapeHtml(st.saveError || '')}</span>` +
             `<span class="hist-row-ok" data-hist-ok>${escapeHtml(st.savedMsg || '')}</span>` +
-          `</td>` +
+          `</span></td>` +
         `</tr>`;
         const weightsRow = `<tr class="hist-weights-row" data-hist-weights-for="${m.match_id}" style="display:${weightsOpen ? '' : 'none'}">` +
           `<td colspan="15">${sbHistWeightsPanel(m, st)}</td>` +
@@ -4650,6 +4694,8 @@ bash scripts/update_and_serve.sh --start</div>
           window.__SB.matchesBySeason[key] = window.__SB.matchesBySeason[key].map(r => Number(r.match_id) === Number(mid) ? updated : r);
         }
         sbHistRefreshRowInputs(mid);
+        const tr = document.querySelector(`#clhViewTable tr[data-hist-mid="${mid}"]`);
+        if (tr) sbHistUpdateInactiveVisual(tr, st);
         return { ok: true, saved: true };
       } catch (e){
         console.error('PATCH match failed', e);
@@ -4685,6 +4731,7 @@ bash scripts/update_and_serve.sh --start</div>
       st.manualEdit = true;
       st.saveError = '';
       st.savedMsg = '';
+      if (col === 'active') el.blur();
       sbHistUpdateRowUI(mid);
     });
     document.getElementById('clhViewTable').addEventListener('change', e => {
@@ -4698,6 +4745,7 @@ bash scripts/update_and_serve.sh --start</div>
       st.manualEdit = true;
       st.saveError = '';
       st.savedMsg = '';
+      if (col === 'active') el.blur();
       sbHistUpdateRowUI(mid);
     });
     document.getElementById('clhViewTable').addEventListener('click', e => {
