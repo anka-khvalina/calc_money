@@ -1643,6 +1643,7 @@ def build_app():
         vars_by_col: dict[str, tk.StringVar] = {}
         for row_i, (ui_col, label) in enumerate(
             (
+                ("active", "Активен"),
                 ("derby", "Дерби"),
                 ("match_w", "Вес матча"),
                 ("neutr_w", "Нейтр. вес"),
@@ -1675,7 +1676,7 @@ def build_app():
                 ttk.Entry(dlg, textvariable=var, width=22).grid(
                     row=row_i, column=1, sticky="w", padx=8, pady=6
                 )
-            elif ui_col == "motivation":
+            elif ui_col in ("motivation", "active"):
                 initial = edits.get(ui_col, sbh.edit_display_value(m, ui_col))
                 var = tk.StringVar(value=initial)
                 vars_by_col[ui_col] = var
@@ -1706,7 +1707,7 @@ def build_app():
             _hist_refresh_row(mid)
 
         btns = ttk.Frame(dlg)
-        btns.grid(row=7, column=0, columnspan=2, pady=(4, 10))
+        btns.grid(row=9, column=0, columnspan=2, pady=(4, 10))
         ttk.Button(btns, text="Готово", command=apply_and_close).pack(side="left", padx=6)
         ttk.Button(btns, text="Отмена", command=dlg.destroy).pack(side="left", padx=6)
         dlg.bind("<Escape>", lambda _e: dlg.destroy())

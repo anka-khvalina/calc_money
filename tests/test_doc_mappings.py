@@ -51,5 +51,6 @@ def test_ui_col_map_covers_history_editable_columns():
         "away_rot",
         "source",
         "motivation",
+        "active",
     }
     assert expected <= set(UI_COL_TO_FIELD.keys())

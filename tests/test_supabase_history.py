@@ -45,6 +45,7 @@ def _sample_match(**overrides) -> sbh.MatchFull:
         away_rotation_name=None,
         note=None,
         motivation=None,
+        active=True,
     )
     base.update(overrides)
     return sbh.MatchFull(**base)
@@ -121,6 +122,7 @@ def test_fetch_matches_filters_by_league_and_season():
                 "neutral_weight": 1,
                 "note": None,
                 "motivation": True,
+                "active": True,
             }
         ]
     ).encode()
@@ -138,6 +140,7 @@ def test_fetch_matches_filters_by_league_and_season():
     with patch("urllib.request.urlopen", side_effect=_side_effect):
         matches = sbh.fetch_matches("uuid-1", 4)
     assert any("league_id=eq.uuid-1" in url for url in urls)
+    assert not any("active=eq.true" in url for url in urls)
     assert any("season_id=eq.4" in url for url in urls)
     assert matches[0].home_team == "Liverpool"
     assert matches[0].home_rotation_code == "middle"
@@ -297,6 +300,8 @@ def test_hist_weight_ui_cols_include_rotation():
     assert "home_rotation_code" in sbh.PATCH_WHITELIST
     assert "note" in sbh.PATCH_WHITELIST
     assert "motivation" in sbh.PATCH_WHITELIST
+    assert "active" in sbh.PATCH_WHITELIST
+    assert "active" in sbh.HIST_WEIGHT_UI_COLS
 
 
 def test_motivation_patch():
@@ -371,6 +376,22 @@ def test_fetch_rotation_enrichment():
         matches = sbh.fetch_matches("uuid-1", 4)
     assert matches[0].home_rotation_code == "high"
     assert matches[0].away_rotation_code == "none"
+
+
+def test_active_patch():
+    m = _sample_match(active=True)
+    payload = sbh.build_dirty_patch(m, {"active": "нет"})
+    assert payload == {"active": False}
+    updated = sbh.apply_patch_to_match(m, {"active": False})
+    assert updated.active is False
+    payload2 = sbh.build_dirty_patch(updated, {"active": "да"})
+    assert payload2 == {"active": True}
+
+
+def test_parse_active_row():
+    assert sbh._parse_active_row({"active": True}) is True
+    assert sbh._parse_active_row({"active": False}) is False
+    assert sbh._parse_active_row({}) is True
 
 
 def test_fetch_active_match_counts():

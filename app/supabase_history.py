@@ -46,6 +46,7 @@ PATCH_WHITELIST: FrozenSet[str] = frozenset(
         "away_rotation_code",
         "note",
         "motivation",
+        "active",
     }
 )
 
@@ -79,6 +80,7 @@ UI_COL_TO_FIELD: Dict[str, str] = {
     "away_rot": "away_rotation_code",
     "source": "note",
     "motivation": "motivation",
+    "active": "active",
 }
 
 # Порядок столбцов линии в UI (AH1 → AH → AH2 → O → Тот → U)
@@ -86,6 +88,7 @@ HIST_LINE_UI_COLS: tuple[str, ...] = ("ah1", "ah", "ah2", "over", "tot", "under"
 
 # Поля весов и флагов в раскрываемом блоке «Веса»
 HIST_WEIGHT_UI_COLS: tuple[str, ...] = (
+    "active",
     "neutral",
     "derby",
     "match_w",
@@ -144,6 +147,7 @@ class MatchFull:
     away_rotation_name: Optional[str] = None
     note: Optional[str] = None
     motivation: Optional[bool] = None
+    active: bool = True
 
 
 def is_derby_match(match: MatchFull) -> bool:
@@ -239,6 +243,18 @@ def motivation_display(match: MatchFull) -> str:
 
 
 def parse_motivation_input(text: str) -> bool:
+    return parse_bool_input(text)
+
+
+def is_match_active(match: MatchFull) -> bool:
+    return bool(match.active)
+
+
+def active_display(match: MatchFull) -> str:
+    return "да" if is_match_active(match) else "нет"
+
+
+def parse_active_input(text: str) -> bool:
     return parse_bool_input(text)
 
 
@@ -377,6 +393,8 @@ def edit_display_value(match: MatchFull, ui_col: str) -> str:
         return source_display(match)
     if field == "motivation":
         return motivation_display(match)
+    if field == "active":
+        return active_display(match)
     val = getattr(match, _match_attr(field), None)
     if val is None:
         return ""
@@ -404,6 +422,7 @@ def _match_attr(db_field: str) -> str:
         "away_rotation_code": "away_rotation_code",
         "note": "note",
         "motivation": "motivation",
+        "active": "active",
     }
     return mapping[db_field]
 
@@ -446,6 +465,8 @@ def parse_field_input(ui_col: str, text: str) -> Any:
         return parse_source_input(text)
     if field == "motivation":
         return parse_motivation_input(text)
+    if field == "active":
+        return parse_active_input(text)
     if field in ("home_rotation_code", "away_rotation_code"):
         return parse_rotation_input(text)
     if field == "is_neutral" or ui_col == "derby":
@@ -475,6 +496,10 @@ def validate_match_patch(changes: Mapping[str, Any]) -> None:
             if val is not None and not isinstance(val, bool):
                 raise ValueError("Проверьте значение мотивации")
             continue
+        if key == "active":
+            if val is not None and not isinstance(val, bool):
+                raise ValueError("Проверьте значение активности")
+            continue
         if not isinstance(val, (int, float)):
             raise ValueError("Проверьте значения коэффициентов")
         if key in ODDS_GT_ONE_FIELDS and val <= 1:
@@ -501,6 +526,8 @@ def field_value_from_match(match: MatchFull, db_field: str) -> Any:
         return match_note_raw(match)
     if db_field == "motivation":
         return match_motivation_raw(match)
+    if db_field == "active":
+        return is_match_active(match)
     return getattr(match, _match_attr(db_field))
 
 
@@ -531,6 +558,8 @@ def _values_equal(field: str, old: Any, new: Any) -> bool:
     if field in ("home_rotation_code", "away_rotation_code"):
         return normalize_rotation_code(old) == normalize_rotation_code(new)
     if field == "motivation":
+        return bool(old) == bool(new)
+    if field == "active":
         return bool(old) == bool(new)
     if field == "note":
         return normalize_source(old if isinstance(old, str) else None) == normalize_source(
@@ -576,6 +605,8 @@ def apply_patch_to_match(original: MatchFull, changes: Mapping[str, Any]) -> Mat
             kw[attr] = parse_source_input(str(val) if val is not None else "")
         elif field == "motivation":
             kw[attr] = None if val is None else bool(val)
+        elif field == "active":
+            kw[attr] = bool(val)
         elif val is None:
             kw[attr] = None
         else:
@@ -649,6 +680,13 @@ def _parse_motivation_row(row: Mapping[str, Any]) -> Optional[bool]:
     return True
 
 
+def _parse_active_row(row: Mapping[str, Any]) -> bool:
+    raw = row.get("active")
+    if raw is None:
+        return True
+    return bool(raw)
+
+
 def _parse_match_row(row: dict) -> Optional[MatchFull]:
     if not isinstance(row, dict):
         return None
@@ -696,6 +734,7 @@ def _parse_match_row(row: dict) -> Optional[MatchFull]:
             ),
             note=_parse_note_row(row),
             motivation=_parse_motivation_row(row),
+            active=_parse_active_row(row),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -726,7 +765,7 @@ _MATCH_VIEW_SELECT = (
     "closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,"
     "over_odds,under_odds,home_odds,draw_odds,away_odds,"
     "is_neutral,match_weight,derby_weight,neutral_weight,"
-    "note,motivation"
+    "motivation,active,note"
 )
 _ROTATION_ENRICH_CHUNK = 150
 
