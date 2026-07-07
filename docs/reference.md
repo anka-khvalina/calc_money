@@ -67,14 +67,27 @@ GET /v_season_summary?select=...&league_id=eq.{league_id}&matches_count=gt.0&ord
 
 ### Матчи (чтение)
 
+`v_matches_full` — все матчи (и `active=true`, и `active=false`).  
+**История:** без фильтра по `active`. **Обучение (Линия):** только `active=eq.true`.
+
 ```http
 GET /v_matches_full?select={fields}&league_id=eq.{league_id}&season_id=eq.{season_id}&order=match_date.asc
 ```
 
-Несколько сезонов:
+Несколько сезонов (обучение):
 
 ```http
-GET /v_matches_full?select={fields}&league_id=eq.{league_id}&season_id=in.(3,4)&order=match_date.asc
+GET /v_matches_full?select={fields}&league_id=eq.{league_id}&season_id=in.(3,4)&active=eq.true&order=match_date.asc
+```
+
+**Поля `select` (канонический список):**
+
+```text
+match_id,match_date,league_id,league_name,season_id,season_label,
+home_team_id,home_team,away_team_id,away_team,
+closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,
+over_odds,under_odds,home_odds,draw_odds,away_odds,
+is_neutral,match_weight,derby_weight,neutral_weight,motivation,active,note
 ```
 
 ### Эталон для сравнения (inactive, только UI)
@@ -93,16 +106,6 @@ GET /v_inactive_matches_full?select={fields}&league_id=eq.{league_id}&home_team_
 match_id,match_date,season_label,home_team,away_team,
 closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,
 over_odds,under_odds,home_odds,draw_odds,away_odds
-```
-
-**Поля `select` (канонический список):**
-
-```text
-match_id,match_date,league_id,league_name,season_id,season_label,
-home_team_id,home_team,away_team_id,away_team,
-closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,
-over_odds,under_odds,home_odds,draw_odds,away_odds,
-is_neutral,match_weight,derby_weight,neutral_weight,note
 ```
 
 ### Матчи (сохранение)
@@ -155,9 +158,9 @@ CORS: `HISTORY_API_CORS` (default `*`).
 | Ротация гостей | `away_rot` | `away_rotation_code` | да (в блоке **▼ Веса**; не влияет на модель) |
 | Источник | `source` | `note` | да (в блоке **▼ Веса**; default `Pinnacle`) |
 | Мотивация | `motivation` | `motivation` | да (в блоке **▼ Веса**; boolean да/нет; не влияет на модель) |
+| Активен | `active` | `active` | да (в блоке **▼ Веса**; `true` → в обучении, `false` → только история) |
 
-**Сохранение:** «▼ Данные» → «Получить данные» сразу PATCH в БД (статус «Сохранено»).  
-Кнопка «Сохранить» в строке — только после **ручной** правки ячейки или весов.
+**Сохранение:** кнопка «Сохранить» в строке — после **ручной** правки ячейки или весов.
 | Дата | — | `match_date` | нет |
 | Дома / Гости | — | `home_team` / `away_team` | нет |
 
@@ -171,7 +174,7 @@ over_odds, closing_total_line, under_odds,
 home_odds, draw_odds, away_odds,
 is_neutral, match_weight, derby_weight, neutral_weight,
 home_rotation_code, away_rotation_code,
-note, motivation
+note, motivation, active
 ```
 
 Справочник уровней ротации: таблица `match_rotation_levels` (коды `none` / `middle` / `high`). В PATCH и БД — только код; на UI — `name_ru` из view или справочника.
@@ -184,6 +187,7 @@ note, motivation
 - `is_neutral`: boolean
 - `home_rotation_code`, `away_rotation_code`: `none` | `middle` | `high` (пустое → `none`)
 - `motivation`: boolean (`да` / `нет` на UI)
+- `active`: boolean (`да` / `нет` на UI)
 
 ---
 
