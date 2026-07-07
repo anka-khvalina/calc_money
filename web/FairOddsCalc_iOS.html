@@ -200,6 +200,64 @@
       margin-top:12px; padding:12px; border:1px dashed var(--line);
       border-radius:10px; color:var(--muted); font-size:13px;
     }
+    .goal-predict-out{
+      margin-top:12px; padding:12px 14px; background:#f8fafc;
+      border:1px solid var(--line); border-radius:10px;
+      font-size:13px; line-height:1.4; max-height:520px; overflow:auto; color:#1a1a1a;
+    }
+    .goal-predict-out--empty{ color:var(--muted); }
+    .goal-predict-placeholder{ margin:0; font-size:13px; }
+    .goal-predict-header{
+      margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--line);
+    }
+    .goal-predict-header h4{ margin:0 0 6px; font-size:16px; color:#10204a; }
+    .goal-predict-tag{
+      font-size:11px; font-weight:500; color:#64748b; margin-left:6px;
+    }
+    .goal-predict-meta{
+      display:flex; flex-wrap:wrap; gap:6px 12px; font-size:12px; color:var(--muted);
+      font-variant-numeric:tabular-nums;
+    }
+    .goal-predict-meta span{
+      padding:2px 8px; background:#fff; border:1px solid #e2e8f0; border-radius:6px;
+      white-space:nowrap;
+    }
+    .goal-predict-draw{
+      margin-top:6px; font-size:12px; color:#475569;
+    }
+    .goal-predict-block{ margin-top:14px; }
+    .goal-predict-block h5{
+      margin:0 0 8px; font-size:12px; font-weight:600; color:#334155;
+      letter-spacing:.02em;
+    }
+    .goal-predict-table{
+      width:100%; border-collapse:collapse; font-size:13px;
+      font-variant-numeric:tabular-nums; background:#fff;
+    }
+    .goal-predict-table th,.goal-predict-table td{
+      border:1px solid #e2e8f0; padding:7px 10px; text-align:center;
+    }
+    .goal-predict-table th{
+      background:#eef2ff; color:#1e3a5f; font-weight:600; font-size:12px;
+    }
+    .goal-predict-table td.lbl,.goal-predict-table th.lbl{
+      text-align:left; background:#f8fafc; color:#64748b; font-weight:500; width:28%;
+    }
+    .goal-predict-table--1x2 td.odds{
+      font-weight:700; font-size:16px; color:#0f172a;
+    }
+    .goal-predict-table--1x2 td.prob{
+      font-size:12px; color:#64748b;
+    }
+    .goal-predict-scores{
+      display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:8px;
+    }
+    .goal-predict-score{
+      padding:8px 6px; background:#fff; border:1px solid #e2e8f0; border-radius:8px;
+      text-align:center; font-variant-numeric:tabular-nums;
+    }
+    .goal-predict-score strong{ display:block; font-size:15px; color:#0f172a; }
+    .goal-predict-score span{ font-size:11px; color:#64748b; }
     .shin-details{
       margin-top:10px; padding:10px 12px; background:#f8fafc;
       border:1px solid var(--line); border-radius:10px;
@@ -850,7 +908,9 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div class="row">
         <button type="button" id="goalPredict" class="btn primary"><span aria-hidden="true">📈</span> Рассчитать линию</button>
       </div>
-      <pre id="goalOut" class="shin-details"></pre>
+      <div id="goalOut" class="goal-predict-out goal-predict-out--empty">
+        <p class="goal-predict-placeholder">Нажмите «Рассчитать линию» — результат появится здесь.</p>
+      </div>
       <div style="margin-top:12px">
         <div class="small" style="font-weight:600;margin-bottom:6px"><span aria-hidden="true">🕓</span> История расчётов</div>
         <div class="table-wrap">
@@ -5418,8 +5478,10 @@ bash scripts/update_and_serve.sh --start</div>
         const home=pred.homeName, away=pred.awayName;
         const useM=document.getElementById('goalMargin').checked;
         const mg=(parseFloat((document.getElementById('goalMarginPct').value||'3').replace(',','.'))||0)/100;
-        const {lines,summary}=gmFormatPredict(pred,home,away,neutral,useM,mg);
-        document.getElementById('goalOut').textContent=lines.join('\n');
+        const {html,summary}=gmFormatPredict(pred,home,away,neutral,useM,mg);
+        const outEl=document.getElementById('goalOut');
+        outEl.classList.remove('goal-predict-out--empty');
+        outEl.innerHTML=html;
         gmAddPredHist({
           at:gmFormatDt(),
           league:sbLeagueName(leagueId),
@@ -5453,27 +5515,87 @@ bash scripts/update_and_serve.sh --start</div>
       const mk=pred.markets;
       const k1x2=()=> useM&&mg>0?[1/(mk.p1*(1+mg)),1/(mk.px*(1+mg)),1/(mk.p2*(1+mg))]:[1/mk.p1,1/mk.px,1/mk.p2];
       const k2=(pa,pb,ka,kb)=> useM&&mg>0?[1/(pa*(1+mg)),1/(pb*(1+mg))]:[ka,kb];
-      const [kk1,kkx,kk2]=k1x2(); const tag=useM&&mg>0?' (с маржой)':' (честные)';
-      const L=[];
-      L.push(`=== ${home} — ${away}${neutral?' (нейтраль)':''} ===`);
-      L.push(`λ_h=${pred.lh.toFixed(3)} λ_a=${pred.la.toFixed(3)}  D_final=${pred.df.toFixed(3)} S_final=${pred.sf.toFixed(3)}`);
-      if(pred.drawTarget!=null) L.push(`Ничья: модель→${(pred.drawTarget*100).toFixed(1)}% (матрица ${(pred.drawDiag.drawMatrix*100).toFixed(1)}%→${(pred.drawDiag.drawAfter*100).toFixed(1)}%, q=${pred.drawDiag.q.toFixed(3)})`);
-      L.push('');
-      L.push(`Коэффициенты${tag}:`);
-      L.push(`  1X2: П1=${kk1.toFixed(2)} X=${kkx.toFixed(2)} П2=${kk2.toFixed(2)}  (p ${(mk.p1*100).toFixed(1)}/${(mk.px*100).toFixed(1)}/${(mk.p2*100).toFixed(1)}%)`);
+      const [kk1,kkx,kk2]=k1x2();
+      const tag=useM&&mg>0?'с маржой':'честные';
       const t=mk.mainTotal, [ot,ut]=k2(1/t.over,1/t.under,t.over,t.under);
-      L.push(`  Тотал ${t.line}: Over ${ot.toFixed(2)} / Under ${ut.toFixed(2)}`);
       const a=mk.mainAh, [ah,aa]=k2(1/a.home,1/a.away,a.home,a.away);
-      L.push(`  Фора хозяев ${a.line>=0?'+':''}${a.line}: ${ah.toFixed(2)} / гости ${aa.toFixed(2)}`);
-      L.push(''); L.push('Индивидуальные тоталы (честные O/U):');
-      mk.ttH.forEach(r=>L.push(`  ${home} ${r[0]}: Over ${r[1].toFixed(2)} / Under ${r[2].toFixed(2)}`));
-      mk.ttA.forEach(r=>L.push(`  ${away} ${r[0]}: Over ${r[1].toFixed(2)} / Under ${r[2].toFixed(2)}`));
-      L.push(''); L.push('Тоталы (честные O/U):');
-      mk.totals.filter(t=>t.line>=1&&t.line<=4.5).forEach(t=>L.push(`  ${t.line}: Over ${t.over.toFixed(2)} / Under ${t.under.toFixed(2)}`));
-      L.push(''); L.push('Топ счетов:');
-      mk.top.forEach(([i,j,p])=>L.push(`  ${i}:${j} ${(p*100).toFixed(1)}%`));
-      const summary=`1X2 ${kk1.toFixed(2)}/${kkx.toFixed(2)}/${kk2.toFixed(2)} · Тотал ${t.line} ${ot.toFixed(2)}/${ut.toFixed(2)} · Фора ${a.line>=0?'+':''}${a.line} ${ah.toFixed(2)}/${aa.toFixed(2)}`;
-      return {lines:L, summary};
+      const ahLine=`${a.line>=0?'+':''}${a.line}`;
+      const title=`${escapeHtml(home)} — ${escapeHtml(away)}${neutral?' <span class="goal-predict-tag">нейтраль</span>':''}`;
+      const meta=[
+        `<span>λ<sub>h</sub> ${pred.lh.toFixed(3)}</span>`,
+        `<span>λ<sub>a</sub> ${pred.la.toFixed(3)}</span>`,
+        `<span>D ${pred.df.toFixed(3)}</span>`,
+        `<span>S ${pred.sf.toFixed(3)}</span>`,
+      ].join('');
+      const drawLine=pred.drawTarget!=null
+        ? `<div class="goal-predict-draw">Ничья: модель ${(pred.drawTarget*100).toFixed(1)}% · матрица ${(pred.drawDiag.drawMatrix*100).toFixed(1)}%→${(pred.drawDiag.drawAfter*100).toFixed(1)}% · q=${pred.drawDiag.q.toFixed(3)}</div>`
+        : '';
+      const x1x2=`
+        <div class="goal-predict-block">
+          <h5>1X2 · ${tag}</h5>
+          <table class="goal-predict-table goal-predict-table--1x2">
+            <thead><tr><th class="lbl"></th><th>П1 (${escapeHtml(home)})</th><th>X</th><th>П2 (${escapeHtml(away)})</th></tr></thead>
+            <tbody>
+              <tr><td class="lbl">Коэффициент</td><td class="odds">${kk1.toFixed(2)}</td><td class="odds">${kkx.toFixed(2)}</td><td class="odds">${kk2.toFixed(2)}</td></tr>
+              <tr><td class="lbl">Вероятность</td><td class="prob">${(mk.p1*100).toFixed(1)}%</td><td class="prob">${(mk.px*100).toFixed(1)}%</td><td class="prob">${(mk.p2*100).toFixed(1)}%</td></tr>
+            </tbody>
+          </table>
+        </div>`;
+      const mainMarkets=`
+        <div class="goal-predict-block">
+          <h5>Основные рынки · ${tag}</h5>
+          <table class="goal-predict-table">
+            <thead><tr><th class="lbl">Рынок</th><th>Линия</th><th>Over / Хозяева</th><th>Under / Гости</th></tr></thead>
+            <tbody>
+              <tr><td class="lbl">Тотал</td><td>${t.line}</td><td>${ot.toFixed(2)}</td><td>${ut.toFixed(2)}</td></tr>
+              <tr><td class="lbl">Фора хозяев</td><td>${ahLine}</td><td>${ah.toFixed(2)}</td><td>${aa.toFixed(2)}</td></tr>
+            </tbody>
+          </table>
+        </div>`;
+      const ttRows=[].concat(
+        mk.ttH.map(r=>`<tr><td class="lbl">${escapeHtml(home)}</td><td>${r[0]}</td><td>${r[1].toFixed(2)}</td><td>${r[2].toFixed(2)}</td></tr>`),
+        mk.ttA.map(r=>`<tr><td class="lbl">${escapeHtml(away)}</td><td>${r[0]}</td><td>${r[1].toFixed(2)}</td><td>${r[2].toFixed(2)}</td></tr>`)
+      ).join('');
+      const teamTotals=`
+        <div class="goal-predict-block">
+          <h5>Индивидуальные тоталы · честные</h5>
+          <table class="goal-predict-table">
+            <thead><tr><th class="lbl">Команда</th><th>Линия</th><th>Over</th><th>Under</th></tr></thead>
+            <tbody>${ttRows}</tbody>
+          </table>
+        </div>`;
+      const totRows=mk.totals.filter(x=>x.line>=1&&x.line<=4.5)
+        .map(x=>`<tr><td class="lbl">Тотал</td><td>${x.line}</td><td>${x.over.toFixed(2)}</td><td>${x.under.toFixed(2)}</td></tr>`)
+        .join('');
+      const matchTotals=`
+        <div class="goal-predict-block">
+          <h5>Тоталы матча · честные</h5>
+          <table class="goal-predict-table">
+            <thead><tr><th class="lbl">Рынок</th><th>Линия</th><th>Over</th><th>Under</th></tr></thead>
+            <tbody>${totRows}</tbody>
+          </table>
+        </div>`;
+      const scoreCards=mk.top.map(([i,j,p])=>
+        `<div class="goal-predict-score"><strong>${i}:${j}</strong><span>${(p*100).toFixed(1)}%</span></div>`
+      ).join('');
+      const topScores=`
+        <div class="goal-predict-block">
+          <h5>Топ счетов</h5>
+          <div class="goal-predict-scores">${scoreCards}</div>
+        </div>`;
+      const html=`
+        <div class="goal-predict-header">
+          <h4>${title}</h4>
+          <div class="goal-predict-meta">${meta}</div>
+          ${drawLine}
+        </div>
+        ${x1x2}
+        ${mainMarkets}
+        ${teamTotals}
+        ${matchTotals}
+        ${topScores}`;
+      const summary=`1X2 ${kk1.toFixed(2)}/${kkx.toFixed(2)}/${kk2.toFixed(2)} · Тотал ${t.line} ${ot.toFixed(2)}/${ut.toFixed(2)} · Фора ${ahLine} ${ah.toFixed(2)}/${aa.toFixed(2)}`;
+      return {html, summary};
     }
     bindClick('goalHistClear',()=>{
       if(!gmLoadPredHist().length) return;
