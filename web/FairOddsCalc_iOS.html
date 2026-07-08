@@ -3909,104 +3909,193 @@ bash scripts/update_and_serve.sh --start</div>
         stable, summary:parts.join('; '), byS, byD, rows,
       };
     }
-    function gmInferMarketDFromRaw(r){
+    function gmInferEtalonDFair(r){
       if(r.tot==null || r.ah==null) return null;
       let sVal = r.tot;
+      let sSource = 'line';
       if(r.ovr && r.und){
         const [pOver] = gmDevig2(r.ovr, r.und);
         sVal = gmInferS(r.tot, pOver);
+        sSource = 'ou_fair';
       }
       let dVal = null;
+      let dSource = 'ah_line';
       if(r.aho && r.aha){
         const [pAhHome] = gmDevig2(r.aho, r.aha);
         dVal = gmInferD(r.ah, pAhHome, sVal);
+        dSource = 'ah_fair';
       } else {
         dVal = -r.ah;
       }
       if(dVal == null || !isFinite(dVal) || sVal == null || !isFinite(sVal)) return null;
-      return gmClampD(dVal, sVal);
+      return { d: gmClampD(dVal, sVal), source: dSource, s: sVal, sSource };
     }
-    function gmFair1x2FromRaw(r){
+    function gmEtalon1x2Raw(r){
       if(!(r.ho && r.dо && r.ao)) return null;
       if(r.ho <= 1 || r.dо <= 1 || r.ao <= 1) return null;
+      return { home: r.ho, draw: r.dо, away: r.ao };
+    }
+    function gmEtalonMargin1x2(raw){
+      const sum = 1 / raw.home + 1 / raw.draw + 1 / raw.away;
+      return (sum - 1) * 100;
+    }
+    function gmProportional1x2FromRaw(r){
+      const raw = gmEtalon1x2Raw(r);
+      if(!raw) return null;
+      const q1 = 1 / raw.home;
+      const qx = 1 / raw.draw;
+      const q2 = 1 / raw.away;
+      const sum = q1 + qx + q2;
+      const p1 = q1 / sum;
+      const px = qx / sum;
+      const p2 = q2 / sum;
+      return { p1, px, p2, k1: 1 / p1, kx: 1 / px, k2: 1 / p2, marginPct: (sum - 1) * 100 };
+    }
+    function gmFair1x2FromRaw(r){
+      const raw = gmEtalon1x2Raw(r);
+      if(!raw) return null;
       try {
-        const [p1, px, p2] = shinDevig(r.ho, r.dо, r.ao);
+        const [p1, px, p2] = shinDevig(raw.home, raw.draw, raw.away);
         if(!(p1 > 0 && px > 0 && p2 > 0)) return null;
-        return { p1, px, p2, k1: 1 / p1, kx: 1 / px, k2: 1 / p2 };
+        return {
+          p1, px, p2,
+          k1: 1 / p1, kx: 1 / px, k2: 1 / p2,
+          marginPct: gmEtalonMargin1x2(raw),
+          raw,
+        };
       } catch (_e){
         return null;
       }
     }
+    function gmEtalon1x2Layers(r){
+      const raw = gmEtalon1x2Raw(r);
+      if(!raw) return null;
+      const shinFair = gmFair1x2FromRaw(r);
+      const propFair = gmProportional1x2FromRaw(r);
+      const marginPct = gmEtalonMargin1x2(raw);
+      const marginFactor = 1 + marginPct / 100;
+      return { raw, shinFair, propFair, marginPct, marginFactor };
+    }
+    function gmFairTwoWayFromRaw(o1, o2){
+      if(!(o1 && o2) || o1 <= 1 || o2 <= 1) return null;
+      try {
+        const [p1, p2] = gmDevig2(o1, o2);
+        if(!(p1 > 0 && p2 > 0)) return null;
+        return { p1, p2, k1: 1 / p1, k2: 1 / p2 };
+      } catch (_e){
+        return null;
+      }
+    }
+    function gmModel1x2WithEtalonMargin(modelProbs, layers){
+      if(!layers || !modelProbs) return null;
+      const mf = layers.marginFactor;
+      if(!(mf > 1)) return null;
+      const p1 = modelProbs.p1 * mf;
+      const px = modelProbs.px * mf;
+      const p2 = modelProbs.p2 * mf;
+      if(!(p1 > 0 && px > 0 && p2 > 0)) return null;
+      return { k1: 1 / p1, kx: 1 / px, k2: 1 / p2 };
+    }
     function gmInactiveDDiagnostics(model, inactiveRaw, dStrong=1.25){
+      const empty = {
+        nEval: 0, meanErrD: 0, meanAbsErrD: 0, nOverGap: 0, pctOverGap: 0,
+        strongNEval: 0, strongMeanAbsErr: 0, strongPctOverGap: 0,
+        avgUnderdogOddsRatioFair: 0, avgUnderdogOddsRatioRaw: 0, avgEtalonMargin1x2: 0,
+        rows: [], summary: '',
+      };
       if(!Array.isArray(inactiveRaw) || !inactiveRaw.length){
-        return { nEval:0, meanErrD:0, meanAbsErrD:0, nOverGap:0, pctOverGap:0, strongNEval:0, strongMeanAbsErr:0, strongPctOverGap:0, avgUnderdogOddsRatio:0, rows:[], summary:'нет inactive матчей для сравнения' };
+        return Object.assign({}, empty, { summary: 'нет inactive матчей для сравнения' });
       }
       const rows=[];
       for(const r of inactiveRaw){
         if(!r.homeId || !r.awayId) continue;
-        const dEtalon = gmInferMarketDFromRaw(r);
-        if(dEtalon==null) continue;
-        const pred=gmPredict(model, r.homeId, r.awayId, { neutral: !!r.neu, derby: !!r.der });
+        const etalonD = gmInferEtalonDFair(r);
+        if(etalonD == null) continue;
+        const layers = gmEtalon1x2Layers(r);
+        const pred = gmPredict(model, r.homeId, r.awayId, { neutral: !!r.neu, derby: !!r.der });
         const dModel = pred.df;
-        const overGap = Math.abs(dModel) - Math.abs(dEtalon);
-        let underdogOddsRatio = null;
+        const dEtalonFair = etalonD.d;
+        const overGapFair = Math.abs(dModel) - Math.abs(dEtalonFair);
+        let underdogRatioFair = null;
+        let underdogRatioRaw = null;
         let etalonFairUnderdog = null;
+        let etalonRawUnderdog = null;
         let modelFairUnderdog = null;
-        if(pred.markets.p1 > 0 && pred.markets.p2 > 0){
-          const fair1x2 = gmFair1x2FromRaw(r);
-          if(fair1x2){
-            const modelHome = 1 / pred.markets.p1;
-            const modelAway = 1 / pred.markets.p2;
-            const homeIsUnderdog = fair1x2.k1 >= fair1x2.k2;
-            etalonFairUnderdog = homeIsUnderdog ? fair1x2.k1 : fair1x2.k2;
-            modelFairUnderdog = homeIsUnderdog ? modelHome : modelAway;
-            if(etalonFairUnderdog > 0 && isFinite(modelFairUnderdog)){
-              underdogOddsRatio = modelFairUnderdog / etalonFairUnderdog;
-            }
+        if(pred.markets.p1 > 0 && pred.markets.p2 > 0 && layers && layers.shinFair){
+          const modelHome = 1 / pred.markets.p1;
+          const modelAway = 1 / pred.markets.p2;
+          const homeIsUnderdog = layers.shinFair.k1 >= layers.shinFair.k2;
+          etalonFairUnderdog = homeIsUnderdog ? layers.shinFair.k1 : layers.shinFair.k2;
+          etalonRawUnderdog = homeIsUnderdog ? layers.raw.home : layers.raw.away;
+          modelFairUnderdog = homeIsUnderdog ? modelHome : modelAway;
+          if(etalonFairUnderdog > 0 && isFinite(modelFairUnderdog)){
+            underdogRatioFair = modelFairUnderdog / etalonFairUnderdog;
+          }
+          if(etalonRawUnderdog > 0 && isFinite(modelFairUnderdog)){
+            underdogRatioRaw = modelFairUnderdog / etalonRawUnderdog;
           }
         }
         rows.push({
-          date:r.date||'',
-          home:r.homeName||r.homeId,
-          away:r.awayName||r.awayId,
-          dEtalon,
+          date: r.date || '',
+          home: r.homeName || r.homeId,
+          away: r.awayName || r.awayId,
+          etalonHomeOddsRaw: layers ? layers.raw.home : null,
+          etalonDrawOddsRaw: layers ? layers.raw.draw : null,
+          etalonAwayOddsRaw: layers ? layers.raw.away : null,
+          p1EtalonFair: layers && layers.shinFair ? layers.shinFair.p1 : null,
+          pxEtalonFair: layers && layers.shinFair ? layers.shinFair.px : null,
+          p2EtalonFair: layers && layers.shinFair ? layers.shinFair.p2 : null,
+          o1EtalonFair: layers && layers.shinFair ? layers.shinFair.k1 : null,
+          oxEtalonFair: layers && layers.shinFair ? layers.shinFair.kx : null,
+          o2EtalonFair: layers && layers.shinFair ? layers.shinFair.k2 : null,
+          etalonMargin1x2: layers ? layers.marginPct : null,
+          dEtalonFair,
+          dEtalonSource: etalonD.source,
           dModel,
-          errD:dModel-dEtalon,
-          absErrD:Math.abs(dModel-dEtalon),
-          overGap,
-          underdogOddsRatio,
+          errD: dModel - dEtalonFair,
+          absErrD: Math.abs(dModel - dEtalonFair),
+          overGapFair,
+          underdogRatioFair,
+          underdogRatioRaw,
           etalonFairUnderdog,
+          etalonRawUnderdog,
           modelFairUnderdog,
-          absDEtalon:Math.abs(dEtalon),
+          absDEtalonFair: Math.abs(dEtalonFair),
         });
       }
       if(!rows.length){
-        return { nEval:0, meanErrD:0, meanAbsErrD:0, nOverGap:0, pctOverGap:0, strongNEval:0, strongMeanAbsErr:0, strongPctOverGap:0, avgUnderdogOddsRatio:0, rows:[], summary:'inactive матчи есть, но нет эталонной форы для D' };
+        return Object.assign({}, empty, { summary: 'inactive матчи есть, но нет эталонной форы для D' });
       }
-      const avg=(arr)=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;
-      const nEval=rows.length;
-      const nOver=rows.filter(r=>r.overGap>0).length;
-      const strong=rows.filter(r=>r.absDEtalon>dStrong);
-      const ratioVals=rows.map(r=>r.underdogOddsRatio).filter(v=>v!=null&&isFinite(v));
-      rows.sort((a,b)=>b.overGap-a.overGap);
-      const pctOver=100*nOver/nEval;
-      const strongOver=strong.filter(r=>r.overGap>0).length;
-      const strongPct=strong.length?100*strongOver/strong.length:0;
-      const meanErr=avg(rows.map(r=>r.errD));
-      const meanAbs=avg(rows.map(r=>r.absErrD));
-      const strongMae=avg(strong.map(r=>r.absErrD));
-      const avgRatio=avg(ratioVals);
-      const summary=`D err ${meanErr>=0?'+':''}${meanErr.toFixed(3)}; |D| err ${meanAbs.toFixed(3)}; over_gap>0 ${pctOver.toFixed(0)}%`;
+      const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      const nEval = rows.length;
+      const nOver = rows.filter(r => r.overGapFair > 0).length;
+      const strong = rows.filter(r => r.absDEtalonFair > dStrong);
+      const ratioFairVals = rows.map(r => r.underdogRatioFair).filter(v => v != null && isFinite(v));
+      const ratioRawVals = rows.map(r => r.underdogRatioRaw).filter(v => v != null && isFinite(v));
+      const marginVals = rows.map(r => r.etalonMargin1x2).filter(v => v != null && isFinite(v));
+      rows.sort((a, b) => b.overGapFair - a.overGapFair);
+      const pctOver = 100 * nOver / nEval;
+      const strongOver = strong.filter(r => r.overGapFair > 0).length;
+      const strongPct = strong.length ? 100 * strongOver / strong.length : 0;
+      const meanErr = avg(rows.map(r => r.errD));
+      const meanAbs = avg(rows.map(r => r.absErrD));
+      const strongMae = avg(strong.map(r => r.absErrD));
+      const avgRatioFair = avg(ratioFairVals);
+      const avgRatioRaw = avg(ratioRawVals);
+      const avgMargin = avg(marginVals);
+      const summary = `D err ${meanErr >= 0 ? '+' : ''}${meanErr.toFixed(3)}; |D| err ${meanAbs.toFixed(3)}; over_gap_fair>0 ${pctOver.toFixed(0)}%; underdog_fair ${avgRatioFair.toFixed(2)}`;
       return {
         nEval,
-        meanErrD:meanErr,
-        meanAbsErrD:meanAbs,
-        nOverGap:nOver,
-        pctOverGap:pctOver,
-        strongNEval:strong.length,
-        strongMeanAbsErr:strongMae,
-        strongPctOverGap:strongPct,
-        avgUnderdogOddsRatio:avgRatio,
+        meanErrD: meanErr,
+        meanAbsErrD: meanAbs,
+        nOverGap: nOver,
+        pctOverGap: pctOver,
+        strongNEval: strong.length,
+        strongMeanAbsErr: strongMae,
+        strongPctOverGap: strongPct,
+        avgUnderdogOddsRatioFair: avgRatioFair,
+        avgUnderdogOddsRatioRaw: avgRatioRaw,
+        avgEtalonMargin1x2: avgMargin,
         rows,
         summary,
       };
@@ -5288,14 +5377,20 @@ bash scripts/update_and_serve.sh --start</div>
         rows.push(['Матчей PX_matrix < рынок', `${sdDiag.nPxUnderModel} (${goalFmtTrainNum(sdDiag.pctPxUnderModel, 0)}%)`, sdDiag.pctPxUnderModel > 55 ? 'warn' : '']);
       }
       if (inactiveDiag && inactiveDiag.nEval > 0){
-        rows.push(['Inactive D_model vs D_etalon', escapeHtml(inactiveDiag.summary), inactiveDiag.pctOverGap > 55 ? 'warn' : '']);
+        rows.push(['Inactive D_model vs D_etalon_fair', escapeHtml(inactiveDiag.summary), inactiveDiag.pctOverGap > 55 ? 'warn' : '']);
         rows.push(['Ошибка D / |D|', `${goalFmtTrainNum(inactiveDiag.meanErrD, 3)} / ${goalFmtTrainNum(inactiveDiag.meanAbsErrD, 3)}`, 'num']);
-        rows.push(['over_gap > 0', `${inactiveDiag.nOverGap} (${goalFmtTrainNum(inactiveDiag.pctOverGap, 0)}%)`, inactiveDiag.pctOverGap > 55 ? 'warn' : '']);
-        if (inactiveDiag.strongNEval > 0){
-          rows.push([`|D_etalon| > 1.25 (${inactiveDiag.strongNEval})`, `|err|=${goalFmtTrainNum(inactiveDiag.strongMeanAbsErr, 3)}, over_gap ${goalFmtTrainNum(inactiveDiag.strongPctOverGap, 0)}%`, inactiveDiag.strongPctOverGap > 55 ? 'warn' : '']);
+        rows.push(['over_gap_fair > 0', `${inactiveDiag.nOverGap} (${goalFmtTrainNum(inactiveDiag.pctOverGap, 0)}%)`, inactiveDiag.pctOverGap > 55 ? 'warn' : '']);
+        if (inactiveDiag.avgEtalonMargin1x2 > 0){
+          rows.push(['Средн. маржа эталона 1X2', `${goalFmtTrainNum(inactiveDiag.avgEtalonMargin1x2, 1)}%`, 'num']);
         }
-        if (inactiveDiag.avgUnderdogOddsRatio > 0){
-          rows.push(['Avg underdog odds ratio', `${goalFmtTrainNum(inactiveDiag.avgUnderdogOddsRatio, 3)} (fair/fair)`, inactiveDiag.avgUnderdogOddsRatio > 1.20 ? 'warn' : 'num']);
+        if (inactiveDiag.strongNEval > 0){
+          rows.push([`|D_etalon_fair| > 1.25 (${inactiveDiag.strongNEval})`, `|err|=${goalFmtTrainNum(inactiveDiag.strongMeanAbsErr, 3)}, over_gap_fair ${goalFmtTrainNum(inactiveDiag.strongPctOverGap, 0)}%`, inactiveDiag.strongPctOverGap > 55 ? 'warn' : '']);
+        }
+        if (inactiveDiag.avgUnderdogOddsRatioFair > 0){
+          const udDetail = inactiveDiag.avgUnderdogOddsRatioRaw > 0
+            ? `fair ${goalFmtTrainNum(inactiveDiag.avgUnderdogOddsRatioFair, 3)}, raw ${goalFmtTrainNum(inactiveDiag.avgUnderdogOddsRatioRaw, 3)}`
+            : `fair ${goalFmtTrainNum(inactiveDiag.avgUnderdogOddsRatioFair, 3)}`;
+          rows.push(['Avg underdog odds ratio', udDetail, inactiveDiag.avgUnderdogOddsRatioFair > 1.20 ? 'warn' : 'num']);
         }
       }
       if (gmModel.cfg && gmModel.cfg.useDc){
@@ -5376,8 +5471,8 @@ bash scripts/update_and_serve.sh --start</div>
       if (inactiveDiag && inactiveDiag.rows && inactiveDiag.rows.length){
         const topRows = inactiveDiag.rows.slice(0, 10).map(r => [
           `${escapeHtml(r.home)} — ${escapeHtml(r.away)}`,
-          `D_model=${goalFmtTrainNum(r.dModel,3)} vs D_etalon=${goalFmtTrainNum(r.dEtalon,3)}; over_gap=${goalFmtTrainNum(r.overGap,3)}; underdog_ratio=${r.underdogOddsRatio!=null?goalFmtTrainNum(r.underdogOddsRatio,3):'—'} (fair/fair${r.etalonFairUnderdog!=null?`, эталон ${goalFmtTrainNum(r.etalonFairUnderdog,2)}`:''})`,
-          r.overGap > 0.15 ? 'warn' : '',
+          `D_model=${goalFmtTrainNum(r.dModel,3)} vs D_etalon_fair=${goalFmtTrainNum(r.dEtalonFair,3)}; over_gap=${goalFmtTrainNum(r.overGapFair,3)}; underdog_ratio_fair=${r.underdogRatioFair!=null?goalFmtTrainNum(r.underdogRatioFair,2):'—'}${r.etalonMargin1x2!=null?`; etalon_margin=${goalFmtTrainNum(r.etalonMargin1x2,1)}%`:''}`,
+          r.overGapFair > 0.15 ? 'warn' : '',
         ]);
         box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Топ переоценки фаворита (inactive)</div>'
           + goalRenderTrainTable(topRows);
@@ -5432,7 +5527,10 @@ bash scripts/update_and_serve.sh --start</div>
         chips.push('<span class="goal-chip warn">калибр. 1X2</span>');
       }
       if(inactive && inactive.nEval>0){
-        chips.push(`<span class="goal-chip ${inactive.pctOverGap>55?'warn':''}">over_gap ${goalFmtTrainNum(inactive.pctOverGap,0)}%</span>`);
+        chips.push(`<span class="goal-chip ${inactive.pctOverGap>55?'warn':''}">over_gap_fair ${goalFmtTrainNum(inactive.pctOverGap,0)}%</span>`);
+        if(inactive.avgUnderdogOddsRatioFair > 0){
+          chips.push(`<span class="goal-chip ${inactive.avgUnderdogOddsRatioFair>1.20?'warn':''}">UD fair ${goalFmtTrainNum(inactive.avgUnderdogOddsRatioFair,2)}</span>`);
+        }
       }
       el.innerHTML=chips.join('');
     }
@@ -5468,7 +5566,7 @@ bash scripts/update_and_serve.sh --start</div>
           if(qWarn) warns.push(`q clamp ${goalFmtTrainNum(drawQDiag.clampPct,0)}%`);
           if(harmWarn) warns.push('модель ничьи ухудшает DC');
           if(clampWarn && clamp.nHit>0) warns.push(`D clamp ${clamp.nHit}/${clamp.nTotal}`);
-          if(inactiveWarn) warns.push(`over_gap ${goalFmtTrainNum(inactiveDiag.pctOverGap,0)}%`);
+          if(inactiveWarn) warns.push(`over_gap_fair ${goalFmtTrainNum(inactiveDiag.pctOverGap,0)}%`);
           const trained=goalFmtTrainDt(goalTrainState.trainedAt);
           banner.textContent = warns.length
             ? `Обучено ${trained}. ${warns.join(' · ')}`
@@ -5958,26 +6056,33 @@ bash scripts/update_and_serve.sh --start</div>
         compare.match_date ? String(compare.match_date) : '',
         compare.season_label ? String(compare.season_label) : '',
       ].filter(Boolean).join(' · ');
-      const row = (label, mVal, rVal, showDelta) => {
-        const delta = showDelta ? gmOddsDeltaStr(mVal, rVal) : '—';
-        const cls = showDelta ? gmDeltaClass(mVal, rVal) : '';
+      const row = (label, mFair, rRaw, rFair, showDelta) => {
+        const delta = showDelta ? gmOddsDeltaStr(mFair, rFair) : '—';
+        const cls = showDelta ? gmDeltaClass(mFair, rFair) : '';
         return `<tr><td class="lbl">${escapeHtml(label)}</td>`
-          + `<td>${gmFmtOddsStr(mVal)}</td><td>${gmFmtOddsStr(rVal)}</td>`
+          + `<td>${gmFmtOddsStr(mFair)}</td><td>${gmFmtOddsStr(rRaw)}</td><td>${gmFmtOddsStr(rFair)}</td>`
           + `<td class="${cls}">${escapeHtml(delta)}</td></tr>`;
       };
-      let refK1 = compare.home_odds;
-      let refKx = compare.draw_odds;
-      let refK2 = compare.away_odds;
-      const fair1x2 = gmFair1x2FromRaw({
+      const rowRawDelta = (label, mMarg, rRaw) => {
+        const delta = gmOddsDeltaStr(mMarg, rRaw);
+        const cls = gmDeltaClass(mMarg, rRaw);
+        return `<tr><td class="lbl">${escapeHtml(label)}</td>`
+          + `<td>${gmFmtOddsStr(mMarg)}</td><td>${gmFmtOddsStr(rRaw)}</td><td>—</td>`
+          + `<td class="${cls}">${escapeHtml(delta)}</td></tr>`;
+      };
+      const layers = gmEtalon1x2Layers({
         ho: compare.home_odds,
         dо: compare.draw_odds,
         ao: compare.away_odds,
       });
-      if (fair1x2){
-        refK1 = fair1x2.k1;
-        refKx = fair1x2.kx;
-        refK2 = fair1x2.k2;
-      }
+      const rawK1 = layers ? layers.raw.home : compare.home_odds;
+      const rawKx = layers ? layers.raw.draw : compare.draw_odds;
+      const rawK2 = layers ? layers.raw.away : compare.away_odds;
+      const fairK1 = layers && layers.shinFair ? layers.shinFair.k1 : null;
+      const fairKx = layers && layers.shinFair ? layers.shinFair.kx : null;
+      const fairK2 = layers && layers.shinFair ? layers.shinFair.k2 : null;
+      const fairTot = gmFairTwoWayFromRaw(compare.over_odds, compare.under_odds);
+      const fairAh = gmFairTwoWayFromRaw(compare.ah_home_odds, compare.ah_away_odds);
       const refTot = compare.closing_total_line;
       const refAh = compare.closing_ah_home;
       const sameTot = refTot != null && Math.abs(Number(model.totLine) - Number(refTot)) < 1e-6;
@@ -5988,22 +6093,43 @@ bash scripts/update_and_serve.sh --start</div>
       const ahLabel = sameAh
         ? `Фора ${gmAhLineStr(model.ahLine)}`
         : `Фора модель ${gmAhLineStr(model.ahLine)} / эталон ${gmAhLineStr(refAh)}`;
+      const marginNote = layers && layers.marginPct != null
+        ? `<div class="goal-predict-compare-note">Маржа эталона 1X2: ${goalFmtTrainNum(layers.marginPct, 1)}% · de-vig: Shin</div>`
+        : '';
+      let marginRows = '';
+      if (layers && model.p1 != null && model.px != null && model.p2 != null){
+        const marg = gmModel1x2WithEtalonMargin({ p1: model.p1, px: model.px, p2: model.p2 }, layers);
+        if (marg){
+          marginRows = `
+            <div class="goal-predict-compare-note" style="margin-top:6px">Модель с маржой эталона (raw-to-raw)</div>
+            <table class="goal-predict-table goal-predict-table--compare">
+              <thead><tr><th class="lbl">Рынок</th><th>Модель+маржа</th><th>Эталон raw</th><th></th><th>Δ raw</th></tr></thead>
+              <tbody>
+                ${rowRawDelta('П1', marg.k1, rawK1)}
+                ${rowRawDelta('X', marg.kx, rawKx)}
+                ${rowRawDelta('П2', marg.k2, rawK2)}
+              </tbody>
+            </table>`;
+        }
+      }
       return `
         <div class="goal-predict-block goal-predict-compare">
           <h5>Сравнение с эталоном (inactive)</h5>
           ${note ? `<div class="goal-predict-compare-note">${escapeHtml(note)}</div>` : ''}
+          ${marginNote}
           <table class="goal-predict-table goal-predict-table--compare">
-            <thead><tr><th class="lbl">Рынок</th><th>Модель</th><th>Эталон fair</th><th>Δ</th></tr></thead>
+            <thead><tr><th class="lbl">Рынок</th><th>Модель fair</th><th>Эталон raw</th><th>Эталон fair</th><th>Δ fair</th></tr></thead>
             <tbody>
-              ${row('П1', model.k1, refK1, true)}
-              ${row('X', model.kx, refKx, true)}
-              ${row('П2', model.k2, refK2, true)}
-              ${row(`${totLabel} Over`, model.totOver, compare.over_odds, sameTot)}
-              ${row(`${totLabel} Under`, model.totUnder, compare.under_odds, sameTot)}
-              ${row(`${ahLabel} хоз`, model.ahHome, compare.ah_home_odds, sameAh)}
-              ${row(`${ahLabel} гост`, model.ahAway, compare.ah_away_odds, sameAh)}
+              ${row('П1', model.k1, rawK1, fairK1, true)}
+              ${row('X', model.kx, rawKx, fairKx, true)}
+              ${row('П2', model.k2, rawK2, fairK2, true)}
+              ${row(`${totLabel} Over`, model.totOver, compare.over_odds, fairTot ? fairTot.k1 : null, sameTot)}
+              ${row(`${totLabel} Under`, model.totUnder, compare.under_odds, fairTot ? fairTot.k2 : null, sameTot)}
+              ${row(`${ahLabel} хоз`, model.ahHome, compare.ah_home_odds, fairAh ? fairAh.k1 : null, sameAh)}
+              ${row(`${ahLabel} гост`, model.ahAway, compare.ah_away_odds, fairAh ? fairAh.k2 : null, sameAh)}
             </tbody>
           </table>
+          ${marginRows}
         </div>`;
     }
     function gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch=null){
@@ -6080,6 +6206,7 @@ bash scripts/update_and_serve.sh --start</div>
         </div>`;
       const compareBlock=gmBuildInactiveCompareBlock(compareMatch, {
         k1: kk1, kx: kkx, k2: kk2,
+        p1: mk.p1, px: mk.px, p2: mk.p2,
         totLine: t.line, totOver: ot, totUnder: ut,
         ahLine: a.line, ahHome: ah, ahAway: aa,
       });
