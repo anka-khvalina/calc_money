@@ -3926,6 +3926,17 @@ bash scripts/update_and_serve.sh --start</div>
       if(dVal == null || !isFinite(dVal) || sVal == null || !isFinite(sVal)) return null;
       return gmClampD(dVal, sVal);
     }
+    function gmFair1x2FromRaw(r){
+      if(!(r.ho && r.dо && r.ao)) return null;
+      if(r.ho <= 1 || r.dо <= 1 || r.ao <= 1) return null;
+      try {
+        const [p1, px, p2] = shinDevig(r.ho, r.dо, r.ao);
+        if(!(p1 > 0 && px > 0 && p2 > 0)) return null;
+        return { p1, px, p2, k1: 1 / p1, kx: 1 / px, k2: 1 / p2 };
+      } catch (_e){
+        return null;
+      }
+    }
     function gmInactiveDDiagnostics(model, inactiveRaw, dStrong=1.25){
       if(!Array.isArray(inactiveRaw) || !inactiveRaw.length){
         return { nEval:0, meanErrD:0, meanAbsErrD:0, nOverGap:0, pctOverGap:0, strongNEval:0, strongMeanAbsErr:0, strongPctOverGap:0, avgUnderdogOddsRatio:0, rows:[], summary:'нет inactive матчей для сравнения' };
@@ -3939,15 +3950,20 @@ bash scripts/update_and_serve.sh --start</div>
         const dModel = pred.df;
         const overGap = Math.abs(dModel) - Math.abs(dEtalon);
         let underdogOddsRatio = null;
-        if(r.ho && r.ao && pred.markets.p1 > 0 && pred.markets.p2 > 0){
-          const marketHome = r.ho;
-          const marketAway = r.ao;
-          const modelHome = 1 / pred.markets.p1;
-          const modelAway = 1 / pred.markets.p2;
-          const homeIsUnderdog = marketHome >= marketAway;
-          const marketUnd = homeIsUnderdog ? marketHome : marketAway;
-          const modelUnd = homeIsUnderdog ? modelHome : modelAway;
-          if(marketUnd > 0 && isFinite(modelUnd)) underdogOddsRatio = modelUnd / marketUnd;
+        let etalonFairUnderdog = null;
+        let modelFairUnderdog = null;
+        if(pred.markets.p1 > 0 && pred.markets.p2 > 0){
+          const fair1x2 = gmFair1x2FromRaw(r);
+          if(fair1x2){
+            const modelHome = 1 / pred.markets.p1;
+            const modelAway = 1 / pred.markets.p2;
+            const homeIsUnderdog = fair1x2.k1 >= fair1x2.k2;
+            etalonFairUnderdog = homeIsUnderdog ? fair1x2.k1 : fair1x2.k2;
+            modelFairUnderdog = homeIsUnderdog ? modelHome : modelAway;
+            if(etalonFairUnderdog > 0 && isFinite(modelFairUnderdog)){
+              underdogOddsRatio = modelFairUnderdog / etalonFairUnderdog;
+            }
+          }
         }
         rows.push({
           date:r.date||'',
@@ -3959,6 +3975,8 @@ bash scripts/update_and_serve.sh --start</div>
           absErrD:Math.abs(dModel-dEtalon),
           overGap,
           underdogOddsRatio,
+          etalonFairUnderdog,
+          modelFairUnderdog,
           absDEtalon:Math.abs(dEtalon),
         });
       }
@@ -5277,7 +5295,7 @@ bash scripts/update_and_serve.sh --start</div>
           rows.push([`|D_etalon| > 1.25 (${inactiveDiag.strongNEval})`, `|err|=${goalFmtTrainNum(inactiveDiag.strongMeanAbsErr, 3)}, over_gap ${goalFmtTrainNum(inactiveDiag.strongPctOverGap, 0)}%`, inactiveDiag.strongPctOverGap > 55 ? 'warn' : '']);
         }
         if (inactiveDiag.avgUnderdogOddsRatio > 0){
-          rows.push(['Avg underdog odds ratio', goalFmtTrainNum(inactiveDiag.avgUnderdogOddsRatio, 3), inactiveDiag.avgUnderdogOddsRatio > 1.20 ? 'warn' : 'num']);
+          rows.push(['Avg underdog odds ratio', `${goalFmtTrainNum(inactiveDiag.avgUnderdogOddsRatio, 3)} (fair/fair)`, inactiveDiag.avgUnderdogOddsRatio > 1.20 ? 'warn' : 'num']);
         }
       }
       if (gmModel.cfg && gmModel.cfg.useDc){
@@ -5358,7 +5376,7 @@ bash scripts/update_and_serve.sh --start</div>
       if (inactiveDiag && inactiveDiag.rows && inactiveDiag.rows.length){
         const topRows = inactiveDiag.rows.slice(0, 10).map(r => [
           `${escapeHtml(r.home)} — ${escapeHtml(r.away)}`,
-          `D_model=${goalFmtTrainNum(r.dModel,3)} vs D_etalon=${goalFmtTrainNum(r.dEtalon,3)}; over_gap=${goalFmtTrainNum(r.overGap,3)}; underdog_ratio=${r.underdogOddsRatio!=null?goalFmtTrainNum(r.underdogOddsRatio,3):'—'}`,
+          `D_model=${goalFmtTrainNum(r.dModel,3)} vs D_etalon=${goalFmtTrainNum(r.dEtalon,3)}; over_gap=${goalFmtTrainNum(r.overGap,3)}; underdog_ratio=${r.underdogOddsRatio!=null?goalFmtTrainNum(r.underdogOddsRatio,3):'—'} (fair/fair${r.etalonFairUnderdog!=null?`, эталон ${goalFmtTrainNum(r.etalonFairUnderdog,2)}`:''})`,
           r.overGap > 0.15 ? 'warn' : '',
         ]);
         box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Топ переоценки фаворита (inactive)</div>'
@@ -5947,6 +5965,19 @@ bash scripts/update_and_serve.sh --start</div>
           + `<td>${gmFmtOddsStr(mVal)}</td><td>${gmFmtOddsStr(rVal)}</td>`
           + `<td class="${cls}">${escapeHtml(delta)}</td></tr>`;
       };
+      let refK1 = compare.home_odds;
+      let refKx = compare.draw_odds;
+      let refK2 = compare.away_odds;
+      const fair1x2 = gmFair1x2FromRaw({
+        ho: compare.home_odds,
+        dо: compare.draw_odds,
+        ao: compare.away_odds,
+      });
+      if (fair1x2){
+        refK1 = fair1x2.k1;
+        refKx = fair1x2.kx;
+        refK2 = fair1x2.k2;
+      }
       const refTot = compare.closing_total_line;
       const refAh = compare.closing_ah_home;
       const sameTot = refTot != null && Math.abs(Number(model.totLine) - Number(refTot)) < 1e-6;
@@ -5962,11 +5993,11 @@ bash scripts/update_and_serve.sh --start</div>
           <h5>Сравнение с эталоном (inactive)</h5>
           ${note ? `<div class="goal-predict-compare-note">${escapeHtml(note)}</div>` : ''}
           <table class="goal-predict-table goal-predict-table--compare">
-            <thead><tr><th class="lbl">Рынок</th><th>Модель</th><th>Эталон</th><th>Δ</th></tr></thead>
+            <thead><tr><th class="lbl">Рынок</th><th>Модель</th><th>Эталон fair</th><th>Δ</th></tr></thead>
             <tbody>
-              ${row('П1', model.k1, compare.home_odds, true)}
-              ${row('X', model.kx, compare.draw_odds, true)}
-              ${row('П2', model.k2, compare.away_odds, true)}
+              ${row('П1', model.k1, refK1, true)}
+              ${row('X', model.kx, refKx, true)}
+              ${row('П2', model.k2, refK2, true)}
               ${row(`${totLabel} Over`, model.totOver, compare.over_odds, sameTot)}
               ${row(`${totLabel} Under`, model.totUnder, compare.under_odds, sameTot)}
               ${row(`${ahLabel} хоз`, model.ahHome, compare.ah_home_odds, sameAh)}
