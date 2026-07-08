@@ -961,6 +961,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <span><span class="small">Маржа %</span><span class="hint" style="display:block">Вкл → кэфы с заданной маржой (как у бука). Выкл → честные (сумма вероятностей 100%).</span></span>
         </label>
         <div class="field" style="max-width:80px"><label>%</label><input id="goalMarginPct" value="3" /></div>
+        <div class="field" style="min-width:200px;flex:1">
+          <label>&nbsp;</label>
+          <div id="goalMarginLeagueHint" class="hint" style="display:none;margin-top:2px"></div>
+          <button type="button" id="goalMarginApplyLeague" class="btn" style="display:none;margin-top:4px;padding:4px 10px;font-size:12px">Подставить маржу лиги</button>
+        </div>
       </div>
       <div class="row">
         <button type="button" id="goalPredict" class="btn primary"><span aria-hidden="true">📈</span> Рассчитать линию</button>
@@ -3939,6 +3944,33 @@ bash scripts/update_and_serve.sh --start</div>
       const sum = 1 / raw.home + 1 / raw.draw + 1 / raw.away;
       return (sum - 1) * 100;
     }
+    function gmTrainMargin1x2Diagnostics(raw, cfg){
+      const empty = { nMatches: 0, avgPct: null, marginFactor: null, minPct: null, maxPct: null, summary: '' };
+      if(!Array.isArray(raw) || !raw.length) return Object.assign({}, empty, { summary: 'нет матчей' });
+      const rows = [];
+      for(const r of raw){
+        const raw1x2 = gmEtalon1x2Raw(r);
+        if(!raw1x2) continue;
+        const pct = gmEtalonMargin1x2(raw1x2);
+        if(!(pct >= 0) || !isFinite(pct)) continue;
+        const w = gmMatchWeight(r, cfg);
+        if(!(w > 0)) continue;
+        rows.push({ pct, w, seasonId: r.seasonId });
+      }
+      if(!rows.length) return Object.assign({}, empty, { summary: 'нет 1X2 в обучении' });
+      const sumW = rows.reduce((s, x) => s + x.w, 0);
+      const avgPct = rows.reduce((s, x) => s + x.pct * x.w, 0) / sumW;
+      const pcts = rows.map(x => x.pct);
+      const marginFactor = 1 + avgPct / 100;
+      return {
+        nMatches: rows.length,
+        avgPct,
+        marginFactor,
+        minPct: Math.min(...pcts),
+        maxPct: Math.max(...pcts),
+        summary: `${avgPct.toFixed(1)}% (${rows.length} матч.)`,
+      };
+    }
     function gmProportional1x2FromRaw(r){
       const raw = gmEtalon1x2Raw(r);
       if(!raw) return null;
@@ -4112,6 +4144,7 @@ bash scripts/update_and_serve.sh --start</div>
       model.sdDiag=gmSd1x2Diagnostics(model, ms);
       model.drawHarmDiag=gmDrawHarmDiagnostics(model, ms);
       model.inactiveDiag=gmInactiveDDiagnostics(model, inactiveRaw||[]);
+      model.trainMargin1x2=gmTrainMargin1x2Diagnostics(raw, cfg);
       return model;
     }
     let gmModel=null;
@@ -4209,12 +4242,14 @@ bash scripts/update_and_serve.sh --start</div>
       if (!leagueId){
         if (homeSel) homeSel.innerHTML = '<option value="">—</option>';
         if (awaySel) awaySel.innerHTML = '<option value="">—</option>';
+        goalUpdateMarginLeagueUi();
         return;
       }
       try {
         await loadSupabaseConfig();
         await sbLoadTeams(leagueId);
         goalFillPredTeamSelects(leagueId);
+        goalUpdateMarginLeagueUi();
       } catch (e){
         console.error('goalOnPredLeagueChange', e);
         alert('Не удалось загрузить команды лиги.');
@@ -5224,6 +5259,72 @@ bash scripts/update_and_serve.sh --start</div>
     let goalSeasonWeightById = {};
     let goalLineLeaguesLoaded = false;
     let goalTrainState = { trainedAt: null, loadedAt: null, priorUsed: false };
+    const GOAL_LEAGUE_MARGIN_LS_KEY = 'goalLeagueMargin1x2';
+    function goalLoadLeagueMargins(){
+      try {
+        const raw = localStorage.getItem(GOAL_LEAGUE_MARGIN_LS_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch (_e){
+        return {};
+      }
+    }
+    function goalSaveLeagueMargin(leagueId, info){
+      if(!leagueId || !info || info.avgPct == null || !isFinite(info.avgPct)) return;
+      const all = goalLoadLeagueMargins();
+      const leagueName = goalLoadedMeta && String(goalLoadedMeta.leagueId) === String(leagueId)
+        ? goalLoadedMeta.leagueName : (all[String(leagueId)] && all[String(leagueId)].leagueName) || '';
+      all[String(leagueId)] = {
+        avgPct: info.avgPct,
+        marginFactor: info.marginFactor,
+        nMatches: info.nMatches || 0,
+        trainedAt: goalTrainState.trainedAt || new Date().toISOString(),
+        leagueName,
+      };
+      localStorage.setItem(GOAL_LEAGUE_MARGIN_LS_KEY, JSON.stringify(all));
+    }
+    function goalGetLeagueMargin(leagueId){
+      if(!leagueId) return null;
+      const rec = goalLoadLeagueMargins()[String(leagueId)];
+      return rec && rec.avgPct != null && isFinite(rec.avgPct) ? rec : null;
+    }
+    function goalApplyLeagueMarginPct(pct){
+      const inp = document.getElementById('goalMarginPct');
+      if(!inp || pct == null || !isFinite(pct)) return;
+      inp.value = goalFmtTrainNum(pct, 1);
+    }
+    function goalUpdateMarginLeagueUi(){
+      const hint = document.getElementById('goalMarginLeagueHint');
+      const btn = document.getElementById('goalMarginApplyLeague');
+      const leagueId = document.getElementById('goalPredLeague')?.value;
+      if(!hint || !btn) return;
+      const rec = goalGetLeagueMargin(leagueId);
+      const sameLeague = goalLoadedMeta && String(goalLoadedMeta.leagueId) === String(leagueId);
+      const curModel = gmModel && sameLeague ? gmModel.trainMargin1x2 : null;
+      const loadedMargin = sameLeague && goalLoadedRaw && goalLoadedRaw.length
+        ? gmTrainMargin1x2Diagnostics(goalLoadedRaw, gmCfg()) : null;
+      const pct = curModel && curModel.avgPct != null ? curModel.avgPct
+        : (loadedMargin && loadedMargin.avgPct != null ? loadedMargin.avgPct : (rec ? rec.avgPct : null));
+      if(pct == null || !isFinite(pct)){
+        hint.style.display = 'none';
+        hint.textContent = '';
+        btn.style.display = 'none';
+        return;
+      }
+      const league = (window.__SB.leagues || []).find(l => String(l.id) === String(leagueId));
+      const leagueName = (rec && rec.leagueName) || (goalLoadedMeta && sameLeague ? goalLoadedMeta.leagueName : '') || (league && league.name) || 'лига';
+      const n = curModel && curModel.nMatches ? curModel.nMatches
+        : (loadedMargin && loadedMargin.nMatches ? loadedMargin.nMatches : (rec && rec.nMatches) || 0);
+      const src = curModel ? 'текущее обучение'
+        : (loadedMargin && loadedMargin.nMatches ? 'загруженная выборка' : (rec && rec.trainedAt ? `обучение ${goalFmtTrainDt(rec.trainedAt)}` : 'сохранённое обучение'));
+      hint.style.display = 'block';
+      hint.textContent = `${leagueName}: маржа 1X2 ${goalFmtTrainNum(pct, 1)}% (${n} матч., ${src})`;
+      btn.style.display = 'inline-block';
+      btn.onclick = () => {
+        goalApplyLeagueMarginPct(pct);
+        const chk = document.getElementById('goalMargin');
+        if(chk) chk.checked = true;
+      };
+    }
 
     function goalSimpleHash(str){
       let h = 0;
@@ -5295,6 +5396,10 @@ bash scripts/update_and_serve.sh --start</div>
         ['Inactive для контроля', `${meta.inactiveValid || 0}${meta.inactiveTotal ? ` из ${meta.inactiveTotal}` : ''}`, 'num'],
         ['Подпись данных', `<code>${escapeHtml(goalComputeDataSignature(goalLoadedRaw))}</code>`, ''],
       ];
+      const marginDiag = gmTrainMargin1x2Diagnostics(goalLoadedRaw, cfg);
+      if (marginDiag.nMatches > 0){
+        rows.push(['Маржа 1X2 (выборка)', `${goalFmtTrainNum(marginDiag.avgPct, 1)}% <span class="small">(${marginDiag.nMatches} матч., ${goalFmtTrainNum(marginDiag.minPct, 1)}–${goalFmtTrainNum(marginDiag.maxPct, 1)}%)</span>`, 'num']);
+      }
       let html = goalRenderTrainTable(rows);
       if (seasonRows.length){
         html += '<div class="small" style="margin-top:8px;font-weight:600">Веса сезонов</div>'
@@ -5353,6 +5458,10 @@ bash scripts/update_and_serve.sh --start</div>
         ['Калибр. c, d', `${goalFmtTrainNum(cal.c, 3)}, ${goalFmtTrainNum(cal.d, 3)}`, 'num'],
         ['Калибровка 1X2', escapeHtml(calDiag ? calDiag.summary : '—'), calDiag && !calDiag.stable ? 'warn' : ''],
       ];
+      if (gmModel.trainMargin1x2 && gmModel.trainMargin1x2.nMatches > 0){
+        const tm = gmModel.trainMargin1x2;
+        rows.push(['Маржа 1X2 для линии', `${goalFmtTrainNum(tm.avgPct, 1)}% <span class="small">(factor ${goalFmtTrainNum(tm.marginFactor, 4)}, ${tm.nMatches} матч.)</span>`, 'num']);
+      }
       if (drawHarmDiag && drawHarmDiag.nMatches > 0){
         rows.push(['Ничья: Пуассон / DC / финал', `${goalFmtTrainNum(drawHarmDiag.meanErrPxPoisson, 3)} / ${goalFmtTrainNum(drawHarmDiag.meanErrPxAfterDc, 3)} / ${goalFmtTrainNum(drawHarmDiag.meanErrPxFinal, 3)}`, drawHarmDiag.harmsWorseThanAfterDc ? 'warn' : '']);
         rows.push(['Draw vs DC', escapeHtml(drawHarmDiag.summary), drawHarmDiag.harmsWorseThanAfterDc ? 'warn' : '']);
@@ -5532,6 +5641,9 @@ bash scripts/update_and_serve.sh --start</div>
           chips.push(`<span class="goal-chip ${inactive.avgUnderdogOddsRatioFair>1.20?'warn':''}">UD fair ${goalFmtTrainNum(inactive.avgUnderdogOddsRatioFair,2)}</span>`);
         }
       }
+      if(gmModel.trainMargin1x2 && gmModel.trainMargin1x2.avgPct != null){
+        chips.push(`<span class="goal-chip">маржа ${goalFmtTrainNum(gmModel.trainMargin1x2.avgPct,1)}%</span>`);
+      }
       el.innerHTML=chips.join('');
     }
     function goalUpdateTrainUI(){
@@ -5612,8 +5724,15 @@ bash scripts/update_and_serve.sh --start</div>
       gmModel = gmTrain(goalLoadedRaw, cfg, prior, goalLoadedInactiveRaw);
       goalTrainState.trainedAt = new Date().toISOString();
       goalTrainState.priorUsed = !!(prior && cfg.priorAlpha > 0);
+      if (goalLoadedMeta && goalLoadedMeta.leagueId && gmModel.trainMargin1x2 && gmModel.trainMargin1x2.avgPct != null){
+        goalSaveLeagueMargin(goalLoadedMeta.leagueId, gmModel.trainMargin1x2);
+        if (document.getElementById('goalPredLeague')?.value === goalLoadedMeta.leagueId){
+          goalApplyLeagueMarginPct(gmModel.trainMargin1x2.avgPct);
+        }
+      }
       goalRenderRatings();
       goalUpdateTrainUI();
+      goalUpdateMarginLeagueUi();
       return gmModel;
     }
 
@@ -5870,6 +5989,7 @@ bash scripts/update_and_serve.sh --start</div>
         if (leagueId && !goalLineSeasons.length) await goalOnLeagueChange();
         await goalInitPredSection();
         goalUpdateTrainUI();
+        goalUpdateMarginLeagueUi();
       } catch (e){
         console.error('goalInitTab', e);
         const sel = document.getElementById('goalSrcLeague');
@@ -5925,6 +6045,7 @@ bash scripts/update_and_serve.sh --start</div>
         goalRenderSeasonWeights();
         goalUpdateTrainUI();
         goalSyncPredLeagueFromTrain();
+        goalUpdateMarginLeagueUi();
       } catch (e){
         console.error('goalLoadHist', e);
         alert('Не удалось загрузить матчи из Supabase');
