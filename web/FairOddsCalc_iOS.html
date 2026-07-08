@@ -3939,13 +3939,14 @@ bash scripts/update_and_serve.sh --start</div>
         const dModel = pred.df;
         const overGap = Math.abs(dModel) - Math.abs(dEtalon);
         let underdogOddsRatio = null;
-        if(r.ho && r.ao){
+        if(r.ho && r.ao && pred.markets.p1 > 0 && pred.markets.p2 > 0){
           const marketHome = r.ho;
           const marketAway = r.ao;
-          const modelHome = pred.markets.k1();
-          const modelAway = pred.markets.k2();
-          const marketUnd = marketHome >= marketAway ? marketHome : marketAway;
-          const modelUnd = marketHome >= marketAway ? modelHome : modelAway;
+          const modelHome = 1 / pred.markets.p1;
+          const modelAway = 1 / pred.markets.p2;
+          const homeIsUnderdog = marketHome >= marketAway;
+          const marketUnd = homeIsUnderdog ? marketHome : marketAway;
+          const modelUnd = homeIsUnderdog ? modelHome : modelAway;
           if(marketUnd > 0 && isFinite(modelUnd)) underdogOddsRatio = modelUnd / marketUnd;
         }
         rows.push({
