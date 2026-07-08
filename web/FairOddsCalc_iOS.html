@@ -818,6 +818,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
                 <label>λ A / Df</label><input id="goalRegLambdaAD" value="0.10" />
                 <div class="hint">L2 на атаку и оборону.</div>
               </div>
+              <div class="field">
+                <label>λ r</label><input id="goalRegLambdaR" value="0.10" />
+                <div class="hint">L2 на рейтинги силы r.</div>
+              </div>
               <div class="goal-dc-row">
                 <label>
                   <input id="goalUseDc" type="checkbox" checked style="width:auto;margin:0" />
@@ -848,6 +852,40 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
                 </div>
                 <div class="field" style="min-width:100%;flex:1">
                   <label>max |ΔS|</label><input id="goalSCalMaxDelta" value="0.15" />
+                </div>
+                <div class="field" style="min-width:100%;flex:1">
+                  <label>калибр. D</label>
+                  <select id="goalDCalMode">
+                    <option value="soft" selected>soft</option>
+                    <option value="free">free</option>
+                    <option value="off">off (b=1)</option>
+                  </select>
+                </div>
+                <div class="field" style="min-width:45%;flex:1">
+                  <label>b min</label><input id="goalDCalBMin" value="0.90" />
+                </div>
+                <div class="field" style="min-width:45%;flex:1">
+                  <label>b max</label><input id="goalDCalBMax" value="1.03" />
+                </div>
+                <div class="field" style="min-width:100%;flex:1">
+                  <label>λ штраф b</label><input id="goalDCalBPenalty" value="2.00" />
+                </div>
+                <div class="field" style="min-width:100%;flex:1">
+                  <label>Shrink больших |D|</label>
+                  <select id="goalDBigFavMode">
+                    <option value="linear" selected>linear tail</option>
+                    <option value="tanh">tanh cap</option>
+                    <option value="off">off</option>
+                  </select>
+                </div>
+                <div class="field" style="min-width:30%;flex:1">
+                  <label>|D| порог</label><input id="goalDBigFavThr" value="1.25" />
+                </div>
+                <div class="field" style="min-width:30%;flex:1">
+                  <label>хвост k</label><input id="goalDBigFavSlope" value="0.75" />
+                </div>
+                <div class="field" style="min-width:30%;flex:1">
+                  <label>D cap (tanh)</label><input id="goalDBigFavCap" value="2.00" />
                 </div>
                 <label style="display:flex;align-items:flex-start;gap:6px;min-width:100%">
                   <input id="goalUseDraw" type="checkbox" style="width:auto;margin-top:2px" />
@@ -3369,7 +3407,8 @@ bash scripts/update_and_serve.sh --start</div>
       const tolA=0.35,tolB=0.30,tolC=0.35,tolD=0.30,min1x2=30;
       const dev=[];
       if(Math.abs(cal.a)>tolA) dev.push(`a=${cal.a.toFixed(3)} (ожид. ≈0)`);
-      if(Math.abs(cal.b-1)>tolB) dev.push(`b=${cal.b.toFixed(3)} (ожид. ≈1)`);
+      const skipB = cfg && cfg.dCalMode === 'off';
+      if(!skipB && Math.abs(cal.b-1)>tolB) dev.push(`b=${cal.b.toFixed(3)} (ожид. ≈1)`);
       const skipCd=cfg&&cfg.sCalMode==='off';
       if(!skipCd){
         if(Math.abs(cal.c)>tolC) dev.push(`c=${cal.c.toFixed(3)} (ожид. ≈0)`);
@@ -3398,6 +3437,37 @@ bash scripts/update_and_serve.sh --start</div>
       const ld=cfg.sCalPenaltyD!=null?cfg.sCalPenaltyD:2;
       return lc*c*c+ld*(d-1)*(d-1);
     }
+    function gmBoundB(b,cfg){
+      const rawMin=cfg.dCalBMin!=null?cfg.dCalBMin:0.90;
+      const rawMax=cfg.dCalBMax!=null?cfg.dCalBMax:1.05;
+      const bMin=Math.min(rawMin, rawMax);
+      const bMax=Math.max(rawMin, rawMax);
+      return Math.max(bMin, Math.min(bMax, b));
+    }
+    function gmDCalPenalty(b,cfg){
+      if(cfg.dCalMode!=='soft') return 0;
+      const lam=cfg.dCalBPenalty!=null?cfg.dCalBPenalty:2.0;
+      return lam*Math.pow(b-1,2);
+    }
+    function gmShrinkBigFav(d,cfg){
+      const mode=cfg.dBigFavMode||'off';
+      if(mode==='off') return d;
+      const ad=Math.abs(d);
+      if(mode==='tanh'){
+        const cap=Math.max(0.1, cfg.dBigFavCap!=null?cfg.dBigFavCap:2.0);
+        return cap*Math.tanh(d/cap);
+      }
+      const thr=Math.max(0, cfg.dBigFavThreshold!=null?cfg.dBigFavThreshold:1.25);
+      if(ad<=thr) return d;
+      const slope=Math.max(0, Math.min(1, cfg.dBigFavSlope!=null?cfg.dBigFavSlope:0.75));
+      return Math.sign(d)*(thr+slope*(ad-thr));
+    }
+    function gmApplyDCal(dm,a,b,cfg){
+      const mode=cfg.dCalMode||'soft';
+      const bUse=mode==='off'?1:(mode==='free'?b:gmBoundB(b,cfg));
+      const dLin=a+bUse*dm;
+      return { dRaw:dLin, dUsed:gmShrinkBigFav(dLin,cfg), bUsed:bUse };
+    }
     function gmClipGamma(g,cfg){
       if(!cfg.useDc) return 0;
       const mx=cfg.gammaMax!=null?cfg.gammaMax:0.20;
@@ -3412,13 +3482,15 @@ bash scripts/update_and_serve.sh --start</div>
         const lh=Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*m.iHome*kHg);
         const la=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0)); return [m,dm,lh+la,m.wBase]; });
       const sOff=cfg.sCalMode==='off';
+      const dOff=(cfg.dCalMode||'soft')==='off';
       function lossCore(a,b,c,d,g){
         if(d<=0) return 1e9;
         const gc=gmClipGamma(g,cfg);
-        let tot=gmSCalPenalty(c,d,cfg);
+        let tot=gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
         for(const [m,dm,sm,w] of pre){
           const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
-          const df=gmClampD(a+b*dm,sf); const lh=(sf+df)/2,la=(sf-df)/2; if(lh<=0||la<=0) return 1e9;
+          const dc=gmApplyDCal(dm,a,b,cfg);
+          const df=gmClampD(dc.dUsed,sf); const lh=(sf+df)/2,la=(sf-df)/2; if(lh<=0||la<=0) return 1e9;
           let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&gc) mat=gmDC(mat,lh,la,gc);
           const [p1,px,p2]=gm1x2(mat);
           tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
@@ -3428,20 +3500,41 @@ bash scripts/update_and_serve.sh --start</div>
       let full;
       if(sOff){
         if(cfg.useDc){
-          const x=gmNelder(p=>lossCore(p[0],p[1],0,1,p[2]),[0,1,0]);
-          full=[x[0],x[1],0,1,gmClipGamma(x[2],cfg)];
+          if(dOff){
+            const x=gmNelder(p=>lossCore(p[0],1,0,1,p[1]),[0,0]);
+            full=[x[0],1,0,1,gmClipGamma(x[1],cfg)];
+          } else {
+            const x=gmNelder(p=>lossCore(p[0],p[1],0,1,p[2]),[0,1,0]);
+            full=[x[0],x[1],0,1,gmClipGamma(x[2],cfg)];
+          }
         } else {
-          const x=gmNelder(p=>lossCore(p[0],p[1],0,1,0),[0,1]);
-          full=[x[0],x[1],0,1,0];
+          if(dOff){
+            const x=gmNelder(p=>lossCore(p[0],1,0,1,0),[0]);
+            full=[x[0],1,0,1,0];
+          } else {
+            const x=gmNelder(p=>lossCore(p[0],p[1],0,1,0),[0,1]);
+            full=[x[0],x[1],0,1,0];
+          }
         }
       } else if(cfg.useDc){
-        const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],p[4]),[0,1,0,1,0]);
-        full=[x[0],x[1],x[2],x[3],gmClipGamma(x[4],cfg)];
+        if(dOff){
+          const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2],p[3]),[0,0,1,0]);
+          full=[x[0],1,x[1],x[2],gmClipGamma(x[3],cfg)];
+        } else {
+          const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],p[4]),[0,1,0,1,0]);
+          full=[x[0],x[1],x[2],x[3],gmClipGamma(x[4],cfg)];
+        }
       } else {
-        const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],0),[0,1,0,1]);
-        full=[x[0],x[1],x[2],x[3],0];
+        if(dOff){
+          const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2],0),[0,0,1]);
+          full=[x[0],1,x[1],x[2],0];
+        } else {
+          const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],0),[0,1,0,1]);
+          full=[x[0],x[1],x[2],x[3],0];
+        }
       }
-      return {a:full[0],b:full[1],c:full[2],d:full[3],gamma:full[4],n1x2:used.length};
+      const bOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
+      return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:full[4],n1x2:used.length};
     }
     function gmEffectiveQBounds(cfg, drawMode){
       const mode=drawMode||cfg.drawMode||'residual_dc';
@@ -3459,6 +3552,10 @@ bash scripts/update_and_serve.sh --start</div>
       if(gmModelProfile()==='baseline') return 'off';
       return (document.getElementById('goalSCalMode')||{}).value||'off';
     }
+    function gmResolvedDCalMode(){
+      if(gmModelProfile()==='baseline') return 'soft';
+      return (document.getElementById('goalDCalMode')||{}).value||'soft';
+    }
     function gmToggleDrawQUi(){
       const drawOn=gmIsExperimentalOpen()&&!!(document.getElementById('goalUseDraw')&&document.getElementById('goalUseDraw').checked);
       const mode=(document.getElementById('goalDrawMode')||{}).value||'residual_dc';
@@ -3475,6 +3572,14 @@ bash scripts/update_and_serve.sh --start</div>
       const dc=document.getElementById('goalUseDc'); if(dc) dc.checked=true;
       const draw=document.getElementById('goalUseDraw'); if(draw) draw.checked=false;
       const sc=document.getElementById('goalSCalMode'); if(sc) sc.value='off';
+      const dcm=document.getElementById('goalDCalMode'); if(dcm) dcm.value='soft';
+      const bmin=document.getElementById('goalDCalBMin'); if(bmin) bmin.value='0.90';
+      const bmax=document.getElementById('goalDCalBMax'); if(bmax) bmax.value='1.03';
+      const bpen=document.getElementById('goalDCalBPenalty'); if(bpen) bpen.value='2.00';
+      const dmode=document.getElementById('goalDBigFavMode'); if(dmode) dmode.value='linear';
+      const dthr=document.getElementById('goalDBigFavThr'); if(dthr) dthr.value='1.25';
+      const dslope=document.getElementById('goalDBigFavSlope'); if(dslope) dslope.value='0.75';
+      const dcap=document.getElementById('goalDBigFavCap'); if(dcap) dcap.value='2.00';
       const panel=document.getElementById('goalExperimentalPanel'); if(panel) panel.open=false;
       gmToggleDrawQUi();
     }
@@ -3510,7 +3615,8 @@ bash scripts/update_and_serve.sh --start</div>
       const laAD=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0));
       const sModel=lhAD+laAD;
       const sCal=gmApplySCal(sModel,cal.c,cal.d,cfg);
-      const dCal=gmClampD(cal.a+cal.b*dModel,sCal);
+      const dc=gmApplyDCal(dModel,cal.a,cal.b,cfg);
+      const dCal=gmClampD(dc.dUsed,sCal);
       return {dModel,sModel,sCal,dCal};
     }
     function gmFitDrawResidual(ms,st,gl,cal,cfg){
@@ -3579,7 +3685,10 @@ bash scripts/update_and_serve.sh --start</div>
       const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
       const dm=R(homeId)-R(awayId)+hEff;
       const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(awayId)-Df(homeId)); const sm=lhAD+laAD;
-      let df=cal.a+cal.b*dm, sf=gmApplySCal(sm,cal.c,cal.d,cfg); df=gmClampD(df,sf); const lh=(sf+df)/2, la=(sf-df)/2;
+      const dc=gmApplyDCal(dm,cal.a,cal.b,cfg);
+      let sf=gmApplySCal(sm,cal.c,cal.d,cfg);
+      let df=gmClampD(dc.dUsed,sf);
+      const lh=(sf+df)/2, la=(sf-df)/2;
       let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
       let dtarget=null,diag=null;
       if(cfg.useDraw){
@@ -3741,10 +3850,12 @@ bash scripts/update_and_serve.sh --start</div>
         const laAD=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0));
         const sModel=lhAD+laAD;
         const sCal=gmApplySCal(sModel,cal.c,cal.d,cfg);
-        const dCalRaw=cal.a+cal.b*dModel;
+        const dCalObj=gmApplyDCal(dModel,cal.a,cal.b,cfg);
+        const dCalRaw=dCalObj.dRaw;
+        const dCalUsed=gmClampD(dCalObj.dUsed,sCal);
         const [p1MktSd,pxMktSd,p2MktSd]=gmProb1x2FromSd(m.S,m.D,cfg,0);
         const [p1Mod,pxMod,p2Mod]=gmProb1x2FromSd(sModel,dModel,cfg,0);
-        const [p1Cal,pxCal,p2Cal]=gmProb1x2FromSd(sCal,dCalRaw,cfg,gamma);
+        const [p1Cal,pxCal,p2Cal]=gmProb1x2FromSd(sCal,dCalUsed,cfg,gamma);
         const raw=m.raw||{};
         rows.push({
           home:m.homeName||m.home, away:m.awayName||m.away, date:raw.date,
@@ -3755,7 +3866,8 @@ bash scripts/update_and_serve.sh --start</div>
           errXMarket:pxMktSd-m.px,
           sModel, dModel, p1Model:p1Mod, pxModel:pxMod, p2Model:p2Mod,
           errXModel:pxMod-m.px,
-          sCal, dCal:gmClampD(dCalRaw,sCal),
+          sCal, dCal:dCalUsed,
+          dCalRaw,
           p1Cal, pxCal, p2Cal, errXCal:pxCal-m.px,
           deltaSCal:sCal-sModel, dSource:m.dSource||'', dClampHit:!!m.dClampHit,
         });
@@ -3797,7 +3909,198 @@ bash scripts/update_and_serve.sh --start</div>
         stable, summary:parts.join('; '), byS, byD, rows,
       };
     }
-    function gmTrain(raw,cfg,prior){
+    function gmInferEtalonDFair(r){
+      if(r.tot==null || r.ah==null) return null;
+      let sVal = r.tot;
+      let sSource = 'line';
+      if(r.ovr && r.und){
+        const [pOver] = gmDevig2(r.ovr, r.und);
+        sVal = gmInferS(r.tot, pOver);
+        sSource = 'ou_fair';
+      }
+      let dVal = null;
+      let dSource = 'ah_line';
+      if(r.aho && r.aha){
+        const [pAhHome] = gmDevig2(r.aho, r.aha);
+        dVal = gmInferD(r.ah, pAhHome, sVal);
+        dSource = 'ah_fair';
+      } else {
+        dVal = -r.ah;
+      }
+      if(dVal == null || !isFinite(dVal) || sVal == null || !isFinite(sVal)) return null;
+      return { d: gmClampD(dVal, sVal), source: dSource, s: sVal, sSource };
+    }
+    function gmEtalon1x2Raw(r){
+      if(!(r.ho && r.dо && r.ao)) return null;
+      if(r.ho <= 1 || r.dо <= 1 || r.ao <= 1) return null;
+      return { home: r.ho, draw: r.dо, away: r.ao };
+    }
+    function gmEtalonMargin1x2(raw){
+      const sum = 1 / raw.home + 1 / raw.draw + 1 / raw.away;
+      return (sum - 1) * 100;
+    }
+    function gmProportional1x2FromRaw(r){
+      const raw = gmEtalon1x2Raw(r);
+      if(!raw) return null;
+      const q1 = 1 / raw.home;
+      const qx = 1 / raw.draw;
+      const q2 = 1 / raw.away;
+      const sum = q1 + qx + q2;
+      const p1 = q1 / sum;
+      const px = qx / sum;
+      const p2 = q2 / sum;
+      return { p1, px, p2, k1: 1 / p1, kx: 1 / px, k2: 1 / p2, marginPct: (sum - 1) * 100 };
+    }
+    function gmFair1x2FromRaw(r){
+      const raw = gmEtalon1x2Raw(r);
+      if(!raw) return null;
+      try {
+        const [p1, px, p2] = shinDevig(raw.home, raw.draw, raw.away);
+        if(!(p1 > 0 && px > 0 && p2 > 0)) return null;
+        return {
+          p1, px, p2,
+          k1: 1 / p1, kx: 1 / px, k2: 1 / p2,
+          marginPct: gmEtalonMargin1x2(raw),
+          raw,
+        };
+      } catch (_e){
+        return null;
+      }
+    }
+    function gmEtalon1x2Layers(r){
+      const raw = gmEtalon1x2Raw(r);
+      if(!raw) return null;
+      const shinFair = gmFair1x2FromRaw(r);
+      const propFair = gmProportional1x2FromRaw(r);
+      const marginPct = gmEtalonMargin1x2(raw);
+      const marginFactor = 1 + marginPct / 100;
+      return { raw, shinFair, propFair, marginPct, marginFactor };
+    }
+    function gmFairTwoWayFromRaw(o1, o2){
+      if(!(o1 && o2) || o1 <= 1 || o2 <= 1) return null;
+      try {
+        const [p1, p2] = gmDevig2(o1, o2);
+        if(!(p1 > 0 && p2 > 0)) return null;
+        return { p1, p2, k1: 1 / p1, k2: 1 / p2 };
+      } catch (_e){
+        return null;
+      }
+    }
+    function gmModel1x2WithEtalonMargin(modelProbs, layers){
+      if(!layers || !modelProbs) return null;
+      const mf = layers.marginFactor;
+      if(!(mf > 1)) return null;
+      const p1 = modelProbs.p1 * mf;
+      const px = modelProbs.px * mf;
+      const p2 = modelProbs.p2 * mf;
+      if(!(p1 > 0 && px > 0 && p2 > 0)) return null;
+      return { k1: 1 / p1, kx: 1 / px, k2: 1 / p2 };
+    }
+    function gmInactiveDDiagnostics(model, inactiveRaw, dStrong=1.25){
+      const empty = {
+        nEval: 0, meanErrD: 0, meanAbsErrD: 0, nOverGap: 0, pctOverGap: 0,
+        strongNEval: 0, strongMeanAbsErr: 0, strongPctOverGap: 0,
+        avgUnderdogOddsRatioFair: 0, avgUnderdogOddsRatioRaw: 0, avgEtalonMargin1x2: 0,
+        rows: [], summary: '',
+      };
+      if(!Array.isArray(inactiveRaw) || !inactiveRaw.length){
+        return Object.assign({}, empty, { summary: 'нет inactive матчей для сравнения' });
+      }
+      const rows=[];
+      for(const r of inactiveRaw){
+        if(!r.homeId || !r.awayId) continue;
+        const etalonD = gmInferEtalonDFair(r);
+        if(etalonD == null) continue;
+        const layers = gmEtalon1x2Layers(r);
+        const pred = gmPredict(model, r.homeId, r.awayId, { neutral: !!r.neu, derby: !!r.der });
+        const dModel = pred.df;
+        const dEtalonFair = etalonD.d;
+        const overGapFair = Math.abs(dModel) - Math.abs(dEtalonFair);
+        let underdogRatioFair = null;
+        let underdogRatioRaw = null;
+        let etalonFairUnderdog = null;
+        let etalonRawUnderdog = null;
+        let modelFairUnderdog = null;
+        if(pred.markets.p1 > 0 && pred.markets.p2 > 0 && layers && layers.shinFair){
+          const modelHome = 1 / pred.markets.p1;
+          const modelAway = 1 / pred.markets.p2;
+          const homeIsUnderdog = layers.shinFair.k1 >= layers.shinFair.k2;
+          etalonFairUnderdog = homeIsUnderdog ? layers.shinFair.k1 : layers.shinFair.k2;
+          etalonRawUnderdog = homeIsUnderdog ? layers.raw.home : layers.raw.away;
+          modelFairUnderdog = homeIsUnderdog ? modelHome : modelAway;
+          if(etalonFairUnderdog > 0 && isFinite(modelFairUnderdog)){
+            underdogRatioFair = modelFairUnderdog / etalonFairUnderdog;
+          }
+          if(etalonRawUnderdog > 0 && isFinite(modelFairUnderdog)){
+            underdogRatioRaw = modelFairUnderdog / etalonRawUnderdog;
+          }
+        }
+        rows.push({
+          date: r.date || '',
+          home: r.homeName || r.homeId,
+          away: r.awayName || r.awayId,
+          etalonHomeOddsRaw: layers ? layers.raw.home : null,
+          etalonDrawOddsRaw: layers ? layers.raw.draw : null,
+          etalonAwayOddsRaw: layers ? layers.raw.away : null,
+          p1EtalonFair: layers && layers.shinFair ? layers.shinFair.p1 : null,
+          pxEtalonFair: layers && layers.shinFair ? layers.shinFair.px : null,
+          p2EtalonFair: layers && layers.shinFair ? layers.shinFair.p2 : null,
+          o1EtalonFair: layers && layers.shinFair ? layers.shinFair.k1 : null,
+          oxEtalonFair: layers && layers.shinFair ? layers.shinFair.kx : null,
+          o2EtalonFair: layers && layers.shinFair ? layers.shinFair.k2 : null,
+          etalonMargin1x2: layers ? layers.marginPct : null,
+          dEtalonFair,
+          dEtalonSource: etalonD.source,
+          dModel,
+          errD: dModel - dEtalonFair,
+          absErrD: Math.abs(dModel - dEtalonFair),
+          overGapFair,
+          underdogRatioFair,
+          underdogRatioRaw,
+          etalonFairUnderdog,
+          etalonRawUnderdog,
+          modelFairUnderdog,
+          absDEtalonFair: Math.abs(dEtalonFair),
+        });
+      }
+      if(!rows.length){
+        return Object.assign({}, empty, { summary: 'inactive матчи есть, но нет эталонной форы для D' });
+      }
+      const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      const nEval = rows.length;
+      const nOver = rows.filter(r => r.overGapFair > 0).length;
+      const strong = rows.filter(r => r.absDEtalonFair > dStrong);
+      const ratioFairVals = rows.map(r => r.underdogRatioFair).filter(v => v != null && isFinite(v));
+      const ratioRawVals = rows.map(r => r.underdogRatioRaw).filter(v => v != null && isFinite(v));
+      const marginVals = rows.map(r => r.etalonMargin1x2).filter(v => v != null && isFinite(v));
+      rows.sort((a, b) => b.overGapFair - a.overGapFair);
+      const pctOver = 100 * nOver / nEval;
+      const strongOver = strong.filter(r => r.overGapFair > 0).length;
+      const strongPct = strong.length ? 100 * strongOver / strong.length : 0;
+      const meanErr = avg(rows.map(r => r.errD));
+      const meanAbs = avg(rows.map(r => r.absErrD));
+      const strongMae = avg(strong.map(r => r.absErrD));
+      const avgRatioFair = avg(ratioFairVals);
+      const avgRatioRaw = avg(ratioRawVals);
+      const avgMargin = avg(marginVals);
+      const summary = `D err ${meanErr >= 0 ? '+' : ''}${meanErr.toFixed(3)}; |D| err ${meanAbs.toFixed(3)}; over_gap_fair>0 ${pctOver.toFixed(0)}%; underdog_fair ${avgRatioFair.toFixed(2)}`;
+      return {
+        nEval,
+        meanErrD: meanErr,
+        meanAbsErrD: meanAbs,
+        nOverGap: nOver,
+        pctOverGap: pctOver,
+        strongNEval: strong.length,
+        strongMeanAbsErr: strongMae,
+        strongPctOverGap: strongPct,
+        avgUnderdogOddsRatioFair: avgRatioFair,
+        avgUnderdogOddsRatioRaw: avgRatioRaw,
+        avgEtalonMargin1x2: avgMargin,
+        rows,
+        summary,
+      };
+    }
+    function gmTrain(raw,cfg,prior,inactiveRaw){
       const ms=gmPrepare(raw,cfg);
       const dClamp=gmDClampDiagnostics(ms, cfg);
       const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
@@ -3808,6 +4111,7 @@ bash scripts/update_and_serve.sh --start</div>
       model.drawQDiag=gmDrawQDiagnostics(model, ms);
       model.sdDiag=gmSd1x2Diagnostics(model, ms);
       model.drawHarmDiag=gmDrawHarmDiagnostics(model, ms);
+      model.inactiveDiag=gmInactiveDDiagnostics(model, inactiveRaw||[]);
       return model;
     }
     let gmModel=null;
@@ -3818,9 +4122,12 @@ bash scripts/update_and_serve.sh --start</div>
         seasonDefault:1.0,
         seasonWeightsById: goalSeasonWeightById || {},
         priorAlpha:f('goalPriorAlpha',0.7), promotedN:3,
-        regLambda:0.1, regLambdaAttack:f('goalRegLambdaAD',0.1), regLambdaDefense:f('goalRegLambdaAD',0.1),
+        regLambda:f('goalRegLambdaR',0.10), regLambdaAttack:f('goalRegLambdaAD',0.1), regLambdaDefense:f('goalRegLambdaAD',0.1),
         dClampLowTeam:3, dClampEarlyFraction:0.25,
         derbyShrinkTau:30, derbyHDefault:f('goalDerbyHDefault',0.7), derbyMinMatches:3,
+        dCalMode:gmResolvedDCalMode(), dCalBMin:f('goalDCalBMin',0.90), dCalBMax:f('goalDCalBMax',1.03), dCalBPenalty:f('goalDCalBPenalty',2.0),
+        dBigFavMode:(document.getElementById('goalDBigFavMode')||{}).value||'linear',
+        dBigFavThreshold:f('goalDBigFavThr',1.25), dBigFavSlope:f('goalDBigFavSlope',0.75), dBigFavCap:f('goalDBigFavCap',2.00),
         useDraw:gmModelProfile()!=='baseline'&&gmIsExperimentalOpen()&&document.getElementById('goalUseDraw').checked,
         useDc:document.getElementById('goalUseDc').checked,
         modelProfile:gmModelProfile(),
@@ -4911,6 +5218,7 @@ bash scripts/update_and_serve.sh --start</div>
 
     // ---------------- «Линия»: загрузка из Supabase ----------------
     let goalLoadedRaw = null;
+    let goalLoadedInactiveRaw = null;
     let goalLoadedMeta = null;
     let goalLineSeasons = [];
     let goalSeasonWeightById = {};
@@ -4984,6 +5292,7 @@ bash scripts/update_and_serve.sh --start</div>
         ['Загружено из БД', escapeHtml(goalFmtTrainDt(goalTrainState.loadedAt)), ''],
         ['Дерби в выборке', String(derbyN), 'num'],
         ['Нейтральных матчей', String(neuN), 'num'],
+        ['Inactive для контроля', `${meta.inactiveValid || 0}${meta.inactiveTotal ? ` из ${meta.inactiveTotal}` : ''}`, 'num'],
         ['Подпись данных', `<code>${escapeHtml(goalComputeDataSignature(goalLoadedRaw))}</code>`, ''],
       ];
       let html = goalRenderTrainTable(rows);
@@ -4997,16 +5306,22 @@ bash scripts/update_and_serve.sh --start</div>
           ['α форы', goalFmtTrainNum(cfg.alphaAh, 2), 'num'],
           ['α тотала', goalFmtTrainNum(cfg.alphaT, 2), 'num'],
           ['λ A / Df', goalFmtTrainNum(cfg.regLambdaAttack, 2), 'num'],
+          ['λ r', goalFmtTrainNum(cfg.regLambda, 2), 'num'],
           ['Dixon-Coles', cfg.useDc ? 'вкл' : 'выкл', ''],
           ['γ max', goalFmtTrainNum(cfg.gammaMax, 2), 'num'],
         ]);
-      if (cfg.modelProfile === 'custom' || cfg.useDraw || cfg.sCalMode !== 'off'){
+      if (cfg.modelProfile === 'custom' || cfg.useDraw || cfg.sCalMode !== 'off' || cfg.dCalMode !== 'soft' || cfg.dBigFavMode !== 'linear'){
         html += '<div class="small" style="margin-top:8px;font-weight:600">Экспериментальные параметры</div>'
           + goalRenderTrainTable([
             ['дерби H×', goalFmtTrainNum(cfg.derbyHDefault, 2), 'num'],
             ['prior α', goalFmtTrainNum(cfg.priorAlpha, 2), 'num'],
             ['калибр. S', cfg.sCalMode || 'off', cfg.sCalMode === 'free' ? 'warn' : ''],
             ['max |ΔS|', goalFmtTrainNum(cfg.sCalMaxDelta, 2), 'num'],
+            ['калибр. D', cfg.dCalMode || 'soft', cfg.dCalMode === 'free' ? 'warn' : ''],
+            ['b min / b max', `${goalFmtTrainNum(cfg.dCalBMin, 2)} / ${goalFmtTrainNum(cfg.dCalBMax, 2)}`, 'num'],
+            ['λ_b', goalFmtTrainNum(cfg.dCalBPenalty, 2), 'num'],
+            ['shrink |D|', cfg.dBigFavMode || 'off', ''],
+            ['|D| порог / k / cap', `${goalFmtTrainNum(cfg.dBigFavThreshold, 2)} / ${goalFmtTrainNum(cfg.dBigFavSlope, 2)} / ${goalFmtTrainNum(cfg.dBigFavCap, 2)}`, 'num'],
             ['Модель ничьи', cfg.useDraw ? (`вкл (${cfg.drawMode || 'residual_dc'})`) : 'выкл', ''],
             ...(cfg.useDraw ? [['q_min / q_max', `${goalFmtTrainNum(cfg.qmin, 2)} / ${goalFmtTrainNum(cfg.qmax, 2)}`, 'num']] : []),
           ]);
@@ -5022,7 +5337,7 @@ bash scripts/update_and_serve.sh --start</div>
         card.style.display = 'none';
         return;
       }
-      const { st, gl, cal, draw, dClamp, calDiag, drawQDiag, sdDiag, drawHarmDiag } = gmModel;
+      const { st, gl, cal, draw, dClamp, calDiag, drawQDiag, sdDiag, drawHarmDiag, inactiveDiag } = gmModel;
       const rows = [
         ['Обучено', escapeHtml(goalFmtTrainDt(goalTrainState.trainedAt)), ''],
         ['Команд в модели', String(Object.keys(st.ratings).length), 'num'],
@@ -5060,6 +5375,23 @@ bash scripts/update_and_serve.sh --start</div>
           rows.push(['S−линия (OU)', goalFmtTrainNum(sdDiag.avgSMinusLine, 3), Math.abs(sdDiag.avgSMinusLine) > 0.20 ? 'warn' : 'num']);
         }
         rows.push(['Матчей PX_matrix < рынок', `${sdDiag.nPxUnderModel} (${goalFmtTrainNum(sdDiag.pctPxUnderModel, 0)}%)`, sdDiag.pctPxUnderModel > 55 ? 'warn' : '']);
+      }
+      if (inactiveDiag && inactiveDiag.nEval > 0){
+        rows.push(['Inactive D_model vs D_etalon_fair', escapeHtml(inactiveDiag.summary), inactiveDiag.pctOverGap > 55 ? 'warn' : '']);
+        rows.push(['Ошибка D / |D|', `${goalFmtTrainNum(inactiveDiag.meanErrD, 3)} / ${goalFmtTrainNum(inactiveDiag.meanAbsErrD, 3)}`, 'num']);
+        rows.push(['over_gap_fair > 0', `${inactiveDiag.nOverGap} (${goalFmtTrainNum(inactiveDiag.pctOverGap, 0)}%)`, inactiveDiag.pctOverGap > 55 ? 'warn' : '']);
+        if (inactiveDiag.avgEtalonMargin1x2 > 0){
+          rows.push(['Средн. маржа эталона 1X2', `${goalFmtTrainNum(inactiveDiag.avgEtalonMargin1x2, 1)}%`, 'num']);
+        }
+        if (inactiveDiag.strongNEval > 0){
+          rows.push([`|D_etalon_fair| > 1.25 (${inactiveDiag.strongNEval})`, `|err|=${goalFmtTrainNum(inactiveDiag.strongMeanAbsErr, 3)}, over_gap_fair ${goalFmtTrainNum(inactiveDiag.strongPctOverGap, 0)}%`, inactiveDiag.strongPctOverGap > 55 ? 'warn' : '']);
+        }
+        if (inactiveDiag.avgUnderdogOddsRatioFair > 0){
+          const udDetail = inactiveDiag.avgUnderdogOddsRatioRaw > 0
+            ? `fair ${goalFmtTrainNum(inactiveDiag.avgUnderdogOddsRatioFair, 3)}, raw ${goalFmtTrainNum(inactiveDiag.avgUnderdogOddsRatioRaw, 3)}`
+            : `fair ${goalFmtTrainNum(inactiveDiag.avgUnderdogOddsRatioFair, 3)}`;
+          rows.push(['Avg underdog odds ratio', udDetail, inactiveDiag.avgUnderdogOddsRatioFair > 1.20 ? 'warn' : 'num']);
+        }
       }
       if (gmModel.cfg && gmModel.cfg.useDc){
         rows.push(['Dixon-Coles', 'включён', '']);
@@ -5136,6 +5468,15 @@ bash scripts/update_and_serve.sh --start</div>
             + goalRenderTrainTable(worst);
         }
       }
+      if (inactiveDiag && inactiveDiag.rows && inactiveDiag.rows.length){
+        const topRows = inactiveDiag.rows.slice(0, 10).map(r => [
+          `${escapeHtml(r.home)} — ${escapeHtml(r.away)}`,
+          `D_model=${goalFmtTrainNum(r.dModel,3)} vs D_etalon_fair=${goalFmtTrainNum(r.dEtalonFair,3)}; over_gap=${goalFmtTrainNum(r.overGapFair,3)}; underdog_ratio_fair=${r.underdogRatioFair!=null?goalFmtTrainNum(r.underdogRatioFair,2):'—'}${r.etalonMargin1x2!=null?`; etalon_margin=${goalFmtTrainNum(r.etalonMargin1x2,1)}%`:''}`,
+          r.overGapFair > 0.15 ? 'warn' : '',
+        ]);
+        box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Топ переоценки фаворита (inactive)</div>'
+          + goalRenderTrainTable(topRows);
+      }
       card.style.display = '';
     }
     function goalTrainQuality(n){
@@ -5164,6 +5505,7 @@ bash scripts/update_and_serve.sh --start</div>
       const harm=gmModel.drawHarmDiag;
       const cal=gmModel.cal;
       const clamp=gmModel.dClamp;
+      const inactive=gmModel.inactiveDiag;
       const deltaS=sd?sd.avgDeltaS:0;
       const sOk=Math.abs(deltaS)<0.01;
       chips.push(`<span class="goal-chip ${sOk?'ok':''}">${sOk?'S stable':('ΔS '+goalFmtTrainNum(deltaS,3))}</span>`);
@@ -5183,6 +5525,12 @@ bash scripts/update_and_serve.sh --start</div>
       }
       if(gmModel.calDiag && !gmModel.calDiag.stable){
         chips.push('<span class="goal-chip warn">калибр. 1X2</span>');
+      }
+      if(inactive && inactive.nEval>0){
+        chips.push(`<span class="goal-chip ${inactive.pctOverGap>55?'warn':''}">over_gap_fair ${goalFmtTrainNum(inactive.pctOverGap,0)}%</span>`);
+        if(inactive.avgUnderdogOddsRatioFair > 0){
+          chips.push(`<span class="goal-chip ${inactive.avgUnderdogOddsRatioFair>1.20?'warn':''}">UD fair ${goalFmtTrainNum(inactive.avgUnderdogOddsRatioFair,2)}</span>`);
+        }
       }
       el.innerHTML=chips.join('');
     }
@@ -5206,16 +5554,19 @@ bash scripts/update_and_serve.sh --start</div>
           const calDiag = gmModel.calDiag;
           const drawQDiag = gmModel.drawQDiag;
           const drawHarmDiag = gmModel.drawHarmDiag;
+          const inactiveDiag = gmModel.inactiveDiag;
           const calWarn = calDiag && !calDiag.stable;
           const qWarn = drawQDiag && drawQDiag.nEval > 0 && !drawQDiag.stable;
           const harmWarn = drawHarmDiag && drawHarmDiag.harmsWorseThanAfterDc;
           const clampWarn = clamp && ((clamp.nHit > 0 && clamp.pct > 2) || (clamp.nSensitive > 0));
-          banner.classList.add((qual.tier === 'warn' || clampWarn || calWarn || qWarn || harmWarn) ? 'warn' : 'ok');
+          const inactiveWarn = inactiveDiag && inactiveDiag.nEval > 0 && inactiveDiag.pctOverGap > 55;
+          banner.classList.add((qual.tier === 'warn' || clampWarn || calWarn || qWarn || harmWarn || inactiveWarn) ? 'warn' : 'ok');
           const warns=[];
           if(calWarn) warns.push('калибровка 1X2 нестабильна');
           if(qWarn) warns.push(`q clamp ${goalFmtTrainNum(drawQDiag.clampPct,0)}%`);
           if(harmWarn) warns.push('модель ничьи ухудшает DC');
           if(clampWarn && clamp.nHit>0) warns.push(`D clamp ${clamp.nHit}/${clamp.nTotal}`);
+          if(inactiveWarn) warns.push(`over_gap_fair ${goalFmtTrainNum(inactiveDiag.pctOverGap,0)}%`);
           const trained=goalFmtTrainDt(goalTrainState.trainedAt);
           banner.textContent = warns.length
             ? `Обучено ${trained}. ${warns.join(' · ')}`
@@ -5258,7 +5609,7 @@ bash scripts/update_and_serve.sh --start</div>
       goalReadSeasonWeightsFromUI();
       const cfg = gmCfg();
       const prior = (cfg.priorAlpha > 0 && gmModel) ? gmModel : null;
-      gmModel = gmTrain(goalLoadedRaw, cfg, prior);
+      gmModel = gmTrain(goalLoadedRaw, cfg, prior, goalLoadedInactiveRaw);
       goalTrainState.trainedAt = new Date().toISOString();
       goalTrainState.priorUsed = !!(prior && cfg.priorAlpha > 0);
       goalRenderRatings();
@@ -5360,6 +5711,22 @@ bash scripts/update_and_serve.sh --start</div>
       const list = Array.isArray(rows) ? rows : [];
       await sbEnrichMatchesRotation(list);
       return list;
+    }
+
+    const SB_INACTIVE_TRAIN_SELECT = [
+      'match_id','match_date','league_id','season_id','season_label',
+      'home_team_id','home_team','away_team_id','away_team',
+      'closing_ah_home','closing_total_line','ah_home_odds','ah_away_odds',
+      'over_odds','under_odds','home_odds','draw_odds','away_odds',
+      'is_neutral','match_weight','derby_weight','neutral_weight',
+    ].join(',');
+
+    async function sbLoadInactiveMatchesForSeasons(leagueId, seasonIds){
+      if (!seasonIds.length) return [];
+      const ids = seasonIds.map(s => encodeURIComponent(String(s))).join(',');
+      const q = `select=${SB_INACTIVE_TRAIN_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=in.(${ids})&order=match_date.asc`;
+      const rows = await sbFetch(`/v_inactive_matches_full?${q}`);
+      return Array.isArray(rows) ? rows : [];
     }
 
     const SB_INACTIVE_COMPARE_SELECT = [
@@ -5535,17 +5902,23 @@ bash scripts/update_and_serve.sh --start</div>
       if (!seasonIds.length){ alert('Выберите хотя бы один сезон'); return; }
       try {
         await loadSupabaseConfig();
-        const matches = await sbLoadMatchesForSeasons(leagueId, seasonIds);
+        const [matches, inactiveMatches] = await Promise.all([
+          sbLoadMatchesForSeasons(leagueId, seasonIds),
+          sbLoadInactiveMatchesForSeasons(leagueId, seasonIds),
+        ]);
         if (!matches.length){ alert('В БД нет матчей по выбранным сезонам'); return; }
         const parsed = goalMatchesToRaw(matches);
         if (!parsed.valid){ alert('Недостаточно матчей с полной линией для обучения модели'); return; }
+        const inactiveParsed = goalMatchesToRaw(inactiveMatches);
         goalLoadedRaw = parsed.raw;
+        goalLoadedInactiveRaw = inactiveParsed.raw;
         const league = (window.__SB.leagues || []).find(l => l.id === leagueId);
         const leagueName = league ? league.name : leagueId;
         const seasonLabels = goalLineSeasons.filter(s => seasonIds.includes(s.season_id)).map(s => s.season_label);
         goalLoadedMeta = {
           leagueId, leagueName, seasonIds, seasonLabels,
           total: parsed.total, valid: parsed.valid, excluded: parsed.excluded,
+          inactiveTotal: inactiveParsed.total, inactiveValid: inactiveParsed.valid,
         };
         goalTrainState.loadedAt = new Date().toISOString();
         goalApplyDefaultSeasonWeights();
@@ -5563,11 +5936,11 @@ bash scripts/update_and_serve.sh --start</div>
       catch (e){ alert(e.message || e); }
     });
 
-    ['goalAlphaAh','goalAlphaT','goalRegLambdaAD','goalDerbyHDefault','goalQmin','goalQmax','goalPriorAlpha','goalSCalMaxDelta','goalGammaMax'].forEach(id => {
+    ['goalAlphaAh','goalAlphaT','goalRegLambdaAD','goalRegLambdaR','goalDerbyHDefault','goalQmin','goalQmax','goalPriorAlpha','goalSCalMaxDelta','goalGammaMax','goalDCalBMin','goalDCalBMax','goalDCalBPenalty','goalDBigFavThr','goalDBigFavSlope','goalDBigFavCap'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', () => { goalMarkCustomProfile(); goalUpdateTrainUI(); });
     });
-    ['goalUseDraw','goalUseDc','goalDrawMode','goalSCalMode'].forEach(id => {
+    ['goalUseDraw','goalUseDc','goalDrawMode','goalSCalMode','goalDCalMode','goalDBigFavMode'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', () => {
         goalMarkCustomProfile();
@@ -5683,13 +6056,33 @@ bash scripts/update_and_serve.sh --start</div>
         compare.match_date ? String(compare.match_date) : '',
         compare.season_label ? String(compare.season_label) : '',
       ].filter(Boolean).join(' · ');
-      const row = (label, mVal, rVal, showDelta) => {
-        const delta = showDelta ? gmOddsDeltaStr(mVal, rVal) : '—';
-        const cls = showDelta ? gmDeltaClass(mVal, rVal) : '';
+      const row = (label, mFair, rRaw, rFair, showDelta) => {
+        const delta = showDelta ? gmOddsDeltaStr(mFair, rFair) : '—';
+        const cls = showDelta ? gmDeltaClass(mFair, rFair) : '';
         return `<tr><td class="lbl">${escapeHtml(label)}</td>`
-          + `<td>${gmFmtOddsStr(mVal)}</td><td>${gmFmtOddsStr(rVal)}</td>`
+          + `<td>${gmFmtOddsStr(mFair)}</td><td>${gmFmtOddsStr(rRaw)}</td><td>${gmFmtOddsStr(rFair)}</td>`
           + `<td class="${cls}">${escapeHtml(delta)}</td></tr>`;
       };
+      const rowRawDelta = (label, mMarg, rRaw) => {
+        const delta = gmOddsDeltaStr(mMarg, rRaw);
+        const cls = gmDeltaClass(mMarg, rRaw);
+        return `<tr><td class="lbl">${escapeHtml(label)}</td>`
+          + `<td>${gmFmtOddsStr(mMarg)}</td><td>${gmFmtOddsStr(rRaw)}</td><td>—</td>`
+          + `<td class="${cls}">${escapeHtml(delta)}</td></tr>`;
+      };
+      const layers = gmEtalon1x2Layers({
+        ho: compare.home_odds,
+        dо: compare.draw_odds,
+        ao: compare.away_odds,
+      });
+      const rawK1 = layers ? layers.raw.home : compare.home_odds;
+      const rawKx = layers ? layers.raw.draw : compare.draw_odds;
+      const rawK2 = layers ? layers.raw.away : compare.away_odds;
+      const fairK1 = layers && layers.shinFair ? layers.shinFair.k1 : null;
+      const fairKx = layers && layers.shinFair ? layers.shinFair.kx : null;
+      const fairK2 = layers && layers.shinFair ? layers.shinFair.k2 : null;
+      const fairTot = gmFairTwoWayFromRaw(compare.over_odds, compare.under_odds);
+      const fairAh = gmFairTwoWayFromRaw(compare.ah_home_odds, compare.ah_away_odds);
       const refTot = compare.closing_total_line;
       const refAh = compare.closing_ah_home;
       const sameTot = refTot != null && Math.abs(Number(model.totLine) - Number(refTot)) < 1e-6;
@@ -5700,22 +6093,43 @@ bash scripts/update_and_serve.sh --start</div>
       const ahLabel = sameAh
         ? `Фора ${gmAhLineStr(model.ahLine)}`
         : `Фора модель ${gmAhLineStr(model.ahLine)} / эталон ${gmAhLineStr(refAh)}`;
+      const marginNote = layers && layers.marginPct != null
+        ? `<div class="goal-predict-compare-note">Маржа эталона 1X2: ${goalFmtTrainNum(layers.marginPct, 1)}% · de-vig: Shin</div>`
+        : '';
+      let marginRows = '';
+      if (layers && model.p1 != null && model.px != null && model.p2 != null){
+        const marg = gmModel1x2WithEtalonMargin({ p1: model.p1, px: model.px, p2: model.p2 }, layers);
+        if (marg){
+          marginRows = `
+            <div class="goal-predict-compare-note" style="margin-top:6px">Модель с маржой эталона (raw-to-raw)</div>
+            <table class="goal-predict-table goal-predict-table--compare">
+              <thead><tr><th class="lbl">Рынок</th><th>Модель+маржа</th><th>Эталон raw</th><th></th><th>Δ raw</th></tr></thead>
+              <tbody>
+                ${rowRawDelta('П1', marg.k1, rawK1)}
+                ${rowRawDelta('X', marg.kx, rawKx)}
+                ${rowRawDelta('П2', marg.k2, rawK2)}
+              </tbody>
+            </table>`;
+        }
+      }
       return `
         <div class="goal-predict-block goal-predict-compare">
           <h5>Сравнение с эталоном (inactive)</h5>
           ${note ? `<div class="goal-predict-compare-note">${escapeHtml(note)}</div>` : ''}
+          ${marginNote}
           <table class="goal-predict-table goal-predict-table--compare">
-            <thead><tr><th class="lbl">Рынок</th><th>Модель</th><th>Эталон</th><th>Δ</th></tr></thead>
+            <thead><tr><th class="lbl">Рынок</th><th>Модель fair</th><th>Эталон raw</th><th>Эталон fair</th><th>Δ fair</th></tr></thead>
             <tbody>
-              ${row('П1', model.k1, compare.home_odds, true)}
-              ${row('X', model.kx, compare.draw_odds, true)}
-              ${row('П2', model.k2, compare.away_odds, true)}
-              ${row(`${totLabel} Over`, model.totOver, compare.over_odds, sameTot)}
-              ${row(`${totLabel} Under`, model.totUnder, compare.under_odds, sameTot)}
-              ${row(`${ahLabel} хоз`, model.ahHome, compare.ah_home_odds, sameAh)}
-              ${row(`${ahLabel} гост`, model.ahAway, compare.ah_away_odds, sameAh)}
+              ${row('П1', model.k1, rawK1, fairK1, true)}
+              ${row('X', model.kx, rawKx, fairKx, true)}
+              ${row('П2', model.k2, rawK2, fairK2, true)}
+              ${row(`${totLabel} Over`, model.totOver, compare.over_odds, fairTot ? fairTot.k1 : null, sameTot)}
+              ${row(`${totLabel} Under`, model.totUnder, compare.under_odds, fairTot ? fairTot.k2 : null, sameTot)}
+              ${row(`${ahLabel} хоз`, model.ahHome, compare.ah_home_odds, fairAh ? fairAh.k1 : null, sameAh)}
+              ${row(`${ahLabel} гост`, model.ahAway, compare.ah_away_odds, fairAh ? fairAh.k2 : null, sameAh)}
             </tbody>
           </table>
+          ${marginRows}
         </div>`;
     }
     function gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch=null){
@@ -5792,6 +6206,7 @@ bash scripts/update_and_serve.sh --start</div>
         </div>`;
       const compareBlock=gmBuildInactiveCompareBlock(compareMatch, {
         k1: kk1, kx: kkx, k2: kk2,
+        p1: mk.p1, px: mk.px, p2: mk.p2,
         totLine: t.line, totOver: ot, totUnder: ut,
         ahLine: a.line, ahHome: ah, ahAway: aa,
       });
