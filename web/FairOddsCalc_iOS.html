@@ -277,6 +277,17 @@
     .goal-predict-table--compare{ font-size:12px; }
     .goal-predict-table--compare td.delta-ok{ color:#166534; }
     .goal-predict-table--compare td.delta-warn{ color:#b45309; font-weight:600; }
+    .ir-report-toolbar{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:10px; }
+    .ir-report-status{ margin:8px 0; padding:10px 12px; border-radius:8px; background:#f8fafc; border:1px solid var(--line); font-size:13px; }
+    .ir-report-status.err{ background:#fef2f2; border-color:#fecaca; color:#991b1b; }
+    .ir-report-table-wrap{ overflow:auto; max-height:70vh; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
+    .ir-report-table{ width:max-content; min-width:100%; border-collapse:collapse; font-size:11px; }
+    .ir-report-table th,.ir-report-table td{ border:1px solid #e2e8f0; padding:4px 6px; white-space:nowrap; }
+    .ir-report-table thead th{ position:sticky; top:0; background:#f1f5f9; z-index:1; font-weight:600; }
+    .ir-report-table td.num{ text-align:right; font-variant-numeric:tabular-nums; }
+    .ir-report-table td.delta-pos{ color:#b45309; }
+    .ir-report-table td.delta-neg{ color:#166534; }
+    .ir-report-table tr:hover td{ background:#fafbff; }
     .shin-details{
       margin-top:10px; padding:10px 12px; background:#f8fafc;
       border:1px solid var(--line); border-radius:10px;
@@ -486,7 +497,7 @@
             for (var j = 0; j < panels.length; j++) {
               panels[j].classList.toggle('active', panels[j].id === panelId);
             }
-            document.body.classList.toggle('tab-wide', id === 'goal' || id === 'hist' || id === 'teams' || id === 'help');
+            document.body.classList.toggle('tab-wide', id === 'goal' || id === 'hist' || id === 'teams' || id === 'help' || id === 'inactreport');
             if (id === 'hist' && window.sbInitHistTab) window.sbInitHistTab();
             if (id === 'goal') {
               if (window.goalInitTab) window.goalInitTab();
@@ -494,6 +505,7 @@
             if (id === 'teams') {
               if (window.sbInitTeamsTab) window.sbInitTeamsTab();
             }
+            if (id === 'inactreport' && window.irInitReportTab) window.irInitReportTab();
           }
           var tabsEl = document.querySelector('.tabs');
           function onTabActivate(e) {
@@ -522,6 +534,7 @@
       <button type="button" class="tab-btn active" data-tab="goal"><span class="tab-ico" aria-hidden="true">📈</span> Линия</button>
       <button type="button" class="tab-btn" data-tab="teams"><span class="tab-ico" aria-hidden="true">📋</span> Справочник</button>
       <button type="button" class="tab-btn" data-tab="hist"><span class="tab-ico" aria-hidden="true">🕓</span> История</button>
+      <button type="button" class="tab-btn" data-tab="inactreport"><span class="tab-ico" aria-hidden="true">📊</span> Отчёт inactive</button>
       <button type="button" class="tab-btn" data-tab="help"><span class="tab-ico" aria-hidden="true">❓</span> Справка</button>
     </div>
 
@@ -1103,6 +1116,31 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="clhMeta" class="meta"></div>
     </section>
 
+    <!-- TAB INACTIVE REPORT (read-only analytics, isolated from Line training) -->
+    <section id="tab-inactreport" class="panel">
+      <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Сравнение расчёта с эталоном (inactive)</h3>
+      <p class="small" style="margin:0 0 10px">Read-only отчёт: только матчи <code>active=false</code>. По каждой лиге отдельно обучается модель на активных матчах, затем для неактивных считается линия с маржой. Исходные данные в БД не изменяются.</p>
+      <div class="ir-report-toolbar">
+        <div class="field" style="min-width:180px">
+          <label>Лига</label>
+          <select id="irLeagueFilter"><option value="">Все лиги</option></select>
+        </div>
+        <div class="field" style="max-width:90px">
+          <label>Маржа %</label>
+          <input id="irMarginPct" type="text" value="3" />
+        </div>
+        <button type="button" id="irRunReport" class="btn primary">Сформировать отчёт</button>
+        <button type="button" id="irExportCsv" class="btn" disabled>Скачать CSV</button>
+      </div>
+      <div id="irReportStatus" class="ir-report-status" style="display:none"></div>
+      <div id="irReportTableWrap" class="ir-report-table-wrap" style="display:none">
+        <table id="irReportTable" class="ir-report-table">
+          <thead><tr id="irReportHead"></tr></thead>
+          <tbody id="irReportBody"></tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- TAB HELP -->
     <section id="tab-help" class="panel help">
       <h2>FairOddsCalc — что это</h2>
@@ -1119,6 +1157,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <li><b>Линия</b> — обучение модели и расчёт линии матча (главная вкладка).</li>
         <li><b>Справочник</b> — команды по лигам (и логотипы). Списки команд в «Линии» берутся отсюда.</li>
         <li><b>История</b> — просмотр сохранённых сезонов и матчей из Supabase. Отсюда данные можно загрузить в «Линию».</li>
+        <li><b>Отчёт inactive</b> — сравнение расчётных коэффициентов с эталоном по неактивным матчам (read-only, без изменения БД).</li>
         <li><b>Справка</b> — этот раздел.</li>
       </ul>
 
@@ -6346,6 +6385,296 @@ bash scripts/update_and_serve.sh --start</div>
       const summary=`1X2 ${kk1.toFixed(2)}/${kkx.toFixed(2)}/${kk2.toFixed(2)} · Тотал ${t.line} ${ot.toFixed(2)}/${ut.toFixed(2)} · Фора ${ahLine} ${ah.toFixed(2)}/${aa.toFixed(2)}`;
       return {html, summary};
     }
+
+    // ========== INACTIVE REPORT (read-only, isolated; does not modify Line tab logic) ==========
+    const IR_REPORT_COLS = [
+      'Дата','Лига','Дома','Гости',
+      'AH1','AH','AH2','O','Тот','U','1','X','2',
+      'AH1_pr','AH_pr','AH2_pr','O_pr','Тот_pr','U_pr','1_pr','X_pr','2_pr',
+      'AH1_delta','AH_delta','AH2_delta','O_delta','Тот_delta','U_delta','1_delta','X_delta','2_delta',
+    ];
+    const IR_ODDS_COLS = new Set(['AH1','AH2','O','U','1','X','2','AH1_pr','AH2_pr','O_pr','U_pr','1_pr','X_pr','2_pr','AH1_delta','AH2_delta','O_delta','U_delta','1_delta','X_delta','2_delta']);
+    const IR_LINE_COLS = new Set(['AH','Тот','AH_pr','Тот_pr','AH_delta','Тот_delta']);
+    let irReportRows = [];
+
+    function irBaselineCfg(seasonWeightsById){
+      return {
+        maxGoals: GM_MAX, alphaAh: 0.25, pAh: 2, minWAh: 0.15, maxWAh: 1,
+        alphaT: 0.5, deltaAh: 0.5, deltaLam: 0.25, maxIter: 30, tol: 1e-4, drawLoss: 1.5,
+        seasonDefault: 1.0, seasonWeightsById: seasonWeightsById || {},
+        priorAlpha: 0.7, promotedN: 3,
+        regLambda: 0.10, regLambdaAttack: 0.1, regLambdaDefense: 0.1,
+        dClampLowTeam: 3, dClampEarlyFraction: 0.25,
+        derbyShrinkTau: 30, derbyHDefault: 0.7, derbyMinMatches: 3,
+        dCalMode: 'soft', dCalBMin: 0.90, dCalBMax: 1.03, dCalBPenalty: 2.0,
+        dBigFavMode: 'linear', dBigFavThreshold: 1.25, dBigFavSlope: 0.75, dBigFavCap: 2.00,
+        useDraw: false, useDc: true, modelProfile: 'baseline', drawMode: 'residual_dc',
+        qmin: 0.95, qmax: 1.05, qResMin: 0.98, qResMax: 1.03,
+        sCalMode: 'off', sCalMaxDelta: 0.15, gammaMax: 0.20,
+      };
+    }
+    function irParseMarginPct(){
+      const v = parseFloat(String((document.getElementById('irMarginPct')||{}).value || '3').replace(',', '.'));
+      return isNaN(v) || v < 0 ? 0 : v / 100;
+    }
+    function irFmtCell(val, col){
+      if(val == null || !isFinite(val)) return '';
+      if(IR_LINE_COLS.has(col)) return val.toFixed(2);
+      if(IR_ODDS_COLS.has(col)) return val.toFixed(3);
+      return String(val);
+    }
+    function irFmtDisplay(val, col){
+      const s = irFmtCell(val, col);
+      return s === '' ? '—' : s;
+    }
+    function irDelta(pr, et, isLine){
+      if(pr == null || et == null || !isFinite(pr) || !isFinite(et)) return null;
+      return pr - et;
+    }
+    function irMarginOddsFromProb(p, mg){
+      if(!(p > 0) || !isFinite(p)) return null;
+      if(!mg || mg <= 0) return 1 / p;
+      return 1 / (p * (1 + mg));
+    }
+    function irBuildSeasonWeights(leagueId, seasonIds){
+      const weights = {};
+      const seasons = (window.__SB.seasons || []).filter(s => String(s.league_id) === String(leagueId) && seasonIds.includes(s.season_id));
+      seasons.sort((a, b) => String(b.season_label || '').localeCompare(String(a.season_label || '')));
+      if(seasons.length){
+        seasons.forEach((s, i) => { weights[s.season_id] = goalDefaultSeasonWeight(i); });
+      } else {
+        seasonIds.forEach((sid, i) => { weights[sid] = goalDefaultSeasonWeight(i); });
+      }
+      return weights;
+    }
+    async function irFetchPagedMatches(extraQuery){
+      const pageSize = 1000;
+      let offset = 0;
+      const all = [];
+      while(true){
+        const q = `${extraQuery}&limit=${pageSize}&offset=${offset}`;
+        const batch = await sbFetch(`/v_matches_full?${q}`);
+        if(!Array.isArray(batch) || !batch.length) break;
+        all.push(...batch);
+        if(batch.length < pageSize) break;
+        offset += pageSize;
+      }
+      return all;
+    }
+    async function irFetchInactiveMatches(leagueId){
+      let q = `select=${SB_MATCH_VIEW_SELECT}&active=eq.false&order=league_name.asc,match_date.asc,home_team.asc,away_team.asc`;
+      if(leagueId) q += `&league_id=eq.${encodeURIComponent(leagueId)}`;
+      return irFetchPagedMatches(q);
+    }
+    async function irFetchActiveMatchesForLeague(leagueId){
+      const q = `select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&active=eq.true&order=match_date.asc`;
+      return irFetchPagedMatches(q);
+    }
+    function irEtalonFromMatch(m){
+      return {
+        Дата: m.match_date || '',
+        Лига: m.league_name || sbLeagueName(m.league_id) || '',
+        Дома: m.home_team || '',
+        Гости: m.away_team || '',
+        AH1: gmF(m.ah_home_odds),
+        AH: gmF(m.closing_ah_home),
+        AH2: gmF(m.ah_away_odds),
+        O: gmF(m.over_odds),
+        Тот: gmF(m.closing_total_line),
+        U: gmF(m.under_odds),
+        '1': gmF(m.home_odds),
+        X: gmF(m.draw_odds),
+        '2': gmF(m.away_odds),
+      };
+    }
+    function irPredictPrices(model, homeId, awayId, opt, marginFrac){
+      if(!model) return null;
+      try {
+        const pred = gmPredict(model, homeId, awayId, opt);
+        const mk = pred.markets;
+        const t = mk.mainTotal;
+        const a = mk.mainAh;
+        const mg = marginFrac || 0;
+        return {
+          AH1_pr: irMarginOddsFromProb(1 / a.home, mg),
+          AH_pr: a.line,
+          AH2_pr: irMarginOddsFromProb(1 / a.away, mg),
+          O_pr: irMarginOddsFromProb(1 / t.over, mg),
+          Тот_pr: t.line,
+          U_pr: irMarginOddsFromProb(1 / t.under, mg),
+          '1_pr': irMarginOddsFromProb(mk.p1, mg),
+          X_pr: irMarginOddsFromProb(mk.px, mg),
+          '2_pr': irMarginOddsFromProb(mk.p2, mg),
+        };
+      } catch (_e){
+        return null;
+      }
+    }
+    function irBuildReportRow(match, prices){
+      const row = irEtalonFromMatch(match);
+      const pr = prices || {};
+      row.AH1_pr = pr.AH1_pr != null ? pr.AH1_pr : null;
+      row.AH_pr = pr.AH_pr != null ? pr.AH_pr : null;
+      row.AH2_pr = pr.AH2_pr != null ? pr.AH2_pr : null;
+      row.O_pr = pr.O_pr != null ? pr.O_pr : null;
+      row.Тот_pr = pr.Тот_pr != null ? pr.Тот_pr : null;
+      row.U_pr = pr.U_pr != null ? pr.U_pr : null;
+      row['1_pr'] = pr['1_pr'] != null ? pr['1_pr'] : null;
+      row.X_pr = pr.X_pr != null ? pr.X_pr : null;
+      row['2_pr'] = pr['2_pr'] != null ? pr['2_pr'] : null;
+      row.AH1_delta = irDelta(row.AH1_pr, row.AH1, false);
+      row.AH_delta = irDelta(row.AH_pr, row.AH, true);
+      row.AH2_delta = irDelta(row.AH2_pr, row.AH2, false);
+      row.O_delta = irDelta(row.O_pr, row.O, false);
+      row.Тот_delta = irDelta(row.Тот_pr, row.Тот, true);
+      row.U_delta = irDelta(row.U_pr, row.U, false);
+      row['1_delta'] = irDelta(row['1_pr'], row['1'], false);
+      row.X_delta = irDelta(row.X_pr, row.X, false);
+      row['2_delta'] = irDelta(row['2_pr'], row['2'], false);
+      return row;
+    }
+    function irSetReportStatus(msg, isErr){
+      const el = document.getElementById('irReportStatus');
+      if(!el) return;
+      el.style.display = msg ? 'block' : 'none';
+      el.classList.toggle('err', !!isErr);
+      el.textContent = msg || '';
+    }
+    function irRenderReportTable(rows){
+      const head = document.getElementById('irReportHead');
+      const body = document.getElementById('irReportBody');
+      const wrap = document.getElementById('irReportTableWrap');
+      if(!head || !body || !wrap) return;
+      head.innerHTML = IR_REPORT_COLS.map(c => `<th>${escapeHtml(c)}</th>`).join('');
+      body.innerHTML = rows.map(row => {
+        const tds = IR_REPORT_COLS.map(col => {
+          const raw = col === 'Дата' ? sbFmtDate(row[col]) : row[col];
+          const cls = ['num'];
+          if(String(col).includes('delta') && raw != null && isFinite(raw)){
+            if(raw > 0) cls.push('delta-pos');
+            else if(raw < 0) cls.push('delta-neg');
+          }
+          return `<td class="${cls.join(' ')}">${escapeHtml(irFmtDisplay(raw, col))}</td>`;
+        }).join('');
+        return `<tr>${tds}</tr>`;
+      }).join('');
+      wrap.style.display = rows.length ? 'block' : 'none';
+    }
+    function irCsvEscape(v){
+      const s = v == null ? '' : String(v);
+      if(/[",;\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    }
+    function irExportReportCsv(){
+      if(!irReportRows.length){ alert('Нет данных для экспорта'); return; }
+      const sep = ';';
+      const head = IR_REPORT_COLS.join(sep);
+      const lines = irReportRows.map(row => IR_REPORT_COLS.map(col => {
+        const raw = col === 'Дата' ? sbFmtDate(row[col]) : row[col];
+        return irCsvEscape(irFmtCell(raw, col));
+      }).join(sep));
+      const bom = '\uFEFF';
+      const blob = new Blob([bom + head + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `inactive_report_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+    async function irRunReport(){
+      const leagueFilter = (document.getElementById('irLeagueFilter')||{}).value || '';
+      const marginFrac = irParseMarginPct();
+      const exportBtn = document.getElementById('irExportCsv');
+      irReportRows = [];
+      if(exportBtn) exportBtn.disabled = true;
+      irSetReportStatus('Загрузка неактивных матчей…');
+      irRenderReportTable([]);
+      await loadSupabaseConfig();
+      if(!window.__SB.leagues || !window.__SB.leagues.length) await sbFetchLeaguesList();
+      if(!window.__SB.seasons || !window.__SB.seasons.length) await sbLoadSeasonSummary();
+      const inactive = await irFetchInactiveMatches(leagueFilter || null);
+      if(!inactive.length){
+        irSetReportStatus('Неактивных матчей не найдено (active=false).', true);
+        return;
+      }
+      const byLeague = {};
+      inactive.forEach(m => {
+        const lid = String(m.league_id || '');
+        if(!lid) return;
+        if(!byLeague[lid]) byLeague[lid] = [];
+        byLeague[lid].push(m);
+      });
+      const leagueIds = Object.keys(byLeague).sort((a, b) => {
+        const na = byLeague[a][0].league_name || a;
+        const nb = byLeague[b][0].league_name || b;
+        return String(na).localeCompare(String(nb));
+      });
+      const out = [];
+      let skippedLeagues = 0;
+      for(let li = 0; li < leagueIds.length; li++){
+        const leagueId = leagueIds[li];
+        const leagueName = byLeague[leagueId][0].league_name || leagueId;
+        irSetReportStatus(`Лига ${li + 1}/${leagueIds.length}: ${leagueName} — обучение…`);
+        const activeMatches = await irFetchActiveMatchesForLeague(leagueId);
+        const parsed = goalMatchesToRaw(activeMatches);
+        let model = null;
+        if(parsed.valid >= 2){
+          const seasonIds = [...new Set(parsed.raw.map(r => r.seasonId).filter(s => s != null))];
+          const cfg = irBaselineCfg(irBuildSeasonWeights(leagueId, seasonIds));
+          try {
+            model = gmTrain(parsed.raw, cfg, null, []);
+          } catch (e){
+            console.warn('ir train', leagueId, e);
+            model = null;
+          }
+        } else {
+          skippedLeagues++;
+        }
+        const matches = byLeague[leagueId];
+        for(const m of matches){
+          const homeId = gmTeamKey(m.home_team_id, m.home_team);
+          const awayId = gmTeamKey(m.away_team_id, m.away_team);
+          let prices = null;
+          if(model && homeId && awayId){
+            prices = irPredictPrices(model, homeId, awayId, {
+              neutral: !!m.is_neutral,
+              derby: sbIsDerby(m),
+            }, marginFrac);
+          }
+          out.push(irBuildReportRow(m, prices));
+        }
+      }
+      irReportRows = out;
+      irRenderReportTable(irReportRows);
+      if(exportBtn) exportBtn.disabled = !irReportRows.length;
+      const warn = skippedLeagues ? `; ${skippedLeagues} лиг без обучения (<2 активных матчей с полной линией)` : '';
+      irSetReportStatus(`Готово: ${irReportRows.length} матч., ${leagueIds.length} лиг, маржа ${(marginFrac * 100).toFixed(1)}%${warn}`);
+    }
+    function irPopulateLeagueFilter(){
+      const sel = document.getElementById('irLeagueFilter');
+      if(!sel) return;
+      const prev = sel.value;
+      const leagues = window.__SB.leagues || [];
+      sel.innerHTML = '<option value="">Все лиги</option>' + leagues.map(l =>
+        `<option value="${escapeHtml(l.id)}">${escapeHtml(l.name)}</option>`
+      ).join('');
+      if(prev && leagues.some(l => String(l.id) === String(prev))) sel.value = prev;
+    }
+    async function irInitReportTab(){
+      try {
+        await loadSupabaseConfig();
+        if(!window.__SB.leagues || !window.__SB.leagues.length) await sbFetchLeaguesList();
+        irPopulateLeagueFilter();
+      } catch (e){
+        console.error('irInitReportTab', e);
+        irSetReportStatus('Ошибка загрузки лиг: ' + (e.message || e), true);
+      }
+    }
+    window.irInitReportTab = irInitReportTab;
+    bindClick('irRunReport', () => { irRunReport().catch(e => { console.error(e); irSetReportStatus(e.message || String(e), true); }); });
+    bindClick('irExportCsv', () => irExportReportCsv());
+    // ========== END INACTIVE REPORT ==========
+
     bindClick('goalHistClear',()=>{
       if(!gmLoadPredHist().length) return;
       if(confirm('Очистить всю историю расчётов?')){ gmSavePredHist([]); gmRenderPredHist(); }
