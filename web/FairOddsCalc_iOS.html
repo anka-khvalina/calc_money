@@ -6393,6 +6393,7 @@ bash scripts/update_and_serve.sh --start</div>
       'AH1_pr','AH_pr','AH2_pr','O_pr','Тот_pr','U_pr','1_pr','X_pr','2_pr',
       'AH1_delta','AH_delta','AH2_delta','O_delta','Тот_delta','U_delta','1_delta','X_delta','2_delta',
     ];
+    const IR_TEXT_COLS = new Set(['Дата','Лига','Дома','Гости']);
     const IR_ODDS_COLS = new Set(['AH1','AH2','O','U','1','X','2','AH1_pr','AH2_pr','O_pr','U_pr','1_pr','X_pr','2_pr','AH1_delta','AH2_delta','O_delta','U_delta','1_delta','X_delta','2_delta']);
     const IR_LINE_COLS = new Set(['AH','Тот','AH_pr','Тот_pr','AH_delta','Тот_delta']);
     let irReportRows = [];
@@ -6418,7 +6419,12 @@ bash scripts/update_and_serve.sh --start</div>
       return isNaN(v) || v < 0 ? 0 : v / 100;
     }
     function irFmtCell(val, col){
-      if(val == null || !isFinite(val)) return '';
+      if(val == null) return '';
+      if(IR_TEXT_COLS.has(col)){
+        const s = String(val).trim();
+        return s;
+      }
+      if(!isFinite(val)) return '';
       if(IR_LINE_COLS.has(col)) return val.toFixed(2);
       if(IR_ODDS_COLS.has(col)) return val.toFixed(3);
       return String(val);
@@ -6549,7 +6555,8 @@ bash scripts/update_and_serve.sh --start</div>
       body.innerHTML = rows.map(row => {
         const tds = IR_REPORT_COLS.map(col => {
           const raw = col === 'Дата' ? sbFmtDate(row[col]) : row[col];
-          const cls = ['num'];
+          const cls = [];
+          if(!IR_TEXT_COLS.has(col)) cls.push('num');
           if(String(col).includes('delta') && raw != null && isFinite(raw)){
             if(raw > 0) cls.push('delta-pos');
             else if(raw < 0) cls.push('delta-neg');
