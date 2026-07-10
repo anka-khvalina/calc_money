@@ -180,6 +180,10 @@
     .hist-fetch-panel{ display:flex; flex-wrap:wrap; gap:8px 12px; align-items:flex-end; }
     .hist-fetch-panel label{ font-size:11px; color:var(--muted); display:block; margin-bottom:3px; }
     .hist-fetch-panel input{ min-width:180px; font-size:13px; padding:6px 8px; }
+    .hist-bulk-active-panel .hist-fetch-panel select{ min-width:220px; font-size:13px; padding:6px 8px; }
+    .hist-bulk-active-panel input[type="date"]{ min-width:150px; }
+    #histBulkMsg.ok{ color:#16a34a; }
+    #histBulkMsg.err{ color:var(--danger); }
     .hist-weights-panel{ display:flex; flex-wrap:wrap; gap:10px 16px; align-items:flex-end; }
     .hist-weights-field label{ display:block; font-size:11px; color:var(--muted); margin-bottom:3px; }
     .hist-weights-field .hist-field-hint{ display:block; font-size:10px; color:#8a93a0; margin-top:2px; line-height:1.25; max-width:200px; }
@@ -1098,6 +1102,30 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <thead><tr><th>Лига</th><th>Сезон</th><th class="right">Матчей</th><th>Импорт</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+      <div class="hist-bulk-active-panel help-card" style="margin-top:10px">
+        <p class="small" style="margin:0 0 8px;font-weight:600">Массовое управление активностью матчей</p>
+        <p class="small" style="margin:0 0 8px;color:var(--muted)">Действие применяется к выбранному сезону в таблице выше. Меняется только поле <code>matches.active</code>.</p>
+        <div class="hist-fetch-panel">
+          <div class="hist-weights-field">
+            <label for="histBulkDateFrom">Дата от</label>
+            <input type="date" id="histBulkDateFrom" />
+          </div>
+          <div class="hist-weights-field">
+            <label for="histBulkDateTo">Дата до</label>
+            <input type="date" id="histBulkDateTo" />
+          </div>
+          <div class="hist-weights-field">
+            <label for="histBulkAction">Действие</label>
+            <select id="histBulkAction">
+              <option value="">— выберите —</option>
+              <option value="disable">Отключить матчи за период</option>
+              <option value="enable">Включить матчи за период</option>
+            </select>
+          </div>
+          <button type="button" id="histBulkApply" class="btn primary">Применить</button>
+        </div>
+        <div id="histBulkMsg" class="small" style="margin-top:6px"></div>
       </div>
       <div class="table-wrap hist-matches-wrap">
         <div class="hist-matches-caption small">Матчи выбранного сезона</div>
@@ -4783,6 +4811,96 @@ bash scripts/update_and_serve.sh --start</div>
       if (!(Array.isArray(rows) ? rows.length : rows)) throw new Error('PATCH failed');
       return rows;
     }
+    async function sbHistBulkCountMatches(seasonId, dateFrom, dateTo){
+      const q = `select=id&season_id=eq.${encodeURIComponent(seasonId)}&match_date=gte.${encodeURIComponent(dateFrom)}&match_date=lte.${encodeURIComponent(dateTo)}`;
+      const rows = await sbFetch(`/matches?${q}`);
+      return Array.isArray(rows) ? rows.length : 0;
+    }
+    async function sbHistBulkPatchActive(seasonId, dateFrom, dateTo, active){
+      const q = `season_id=eq.${encodeURIComponent(seasonId)}&match_date=gte.${encodeURIComponent(dateFrom)}&match_date=lte.${encodeURIComponent(dateTo)}`;
+      const rows = await sbFetch(`/matches?${q}`, {
+        method: 'PATCH',
+        body: { active: !!active },
+        prefer: 'return=representation',
+      });
+      return Array.isArray(rows) ? rows : (rows ? [rows] : []);
+    }
+    function sbHistBulkSetMsg(text, kind){
+      const el = document.getElementById('histBulkMsg');
+      if(!el) return;
+      el.textContent = text || '';
+      el.classList.remove('ok', 'err');
+      if(kind) el.classList.add(kind);
+    }
+    async function sbHistBulkApply(){
+      const sel = window.__SB.histSelected;
+      if(!sel || sel.selected_season_id == null){
+        alert('Выберите сезон');
+        return;
+      }
+      const dateFrom = String((document.getElementById('histBulkDateFrom')||{}).value || '').trim();
+      const dateTo = String((document.getElementById('histBulkDateTo')||{}).value || '').trim();
+      const action = String((document.getElementById('histBulkAction')||{}).value || '').trim();
+      if(!dateFrom){ alert('Укажите дату начала периода'); return; }
+      if(!dateTo){ alert('Укажите дату окончания периода'); return; }
+      if(dateFrom > dateTo){ alert('Дата начала не может быть больше даты окончания'); return; }
+      if(!action){ alert('Выберите действие'); return; }
+      const active = action === 'enable';
+      const btn = document.getElementById('histBulkApply');
+      sbHistBulkSetMsg('Проверка матчей за период…');
+      if(btn) btn.disabled = true;
+      let count = 0;
+      try {
+        count = await sbHistBulkCountMatches(sel.selected_season_id, dateFrom, dateTo);
+      } catch (e){
+        console.error('bulk active count', e);
+        sbHistBulkSetMsg('Не удалось проверить матчи за выбранный период', 'err');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      if(count === 0){
+        alert('За выбранный период матчи не найдены');
+        sbHistBulkSetMsg('За выбранный период матчи не найдены', 'err');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      const verb = active ? 'включить' : 'отключить';
+      const ok = confirm(
+        `Вы собираетесь ${verb} матчи выбранного сезона за период с ${dateFrom} по ${dateTo}.\nКоличество матчей: ${count}.\nПродолжить?`
+      );
+      if(!ok){
+        sbHistBulkSetMsg('');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      sbHistBulkSetMsg('Обновление активности…');
+      let updated = [];
+      try {
+        updated = await sbHistBulkPatchActive(sel.selected_season_id, dateFrom, dateTo, active);
+      } catch (e){
+        console.error('bulk active patch', e);
+        alert('Не удалось обновить активность матчей');
+        sbHistBulkSetMsg('Не удалось обновить активность матчей', 'err');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      const updatedCount = updated.length;
+      try {
+        await sbSelectHistSeason(
+          sel.selected_league_id,
+          sel.selected_season_id,
+          sel.selected_league_name,
+          sel.selected_season_label,
+        );
+        sbHistBulkSetMsg(`Матчи за выбранный период обновлены. Количество обновленных матчей: ${updatedCount}.`, 'ok');
+      } catch (e){
+        console.error('bulk active reload', e);
+        alert('Активность обновлена, но не удалось обновить список матчей');
+        sbHistBulkSetMsg(`Активность обновлена (${updatedCount} матч.), но не удалось обновить список матчей`, 'err');
+      } finally {
+        if(btn) btn.disabled = false;
+      }
+    }
     function sbApplyPatchToMatch(original, payload){
       const updated = Object.assign({}, original);
       Object.keys(payload).forEach(field => {
@@ -5289,6 +5407,7 @@ bash scripts/update_and_serve.sh --start</div>
       const row = (window.__SB.seasons || []).find(r => r.league_id === leagueId && Number(r.season_id) === seasonId);
       sbSelectHistSeason(leagueId, seasonId, row ? row.league_name : '', row ? row.season_label : String(seasonId));
     });
+    bindClick('histBulkApply', () => { sbHistBulkApply().catch(e => console.error(e)); });
 
     // ---------------- «Линия»: загрузка из Supabase ----------------
     let goalLoadedRaw = null;
