@@ -1,0 +1,13 @@
+{
+  "leagues": {
+    "epl": {
+      "name": "English Premier League",
+      "seasons": {
+        "2025-26": {
+          "matches": 55,
+          "imported_at": "2026-06-25T17:02:57+00:00"
+        }
+      }
+    }
+  }
+}
