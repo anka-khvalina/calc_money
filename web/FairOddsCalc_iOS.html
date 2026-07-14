@@ -879,14 +879,18 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
                   </select>
                 </div>
                 <div class="field" style="min-width:45%;flex:1">
-                  <label>b min</label><input id="goalDCalBMin" value="0.90" />
+                  <label>b min (safety)</label><input id="goalDCalBMin" value="0.80" />
                 </div>
                 <div class="field" style="min-width:45%;flex:1">
-                  <label>b max</label><input id="goalDCalBMax" value="1.03" />
+                  <label>b max (safety)</label><input id="goalDCalBMax" value="1.25" />
                 </div>
-                <div class="field" style="min-width:100%;flex:1">
-                  <label>λ штраф b</label><input id="goalDCalBPenalty" value="2.00" />
+                <div class="field" style="min-width:45%;flex:1">
+                  <label>λ_b (штраф b→1)</label><input id="goalDCalBPenalty" value="2.00" />
                 </div>
+                <div class="field" style="min-width:45%;flex:1">
+                  <label>λ_a (штраф a→0)</label><input id="goalDCalAPenalty" value="1.00" />
+                </div>
+                <div class="hint" style="min-width:100%;margin-top:-4px">Soft-калибровка D: Loss += λ_b·(b−1)² + λ_a·a². Жёсткий b min/max — только предохранитель (не узкий потолок).</div>
                 <div class="field" style="min-width:100%;flex:1">
                   <label>Shrink больших |D|</label>
                   <select id="goalDBigFavMode">
@@ -3510,16 +3514,17 @@ bash scripts/update_and_serve.sh --start</div>
       return lc*c*c+ld*(d-1)*(d-1);
     }
     function gmBoundB(b,cfg){
-      const rawMin=cfg.dCalBMin!=null?cfg.dCalBMin:0.90;
-      const rawMax=cfg.dCalBMax!=null?cfg.dCalBMax:1.05;
+      const rawMin=cfg.dCalBMin!=null?cfg.dCalBMin:0.80;
+      const rawMax=cfg.dCalBMax!=null?cfg.dCalBMax:1.25;
       const bMin=Math.min(rawMin, rawMax);
       const bMax=Math.max(rawMin, rawMax);
       return Math.max(bMin, Math.min(bMax, b));
     }
-    function gmDCalPenalty(b,cfg){
+    function gmDCalPenalty(a,b,cfg){
       if(cfg.dCalMode!=='soft') return 0;
-      const lam=cfg.dCalBPenalty!=null?cfg.dCalBPenalty:2.0;
-      return lam*Math.pow(b-1,2);
+      const lamB=cfg.dCalBPenalty!=null?cfg.dCalBPenalty:2.0;
+      const lamA=cfg.dCalAPenalty!=null?cfg.dCalAPenalty:1.0;
+      return lamB*Math.pow(b-1,2)+lamA*a*a;
     }
     function gmShrinkBigFav(d,cfg){
       const mode=cfg.dBigFavMode||'off';
@@ -3536,7 +3541,8 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function gmApplyDCal(dm,a,b,cfg){
       const mode=cfg.dCalMode||'soft';
-      const bUse=mode==='off'?1:(mode==='free'?b:gmBoundB(b,cfg));
+      // soft: use unconstrained b during fit (λ_a/λ_b pull to identity); safety clip only on stored cal.b
+      const bUse=mode==='off'?1:b;
       const dLin=a+bUse*dm;
       return { dRaw:dLin, dUsed:gmShrinkBigFav(dLin,cfg), bUsed:bUse };
     }
@@ -3558,7 +3564,7 @@ bash scripts/update_and_serve.sh --start</div>
       function lossCore(a,b,c,d,g){
         if(d<=0) return 1e9;
         const gc=gmClipGamma(g,cfg);
-        let tot=gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
+        let tot=gmSCalPenalty(c,d,cfg)+gmDCalPenalty(a,b,cfg);
         for(const [m,dm,sm,w] of pre){
           const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
           const dc=gmApplyDCal(dm,a,b,cfg);
@@ -3605,6 +3611,7 @@ bash scripts/update_and_serve.sh --start</div>
           full=[x[0],x[1],x[2],x[3],0];
         }
       }
+      // soft: храним b с широким safety-clip (не узкий потолок 1.03)
       const bOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
       return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:full[4],n1x2:used.length};
     }
@@ -3645,9 +3652,10 @@ bash scripts/update_and_serve.sh --start</div>
       const draw=document.getElementById('goalUseDraw'); if(draw) draw.checked=false;
       const sc=document.getElementById('goalSCalMode'); if(sc) sc.value='off';
       const dcm=document.getElementById('goalDCalMode'); if(dcm) dcm.value='soft';
-      const bmin=document.getElementById('goalDCalBMin'); if(bmin) bmin.value='0.90';
-      const bmax=document.getElementById('goalDCalBMax'); if(bmax) bmax.value='1.03';
+      const bmin=document.getElementById('goalDCalBMin'); if(bmin) bmin.value='0.80';
+      const bmax=document.getElementById('goalDCalBMax'); if(bmax) bmax.value='1.25';
       const bpen=document.getElementById('goalDCalBPenalty'); if(bpen) bpen.value='2.00';
+      const apen=document.getElementById('goalDCalAPenalty'); if(apen) apen.value='1.00';
       const dmode=document.getElementById('goalDBigFavMode'); if(dmode) dmode.value='linear';
       const dthr=document.getElementById('goalDBigFavThr'); if(dthr) dthr.value='1.25';
       const dslope=document.getElementById('goalDBigFavSlope'); if(dslope) dslope.value='0.75';
@@ -4225,7 +4233,8 @@ bash scripts/update_and_serve.sh --start</div>
         regLambda:f('goalRegLambdaR',0.10), regLambdaAttack:f('goalRegLambdaAD',0.1), regLambdaDefense:f('goalRegLambdaAD',0.1),
         dClampLowTeam:3, dClampEarlyFraction:0.25,
         derbyShrinkTau:30, derbyHDefault:f('goalDerbyHDefault',0.7), derbyMinMatches:3,
-        dCalMode:gmResolvedDCalMode(), dCalBMin:f('goalDCalBMin',0.90), dCalBMax:f('goalDCalBMax',1.03), dCalBPenalty:f('goalDCalBPenalty',2.0),
+        dCalMode:gmResolvedDCalMode(), dCalBMin:f('goalDCalBMin',0.80), dCalBMax:f('goalDCalBMax',1.25),
+        dCalBPenalty:f('goalDCalBPenalty',2.0), dCalAPenalty:f('goalDCalAPenalty',1.0),
         dBigFavMode:(document.getElementById('goalDBigFavMode')||{}).value||'linear',
         dBigFavThreshold:f('goalDBigFavThr',1.25), dBigFavSlope:f('goalDBigFavSlope',0.75), dBigFavCap:f('goalDBigFavCap',2.00),
         useDraw:gmModelProfile()!=='baseline'&&gmIsExperimentalOpen()&&document.getElementById('goalUseDraw').checked,
@@ -5575,8 +5584,8 @@ bash scripts/update_and_serve.sh --start</div>
             ['калибр. S', cfg.sCalMode || 'off', cfg.sCalMode === 'free' ? 'warn' : ''],
             ['max |ΔS|', goalFmtTrainNum(cfg.sCalMaxDelta, 2), 'num'],
             ['калибр. D', cfg.dCalMode || 'soft', cfg.dCalMode === 'free' ? 'warn' : ''],
-            ['b min / b max', `${goalFmtTrainNum(cfg.dCalBMin, 2)} / ${goalFmtTrainNum(cfg.dCalBMax, 2)}`, 'num'],
-            ['λ_b', goalFmtTrainNum(cfg.dCalBPenalty, 2), 'num'],
+            ['b min / b max (safety)', `${goalFmtTrainNum(cfg.dCalBMin, 2)} / ${goalFmtTrainNum(cfg.dCalBMax, 2)}`, 'num'],
+            ['λ_b / λ_a', `${goalFmtTrainNum(cfg.dCalBPenalty, 2)} / ${goalFmtTrainNum(cfg.dCalAPenalty != null ? cfg.dCalAPenalty : 1, 2)}`, 'num'],
             ['shrink |D|', cfg.dBigFavMode || 'off', ''],
             ['|D| порог / k / cap', `${goalFmtTrainNum(cfg.dBigFavThreshold, 2)} / ${goalFmtTrainNum(cfg.dBigFavSlope, 2)} / ${goalFmtTrainNum(cfg.dBigFavCap, 2)}`, 'num'],
             ['Модель ничьи', cfg.useDraw ? (`вкл (${cfg.drawMode || 'residual_dc'})`) : 'выкл', ''],
@@ -6209,7 +6218,7 @@ bash scripts/update_and_serve.sh --start</div>
       catch (e){ alert(e.message || e); }
     });
 
-    ['goalAlphaAh','goalAlphaT','goalRegLambdaAD','goalRegLambdaR','goalDerbyHDefault','goalQmin','goalQmax','goalPriorAlpha','goalSCalMaxDelta','goalGammaMax','goalDCalBMin','goalDCalBMax','goalDCalBPenalty','goalDBigFavThr','goalDBigFavSlope','goalDBigFavCap'].forEach(id => {
+    ['goalAlphaAh','goalAlphaT','goalRegLambdaAD','goalRegLambdaR','goalDerbyHDefault','goalQmin','goalQmax','goalPriorAlpha','goalSCalMaxDelta','goalGammaMax','goalDCalBMin','goalDCalBMax','goalDCalBPenalty','goalDCalAPenalty','goalDBigFavThr','goalDBigFavSlope','goalDBigFavCap'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', () => { goalMarkCustomProfile(); goalUpdateTrainUI(); });
     });
@@ -6520,7 +6529,7 @@ bash scripts/update_and_serve.sh --start</div>
         regLambda: 0.10, regLambdaAttack: 0.1, regLambdaDefense: 0.1,
         dClampLowTeam: 3, dClampEarlyFraction: 0.25,
         derbyShrinkTau: 30, derbyHDefault: 0.7, derbyMinMatches: 3,
-        dCalMode: 'soft', dCalBMin: 0.90, dCalBMax: 1.03, dCalBPenalty: 2.0,
+        dCalMode: 'soft', dCalBMin: 0.80, dCalBMax: 1.25, dCalBPenalty: 2.0, dCalAPenalty: 1.0,
         dBigFavMode: 'linear', dBigFavThreshold: 1.25, dBigFavSlope: 0.75, dBigFavCap: 2.00,
         useDraw: false, useDc: true, modelProfile: 'baseline', drawMode: 'residual_dc',
         qmin: 0.95, qmax: 1.05, qResMin: 0.98, qResMax: 1.03,
