@@ -1079,7 +1079,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       из <b>исторических закрывающих (closing) коэффициентов</b>. Всё считается из <b>одной матрицы счетов</b>,
       поэтому рынки согласованы между собой.</p>
       <div class="help-flow">
-        история closing-линий → скрытые <b>S, D</b> → <b>λ<sub>h</sub>, λ<sub>a</sub></b> → матрица <b>P(i,j)</b> → коррекция ничьи → <b>вся линия</b>
+        история closing-линий → скрытые <b>S, D</b> → <b>λ<sub>h</sub>, λ<sub>a</sub></b> → Auto Marginals + Gaussian Copula → матрица <b>P(i,j)</b> → <b>вся линия</b>
       </div>
       <p class="small">λ<sub>h</sub>, λ<sub>a</sub> — ожидаемые голы хозяев/гостей; S = λ<sub>h</sub>+λ<sub>a</sub>; D = λ<sub>h</sub>−λ<sub>a</sub>; i, j — голы хозяев и гостей.</p>
 
@@ -3083,7 +3083,34 @@ bash scripts/update_and_serve.sh --start</div>
 
     // =================================================================
     // Голевая модель: closing lines → S/D → λ → матрица → все рынки
+    // Параметры матрицы — runtime config (без БД): goal_matrix.config.json
     // =================================================================
+    let GM_MATRIX_CFG = {
+      modelMode: 'auto',
+      jointMatrixMode: 'gaussian_copula',
+      maxGoals: 10,
+      tailEpsilon: 1e-6,
+      lambdaMin: 0.05,
+      alphaCandidates: [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.26,0.30],
+      rhoCandidates: [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.25],
+      nbMinImprovementPct: 1,
+      rhoMinImprovementPct: 0.5,
+      minMatchesForLeagueAlpha: 200,
+      alphaPenalty: 0.5,
+      vppWeight: 0.15,
+      useDixonColes: false,
+      useDrawModel: false,
+    };
+    async function loadGoalMatrixConfig(){
+      try {
+        const res = await fetchWithTimeout(webAssetUrl('goal_matrix.config.json'), {}, CONFIG_FETCH_TIMEOUT_MS);
+        if(!res.ok) return GM_MATRIX_CFG;
+        const cfg = await res.json();
+        if(cfg && typeof cfg === 'object') GM_MATRIX_CFG = Object.assign({}, GM_MATRIX_CFG, cfg);
+      } catch (_e){ /* defaults */ }
+      return GM_MATRIX_CFG;
+    }
+    loadGoalMatrixConfig();
     const GM_MAX = 10;
     const _gmFact = [1];
     function gmFact(n){ for(let i=_gmFact.length;i<=n;i++) _gmFact[i]=_gmFact[i-1]*i; return _gmFact[n]; }
@@ -3203,9 +3230,25 @@ bash scripts/update_and_serve.sh --start</div>
       v=Math.max(1e-12,Math.min(1-1e-12,v));
       return gmBivNormCdf(gmInvNorm(u),gmInvNorm(v),rho);
     }
+    function gmVppFromPmf(pmf){
+      const p=[0,0,0,0,0,0];
+      for(let k=0;k<pmf.length;k++){ if(k<5) p[k]+=pmf[k]; else p[5]+=pmf[k]; }
+      return {p, vpp:[p[0]-p[1], p[1]-p[2], p[2]-p[3], p[3]-p[4]]};
+    }
+    function gmTotalGoalsPmf(mat){
+      const n=mat.length, out=Array(2*(n-1)+1).fill(0);
+      for(let i=0;i<n;i++) for(let j=0;j<n;j++) out[i+j]+=mat[i][j];
+      return out;
+    }
+    function gmVppError(modelVpp, targetVpp){
+      let e=0;
+      for(let i=0;i<4;i++) e+=(modelVpp.vpp[i]-targetVpp.vpp[i])**2;
+      return e;
+    }
     function gmJointScoreMatrix(lh, la, alpha, rho, maxGoals){
-      if(maxGoals==null) maxGoals=GM_MAX;
-      lh=Math.max(0.05,lh); la=Math.max(0.05,la);
+      if(maxGoals==null) maxGoals=(GM_MATRIX_CFG.maxGoals!=null?GM_MATRIX_CFG.maxGoals:GM_MAX);
+      const lamMin=GM_MATRIX_CFG.lambdaMin!=null?GM_MATRIX_CFG.lambdaMin:0.05;
+      lh=Math.max(lamMin,lh); la=Math.max(lamMin,la);
       alpha=alpha||0; rho=rho||0;
       const pmfH=gmMarginalPmf(lh,alpha,maxGoals);
       const pmfA=gmMarginalPmf(la,alpha,maxGoals);
@@ -4216,22 +4259,29 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function gmCalibrateDispersion(model, ms){
       const {st, gl, cal, cfg} = model;
+      const mxCfg = GM_MATRIX_CFG || {};
+      const minN = mxCfg.minMatchesForLeagueAlpha != null ? mxCfg.minMatchesForLeagueAlpha : 200;
+      const nbMin = mxCfg.nbMinImprovementPct != null ? mxCfg.nbMinImprovementPct : 1;
+      const rhoMin = mxCfg.rhoMinImprovementPct != null ? mxCfg.rhoMinImprovementPct : 0.5;
+      const alphaPen = mxCfg.alphaPenalty != null ? mxCfg.alphaPenalty : 0.5;
+      const vppW = mxCfg.vppWeight != null ? mxCfg.vppWeight : 0.15;
+      const lamMin = mxCfg.lambdaMin != null ? mxCfg.lambdaMin : 0.05;
       const used = ms.filter(m => (m.pOver != null || m.p1 != null) && m.lh > 0 && m.la > 0);
       const nMatches = used.length;
 
-      // Shrink to 0 if too few matches
-      if(nMatches < 200){
+      // Shrink to 0 if too few matches (config, not DB)
+      if(nMatches < minN){
         model.alphaFinal = 0; model.rhoFinal = 0;
         model.selectedDistribution = 'poisson_like';
         model.nbImprovementPct = 0;
-        model.matrixCalib = { status: `shrunk_to_0 (n=${nMatches}<200)`, nMatches, alphaCandidates: 0, rhoCandidates: 0 };
+        model.matrixCalib = { status: `shrunk_to_0 (n=${nMatches}<${minN})`, nMatches, alphaCandidates: 0, rhoCandidates: 0, vppError: null };
         return;
       }
 
       function matchLoss(m, lh, la, alpha, rho){
         let loss = 0, n = 0;
+        const mat = gmJointScoreMatrix(lh, la, alpha, rho, cfg.maxGoals||GM_MAX);
         if(m.pOver != null){
-          const mat = gmJointScoreMatrix(lh, la, alpha, rho, cfg.maxGoals||GM_MAX);
           const totLine = m.raw && m.raw.tot != null ? m.raw.tot : 2.5;
           let pOv = 0;
           for(let i=0;i<mat.length;i++) for(let j=0;j<mat.length;j++){
@@ -4240,40 +4290,57 @@ bash scripts/update_and_serve.sh --start</div>
           loss += (pOv - m.pOver)**2; n++;
         }
         if(m.p1 != null){
-          const mat = gmJointScoreMatrix(lh, la, alpha, rho, cfg.maxGoals||GM_MAX);
           const [p1,px,p2] = gm1x2(mat);
           loss += 0.5*((p1-m.p1)**2 + (p2-m.p2)**2); n += 0.5;
+          if(m.px != null){ loss += (px-m.px)**2; n++; }
         }
         return n > 0 ? loss / n : 0;
       }
 
       function computeLhLa(m){
         const {sCal, dCal} = gmCalibratedSdForMatch(m, st, gl, cal, cfg);
-        const lh = Math.max(0.05, (sCal+dCal)/2);
-        const la = Math.max(0.05, (sCal-dCal)/2);
-        return {lh, la};
+        const lh = Math.max(lamMin, (sCal+dCal)/2);
+        const la = Math.max(lamMin, (sCal-dCal)/2);
+        return {lh, la, sCal};
       }
 
+      // Target VPP: mixture of Poisson(S_market) across matches (no FT scores in DB)
+      const targetTot = Array(2*GM_MAX+1).fill(0);
+      let tw = 0;
+      for(const m of used){
+        const S = m.S != null ? m.S : (m.lh+m.la);
+        if(!(S>0)) continue;
+        for(let g=0;g<=2*GM_MAX;g++) targetTot[g]+=gmPois(g,S);
+        tw++;
+      }
+      if(tw>0) for(let g=0;g<targetTot.length;g++) targetTot[g]/=tw;
+      const targetVpp = gmVppFromPmf(targetTot);
+
       // Step 1: grid search over alpha (rho=0)
-      const alphaCands = [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.26,0.30];
+      const alphaCands = Array.isArray(mxCfg.alphaCandidates) ? mxCfg.alphaCandidates.slice() : [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.26,0.30];
       const alphaLosses = alphaCands.map(alpha => {
         let tot = 0, n = 0;
+        const avgTot = Array(2*GM_MAX+1).fill(0);
         for(const m of used){
           const {lh,la} = computeLhLa(m);
-          tot += matchLoss(m,lh,la,alpha,0) + 0.5*alpha*alpha;
+          tot += matchLoss(m,lh,la,alpha,0) + alphaPen*alpha*alpha;
+          const mat = gmJointScoreMatrix(lh,la,alpha,0,cfg.maxGoals||GM_MAX);
+          const tpmf = gmTotalGoalsPmf(mat);
+          for(let g=0;g<tpmf.length && g<avgTot.length;g++) avgTot[g]+=tpmf[g];
           n++;
         }
-        return n > 0 ? tot/n : 1e9;
+        if(n>0) for(let g=0;g<avgTot.length;g++) avgTot[g]/=n;
+        const vppErr = gmVppError(gmVppFromPmf(avgTot), targetVpp);
+        return n > 0 ? tot/n + vppW*vppErr : 1e9;
       });
       const bestAlphaIdx = alphaLosses.reduce((bi,v,i)=>v<alphaLosses[bi]?i:bi, 0);
       let alphaFinal = alphaCands[bestAlphaIdx];
       const loss0 = alphaLosses[0], lossBest = alphaLosses[bestAlphaIdx];
       const nbImprovementPct = loss0 > 1e-12 ? 100*(loss0-lossBest)/loss0 : 0;
-      if(nbImprovementPct < 1) alphaFinal = 0;
-      if(nMatches < 200) alphaFinal = 0;
+      if(nbImprovementPct < nbMin) alphaFinal = 0;
 
       // Step 2: grid search over rho with alphaFinal
-      const rhoCands = [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.25];
+      const rhoCands = Array.isArray(mxCfg.rhoCandidates) ? mxCfg.rhoCandidates.slice() : [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.25];
       const rhoLosses = rhoCands.map(rho => {
         let tot = 0, n = 0;
         for(const m of used){
@@ -4281,38 +4348,58 @@ bash scripts/update_and_serve.sh --start</div>
           const {lh,la} = computeLhLa(m);
           const mat = gmJointScoreMatrix(lh,la,alphaFinal,rho,cfg.maxGoals||GM_MAX);
           const [p1,px,p2] = gm1x2(mat);
-          let pOv = 0;
           if(m.pOver != null){
             const totLine = m.raw&&m.raw.tot!=null?m.raw.tot:2.5;
+            let pOv = 0;
             for(let i=0;i<mat.length;i++) for(let j=0;j<mat.length;j++){
               const u=gmTot(i+j,totLine,'over'); pOv+=mat[i][j]*u[0];
             }
             tot += (pOv-m.pOver)**2; n++;
           }
           tot += 0.5*((p1-m.p1)**2 + (p2-m.p2)**2); n += 0.5;
-          n++;
+          if(m.px != null){ tot += (px-m.px)**2; n++; }
         }
         return n > 0 ? tot/n : 1e9;
       });
       const bestRhoIdx = rhoLosses.reduce((bi,v,i)=>v<rhoLosses[bi]?i:bi, 0);
       let rhoFinal = rhoCands[bestRhoIdx];
       const rhoImprovementPct = rhoLosses[0] > 1e-12 ? 100*(rhoLosses[0]-rhoLosses[bestRhoIdx])/rhoLosses[0] : 0;
-      if(rhoImprovementPct < 0.5) rhoFinal = 0;
+      if(rhoImprovementPct < rhoMin) rhoFinal = 0;
+
+      // Final VPP diagnostic at chosen params
+      const avgTotFinal = Array(2*GM_MAX+1).fill(0);
+      let nn=0;
+      for(const m of used){
+        const {lh,la}=computeLhLa(m);
+        const mat=gmJointScoreMatrix(lh,la,alphaFinal,rhoFinal,cfg.maxGoals||GM_MAX);
+        const tpmf=gmTotalGoalsPmf(mat);
+        for(let g=0;g<tpmf.length&&g<avgTotFinal.length;g++) avgTotFinal[g]+=tpmf[g];
+        nn++;
+      }
+      if(nn>0) for(let g=0;g<avgTotFinal.length;g++) avgTotFinal[g]/=nn;
+      const finalVpp = gmVppFromPmf(avgTotFinal);
+      const vppError = gmVppError(finalVpp, targetVpp);
 
       model.alphaFinal = alphaFinal;
       model.rhoFinal = rhoFinal;
       model.selectedDistribution = alphaFinal > 1e-9 ? 'negbin' : 'poisson_like';
       model.nbImprovementPct = nbImprovementPct;
+      model.vppProfile = finalVpp;
       model.matrixCalib = {
         status: 'calibrated', nMatches,
         alphaCandidates: alphaCands.length, rhoCandidates: rhoCands.length,
         alphaLoss0: loss0, alphaLossBest: lossBest, nbImprovementPct,
         rhoLoss0: rhoLosses[0], rhoLossBest: rhoLosses[bestRhoIdx], rhoImprovementPct,
+        vppError, vpp: finalVpp,
+        configSource: 'goal_matrix.config.json',
       };
     }
 
     function gmTrain(raw,cfg,prior,inactiveRaw){
-      cfg = Object.assign({}, cfg, {useDc:false, useDraw:false});
+      cfg = Object.assign({}, cfg, {
+        useDc:false, useDraw:false,
+        maxGoals: (GM_MATRIX_CFG && GM_MATRIX_CFG.maxGoals) || (cfg && cfg.maxGoals) || GM_MAX,
+      });
       const ms=gmPrepare(raw,cfg);
       const dClamp=gmDClampDiagnostics(ms, cfg);
       const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
@@ -5839,8 +5926,10 @@ bash scripts/update_and_serve.sh --start</div>
               lines.push(`<div>1X2 MAE / PX: ${escapeHtml(sd.summary || '—')}</div>`);
             }
             if(calib){
+              if(calib.vppError != null) lines.push(`<div>VPP error: ${Number(calib.vppError).toFixed(6)}</div>`);
               if(calib.alphaLossBest != null) lines.push(`<div>Alpha loss best: ${Number(calib.alphaLossBest).toFixed(6)}</div>`);
               if(calib.rhoLossBest != null) lines.push(`<div>Rho loss best: ${Number(calib.rhoLossBest).toFixed(6)}</div>`);
+              lines.push(`<div>Конфиг: ${escapeHtml(calib.configSource || 'runtime defaults')}</div>`);
             }
             autoEl.innerHTML = lines.join('');
           }

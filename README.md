@@ -1,6 +1,6 @@
 # calc_money / FairOddsCalc
 
-Расчёт согласованной футбольной линии из **closing-коэффициентов** (форы, тоталы, 1X2) через голевую модель Poisson / Dixon–Coles.
+Расчёт согласованной футбольной линии из **closing-коэффициентов** (форы, тоталы, 1X2) через голевую модель **Auto Marginals + Gaussian Copula** (единая score matrix; Poisson = частный случай α=0).
 
 ## Приложения
 
@@ -16,7 +16,8 @@
 ## Данные
 
 Матчи и команды — **Supabase** (`v_matches_full`, `leagues`, `team`).  
-Конфиг: `config/supabase.json`, `web/supabase.config.json`.
+Конфиг: `config/supabase.json`, `web/supabase.config.json`.  
+Параметры матрицы (α/ρ grid, без записи в БД): `config/goal_matrix.json`, `web/goal_matrix.config.json`.
 
 ## Документация
 

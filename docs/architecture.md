@@ -44,10 +44,13 @@ Desktop дополнительно: Калькулятор A, Рейтинг 1X2
 ## Голевая модель (вкладка «Линия»)
 
 ```text
-closing-линии → de-vig (Shin) → S_m, D_m → λ_h, λ_a → матрица P(i,j)
-       → коррекция ничьи → 1X2, тоталы, форы, ИТ, точный счёт
+closing-линии → de-vig (Shin) → S_m, D_m → λ_h, λ_a
+       → Auto Marginals (α) + Gaussian Copula (ρ) → матрица P(i,j)
+       → 1X2, тоталы, форы, BTTS, ИТ, точный счёт
 ```
 
+α/ρ калибруются автоматически (runtime-конфиг `goal_matrix.json`). БД схему не меняем; расчётные параметры матрицы в БД не пишем.  
+Dixon–Coles и отдельная модель ничьи сняты с web-flow.  
 Подробные формулы: [calculation.md](calculation.md).
 
 ### Вес матча при обучении
@@ -84,7 +87,8 @@ neutral_mult = is_neutral ? neutral_weight : 1.0
 
 | Модуль | Роль |
 |--------|------|
-| `app/goal_model.py` | Poisson-матрица, рынки, Shin de-vig |
+| `app/goal_model.py` | рынки из матрицы, Shin de-vig, legacy DC/draw helpers |
+| `app/goal_matrix_auto.py` | Auto Marginals + Copula, VPP, конфиг, backtest old vs new |
 | `app/goal_model_train.py` | обучение, CSV, `base_weight` |
 | `app/supabase_history.py` | REST истории, PATCH whitelist |
 | `app/supabase_teams.py` | REST справочника |

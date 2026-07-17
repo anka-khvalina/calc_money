@@ -225,7 +225,7 @@ home_team, away_team, closing_ah_home, closing_total_line,
 ah_home_odds, ah_away_odds, over_odds, under_odds
 ```
 
-Желательно: `home_odds`, `draw_odds`, `away_odds` (модель ничьи).
+Желательно: `home_odds`, `draw_odds`, `away_odds` (для калибровки 1X2 / сравнения с эталоном).
 
 ### Legacy CSV (CLI / desktop)
 
