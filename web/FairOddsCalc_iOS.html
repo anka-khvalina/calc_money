@@ -819,7 +819,13 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
                 <option value="baseline" selected>Рыночный baseline</option>
                 <option value="custom">Свои настройки</option>
               </select>
-              <span class="hint">S cal off · DC on · draw off</span>
+              <span class="hint">Auto: NB/Poisson + Copula</span>
+            </div>
+
+            <div class="goal-model-auto-status" style="margin:4px 0 6px;font-size:0.85em;color:#555">
+              <span>Режим модели: <b>Auto</b></span>
+              &nbsp;·&nbsp;
+              <span>Калибровка: <span id="goalModelCalibStatus">—</span></span>
             </div>
 
             <div class="goal-main-settings">
@@ -839,20 +845,14 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
                 <label>λ r</label><input id="goalRegLambdaR" value="0.10" />
                 <div class="hint">L2 на рейтинги силы r.</div>
               </div>
-              <div class="goal-dc-row">
-                <label>
-                  <input id="goalUseDc" type="checkbox" checked style="width:auto;margin:0" />
-                  <span class="small">Dixon-Coles</span>
-                </label>
-                <div class="field goal-gamma-inline">
-                  <label>γ max</label><input id="goalGammaMax" value="0.20" />
-                </div>
-              </div>
             </div>
 
             <details id="goalExperimentalPanel" class="goal-exp-panel">
-              <summary>Экспериментально</summary>
+              <summary>Диагностика модели</summary>
               <div class="goal-exp-body row" style="flex-wrap:wrap;gap:10px;align-items:flex-start;">
+                <div style="min-width:100%;flex:1;font-size:0.85em" id="goalModelAutoStatus">
+                  Обучите модель для отображения диагностики.
+                </div>
                 <div class="field" style="min-width:100%;flex:1">
                   <label>prior α</label><input id="goalPriorAlpha" value="0.7" />
                 </div>
@@ -903,23 +903,6 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
                 </div>
                 <div class="field" style="min-width:30%;flex:1">
                   <label>D cap (tanh)</label><input id="goalDBigFavCap" value="2.00" />
-                </div>
-                <label style="display:flex;align-items:flex-start;gap:6px;min-width:100%">
-                  <input id="goalUseDraw" type="checkbox" style="width:auto;margin-top:2px" />
-                  <span class="small">Модель ничьи</span>
-                </label>
-                <div class="field" style="min-width:100%;flex:1" id="goalDrawModeWrap" hidden>
-                  <label>режим ничьи</label>
-                  <select id="goalDrawMode">
-                    <option value="residual_dc" selected>residual (после DC)</option>
-                    <option value="legacy">legacy (абс. P_X)</option>
-                  </select>
-                </div>
-                <div class="field" style="min-width:45%;flex:1" id="goalQBoundsWrap" hidden>
-                  <label>q_min</label><input id="goalQmin" value="0.95" />
-                </div>
-                <div class="field" style="min-width:45%;flex:1" id="goalQBoundsMaxWrap" hidden>
-                  <label>q_max</label><input id="goalQmax" value="1.05" />
                 </div>
               </div>
             </details>
@@ -3210,6 +3193,147 @@ bash scripts/update_and_serve.sh --start</div>
       for(let i=0;i<2;i++) for(let j=0;j<2;j++) if(o[i][j]<0) o[i][j]=0;
       return gmNorm(o);
     }
+
+    // ---- Negative Binomial + Gaussian Copula joint score matrix ----
+    function gmLogGamma(z){
+      // Lanczos approximation, accurate for z > 0
+      const g=7, c=[0.99999999999980993,676.5203681218851,-1259.1392167224028,
+        771.32342877765313,-176.61502916214059,12.507343278686905,
+        -0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+      if(z<0.5) return Math.log(Math.PI/Math.sin(Math.PI*z))-gmLogGamma(1-z);
+      const x=z-1; let t=x+g+0.5; let s=c[0];
+      for(let i=1;i<g+2;i++) s+=c[i]/(x+i);
+      return 0.5*Math.log(2*Math.PI)+(x+0.5)*Math.log(t)-t+Math.log(s);
+    }
+    function gmNegBinPmf(k, mu, alpha){
+      // NB2: Var=mu+alpha*mu^2; r=1/alpha, p=1/(1+alpha*mu)
+      if(alpha<=1e-12) return gmPois(k, mu);
+      const r=1/alpha, p=1/(1+alpha*mu);
+      // P(k) = Gamma(r+k)/(Gamma(r)*k!) * p^r * (1-p)^k
+      return Math.exp(gmLogGamma(r+k)-gmLogGamma(r)-gmLogGamma(k+1)+r*Math.log(p)+k*Math.log(1-p));
+    }
+    function gmMarginalPmf(mu, alpha, maxGoals){
+      const pmf=[]; let s=0;
+      for(let k=0;k<=maxGoals;k++){ const v=gmNegBinPmf(k,mu,alpha); pmf.push(v); s+=v; }
+      if(s>1e-12) for(let k=0;k<=maxGoals;k++) pmf[k]/=s;
+      return pmf;
+    }
+    function gmMarginalCdf(pmf){
+      const cdf=[]; let s=0;
+      for(let k=0;k<pmf.length;k++){ s+=pmf[k]; cdf.push(Math.min(1,s)); }
+      return cdf;
+    }
+    function gmInvNorm(p){
+      // Acklam rational approximation, max error ~4.5e-4
+      p=Math.max(1e-12,Math.min(1-1e-12,p));
+      const a=[-3.969683028665376e1,2.209460984245205e2,-2.759285104469687e2,
+               1.383577518672690e2,-3.066479806614716e1,2.506628277459239];
+      const b=[-5.447609879822406e1,1.615858368580409e2,-1.556989798598866e2,
+               6.680131188771972e1,-1.328068155288572e1];
+      const c=[-7.784894002430293e-3,-3.223964580411365e-1,-2.400758277161838,
+               -2.549732539343734,4.374664141464968,2.938163982698783];
+      const d=[7.784695709041462e-3,3.224671290700398e-1,2.445134137142996,3.754408661907416];
+      const plo=0.02425, phi=1-plo;
+      let q,r;
+      if(p<plo){ q=Math.sqrt(-2*Math.log(p));
+        return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/(((( d[0]*q+d[1])*q+d[2])*q+d[3])*q+1); }
+      if(p<=phi){ q=p-0.5; r=q*q;
+        return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1); }
+      q=Math.sqrt(-2*Math.log(1-p));
+      return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/(((( d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+    }
+    function gmStdNormCdf(x){
+      // Abramowitz & Stegun 26.2.17 approximation
+      const t=1/(1+0.2316419*Math.abs(x));
+      const poly=t*(0.319381530+t*(-0.356563782+t*(1.781477937+t*(-1.821255978+t*1.330274429))));
+      const d=1-poly*Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);
+      return x>=0?d:1-d;
+    }
+    function gmBivNormCdf(x, y, rho){
+      // Drezner-style approximation for bivariate normal CDF
+      rho=Math.max(-0.999,Math.min(0.999,rho));
+      if(Math.abs(rho)<1e-9) return gmStdNormCdf(x)*gmStdNormCdf(y);
+      // Abramowitz & Stegun / Drezner 1978 Gauss-Legendre quadrature (10-point)
+      const w=[0.1713244923791703,0.3607615730481386,0.4679139345726910,
+               0.1713244923791703,0.3607615730481386,0.4679139345726910,
+               0.1713244923791703,0.3607615730481386,0.4679139345726910,
+               0.1713244923791703];
+      const ab=[0.9324695142031521,0.6612093864662645,0.2386191860831969,
+                -0.9324695142031521,-0.6612093864662645,-0.2386191860831969,
+                0.9324695142031521,0.6612093864662645,0.2386191860831969,
+                -0.9324695142031521];
+      // Use Owen's T-function approach: BN(h,k,rho)=Phi(h)*Phi(k)+2*T(h,(k-rho*h)/sqrt(1-rho^2))+... (complex)
+      // Simpler: direct numerical integration via variable transform
+      // B(x,y,r) via GL quadrature on rho
+      // For |rho|<1 use the classical 10-point GL on the integral representation
+      const hh=x, kk=y, r=rho;
+      const hs=-0.5*(hh*hh+kk*kk), bk=1-r*r;
+      let bv=0;
+      if(r<0 && (hh*kk>=0 || (hh>=0&&kk<0))) bv=-gmStdNormCdf(-hh<-kk?-hh:-kk);
+      if(r>0 && hh*kk<0) bv=gmStdNormCdf(hh>0?kk:hh);
+      // 10-point Gauss-Legendre on [0, arcsin(rho)]
+      const asin_r=Math.asin(r);
+      const half=asin_r/2;
+      const gl_w=[0.2955242247147529,0.2955242247147529,0.2692667193099963,0.2692667193099963,
+                  0.2190863625159820,0.2190863625159820,0.1494513491505806,0.1494513491505806,
+                  0.0666713443086881,0.0666713443086881];
+      const gl_x=[0.1488743389816312,-0.1488743389816312,0.4333953941292472,-0.4333953941292472,
+                  0.6794095682990244,-0.6794095682990244,0.8650633666889845,-0.8650633666889845,
+                  0.9739065285171717,-0.9739065285171717];
+      let sum=0;
+      for(let i=0;i<10;i++){
+        const si=Math.sin(half*gl_x[i]+half);
+        sum+=gl_w[i]*Math.exp((si*(2*hh*kk-si*(hh*hh+kk*kk)))/(2*(1-si*si)));
+      }
+      return gmStdNormCdf(hh)*gmStdNormCdf(kk)+half*sum/(2*Math.PI);
+    }
+    function gmGaussCopulaCdf(u, v, rho){
+      u=Math.max(1e-12,Math.min(1-1e-12,u));
+      v=Math.max(1e-12,Math.min(1-1e-12,v));
+      return gmBivNormCdf(gmInvNorm(u),gmInvNorm(v),rho);
+    }
+    function gmJointScoreMatrix(lh, la, alpha, rho, maxGoals){
+      if(maxGoals==null) maxGoals=GM_MAX;
+      lh=Math.max(0.05,lh); la=Math.max(0.05,la);
+      alpha=alpha||0; rho=rho||0;
+      const pmfH=gmMarginalPmf(lh,alpha,maxGoals);
+      const pmfA=gmMarginalPmf(la,alpha,maxGoals);
+      const cdfH=gmMarginalCdf(pmfH);
+      const cdfA=gmMarginalCdf(pmfA);
+      const mat=[];
+      for(let i=0;i<=maxGoals;i++){
+        const row=[];
+        const fhI=cdfH[i], fhIm1=(i>0?cdfH[i-1]:0);
+        for(let j=0;j<=maxGoals;j++){
+          const faJ=cdfA[j], faJm1=(j>0?cdfA[j-1]:0);
+          let p;
+          if(Math.abs(rho)<1e-9){
+            p=pmfH[i]*pmfA[j];
+          } else {
+            p=gmGaussCopulaCdf(fhI,faJ,rho)
+             -gmGaussCopulaCdf(fhIm1,faJ,rho)
+             -gmGaussCopulaCdf(fhI,faJm1,rho)
+             +gmGaussCopulaCdf(fhIm1,faJm1,rho);
+          }
+          row.push(Math.max(0,p));
+        }
+        mat.push(row);
+      }
+      return gmNorm(mat);
+    }
+    function gmMatrixDiagnostics(mat, lh, la, alpha){
+      let s=0,p00=0,p11=0,pBtts=0,meanTotal=0,varTotal=0;
+      const n=mat.length;
+      for(let i=0;i<n;i++) for(let j=0;j<n;j++){
+        const v=mat[i][j]; s+=v; p00+=(i===0&&j===0?v:0); p11+=(i===1&&j===1?v:0);
+        if(i>0&&j>0) pBtts+=v; meanTotal+=v*(i+j);
+      }
+      for(let i=0;i<n;i++) for(let j=0;j<n;j++) varTotal+=mat[i][j]*Math.pow(i+j-meanTotal,2);
+      const poisVar=lh+la; const varRatio=poisVar>0?varTotal/poisVar:1;
+      let tail=0; for(let i=0;i<n;i++) tail+=mat[i][n-1]+mat[n-1][i]; tail-=mat[n-1][n-1];
+      return {sum:s,p00,p11,pBtts,meanTotal,varTotal,varRatio,tail};
+    }
+
     function gmComps(line){ const f=Math.round((line-Math.floor(line))*100)/100; return (f===0.25||f===0.75)?[line-0.25,line+0.25]:[line]; }
     function gmAhHomeS(i,j,l){ const m=(i-j)+l; if(m>1e-12) return [1,0]; if(m<-1e-12) return [0,1]; return [0,0]; }
     function gmAhHome(i,j,l){ const c=gmComps(l); let w=0,x=0; for(const t of c){ const u=gmAhHomeS(i,j,t); w+=u[0]; x+=u[1]; } return [w/c.length,x/c.length]; }
@@ -3555,15 +3679,14 @@ bash scripts/update_and_serve.sh --start</div>
         const la=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0)); return [m,dm,lh+la,m.wBase]; });
       const sOff=cfg.sCalMode==='off';
       const dOff=(cfg.dCalMode||'soft')==='off';
-      function lossCore(a,b,c,d,g){
+      function lossCore(a,b,c,d){
         if(d<=0) return 1e9;
-        const gc=gmClipGamma(g,cfg);
         let tot=gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
         for(const [m,dm,sm,w] of pre){
           const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
           const dc=gmApplyDCal(dm,a,b,cfg);
           const df=gmClampD(dc.dUsed,sf); const lh=(sf+df)/2,la=(sf-df)/2; if(lh<=0||la<=0) return 1e9;
-          let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&gc) mat=gmDC(mat,lh,la,gc);
+          const mat=gmJointScoreMatrix(lh,la,0,0,cfg.maxGoals);
           const [p1,px,p2]=gm1x2(mat);
           tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
         }
@@ -3571,42 +3694,24 @@ bash scripts/update_and_serve.sh --start</div>
       }
       let full;
       if(sOff){
-        if(cfg.useDc){
-          if(dOff){
-            const x=gmNelder(p=>lossCore(p[0],1,0,1,p[1]),[0,0]);
-            full=[x[0],1,0,1,gmClipGamma(x[1],cfg)];
-          } else {
-            const x=gmNelder(p=>lossCore(p[0],p[1],0,1,p[2]),[0,1,0]);
-            full=[x[0],x[1],0,1,gmClipGamma(x[2],cfg)];
-          }
-        } else {
-          if(dOff){
-            const x=gmNelder(p=>lossCore(p[0],1,0,1,0),[0]);
-            full=[x[0],1,0,1,0];
-          } else {
-            const x=gmNelder(p=>lossCore(p[0],p[1],0,1,0),[0,1]);
-            full=[x[0],x[1],0,1,0];
-          }
-        }
-      } else if(cfg.useDc){
         if(dOff){
-          const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2],p[3]),[0,0,1,0]);
-          full=[x[0],1,x[1],x[2],gmClipGamma(x[3],cfg)];
+          const x=gmNelder(p=>lossCore(p[0],1,0,1),[0]);
+          full=[x[0],1,0,1];
         } else {
-          const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],p[4]),[0,1,0,1,0]);
-          full=[x[0],x[1],x[2],x[3],gmClipGamma(x[4],cfg)];
+          const x=gmNelder(p=>lossCore(p[0],p[1],0,1),[0,1]);
+          full=[x[0],x[1],0,1];
         }
       } else {
         if(dOff){
-          const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2],0),[0,0,1]);
-          full=[x[0],1,x[1],x[2],0];
+          const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2]),[0,0,1]);
+          full=[x[0],1,x[1],x[2]];
         } else {
-          const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],0),[0,1,0,1]);
-          full=[x[0],x[1],x[2],x[3],0];
+          const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3]),[0,1,0,1]);
+          full=[x[0],x[1],x[2],x[3]];
         }
       }
       const bOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
-      return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:full[4],n1x2:used.length};
+      return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:0,n1x2:used.length};
     }
     function gmEffectiveQBounds(cfg, drawMode){
       const mode=drawMode||cfg.drawMode||'residual_dc';
@@ -3641,8 +3746,6 @@ bash scripts/update_and_serve.sh --start</div>
     function goalApplyModelProfile(){
       const p=gmModelProfile();
       if(p!=='baseline') return;
-      const dc=document.getElementById('goalUseDc'); if(dc) dc.checked=true;
-      const draw=document.getElementById('goalUseDraw'); if(draw) draw.checked=false;
       const sc=document.getElementById('goalSCalMode'); if(sc) sc.value='off';
       const dcm=document.getElementById('goalDCalMode'); if(dcm) dcm.value='soft';
       const bmin=document.getElementById('goalDCalBMin'); if(bmin) bmin.value='0.90';
@@ -3653,7 +3756,6 @@ bash scripts/update_and_serve.sh --start</div>
       const dslope=document.getElementById('goalDBigFavSlope'); if(dslope) dslope.value='0.75';
       const dcap=document.getElementById('goalDBigFavCap'); if(dcap) dcap.value='2.00';
       const panel=document.getElementById('goalExperimentalPanel'); if(panel) panel.open=false;
-      gmToggleDrawQUi();
     }
     function goalMarkCustomProfile(){
       const sel=document.getElementById('goalModelProfile');
@@ -3741,13 +3843,17 @@ bash scripts/update_and_serve.sh --start</div>
       const tot=tg.map(l=>gmTotMarket(m,l)), ah=ag.map(l=>gmAhMarket(m,l));
       const mt=tot.reduce((a,b)=>Math.abs(b.over-b.under)<Math.abs(a.over-a.under)?b:a);
       const ma=ah.reduce((a,b)=>Math.abs(b.home-b.away)<Math.abs(a.home-a.away)?b:a);
-      return {p1,px,p2,mainTotal:mt,mainAh:ma,totals:tot,
+      let bttsYes=0;
+      for(let i=1;i<m.length;i++) for(let j=1;j<m.length;j++) bttsYes+=m[i][j];
+      bttsYes=Math.min(Math.max(bttsYes,1e-9),1-1e-9);
+      const bttsNo=1-bttsYes;
+      return {p1,px,p2,bttsYes,bttsNo,mainTotal:mt,mainAh:ma,totals:tot,
         ttH:[0.5,1.5,2.5].map(l=>[l,...gmTeamTot(m,l,true)]), ttA:[0.5,1.5,2.5].map(l=>[l,...gmTeamTot(m,l,false)]),
         top:gmTop(m,8)};
     }
     function gmPromoted(vals,n){ const arr=Object.values(vals); if(!arr.length) return 0; const w=arr.slice().sort((a,b)=>a-b).slice(0,Math.max(1,n)); return w.reduce((a,b)=>a+b,0)/w.length; }
     function gmPredict(model,homeId,awayId,opt){
-      const {st,gl,cal,draw,cfg}=model; const iHome=opt.neutral?0:1;
+      const {st,gl,cal,cfg}=model; const iHome=opt.neutral?0:1;
       const names=model.teamNames||{};
       const homeName=names[homeId]||homeId, awayName=names[awayId]||awayId;
       const hEff=gmEffectiveH(st,cfg,opt.neutral,!!opt.derby);
@@ -3761,16 +3867,9 @@ bash scripts/update_and_serve.sh --start</div>
       let sf=gmApplySCal(sm,cal.c,cal.d,cfg);
       let df=gmClampD(dc.dUsed,sf);
       const lh=(sf+df)/2, la=(sf-df)/2;
-      let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
-      let dtarget=null,diag=null;
-      if(cfg.useDraw){
-        const pxMat=gmDrawProb(mat);
-        const [qmin,qmax]=gmEffectiveQBounds(cfg, draw.mode);
-        if(draw.mode==='residual_dc') dtarget=gmDrawQMult(draw,df,sf,cfg)*pxMat;
-        else dtarget=gmDrawTarget(draw,df,sf);
-        [mat,diag]=gmAdjustDraw(mat,dtarget,qmin,qmax);
-      }
-      return {homeId,awayId,homeName,awayName,lh,la,df,sf,markets:gmMarkets(mat),drawTarget:dtarget,drawDiag:diag};
+      const alpha=model.alphaFinal||0, rho=model.rhoFinal||0;
+      const mat=gmJointScoreMatrix(lh,la,alpha,rho,cfg.maxGoals||GM_MAX);
+      return {homeId,awayId,homeName,awayName,lh,la,df,sf,markets:gmMarkets(mat),drawTarget:null,drawDiag:null};
     }
     function gmDClampSensitiveTags(m, teamCounts, earlyCutoff, cfg){
       const tags=[];
@@ -4199,24 +4298,124 @@ bash scripts/update_and_serve.sh --start</div>
         summary,
       };
     }
+    function gmCalibrateDispersion(model, ms){
+      const {st, gl, cal, cfg} = model;
+      const used = ms.filter(m => (m.pOver != null || m.p1 != null) && m.lh > 0 && m.la > 0);
+      const nMatches = used.length;
+
+      // Shrink to 0 if too few matches
+      if(nMatches < 200){
+        model.alphaFinal = 0; model.rhoFinal = 0;
+        model.selectedDistribution = 'poisson_like';
+        model.nbImprovementPct = 0;
+        model.matrixCalib = { status: `shrunk_to_0 (n=${nMatches}<200)`, nMatches, alphaCandidates: 0, rhoCandidates: 0 };
+        return;
+      }
+
+      function matchLoss(m, lh, la, alpha, rho){
+        let loss = 0, n = 0;
+        if(m.pOver != null){
+          const mat = gmJointScoreMatrix(lh, la, alpha, rho, cfg.maxGoals||GM_MAX);
+          const totLine = m.raw && m.raw.tot != null ? m.raw.tot : 2.5;
+          let pOv = 0;
+          for(let i=0;i<mat.length;i++) for(let j=0;j<mat.length;j++){
+            const u=gmTot(i+j,totLine,'over'); pOv+=mat[i][j]*u[0];
+          }
+          loss += (pOv - m.pOver)**2; n++;
+        }
+        if(m.p1 != null){
+          const mat = gmJointScoreMatrix(lh, la, alpha, rho, cfg.maxGoals||GM_MAX);
+          const [p1,px,p2] = gm1x2(mat);
+          loss += 0.5*((p1-m.p1)**2 + (p2-m.p2)**2); n += 0.5;
+        }
+        return n > 0 ? loss / n : 0;
+      }
+
+      function computeLhLa(m){
+        const {sCal, dCal} = gmCalibratedSdForMatch(m, st, gl, cal, cfg);
+        const lh = Math.max(0.05, (sCal+dCal)/2);
+        const la = Math.max(0.05, (sCal-dCal)/2);
+        return {lh, la};
+      }
+
+      // Step 1: grid search over alpha (rho=0)
+      const alphaCands = [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.26,0.30];
+      const alphaLosses = alphaCands.map(alpha => {
+        let tot = 0, n = 0;
+        for(const m of used){
+          const {lh,la} = computeLhLa(m);
+          tot += matchLoss(m,lh,la,alpha,0) + 0.5*alpha*alpha;
+          n++;
+        }
+        return n > 0 ? tot/n : 1e9;
+      });
+      const bestAlphaIdx = alphaLosses.reduce((bi,v,i)=>v<alphaLosses[bi]?i:bi, 0);
+      let alphaFinal = alphaCands[bestAlphaIdx];
+      const loss0 = alphaLosses[0], lossBest = alphaLosses[bestAlphaIdx];
+      const nbImprovementPct = loss0 > 1e-12 ? 100*(loss0-lossBest)/loss0 : 0;
+      if(nbImprovementPct < 1) alphaFinal = 0;
+      if(nMatches < 200) alphaFinal = 0;
+
+      // Step 2: grid search over rho with alphaFinal
+      const rhoCands = [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.25];
+      const rhoLosses = rhoCands.map(rho => {
+        let tot = 0, n = 0;
+        for(const m of used){
+          if(m.p1 == null) continue;
+          const {lh,la} = computeLhLa(m);
+          const mat = gmJointScoreMatrix(lh,la,alphaFinal,rho,cfg.maxGoals||GM_MAX);
+          const [p1,px,p2] = gm1x2(mat);
+          let pOv = 0;
+          if(m.pOver != null){
+            const totLine = m.raw&&m.raw.tot!=null?m.raw.tot:2.5;
+            for(let i=0;i<mat.length;i++) for(let j=0;j<mat.length;j++){
+              const u=gmTot(i+j,totLine,'over'); pOv+=mat[i][j]*u[0];
+            }
+            tot += (pOv-m.pOver)**2; n++;
+          }
+          tot += 0.5*((p1-m.p1)**2 + (p2-m.p2)**2); n += 0.5;
+          n++;
+        }
+        return n > 0 ? tot/n : 1e9;
+      });
+      const bestRhoIdx = rhoLosses.reduce((bi,v,i)=>v<rhoLosses[bi]?i:bi, 0);
+      let rhoFinal = rhoCands[bestRhoIdx];
+      const rhoImprovementPct = rhoLosses[0] > 1e-12 ? 100*(rhoLosses[0]-rhoLosses[bestRhoIdx])/rhoLosses[0] : 0;
+      if(rhoImprovementPct < 0.5) rhoFinal = 0;
+
+      model.alphaFinal = alphaFinal;
+      model.rhoFinal = rhoFinal;
+      model.selectedDistribution = alphaFinal > 1e-9 ? 'negbin' : 'poisson_like';
+      model.nbImprovementPct = nbImprovementPct;
+      model.matrixCalib = {
+        status: 'calibrated', nMatches,
+        alphaCandidates: alphaCands.length, rhoCandidates: rhoCands.length,
+        alphaLoss0: loss0, alphaLossBest: lossBest, nbImprovementPct,
+        rhoLoss0: rhoLosses[0], rhoLossBest: rhoLosses[bestRhoIdx], rhoImprovementPct,
+      };
+    }
+
     function gmTrain(raw,cfg,prior,inactiveRaw){
+      cfg = Object.assign({}, cfg, {useDc:false, useDraw:false});
       const ms=gmPrepare(raw,cfg);
       const dClamp=gmDClampDiagnostics(ms, cfg);
       const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
-      const draw=gmFitDrawForConfig(ms,st,gl,cal,cfg);
+      const draw={alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'disabled',mode:'legacy'};
       const calDiag=gmAssessCalibration(cal,cfg);
-      const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag,teamNames:{}};
+      const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag,teamNames:{},
+        alphaFinal:0, rhoFinal:0, selectedDistribution:'poisson_like', nbImprovementPct:0, matrixCalib:null};
       ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
-      model.drawQDiag=gmDrawQDiagnostics(model, ms);
+      gmCalibrateDispersion(model, ms);
+      model.drawQDiag={nEval:0,nClamped:0,clampPct:0,nNearOne:0,nearOnePct:0,stable:true,summary:'модель ничьи выкл',rows:[]};
       model.sdDiag=gmSd1x2Diagnostics(model, ms);
-      model.drawHarmDiag=gmDrawHarmDiagnostics(model, ms);
+      model.drawHarmDiag={nMatches:0,summary:'ничья отключена'};
       model.inactiveDiag=gmInactiveDDiagnostics(model, inactiveRaw||[]);
       model.trainMargin1x2=gmTrainMargin1x2Diagnostics(raw, cfg);
       return model;
     }
     let gmModel=null;
     function gmCfg(){
-      const f=(id,d)=>{ const v=parseFloat((document.getElementById(id).value||'').replace(',','.')); return isNaN(v)?d:v; };
+      const f=(id,d)=>{ const el=document.getElementById(id); if(!el) return d; const v=parseFloat((el.value||'').replace(',','.')); return isNaN(v)?d:v; };
       return { maxGoals:GM_MAX, alphaAh:f('goalAlphaAh',0.25), pAh:2, minWAh:0.15, maxWAh:1,
         alphaT:f('goalAlphaT',0.5), deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
         seasonDefault:1.0,
@@ -4228,14 +4427,13 @@ bash scripts/update_and_serve.sh --start</div>
         dCalMode:gmResolvedDCalMode(), dCalBMin:f('goalDCalBMin',0.90), dCalBMax:f('goalDCalBMax',1.03), dCalBPenalty:f('goalDCalBPenalty',2.0),
         dBigFavMode:(document.getElementById('goalDBigFavMode')||{}).value||'linear',
         dBigFavThreshold:f('goalDBigFavThr',1.25), dBigFavSlope:f('goalDBigFavSlope',0.75), dBigFavCap:f('goalDBigFavCap',2.00),
-        useDraw:gmModelProfile()!=='baseline'&&gmIsExperimentalOpen()&&document.getElementById('goalUseDraw').checked,
-        useDc:document.getElementById('goalUseDc').checked,
+        useDraw:false, useDc:false,
         modelProfile:gmModelProfile(),
-        drawMode:(document.getElementById('goalDrawMode')||{}).value||'residual_dc',
-        qmin:f('goalQmin',0.95), qmax:f('goalQmax',1.05),
+        drawMode:'residual_dc',
+        qmin:0.95, qmax:1.05,
         qResMin:0.98, qResMax:1.03,
         sCalMode:gmResolvedSCalMode(),
-        sCalMaxDelta:f('goalSCalMaxDelta',0.15), gammaMax:f('goalGammaMax',0.20) };
+        sCalMaxDelta:f('goalSCalMaxDelta',0.15), gammaMax:0.20 };
     }
     function gmSeasonWeight(rec, cfg){
       const def = cfg.seasonDefault != null ? cfg.seasonDefault : 1.0;
@@ -5560,15 +5758,14 @@ bash scripts/update_and_serve.sh --start</div>
       html += '<div class="small" style="margin-top:8px;font-weight:600">Параметры обучения (вход)</div>'
         + goalRenderTrainTable([
           ['Профиль', cfg.modelProfile==='custom'?'свои настройки':'рыночный baseline', ''],
+          ['Матрица', 'Auto: NB/Poisson + Copula', ''],
           ['α форы', goalFmtTrainNum(cfg.alphaAh, 2), 'num'],
           ['α тотала', goalFmtTrainNum(cfg.alphaT, 2), 'num'],
           ['λ A / Df', goalFmtTrainNum(cfg.regLambdaAttack, 2), 'num'],
           ['λ r', goalFmtTrainNum(cfg.regLambda, 2), 'num'],
-          ['Dixon-Coles', cfg.useDc ? 'вкл' : 'выкл', ''],
-          ['γ max', goalFmtTrainNum(cfg.gammaMax, 2), 'num'],
         ]);
-      if (cfg.modelProfile === 'custom' || cfg.useDraw || cfg.sCalMode !== 'off' || cfg.dCalMode !== 'soft' || cfg.dBigFavMode !== 'linear'){
-        html += '<div class="small" style="margin-top:8px;font-weight:600">Экспериментальные параметры</div>'
+      if (cfg.modelProfile === 'custom' || cfg.sCalMode !== 'off' || cfg.dCalMode !== 'soft' || cfg.dBigFavMode !== 'linear'){
+        html += '<div class="small" style="margin-top:8px;font-weight:600">Дополнительные параметры</div>'
           + goalRenderTrainTable([
             ['дерби H×', goalFmtTrainNum(cfg.derbyHDefault, 2), 'num'],
             ['prior α', goalFmtTrainNum(cfg.priorAlpha, 2), 'num'],
@@ -5579,8 +5776,6 @@ bash scripts/update_and_serve.sh --start</div>
             ['λ_b', goalFmtTrainNum(cfg.dCalBPenalty, 2), 'num'],
             ['shrink |D|', cfg.dBigFavMode || 'off', ''],
             ['|D| порог / k / cap', `${goalFmtTrainNum(cfg.dBigFavThreshold, 2)} / ${goalFmtTrainNum(cfg.dBigFavSlope, 2)} / ${goalFmtTrainNum(cfg.dBigFavCap, 2)}`, 'num'],
-            ['Модель ничьи', cfg.useDraw ? (`вкл (${cfg.drawMode || 'residual_dc'})`) : 'выкл', ''],
-            ...(cfg.useDraw ? [['q_min / q_max', `${goalFmtTrainNum(cfg.qmin, 2)} / ${goalFmtTrainNum(cfg.qmax, 2)}`, 'num']] : []),
           ]);
       }
       box.innerHTML = html;
@@ -5654,14 +5849,17 @@ bash scripts/update_and_serve.sh --start</div>
           rows.push(['Avg underdog odds ratio', udDetail, inactiveDiag.avgUnderdogOddsRatioFair > 1.20 ? 'warn' : 'num']);
         }
       }
-      if (gmModel.cfg && gmModel.cfg.useDc){
-        rows.push(['Dixon-Coles', 'включён', '']);
-        rows.push(['γ', goalFmtTrainNum(cal.gamma, 4), 'num']);
-      } else {
-        rows.push(['Dixon-Coles', 'выключен', '']);
-        rows.push(['γ', 'не используется', '']);
+      const dist = gmModel.selectedDistribution || 'poisson_like';
+      const alphaFin = gmModel.alphaFinal != null ? gmModel.alphaFinal : 0;
+      const rhoFin = gmModel.rhoFinal != null ? gmModel.rhoFinal : 0;
+      const nbImprPct = gmModel.nbImprovementPct != null ? gmModel.nbImprovementPct : 0;
+      rows.push(['Распределение', dist === 'negbin' ? 'Negative Binomial' : 'Poisson (α=0)', '']);
+      rows.push(['α (дисперсия NB)', goalFmtTrainNum(alphaFin, 4), 'num']);
+      rows.push(['ρ (Copula)', goalFmtTrainNum(rhoFin, 4), 'num']);
+      rows.push(['NB улучш. vs Poisson', `${goalFmtTrainNum(nbImprPct, 2)}%`, nbImprPct >= 1 ? 'ok' : '']);
+      if (gmModel.matrixCalib && gmModel.matrixCalib.status){
+        rows.push(['Статус калибровки', escapeHtml(gmModel.matrixCalib.status), '']);
       }
-      rows.push(['Ничья (источник)', escapeHtml(draw.source || '—'), '']);
       if (dClamp){
         const clampCls = (dClamp.pct > 2 || dClamp.nSensitive > 0) ? 'warn' : '';
         const clampDetail = dClamp.nHit
@@ -5770,19 +5968,13 @@ bash scripts/update_and_serve.sh --start</div>
       const deltaS=sd?sd.avgDeltaS:0;
       const sOk=Math.abs(deltaS)<0.01;
       chips.push(`<span class="goal-chip ${sOk?'ok':''}">${sOk?'S stable':('ΔS '+goalFmtTrainNum(deltaS,3))}</span>`);
-      if(harm && harm.nMatches>0){
-        const pxChip=`PX: ${goalFmtTrainNum(harm.meanErrPxPoisson,3)} → ${goalFmtTrainNum(harm.meanErrPxFinal,3)}`;
-        chips.push(`<span class="goal-chip ${harm.harmsWorseThanAfterDc?'warn':''}">${pxChip}</span>`);
-      }
-      if(gmModel.cfg && gmModel.cfg.useDc){
-        chips.push(`<span class="goal-chip">DC γ=${goalFmtTrainNum(cal.gamma,3)}</span>`);
-      }
+      const alphaFin = gmModel.alphaFinal != null ? gmModel.alphaFinal : 0;
+      const rhoFin = gmModel.rhoFinal != null ? gmModel.rhoFinal : 0;
+      const dist = gmModel.selectedDistribution || 'poisson_like';
+      chips.push(`<span class="goal-chip">${dist==='negbin'?'NB':'Poisson'} α=${goalFmtTrainNum(alphaFin,3)} ρ=${goalFmtTrainNum(rhoFin,3)}</span>`);
       if(clamp){
         const cw=clamp.nHit>0||(clamp.nSensitive>0);
         chips.push(`<span class="goal-chip ${cw?'warn':''}">D clamp ${clamp.nHit}/${clamp.nTotal}</span>`);
-      }
-      if(harm && harm.harmsWorseThanAfterDc){
-        chips.push('<span class="goal-chip warn">draw harms DC</span>');
       }
       if(gmModel.calDiag && !gmModel.calDiag.stable){
         chips.push('<span class="goal-chip warn">калибр. 1X2</span>');
@@ -5832,9 +6024,19 @@ bash scripts/update_and_serve.sh --start</div>
           if(clampWarn && clamp.nHit>0) warns.push(`D clamp ${clamp.nHit}/${clamp.nTotal}`);
           if(inactiveWarn) warns.push(`over_gap_fair ${goalFmtTrainNum(inactiveDiag.pctOverGap,0)}%`);
           const trained=goalFmtTrainDt(goalTrainState.trainedAt);
+          const dist = gmModel.selectedDistribution || 'poisson_like';
+          const alphaFin = gmModel.alphaFinal != null ? gmModel.alphaFinal : 0;
+          const rhoFin = gmModel.rhoFinal != null ? gmModel.rhoFinal : 0;
+          const autoDesc = `${dist==='negbin'?'NegBin':'Poisson'} α=${alphaFin.toFixed(3)} ρ=${rhoFin.toFixed(3)}`;
           banner.textContent = warns.length
             ? `Обучено ${trained}. ${warns.join(' · ')}`
-            : `Обучено ${trained}. Профиль: ${gmModel.cfg.modelProfile==='custom'?'свои':'рыночный baseline'}.`;
+            : `Обучено ${trained}. Auto: ${autoDesc}.`;
+          const calibEl = document.getElementById('goalModelCalibStatus');
+          if(calibEl) calibEl.textContent = gmModel.matrixCalib ? gmModel.matrixCalib.status : '—';
+          const autoEl = document.getElementById('goalModelAutoStatus');
+          if(autoEl) autoEl.innerHTML = `<b>${escapeHtml(dist)}</b>: α=${alphaFin.toFixed(4)}, ρ=${rhoFin.toFixed(4)}` +
+            (gmModel.nbImprovementPct ? `, NB улучш. ${gmModel.nbImprovementPct.toFixed(2)}%` : '') +
+            (gmModel.matrixCalib ? `, n=${gmModel.matrixCalib.nMatches}` : '');
         }
       }
       goalRenderTrainDataPanel();
@@ -6522,7 +6724,7 @@ bash scripts/update_and_serve.sh --start</div>
         derbyShrinkTau: 30, derbyHDefault: 0.7, derbyMinMatches: 3,
         dCalMode: 'soft', dCalBMin: 0.90, dCalBMax: 1.03, dCalBPenalty: 2.0,
         dBigFavMode: 'linear', dBigFavThreshold: 1.25, dBigFavSlope: 0.75, dBigFavCap: 2.00,
-        useDraw: false, useDc: true, modelProfile: 'baseline', drawMode: 'residual_dc',
+        useDraw: false, useDc: false, modelProfile: 'baseline', drawMode: 'residual_dc',
         qmin: 0.95, qmax: 1.05, qResMin: 0.98, qResMax: 1.03,
         sCalMode: 'off', sCalMaxDelta: 0.15, gammaMax: 0.20,
       };
