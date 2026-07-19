@@ -282,6 +282,16 @@
     .goal-predict-table--compare td.delta-ok{ color:#166534; }
     .goal-predict-table--compare td.delta-warn{ color:#b45309; font-weight:600; }
     .ir-report-toolbar{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:10px; }
+    .ir-lab-layout{ display:grid; grid-template-columns:minmax(0,1fr) minmax(220px,280px); gap:12px; align-items:start; }
+    @media (max-width:900px){ .ir-lab-layout{ grid-template-columns:1fr; } }
+    .ir-lab-main{ min-width:0; }
+    .ir-summary-card{ background:#f8fafc; border:1px solid var(--line); border-radius:10px; padding:12px; font-size:12px; line-height:1.45; color:#334155; position:sticky; top:8px; }
+    .ir-summary-card h4{ margin:0 0 8px; font-size:13px; color:#10204a; }
+    .ir-summary-card .ir-sum-block{ margin-top:10px; padding-top:8px; border-top:1px solid #e2e8f0; }
+    .ir-summary-card .ir-sum-row{ display:flex; justify-content:space-between; gap:8px; margin:2px 0; }
+    .ir-summary-card .ir-winner{ font-weight:700; color:#0f766e; margin-top:8px; }
+    .ir-mode-row{ display:flex; flex-wrap:wrap; gap:12px 16px; align-items:center; margin:0 0 8px; font-size:13px; }
+    .ir-mode-row label{ display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
     .ir-report-status{ margin:8px 0; padding:10px 12px; border-radius:8px; background:#f8fafc; border:1px solid var(--line); font-size:13px; }
     .ir-report-status.err{ background:#fef2f2; border-color:#fecaca; color:#991b1b; }
     .ir-report-table-wrap{ overflow:auto; max-height:70vh; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
@@ -291,6 +301,8 @@
     .ir-report-table td.num{ text-align:right; font-variant-numeric:tabular-nums; }
     .ir-report-table td.delta-pos{ color:#b45309; }
     .ir-report-table td.delta-neg{ color:#166534; }
+    .ir-report-table td.win-auto{ color:#0f766e; font-weight:600; }
+    .ir-report-table td.win-legacy{ color:#1d4ed8; font-weight:600; }
     .ir-report-table tr:hover td{ background:#fafbff; }
     .shin-details{
       margin-top:10px; padding:10px 12px; background:#f8fafc;
@@ -538,7 +550,7 @@
       <button type="button" class="tab-btn active" data-tab="goal"><span class="tab-ico" aria-hidden="true">📈</span> Линия</button>
       <button type="button" class="tab-btn" data-tab="teams"><span class="tab-ico" aria-hidden="true">📋</span> Справочник</button>
       <button type="button" class="tab-btn" data-tab="hist"><span class="tab-ico" aria-hidden="true">🕓</span> История</button>
-      <button type="button" class="tab-btn" data-tab="inactreport"><span class="tab-ico" aria-hidden="true">📊</span> Отчёт inactive</button>
+      <button type="button" class="tab-btn" data-tab="inactreport"><span class="tab-ico" aria-hidden="true">📊</span> Сравнение моделей</button>
       <button type="button" class="tab-btn" data-tab="help"><span class="tab-ico" aria-hidden="true">❓</span> Справка</button>
     </div>
 
@@ -1047,35 +1059,59 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="clhMeta" class="meta"></div>
     </section>
 
-    <!-- TAB INACTIVE REPORT (read-only analytics, isolated from Line training) -->
+    <!-- TAB MODEL COMPARISON / BACKTEST (inactive matches; isolated from Line/History) -->
     <section id="tab-inactreport" class="panel">
-      <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Сравнение расчёта с эталоном (inactive)</h3>
-      <p class="small" style="margin:0 0 10px">Read-only отчёт: только матчи <code>active=false</code>. По каждой лиге отдельно обучается модель на активных матчах, затем для неактивных считается линия с маржой. Исходные данные в БД не изменяются. Вкладки «Линия» и «История» не затрагиваются.</p>
-      <div class="ir-report-toolbar">
-        <div class="field" style="min-width:180px">
-          <label>Лига</label>
-          <select id="irLeagueFilter"><option value="">Все лиги</option></select>
+      <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Сравнение моделей (Backtest)</h3>
+      <p class="small" style="margin:0 0 10px">Лаборатория моделей на матчах <code>active=false</code>. Обучение — на активных матчах лиги; БД не меняется. Вкладки «Линия» и «История» не затрагиваются. Параметры — <code>model_config.json</code>.</p>
+      <div class="ir-lab-layout">
+        <div class="ir-lab-main">
+          <div class="ir-mode-row">
+            <span style="font-weight:600;color:#10204a">Режим отчёта:</span>
+            <label><input type="radio" name="irReportMode" value="compare" checked /> Compare</label>
+            <label><input type="radio" name="irReportMode" value="legacy" /> Legacy</label>
+            <label><input type="radio" name="irReportMode" value="auto" /> Auto</label>
+          </div>
+          <div class="ir-mode-row" style="margin-bottom:10px">
+            <span style="font-weight:600;color:#10204a">Считать:</span>
+            <label><input type="checkbox" id="irUseLegacy" checked /> Legacy (Poisson + DC + Draw)</label>
+            <label><input type="checkbox" id="irUseAuto" checked /> Auto (Marginals + Copula)</label>
+          </div>
+          <div class="ir-report-toolbar">
+            <div class="field" style="min-width:160px">
+              <label>Лига</label>
+              <select id="irLeagueFilter"><option value="">Все лиги</option></select>
+            </div>
+            <div class="field" style="min-width:140px">
+              <label>Сезон</label>
+              <select id="irSeasonFilter"><option value="">Все сезоны</option></select>
+            </div>
+            <div class="field" style="max-width:130px">
+              <label>Дата от</label>
+              <input id="irDateFrom" type="date" />
+            </div>
+            <div class="field" style="max-width:130px">
+              <label>Дата до</label>
+              <input id="irDateTo" type="date" />
+            </div>
+            <div class="field" style="max-width:90px">
+              <label>Маржа %</label>
+              <input id="irMarginPct" type="text" value="3" />
+            </div>
+            <button type="button" id="irRunReport" class="btn primary">Сформировать</button>
+            <button type="button" id="irExportCsv" class="btn" disabled>Скачать CSV</button>
+          </div>
+          <div id="irReportStatus" class="ir-report-status" style="display:none"></div>
+          <div id="irReportTableWrap" class="ir-report-table-wrap" style="display:none">
+            <table id="irReportTable" class="ir-report-table">
+              <thead><tr id="irReportHead"></tr></thead>
+              <tbody id="irReportBody"></tbody>
+            </table>
+          </div>
         </div>
-        <div class="field" style="min-width:260px;flex:1.2">
-          <label>Модель расчёта</label>
-          <select id="irModelMode">
-            <option value="legacy" selected>Старая: Poisson + Dixon-Coles + ничья</option>
-            <option value="auto">Новая: Auto Marginals + Copula</option>
-          </select>
-        </div>
-        <div class="field" style="max-width:90px">
-          <label>Маржа %</label>
-          <input id="irMarginPct" type="text" value="3" />
-        </div>
-        <button type="button" id="irRunReport" class="btn primary">Сформировать отчёт</button>
-        <button type="button" id="irExportCsv" class="btn" disabled>Скачать CSV</button>
-      </div>
-      <div id="irReportStatus" class="ir-report-status" style="display:none"></div>
-      <div id="irReportTableWrap" class="ir-report-table-wrap" style="display:none">
-        <table id="irReportTable" class="ir-report-table">
-          <thead><tr id="irReportHead"></tr></thead>
-          <tbody id="irReportBody"></tbody>
-        </table>
+        <aside class="ir-summary-card" id="irSummaryCard">
+          <h4>Диагностика</h4>
+          <div id="irSummaryBody" class="small" style="color:#64748b">Сформируйте отчёт — здесь появятся MAE и победитель.</div>
+        </aside>
       </div>
     </section>
 
@@ -1095,7 +1131,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <li><b>Линия</b> — обучение модели и расчёт линии матча (главная вкладка).</li>
         <li><b>Справочник</b> — команды по лигам (и логотипы). Списки команд в «Линии» берутся отсюда.</li>
         <li><b>История</b> — просмотр сохранённых сезонов и матчей из Supabase. Отсюда данные можно загрузить в «Линию».</li>
-        <li><b>Отчёт inactive</b> — сравнение расчётных коэффициентов с эталоном по неактивным матчам (read-only). Можно выбрать модель: <b>старая</b> (Poisson + Dixon-Coles + ничья) или <b>новая</b> (Auto + Copula). Вкладки «Линия» и «История» не меняются.</li>
+        <li><b>Сравнение моделей</b> — backtest-лаборатория на inactive-матчах: режимы Legacy / Auto / Compare, сводка MAE и победитель. Параметры в <code>model_config.json</code>. Вкладки «Линия» и «История» не меняются.</li>
         <li><b>Справка</b> — этот раздел.</li>
       </ul>
 
@@ -3090,8 +3126,9 @@ bash scripts/update_and_serve.sh --start</div>
 
     // =================================================================
     // Голевая модель: closing lines → S/D → λ → матрица → все рынки
-    // Параметры матрицы — runtime config (без БД): goal_matrix.config.json
+    // Все числовые пороги — runtime config (без БД): model_config.json
     // =================================================================
+    let GM_MODEL_CFG = null;
     let GM_MATRIX_CFG = {
       modelMode: 'auto',
       jointMatrixMode: 'gaussian_copula',
@@ -3108,12 +3145,47 @@ bash scripts/update_and_serve.sh --start</div>
       useDixonColes: false,
       useDrawModel: false,
     };
+    function gmFlattenModelConfig(raw){
+      if(!raw || typeof raw !== 'object') return;
+      GM_MODEL_CFG = raw;
+      const m = raw.matrix || {};
+      const a = raw.autoMarginal || {};
+      const c = raw.copula || {};
+      const L = raw.legacy || {};
+      const t = raw.train || {};
+      GM_MATRIX_CFG = Object.assign({}, GM_MATRIX_CFG, {
+        maxGoals: m.maxGoals != null ? m.maxGoals : GM_MATRIX_CFG.maxGoals,
+        tailEpsilon: m.tailEpsilon != null ? m.tailEpsilon : GM_MATRIX_CFG.tailEpsilon,
+        lambdaMin: m.lambdaMin != null ? m.lambdaMin : GM_MATRIX_CFG.lambdaMin,
+        alphaCandidates: Array.isArray(a.alphaCandidates) ? a.alphaCandidates : GM_MATRIX_CFG.alphaCandidates,
+        nbMinImprovementPct: a.nbMinImprovementPct != null ? a.nbMinImprovementPct : GM_MATRIX_CFG.nbMinImprovementPct,
+        minMatchesForLeagueAlpha: a.minMatchesForLeagueAlpha != null ? a.minMatchesForLeagueAlpha : GM_MATRIX_CFG.minMatchesForLeagueAlpha,
+        alphaPenalty: a.alphaPenalty != null ? a.alphaPenalty : GM_MATRIX_CFG.alphaPenalty,
+        vppWeight: a.vppWeight != null ? a.vppWeight : GM_MATRIX_CFG.vppWeight,
+        rhoCandidates: Array.isArray(c.rhoCandidates) ? c.rhoCandidates : GM_MATRIX_CFG.rhoCandidates,
+        rhoMinImprovementPct: c.rhoMinImprovementPct != null ? c.rhoMinImprovementPct : GM_MATRIX_CFG.rhoMinImprovementPct,
+        useDixonColes: !!L.useDixonColes,
+        useDrawModel: !!L.useDrawModel,
+        legacy: L,
+        train: t,
+        compare: raw.compare || {},
+        configSource: 'model_config.json',
+      });
+    }
     async function loadGoalMatrixConfig(){
       try {
-        const res = await fetchWithTimeout(webAssetUrl('goal_matrix.config.json'), {}, CONFIG_FETCH_TIMEOUT_MS);
+        let res = await fetchWithTimeout(webAssetUrl('model_config.json'), {}, CONFIG_FETCH_TIMEOUT_MS);
+        if(res.ok){
+          const cfg = await res.json();
+          if(cfg && cfg.matrix){ gmFlattenModelConfig(cfg); return GM_MATRIX_CFG; }
+          if(cfg && typeof cfg === 'object') GM_MATRIX_CFG = Object.assign({}, GM_MATRIX_CFG, cfg);
+          return GM_MATRIX_CFG;
+        }
+        // backward-compatible flat file
+        res = await fetchWithTimeout(webAssetUrl('goal_matrix.config.json'), {}, CONFIG_FETCH_TIMEOUT_MS);
         if(!res.ok) return GM_MATRIX_CFG;
-        const cfg = await res.json();
-        if(cfg && typeof cfg === 'object') GM_MATRIX_CFG = Object.assign({}, GM_MATRIX_CFG, cfg);
+        const flat = await res.json();
+        if(flat && typeof flat === 'object') GM_MATRIX_CFG = Object.assign({}, GM_MATRIX_CFG, flat, {configSource:'goal_matrix.config.json'});
       } catch (_e){ /* defaults */ }
       return GM_MATRIX_CFG;
     }
@@ -4398,7 +4470,7 @@ bash scripts/update_and_serve.sh --start</div>
         alphaLoss0: loss0, alphaLossBest: lossBest, nbImprovementPct,
         rhoLoss0: rhoLosses[0], rhoLossBest: rhoLosses[bestRhoIdx], rhoImprovementPct,
         vppError, vpp: finalVpp,
-        configSource: 'goal_matrix.config.json',
+        configSource: (GM_MATRIX_CFG && GM_MATRIX_CFG.configSource) || 'model_config.json',
       };
     }
 
@@ -6577,52 +6649,115 @@ bash scripts/update_and_serve.sh --start</div>
       return {html, summary};
     }
 
-    // ========== INACTIVE REPORT (read-only, isolated; does not modify Line tab logic) ==========
-    const IR_REPORT_COLS = [
+    // ========== INACTIVE REPORT / MODEL COMPARISON LAB ==========
+    // Isolated from Line/History. Params from model_config.json.
+    let irReportRows = [];
+    let irActiveCols = [];
+    let irReportSummary = null;
+
+    const IR_COMPARE_COLS = [
+      'Дата','Лига','Дома','Гости',
+      '1','X','2','AH1','AH','AH2','O','Тот','U',
+      '1_L','X_L','2_L','AH1_L','AH_L','AH2_L','O_L','Тот_L','U_L',
+      '1_A','X_A','2_A','AH1_A','AH_A','AH2_A','O_A','Тот_A','U_A',
+      '1_dL','X_dL','2_dL','AH1_dL','AH_dL','AH2_dL','O_dL','Тот_dL','U_dL',
+      '1_dA','X_dA','2_dA','AH1_dA','AH_dA','AH2_dA','O_dA','Тот_dA','U_dA',
+      'winner_1x2','winner_AH','winner_OU','winner_row',
+    ];
+    const IR_SINGLE_COLS = [
       'Дата','Лига','Дома','Гости','calc_model',
-      'AH1','AH','AH2','O','Тот','U','1','X','2',
-      'AH1_pr','AH_pr','AH2_pr','O_pr','Тот_pr','U_pr','1_pr','X_pr','2_pr',
-      'AH1_delta','AH_delta','AH2_delta','O_delta','Тот_delta','U_delta','1_delta','X_delta','2_delta',
+      '1','X','2','AH1','AH','AH2','O','Тот','U',
+      '1_pr','X_pr','2_pr','AH1_pr','AH_pr','AH2_pr','O_pr','Тот_pr','U_pr',
+      '1_delta','X_delta','2_delta','AH1_delta','AH_delta','AH2_delta','O_delta','Тот_delta','U_delta',
       'selected_distribution','alpha_final','rho_final','dc_gamma','lambda_home','lambda_away',
       'matrix_sum','matrix_tail','p_00','p_11','p_btts_yes',
       'model_total_mean','model_total_variance','model_total_variance_ratio',
     ];
-    const IR_TEXT_COLS = new Set(['Дата','Лига','Дома','Гости','calc_model','selected_distribution']);
-    const IR_ODDS_COLS = new Set(['AH1','AH2','O','U','1','X','2','AH1_pr','AH2_pr','O_pr','U_pr','1_pr','X_pr','2_pr','AH1_delta','AH2_delta','O_delta','U_delta','1_delta','X_delta','2_delta']);
-    const IR_LINE_COLS = new Set(['AH','Тот','AH_pr','Тот_pr','AH_delta','Тот_delta']);
-    const IR_DIAG_COLS = new Set([
-      'alpha_final','rho_final','dc_gamma','lambda_home','lambda_away','matrix_sum','matrix_tail',
-      'p_00','p_11','p_btts_yes','model_total_mean','model_total_variance','model_total_variance_ratio',
+    const IR_TEXT_COLS = new Set([
+      'Дата','Лига','Дома','Гости','calc_model','selected_distribution',
+      'winner_1x2','winner_AH','winner_OU','winner_row',
     ]);
-    let irReportRows = [];
+    const IR_LINE_COLS = new Set([
+      'AH','Тот','AH_pr','Тот_pr','AH_L','Тот_L','AH_A','Тот_A',
+      'AH_delta','Тот_delta','AH_dL','Тот_dL','AH_dA','Тот_dA',
+    ]);
+    const IR_WIN_COLS = new Set(['winner_1x2','winner_AH','winner_OU','winner_row']);
 
-    function irSelectedModelMode(){
-      const v = (document.getElementById('irModelMode')||{}).value || 'legacy';
-      return v === 'auto' ? 'auto' : 'legacy';
+    function irCfgPart(path, fallback){
+      const root = GM_MODEL_CFG || GM_MATRIX_CFG || {};
+      let cur = root;
+      for(const k of path.split('.')){
+        if(cur == null || typeof cur !== 'object') return fallback;
+        cur = cur[k];
+      }
+      return cur != null ? cur : fallback;
     }
-    function irModelModeLabel(mode){
-      return mode === 'auto' ? 'auto_copula' : 'legacy_dc';
+    function irReportMode(){
+      const el = document.querySelector('input[name="irReportMode"]:checked');
+      return (el && el.value) || 'compare';
+    }
+    function irEnginesSelected(){
+      const mode = irReportMode();
+      if(mode === 'legacy') return {legacy:true, auto:false, compare:false};
+      if(mode === 'auto') return {legacy:false, auto:true, compare:false};
+      const leg = !!(document.getElementById('irUseLegacy')||{}).checked;
+      const aut = !!(document.getElementById('irUseAuto')||{}).checked;
+      return {legacy:leg, auto:aut, compare:leg && aut};
+    }
+    function irSyncModeCheckboxes(){
+      const mode = irReportMode();
+      const leg = document.getElementById('irUseLegacy');
+      const aut = document.getElementById('irUseAuto');
+      if(!leg || !aut) return;
+      if(mode === 'legacy'){ leg.checked = true; aut.checked = false; leg.disabled = true; aut.disabled = true; }
+      else if(mode === 'auto'){ leg.checked = false; aut.checked = true; leg.disabled = true; aut.disabled = true; }
+      else { leg.disabled = false; aut.disabled = false; if(!leg.checked && !aut.checked){ leg.checked = true; aut.checked = true; } }
     }
     function irBaselineCfg(seasonWeightsById, mode){
       const legacy = mode !== 'auto';
+      const L = irCfgPart('legacy', {}) || {};
+      const T = irCfgPart('train', {}) || {};
+      const M = irCfgPart('matrix', {}) || {};
       return {
-        maxGoals: GM_MAX, alphaAh: 0.25, pAh: 2, minWAh: 0.15, maxWAh: 1,
-        alphaT: 0.5, deltaAh: 0.5, deltaLam: 0.25, maxIter: 30, tol: 1e-4, drawLoss: 1.5,
+        maxGoals: M.maxGoals != null ? M.maxGoals : GM_MAX,
+        alphaAh: T.alphaAh != null ? T.alphaAh : 0.25,
+        pAh: 2, minWAh: 0.15, maxWAh: 1,
+        alphaT: T.alphaT != null ? T.alphaT : 0.5,
+        deltaAh: 0.5, deltaLam: 0.25, maxIter: 30, tol: 1e-4,
+        drawLoss: L.drawLossWeight != null ? L.drawLossWeight : 1.5,
         seasonDefault: 1.0, seasonWeightsById: seasonWeightsById || {},
-        priorAlpha: 0.7, promotedN: 3,
-        regLambda: 0.10, regLambdaAttack: 0.1, regLambdaDefense: 0.1,
+        priorAlpha: T.priorAlpha != null ? T.priorAlpha : 0.7, promotedN: 3,
+        regLambda: T.regLambda != null ? T.regLambda : 0.10,
+        regLambdaAttack: T.regLambdaAttack != null ? T.regLambdaAttack : 0.1,
+        regLambdaDefense: T.regLambdaDefense != null ? T.regLambdaDefense : 0.1,
         dClampLowTeam: 3, dClampEarlyFraction: 0.25,
-        derbyShrinkTau: 30, derbyHDefault: 0.7, derbyMinMatches: 3,
-        dCalMode: 'soft', dCalBMin: 0.90, dCalBMax: 1.03, dCalBPenalty: 2.0,
-        dBigFavMode: 'linear', dBigFavThreshold: 1.25, dBigFavSlope: 0.75, dBigFavCap: 2.00,
-        // legacy inactive: Poisson + Dixon-Coles + draw (до переработки); auto: без DC/draw
-        useDraw: legacy, useDc: legacy, modelProfile: 'baseline', drawMode: 'residual_dc',
-        qmin: 0.95, qmax: 1.15, qResMin: 0.95, qResMax: 1.15,
-        sCalMode: 'off', sCalMaxDelta: 0.15, gammaMax: 0.20,
+        derbyShrinkTau: 30,
+        derbyHDefault: T.derbyHDefault != null ? T.derbyHDefault : 0.7,
+        derbyMinMatches: 3,
+        dCalMode: T.dCalMode || 'soft',
+        dCalBMin: T.dCalBMin != null ? T.dCalBMin : 0.90,
+        dCalBMax: T.dCalBMax != null ? T.dCalBMax : 1.03,
+        dCalBPenalty: T.dCalBPenalty != null ? T.dCalBPenalty : 2.0,
+        dBigFavMode: T.dBigFavMode || 'linear',
+        dBigFavThreshold: T.dBigFavThreshold != null ? T.dBigFavThreshold : 1.25,
+        dBigFavSlope: T.dBigFavSlope != null ? T.dBigFavSlope : 0.75,
+        dBigFavCap: T.dBigFavCap != null ? T.dBigFavCap : 2.00,
+        useDraw: legacy ? (L.useDrawModel !== false) : false,
+        useDc: legacy ? (L.useDixonColes !== false) : false,
+        modelProfile: 'baseline',
+        drawMode: L.drawMode || 'residual_dc',
+        qmin: L.drawQMin != null ? L.drawQMin : 0.95,
+        qmax: L.drawQMax != null ? L.drawQMax : 1.15,
+        qResMin: L.drawQResMin != null ? L.drawQResMin : 0.95,
+        qResMax: L.drawQResMax != null ? L.drawQResMax : 1.15,
+        sCalMode: T.sCalMode || 'off',
+        sCalMaxDelta: 0.15,
+        gammaMax: L.gammaMax != null ? L.gammaMax : 0.20,
+        fitGamma: L.fitGamma !== false,
+        fixedDcGamma: L.dcGamma != null ? L.dcGamma : 0,
         irEngine: legacy ? 'legacy' : 'auto',
       };
     }
-    /** Калибровка a,b,c,d,+γ как до переработки (только для inactive legacy). */
     function irCalibrateLegacy(ms, st, gl, cfg){
       const used = ms.filter(m => m.p1 != null);
       if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0,n1x2:0};
@@ -6637,464 +6772,565 @@ bash scripts/update_and_serve.sh --start</div>
       });
       const sOff = cfg.sCalMode === 'off';
       const dOff = (cfg.dCalMode || 'soft') === 'off';
-      function lossCore(a, b, c, d, g){
-        if(d <= 0) return 1e9;
-        const gc = gmClipGamma(g, cfg);
-        let tot = gmSCalPenalty(c, d, cfg) + gmDCalPenalty(b, cfg);
-        for(const [m, dm, sm, w] of pre){
-          const sf = gmApplySCal(sm, c, d, cfg); if(sf <= 0.2) return 1e9;
-          const dc = gmApplyDCal(dm, a, b, cfg);
-          const df = gmClampD(dc.dUsed, sf);
-          const lh = (sf + df) / 2, la = (sf - df) / 2;
-          if(lh <= 0 || la <= 0) return 1e9;
-          let mat = gmMatrix(lh, la, cfg.maxGoals);
-          if(cfg.useDc && gc) mat = gmDC(mat, lh, la, gc);
-          const [p1, px, p2] = gm1x2(mat);
-          tot += w * ((p1 - m.p1) ** 2 + cfg.drawLoss * (px - m.px) ** 2 + (p2 - m.p2) ** 2);
+      if(cfg.useDc && cfg.fitGamma === false){
+        const gFix = gmClipGamma(cfg.fixedDcGamma || 0, cfg);
+        function lossNoG(a,b,c,d){
+          if(d<=0) return 1e9;
+          let tot = gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
+          for(const [m,dm,sm,w] of pre){
+            const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
+            const dc=gmApplyDCal(dm,a,b,cfg);
+            const df=gmClampD(dc.dUsed,sf); const lh=(sf+df)/2,la=(sf-df)/2;
+            if(lh<=0||la<=0) return 1e9;
+            let mat=gmMatrix(lh,la,cfg.maxGoals);
+            if(gFix) mat=gmDC(mat,lh,la,gFix);
+            const [p1,px,p2]=gm1x2(mat);
+            tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
+          }
+          return tot;
+        }
+        let full;
+        if(sOff){
+          if(dOff){ const x=gmNelder(p=>lossNoG(p[0],1,0,1),[0]); full=[x[0],1,0,1]; }
+          else { const x=gmNelder(p=>lossNoG(p[0],p[1],0,1),[0,1]); full=[x[0],x[1],0,1]; }
+        } else if(dOff){
+          const x=gmNelder(p=>lossNoG(p[0],1,p[1],p[2]),[0,0,1]); full=[x[0],1,x[1],x[2]];
+        } else {
+          const x=gmNelder(p=>lossNoG(p[0],p[1],p[2],p[3]),[0,1,0,1]); full=[x[0],x[1],x[2],x[3]];
+        }
+        const bOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
+        return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:gFix,n1x2:used.length};
+      }
+      function lossCore(a,b,c,d,g){
+        if(d<=0) return 1e9;
+        const gc=gmClipGamma(g,cfg);
+        let tot=gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
+        for(const [m,dm,sm,w] of pre){
+          const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
+          const dc=gmApplyDCal(dm,a,b,cfg);
+          const df=gmClampD(dc.dUsed,sf); const lh=(sf+df)/2,la=(sf-df)/2;
+          if(lh<=0||la<=0) return 1e9;
+          let mat=gmMatrix(lh,la,cfg.maxGoals);
+          if(cfg.useDc&&gc) mat=gmDC(mat,lh,la,gc);
+          const [p1,px,p2]=gm1x2(mat);
+          tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
         }
         return tot;
       }
       let full;
       if(sOff){
         if(cfg.useDc){
-          if(dOff){
-            const x = gmNelder(p => lossCore(p[0], 1, 0, 1, p[1]), [0, 0]);
-            full = [x[0], 1, 0, 1, gmClipGamma(x[1], cfg)];
-          } else {
-            const x = gmNelder(p => lossCore(p[0], p[1], 0, 1, p[2]), [0, 1, 0]);
-            full = [x[0], x[1], 0, 1, gmClipGamma(x[2], cfg)];
-          }
+          if(dOff){ const x=gmNelder(p=>lossCore(p[0],1,0,1,p[1]),[0,0]); full=[x[0],1,0,1,gmClipGamma(x[1],cfg)]; }
+          else { const x=gmNelder(p=>lossCore(p[0],p[1],0,1,p[2]),[0,1,0]); full=[x[0],x[1],0,1,gmClipGamma(x[2],cfg)]; }
         } else {
-          if(dOff){
-            const x = gmNelder(p => lossCore(p[0], 1, 0, 1, 0), [0]);
-            full = [x[0], 1, 0, 1, 0];
-          } else {
-            const x = gmNelder(p => lossCore(p[0], p[1], 0, 1, 0), [0, 1]);
-            full = [x[0], x[1], 0, 1, 0];
-          }
+          if(dOff){ const x=gmNelder(p=>lossCore(p[0],1,0,1,0),[0]); full=[x[0],1,0,1,0]; }
+          else { const x=gmNelder(p=>lossCore(p[0],p[1],0,1,0),[0,1]); full=[x[0],x[1],0,1,0]; }
         }
       } else if(cfg.useDc){
-        if(dOff){
-          const x = gmNelder(p => lossCore(p[0], 1, p[1], p[2], p[3]), [0, 0, 1, 0]);
-          full = [x[0], 1, x[1], x[2], gmClipGamma(x[3], cfg)];
-        } else {
-          const x = gmNelder(p => lossCore(p[0], p[1], p[2], p[3], p[4]), [0, 1, 0, 1, 0]);
-          full = [x[0], x[1], x[2], x[3], gmClipGamma(x[4], cfg)];
-        }
+        if(dOff){ const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2],p[3]),[0,0,1,0]); full=[x[0],1,x[1],x[2],gmClipGamma(x[3],cfg)]; }
+        else { const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],p[4]),[0,1,0,1,0]); full=[x[0],x[1],x[2],x[3],gmClipGamma(x[4],cfg)]; }
       } else {
-        if(dOff){
-          const x = gmNelder(p => lossCore(p[0], 1, p[1], p[2], 0), [0, 0, 1]);
-          full = [x[0], 1, x[1], x[2], 0];
-        } else {
-          const x = gmNelder(p => lossCore(p[0], p[1], p[2], p[3], 0), [0, 1, 0, 1]);
-          full = [x[0], x[1], x[2], x[3], 0];
-        }
+        if(dOff){ const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2],0),[0,0,1]); full=[x[0],1,x[1],x[2],0]; }
+        else { const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],0),[0,1,0,1]); full=[x[0],x[1],x[2],x[3],0]; }
       }
-      const bOut = dOff ? 1 : ((cfg.dCalMode || 'soft') === 'free' ? full[1] : gmBoundB(full[1], cfg));
-      return {a: full[0], b: bOut, c: full[2], d: full[3], gamma: full[4], n1x2: used.length};
+      const bOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
+      return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:full[4],n1x2:used.length};
     }
-    function irProb1x2Legacy(s, d, cfg, gamma){
-      const df = gmClampD(d, s);
-      const lh = (s + df) / 2, la = (s - df) / 2;
-      if(lh <= 0 || la <= 0) return [0, 0, 0];
-      let mat = gmMatrix(lh, la, cfg.maxGoals || GM_MAX);
-      if(cfg.useDc && gamma) mat = gmDC(mat, lh, la, gamma);
+    function irProb1x2Legacy(s,d,cfg,gamma){
+      const df=gmClampD(d,s);
+      const lh=(s+df)/2, la=(s-df)/2;
+      if(lh<=0||la<=0) return [0,0,0];
+      let mat=gmMatrix(lh,la,cfg.maxGoals||GM_MAX);
+      if(cfg.useDc&&gamma) mat=gmDC(mat,lh,la,gamma);
       return gm1x2(mat);
     }
-    function irFitDrawResidualLegacy(ms, st, gl, cal, cfg){
-      const def = {alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default',mode:'residual_dc'};
-      const gamma = cfg.useDc ? (cal.gamma || 0) : 0;
-      const rows = [];
+    function irFitDrawResidualLegacy(ms,st,gl,cal,cfg){
+      const def={alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default',mode:'residual_dc'};
+      const gamma=cfg.useDc?(cal.gamma||0):0;
+      const rows=[];
       for(const m of ms){
-        if(m.px == null) continue;
-        const w1x2 = (m.raw.ho && m.raw.dо && m.raw.ao) ? 1.0 : 0.0;
-        const w = m.wBase * w1x2; if(w <= 0) continue;
-        const {sCal, dCal} = gmCalibratedSdForMatch(m, st, gl, cal, cfg);
-        const [, pxDc] = irProb1x2Legacy(sCal, dCal, cfg, gamma);
-        if(pxDc <= 1e-9) continue;
-        let q = m.px / pxDc;
-        const [qLo, qHi] = gmEffectiveQBounds(cfg, 'residual_dc');
-        q = Math.min(qHi * 1.5, Math.max(qLo * 0.5, q));
-        if(q <= 0) continue;
-        const da = Math.abs(dCal), S = sCal;
-        rows.push([[1, da, S, S * S, da * S], Math.log(q), w]);
+        if(m.px==null) continue;
+        const w1x2=(m.raw.ho&&m.raw.dо&&m.raw.ao)?1.0:0.0;
+        const w=m.wBase*w1x2; if(w<=0) continue;
+        const {sCal,dCal}=gmCalibratedSdForMatch(m,st,gl,cal,cfg);
+        const [,pxDc]=irProb1x2Legacy(sCal,dCal,cfg,gamma);
+        if(pxDc<=1e-9) continue;
+        let q=m.px/pxDc;
+        const [qLo,qHi]=gmEffectiveQBounds(cfg,'residual_dc');
+        q=Math.min(qHi*1.5, Math.max(qLo*0.5, q));
+        if(q<=0) continue;
+        const da=Math.abs(dCal), S=sCal;
+        rows.push([[1,da,S,S*S,da*S],Math.log(q),w]);
       }
-      if(rows.length < 6) return def;
-      let beta; try { beta = gmWls(rows, 5); } catch (_e){ return def; }
-      const dm = {alpha:beta[0],betaD:beta[1],betaS:beta[2],betaS2:beta[3],betaDxS:beta[4],source:'fitted',mode:'residual_dc'};
-      const q0 = gmDrawQMult(dm, 0, 2.6, cfg);
-      if(!(q0 >= 0.85 && q0 <= 1.15)) return def;
+      if(rows.length<6) return def;
+      let beta; try{ beta=gmWls(rows,5);}catch(_e){ return def; }
+      const dm={alpha:beta[0],betaD:beta[1],betaS:beta[2],betaS2:beta[3],betaDxS:beta[4],source:'fitted',mode:'residual_dc'};
+      const q0=gmDrawQMult(dm,0,2.6,cfg);
+      if(!(q0>=0.85&&q0<=1.15)) return def;
       return dm;
     }
-    function irPredictLegacy(model, homeId, awayId, opt){
-      const {st, gl, cal, draw, cfg} = model;
-      const iHome = opt.neutral ? 0 : 1;
-      const names = model.teamNames || {};
-      const homeName = names[homeId] || homeId, awayName = names[awayId] || awayId;
-      const hEff = gmEffectiveH(st, cfg, opt.neutral, !!opt.derby);
-      const R = t => t in st.ratings ? st.ratings[t] : gmPromoted(st.ratings, cfg.promotedN);
-      const A = t => t in gl.attack ? gl.attack[t] : gmPromoted(gl.attack, cfg.promotedN);
-      const Df = t => t in gl.defense ? gl.defense[t] : gmPromoted(gl.defense, cfg.promotedN);
-      const kHg = Math.abs(st.H) > 1e-9 ? hEff / st.H : 1;
-      const dm = R(homeId) - R(awayId) + hEff;
-      const lhAD = Math.exp(gl.mu + A(homeId) - Df(awayId) + gl.hg * iHome * kHg);
-      const laAD = Math.exp(gl.mu + A(awayId) - Df(homeId));
-      const sm = lhAD + laAD;
-      const dc = gmApplyDCal(dm, cal.a, cal.b, cfg);
-      let sf = gmApplySCal(sm, cal.c, cal.d, cfg);
-      let df = gmClampD(dc.dUsed, sf);
-      const lh = (sf + df) / 2, la = (sf - df) / 2;
-      let mat = gmMatrix(lh, la, cfg.maxGoals || GM_MAX);
-      if(cfg.useDc && cal.gamma) mat = gmDC(mat, lh, la, cal.gamma);
-      let dtarget = null, diag = null;
-      if(cfg.useDraw && draw){
-        const pxMat = gmDrawProb(mat);
-        const [qmin, qmax] = gmEffectiveQBounds(cfg, draw.mode);
-        if(draw.mode === 'residual_dc') dtarget = gmDrawQMult(draw, df, sf, cfg) * pxMat;
-        else dtarget = gmDrawTarget(draw, df, sf);
-        [mat, diag] = gmAdjustDraw(mat, dtarget, qmin, qmax);
+    function irPredictLegacy(model,homeId,awayId,opt){
+      const {st,gl,cal,draw,cfg}=model;
+      const iHome=opt.neutral?0:1;
+      const names=model.teamNames||{};
+      const homeName=names[homeId]||homeId, awayName=names[awayId]||awayId;
+      const hEff=gmEffectiveH(st,cfg,opt.neutral,!!opt.derby);
+      const R=t=>t in st.ratings?st.ratings[t]:gmPromoted(st.ratings,cfg.promotedN);
+      const A=t=>t in gl.attack?gl.attack[t]:gmPromoted(gl.attack,cfg.promotedN);
+      const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
+      const kHg=Math.abs(st.H)>1e-9?hEff/st.H:1;
+      const dm=R(homeId)-R(awayId)+hEff;
+      const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
+      const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
+      const sm=lhAD+laAD;
+      const dc=gmApplyDCal(dm,cal.a,cal.b,cfg);
+      let sf=gmApplySCal(sm,cal.c,cal.d,cfg);
+      let df=gmClampD(dc.dUsed,sf);
+      const lh=(sf+df)/2, la=(sf-df)/2;
+      let mat=gmMatrix(lh,la,cfg.maxGoals||GM_MAX);
+      if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
+      let dtarget=null, diag=null;
+      if(cfg.useDraw&&draw){
+        const pxMat=gmDrawProb(mat);
+        const [qmin,qmax]=gmEffectiveQBounds(cfg, draw.mode);
+        if(draw.mode==='residual_dc') dtarget=gmDrawQMult(draw,df,sf,cfg)*pxMat;
+        else dtarget=gmDrawTarget(draw,df,sf);
+        [mat,diag]=gmAdjustDraw(mat,dtarget,qmin,qmax);
       }
-      const matDiag = gmMatrixDiagnostics(mat, lh, la, 0);
+      const matDiag=gmMatrixDiagnostics(mat,lh,la,0);
       return {
-        homeId, awayId, homeName, awayName, lh, la, df, sf, mat, matDiag,
-        alphaFinal: 0, rhoFinal: 0, dcGamma: cal.gamma || 0,
-        selectedDistribution: 'poisson_dc',
-        markets: gmMarkets(mat), drawTarget: dtarget, drawDiag: diag,
+        homeId,awayId,homeName,awayName,lh,la,df,sf,mat,matDiag,
+        alphaFinal:0, rhoFinal:0, dcGamma:cal.gamma||0,
+        selectedDistribution:'poisson_dc',
+        markets:gmMarkets(mat), drawTarget:dtarget, drawDiag:diag,
       };
     }
-    function irTrainLegacy(raw, cfg){
-      const cfgL = Object.assign({}, cfg, {useDc: true, useDraw: true, irEngine: 'legacy'});
-      const ms = gmPrepare(raw, cfgL);
-      const st = gmFitStrength(ms, cfgL, null);
-      const gl = gmFitAD(ms, cfgL, null);
-      const cal = irCalibrateLegacy(ms, st, gl, cfgL);
-      const draw = cfgL.drawMode === 'residual_dc'
-        ? irFitDrawResidualLegacy(ms, st, gl, cal, cfgL)
-        : gmFitDraw(ms, cfgL);
-      const model = {
-        st, gl, cal, draw, cfg: cfgL, nMatches: ms.length, teamNames: {},
-        alphaFinal: 0, rhoFinal: 0, selectedDistribution: 'poisson_dc',
-        nbImprovementPct: 0, matrixCalib: {status: 'legacy_dc', nMatches: ms.length},
-        irEngine: 'legacy',
+    function irTrainLegacy(raw,cfg){
+      const cfgL=Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw!==false, irEngine:'legacy'});
+      const ms=gmPrepare(raw,cfgL);
+      const st=gmFitStrength(ms,cfgL,null);
+      const gl=gmFitAD(ms,cfgL,null);
+      const cal=irCalibrateLegacy(ms,st,gl,cfgL);
+      const draw=cfgL.useDraw
+        ? ((cfgL.drawMode==='residual_dc') ? irFitDrawResidualLegacy(ms,st,gl,cal,cfgL) : gmFitDraw(ms,cfgL))
+        : {alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'disabled',mode:'legacy'};
+      const model={
+        st,gl,cal,draw,cfg:cfgL,nMatches:ms.length,teamNames:{},
+        alphaFinal:0,rhoFinal:0,selectedDistribution:'poisson_dc',
+        nbImprovementPct:0,matrixCalib:{status:'legacy_dc',nMatches:ms.length},
+        irEngine:'legacy',
       };
-      ms.forEach(m => { model.teamNames[m.home] = m.homeName; model.teamNames[m.away] = m.awayName; });
+      ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
       return model;
     }
-    function irTrainModel(raw, cfg, mode){
-      if(mode === 'auto'){
-        const model = gmTrain(raw, Object.assign({}, cfg, {useDc: false, useDraw: false, irEngine: 'auto'}), null, []);
-        model.irEngine = 'auto';
+    function irTrainModel(raw,cfg,mode){
+      if(mode==='auto'){
+        const model=gmTrain(raw, Object.assign({}, cfg, {useDc:false, useDraw:false, irEngine:'auto'}), null, []);
+        model.irEngine='auto';
         return model;
       }
-      return irTrainLegacy(raw, cfg);
+      return irTrainLegacy(raw,cfg);
     }
     function irParseMarginPct(){
-      const v = parseFloat(String((document.getElementById('irMarginPct')||{}).value || '3').replace(',', '.'));
-      return isNaN(v) || v < 0 ? 0 : v / 100;
+      const def = irCfgPart('compare.defaultMarginPct', 3);
+      const v=parseFloat(String((document.getElementById('irMarginPct')||{}).value || def).replace(',','.'));
+      return isNaN(v)||v<0 ? 0 : v/100;
     }
-    function irFmtCell(val, col){
-      if(val == null) return '';
-      if(IR_TEXT_COLS.has(col)){
-        const s = String(val).trim();
-        return s;
-      }
+    function irFmtCell(val,col){
+      if(val==null) return '';
+      if(IR_TEXT_COLS.has(col)) return String(val).trim();
       if(!isFinite(val)) return '';
-      if(IR_LINE_COLS.has(col)) return val.toFixed(2);
-      if(IR_ODDS_COLS.has(col)) return val.toFixed(3);
-      if(IR_DIAG_COLS.has(col)){
-        if(col === 'matrix_sum' || col === 'p_00' || col === 'p_11' || col === 'p_btts_yes') return Number(val).toFixed(6);
-        if(col === 'alpha_final' || col === 'rho_final' || col === 'dc_gamma') return Number(val).toFixed(4);
-        return Number(val).toFixed(4);
-      }
-      return String(val);
+      if(IR_LINE_COLS.has(col)) return Number(val).toFixed(2);
+      if(String(col).includes('alpha')||String(col).includes('rho')||col==='dc_gamma') return Number(val).toFixed(4);
+      if(String(col).startsWith('p_')||col==='matrix_sum'||col==='matrix_tail') return Number(val).toFixed(6);
+      if(String(col).includes('model_total')) return Number(val).toFixed(4);
+      return Number(val).toFixed(3);
     }
-    function irFmtDisplay(val, col){
-      const s = irFmtCell(val, col);
-      return s === '' ? '—' : s;
+    function irFmtDisplay(val,col){
+      const s=irFmtCell(val,col);
+      return s===''?'—':s;
     }
-    function irDelta(pr, et, isLine){
-      if(pr == null || et == null || !isFinite(pr) || !isFinite(et)) return null;
-      return pr - et;
+    function irDelta(pr,et){
+      if(pr==null||et==null||!isFinite(pr)||!isFinite(et)) return null;
+      return pr-et;
     }
-    function irMarginOddsFromProb(p, mg){
-      if(!(p > 0) || !isFinite(p)) return null;
-      if(!mg || mg <= 0) return 1 / p;
-      return 1 / (p * (1 + mg));
+    function irMarginOddsFromProb(p,mg){
+      if(!(p>0)||!isFinite(p)) return null;
+      if(!mg||mg<=0) return 1/p;
+      return 1/(p*(1+mg));
+    }
+    function irAbsMae(vals){
+      const xs=vals.filter(v=>v!=null&&isFinite(v));
+      if(!xs.length) return null;
+      return xs.reduce((a,b)=>a+Math.abs(b),0)/xs.length;
+    }
+    function irWinner(maeL, maeA){
+      if(maeL==null&&maeA==null) return '—';
+      if(maeL==null) return 'Auto';
+      if(maeA==null) return 'Legacy';
+      if(Math.abs(maeL-maeA)<1e-9) return 'tie';
+      return maeL<maeA ? 'Legacy' : 'Auto';
     }
     function irBuildSeasonWeights(leagueId, seasonIds){
-      const weights = {};
-      const seasons = (window.__SB.seasons || []).filter(s => String(s.league_id) === String(leagueId) && seasonIds.includes(s.season_id));
-      seasons.sort((a, b) => String(b.season_label || '').localeCompare(String(a.season_label || '')));
-      if(seasons.length){
-        seasons.forEach((s, i) => { weights[s.season_id] = goalDefaultSeasonWeight(i); });
-      } else {
-        seasonIds.forEach((sid, i) => { weights[sid] = goalDefaultSeasonWeight(i); });
-      }
+      const weights={};
+      const seasons=(window.__SB.seasons||[]).filter(s=>String(s.league_id)===String(leagueId)&&seasonIds.includes(s.season_id));
+      seasons.sort((a,b)=>String(b.season_label||'').localeCompare(String(a.season_label||'')));
+      if(seasons.length) seasons.forEach((s,i)=>{ weights[s.season_id]=goalDefaultSeasonWeight(i); });
+      else seasonIds.forEach((sid,i)=>{ weights[sid]=goalDefaultSeasonWeight(i); });
       return weights;
     }
     async function irFetchPagedMatches(extraQuery){
-      const pageSize = 1000;
-      let offset = 0;
-      const all = [];
+      const pageSize=1000; let offset=0; const all=[];
       while(true){
-        const q = `${extraQuery}&limit=${pageSize}&offset=${offset}`;
-        const batch = await sbFetch(`/v_matches_full?${q}`);
-        if(!Array.isArray(batch) || !batch.length) break;
+        const q=`${extraQuery}&limit=${pageSize}&offset=${offset}`;
+        const batch=await sbFetch(`/v_matches_full?${q}`);
+        if(!Array.isArray(batch)||!batch.length) break;
         all.push(...batch);
-        if(batch.length < pageSize) break;
-        offset += pageSize;
+        if(batch.length<pageSize) break;
+        offset+=pageSize;
       }
       return all;
     }
     async function irFetchInactiveMatches(leagueId){
-      let q = `select=${SB_MATCH_VIEW_SELECT}&active=eq.false&order=league_name.asc,match_date.asc,home_team.asc,away_team.asc`;
-      if(leagueId) q += `&league_id=eq.${encodeURIComponent(leagueId)}`;
+      let q=`select=${SB_MATCH_VIEW_SELECT}&active=eq.false&order=league_name.asc,match_date.asc,home_team.asc,away_team.asc`;
+      if(leagueId) q+=`&league_id=eq.${encodeURIComponent(leagueId)}`;
       return irFetchPagedMatches(q);
     }
     async function irFetchActiveMatchesForLeague(leagueId){
-      const q = `select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&active=eq.true&order=match_date.asc`;
+      const q=`select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&active=eq.true&order=match_date.asc`;
       return irFetchPagedMatches(q);
+    }
+    function irFilterMatches(list){
+      const season=(document.getElementById('irSeasonFilter')||{}).value||'';
+      const dFrom=(document.getElementById('irDateFrom')||{}).value||'';
+      const dTo=(document.getElementById('irDateTo')||{}).value||'';
+      return list.filter(m=>{
+        if(season && String(m.season_id||'')!==String(season)) return false;
+        const d=String(m.match_date||'').slice(0,10);
+        if(dFrom && d && d<dFrom) return false;
+        if(dTo && d && d>dTo) return false;
+        return true;
+      });
     }
     function irEtalonFromMatch(m){
       return {
-        Дата: m.match_date || '',
-        Лига: m.league_name || sbLeagueName(m.league_id) || '',
-        Дома: m.home_team || '',
-        Гости: m.away_team || '',
-        AH1: gmF(m.ah_home_odds),
-        AH: gmF(m.closing_ah_home),
-        AH2: gmF(m.ah_away_odds),
-        O: gmF(m.over_odds),
-        Тот: gmF(m.closing_total_line),
-        U: gmF(m.under_odds),
-        '1': gmF(m.home_odds),
-        X: gmF(m.draw_odds),
-        '2': gmF(m.away_odds),
+        Дата:m.match_date||'', Лига:m.league_name||sbLeagueName(m.league_id)||'',
+        Дома:m.home_team||'', Гости:m.away_team||'',
+        AH1:gmF(m.ah_home_odds), AH:gmF(m.closing_ah_home), AH2:gmF(m.ah_away_odds),
+        O:gmF(m.over_odds), Тот:gmF(m.closing_total_line), U:gmF(m.under_odds),
+        '1':gmF(m.home_odds), X:gmF(m.draw_odds), '2':gmF(m.away_odds),
       };
     }
-    function irPredictPrices(model, homeId, awayId, opt, marginFrac){
+    function irPredictBundle(model, homeId, awayId, opt, marginFrac){
       if(!model) return null;
-      try {
-        const engine = model.irEngine || (model.cfg && model.cfg.irEngine) || 'auto';
-        const pred = engine === 'legacy'
-          ? irPredictLegacy(model, homeId, awayId, opt)
-          : gmPredict(model, homeId, awayId, opt);
-        const mk = pred.markets;
-        const t = mk.mainTotal;
-        const a = mk.mainAh;
-        const mg = marginFrac || 0;
-        const d = pred.matDiag || {};
+      try{
+        const engine=model.irEngine||(model.cfg&&model.cfg.irEngine)||'auto';
+        const pred=engine==='legacy' ? irPredictLegacy(model,homeId,awayId,opt) : gmPredict(model,homeId,awayId,opt);
+        const mk=pred.markets; const t=mk.mainTotal; const a=mk.mainAh; const mg=marginFrac||0;
+        const d=pred.matDiag||{};
         return {
-          calc_model: irModelModeLabel(engine),
-          AH1_pr: irMarginOddsFromProb(1 / a.home, mg),
-          AH_pr: a.line,
-          AH2_pr: irMarginOddsFromProb(1 / a.away, mg),
-          O_pr: irMarginOddsFromProb(1 / t.over, mg),
-          Тот_pr: t.line,
-          U_pr: irMarginOddsFromProb(1 / t.under, mg),
-          '1_pr': irMarginOddsFromProb(mk.p1, mg),
-          X_pr: irMarginOddsFromProb(mk.px, mg),
-          '2_pr': irMarginOddsFromProb(mk.p2, mg),
-          selected_distribution: pred.selectedDistribution || model.selectedDistribution || (engine === 'legacy' ? 'poisson_dc' : 'poisson_like'),
-          alpha_final: pred.alphaFinal != null ? pred.alphaFinal : (model.alphaFinal || 0),
-          rho_final: pred.rhoFinal != null ? pred.rhoFinal : (model.rhoFinal || 0),
-          dc_gamma: engine === 'legacy' ? (pred.dcGamma != null ? pred.dcGamma : ((model.cal && model.cal.gamma) || 0)) : null,
-          lambda_home: pred.lh,
-          lambda_away: pred.la,
-          matrix_sum: d.sum,
-          matrix_tail: d.tail,
-          p_00: d.p00,
-          p_11: d.p11,
-          p_btts_yes: d.pBtts != null ? d.pBtts : mk.bttsYes,
-          model_total_mean: d.meanTotal,
-          model_total_variance: d.varTotal,
-          model_total_variance_ratio: d.varRatio,
+          engine,
+          '1': irMarginOddsFromProb(mk.p1,mg),
+          X: irMarginOddsFromProb(mk.px,mg),
+          '2': irMarginOddsFromProb(mk.p2,mg),
+          AH1: irMarginOddsFromProb(1/a.home,mg),
+          AH: a.line,
+          AH2: irMarginOddsFromProb(1/a.away,mg),
+          O: irMarginOddsFromProb(1/t.over,mg),
+          Тот: t.line,
+          U: irMarginOddsFromProb(1/t.under,mg),
+          selected_distribution: pred.selectedDistribution||model.selectedDistribution||null,
+          alpha_final: pred.alphaFinal!=null?pred.alphaFinal:(model.alphaFinal||0),
+          rho_final: pred.rhoFinal!=null?pred.rhoFinal:(model.rhoFinal||0),
+          dc_gamma: engine==='legacy' ? (pred.dcGamma!=null?pred.dcGamma:((model.cal&&model.cal.gamma)||0)) : null,
+          lambda_home: pred.lh, lambda_away: pred.la,
+          matrix_sum:d.sum, matrix_tail:d.tail, p_00:d.p00, p_11:d.p11,
+          p_btts_yes:d.pBtts!=null?d.pBtts:mk.bttsYes,
+          model_total_mean:d.meanTotal, model_total_variance:d.varTotal, model_total_variance_ratio:d.varRatio,
         };
-      } catch (_e){
-        return null;
-      }
+      }catch(_e){ return null; }
     }
-    function irBuildReportRow(match, prices){
-      const row = irEtalonFromMatch(match);
-      const pr = prices || {};
-      row.calc_model = pr.calc_model != null ? pr.calc_model : null;
-      row.AH1_pr = pr.AH1_pr != null ? pr.AH1_pr : null;
-      row.AH_pr = pr.AH_pr != null ? pr.AH_pr : null;
-      row.AH2_pr = pr.AH2_pr != null ? pr.AH2_pr : null;
-      row.O_pr = pr.O_pr != null ? pr.O_pr : null;
-      row.Тот_pr = pr.Тот_pr != null ? pr.Тот_pr : null;
-      row.U_pr = pr.U_pr != null ? pr.U_pr : null;
-      row['1_pr'] = pr['1_pr'] != null ? pr['1_pr'] : null;
-      row.X_pr = pr.X_pr != null ? pr.X_pr : null;
-      row['2_pr'] = pr['2_pr'] != null ? pr['2_pr'] : null;
-      row.AH1_delta = irDelta(row.AH1_pr, row.AH1, false);
-      row.AH_delta = irDelta(row.AH_pr, row.AH, true);
-      row.AH2_delta = irDelta(row.AH2_pr, row.AH2, false);
-      row.O_delta = irDelta(row.O_pr, row.O, false);
-      row.Тот_delta = irDelta(row.Тот_pr, row.Тот, true);
-      row.U_delta = irDelta(row.U_pr, row.U, false);
-      row['1_delta'] = irDelta(row['1_pr'], row['1'], false);
-      row.X_delta = irDelta(row.X_pr, row.X, false);
-      row['2_delta'] = irDelta(row['2_pr'], row['2'], false);
-      row.selected_distribution = pr.selected_distribution != null ? pr.selected_distribution : null;
-      row.alpha_final = pr.alpha_final != null ? pr.alpha_final : null;
-      row.rho_final = pr.rho_final != null ? pr.rho_final : null;
-      row.dc_gamma = pr.dc_gamma != null ? pr.dc_gamma : null;
-      row.lambda_home = pr.lambda_home != null ? pr.lambda_home : null;
-      row.lambda_away = pr.lambda_away != null ? pr.lambda_away : null;
-      row.matrix_sum = pr.matrix_sum != null ? pr.matrix_sum : null;
-      row.matrix_tail = pr.matrix_tail != null ? pr.matrix_tail : null;
-      row.p_00 = pr.p_00 != null ? pr.p_00 : null;
-      row.p_11 = pr.p_11 != null ? pr.p_11 : null;
-      row.p_btts_yes = pr.p_btts_yes != null ? pr.p_btts_yes : null;
-      row.model_total_mean = pr.model_total_mean != null ? pr.model_total_mean : null;
-      row.model_total_variance = pr.model_total_variance != null ? pr.model_total_variance : null;
-      row.model_total_variance_ratio = pr.model_total_variance_ratio != null ? pr.model_total_variance_ratio : null;
+    function irBuildCompareRow(match, leg, aut){
+      const mkt=irEtalonFromMatch(match);
+      const row=Object.assign({}, mkt);
+      const mapSide=(src, suf)=>{
+        if(!src) return;
+        ['1','X','2','AH1','AH','AH2','O','Тот','U'].forEach(k=>{ row[`${k}_${suf}`]=src[k]!=null?src[k]:null; });
+      };
+      mapSide(leg,'L'); mapSide(aut,'A');
+      ['1','X','2','AH1','AH','AH2','O','Тот','U'].forEach(k=>{
+        row[`${k}_dL`]=irDelta(row[`${k}_L`], mkt[k]);
+        row[`${k}_dA`]=irDelta(row[`${k}_A`], mkt[k]);
+      });
+      const mae1x2L=irAbsMae([row['1_dL'],row.X_dL,row['2_dL']]);
+      const mae1x2A=irAbsMae([row['1_dA'],row.X_dA,row['2_dA']]);
+      const maeAhL=irAbsMae([row.AH1_dL,row.AH2_dL]);
+      const maeAhA=irAbsMae([row.AH1_dA,row.AH2_dA]);
+      const maeOuL=irAbsMae([row.O_dL,row.U_dL]);
+      const maeOuA=irAbsMae([row.O_dA,row.U_dA]);
+      row.winner_1x2=irWinner(mae1x2L,mae1x2A);
+      row.winner_AH=irWinner(maeAhL,maeAhA);
+      row.winner_OU=irWinner(maeOuL,maeOuA);
+      const scoreL=(mae1x2L||0)+(maeAhL||0)+(maeOuL||0);
+      const scoreA=(mae1x2A||0)+(maeAhA||0)+(maeOuA||0);
+      const hasL=mae1x2L!=null||maeAhL!=null||maeOuL!=null;
+      const hasA=mae1x2A!=null||maeAhA!=null||maeOuA!=null;
+      row.winner_row=(!hasL&&!hasA)?'—':irWinner(hasL?scoreL:null, hasA?scoreA:null);
+      row._mae={mae1x2L,mae1x2A,maeAhL,maeAhA,maeOuL,maeOuA, drawL:irAbsMae([row.X_dL]), drawA:irAbsMae([row.X_dA])};
       return row;
     }
-    function irSetReportStatus(msg, isErr){
-      const el = document.getElementById('irReportStatus');
-      if(!el) return;
-      el.style.display = msg ? 'block' : 'none';
-      el.classList.toggle('err', !!isErr);
-      el.textContent = msg || '';
+    function irBuildSingleRow(match, prices, engine){
+      const row=irEtalonFromMatch(match);
+      const pr=prices||{};
+      row.calc_model=engine==='legacy'?'legacy_dc':'auto_copula';
+      ['1','X','2','AH1','AH','AH2','O','Тот','U'].forEach(k=>{
+        row[`${k}_pr`]=pr[k]!=null?pr[k]:null;
+        row[`${k}_delta`]=irDelta(row[`${k}_pr`], row[k]);
+      });
+      row.selected_distribution=pr.selected_distribution!=null?pr.selected_distribution:null;
+      row.alpha_final=pr.alpha_final!=null?pr.alpha_final:null;
+      row.rho_final=pr.rho_final!=null?pr.rho_final:null;
+      row.dc_gamma=pr.dc_gamma!=null?pr.dc_gamma:null;
+      row.lambda_home=pr.lambda_home!=null?pr.lambda_home:null;
+      row.lambda_away=pr.lambda_away!=null?pr.lambda_away:null;
+      row.matrix_sum=pr.matrix_sum!=null?pr.matrix_sum:null;
+      row.matrix_tail=pr.matrix_tail!=null?pr.matrix_tail:null;
+      row.p_00=pr.p_00!=null?pr.p_00:null;
+      row.p_11=pr.p_11!=null?pr.p_11:null;
+      row.p_btts_yes=pr.p_btts_yes!=null?pr.p_btts_yes:null;
+      row.model_total_mean=pr.model_total_mean!=null?pr.model_total_mean:null;
+      row.model_total_variance=pr.model_total_variance!=null?pr.model_total_variance:null;
+      row.model_total_variance_ratio=pr.model_total_variance_ratio!=null?pr.model_total_variance_ratio:null;
+      row._mae={
+        mae1x2:irAbsMae([row['1_delta'],row.X_delta,row['2_delta']]),
+        maeAh:irAbsMae([row.AH1_delta,row.AH2_delta]),
+        maeOu:irAbsMae([row.O_delta,row.U_delta]),
+        maeDraw:irAbsMae([row.X_delta]),
+      };
+      return row;
     }
-    function irRenderReportTable(rows){
-      const head = document.getElementById('irReportHead');
-      const body = document.getElementById('irReportBody');
-      const wrap = document.getElementById('irReportTableWrap');
-      if(!head || !body || !wrap) return;
-      head.innerHTML = IR_REPORT_COLS.map(c => `<th>${escapeHtml(c)}</th>`).join('');
-      body.innerHTML = rows.map(row => {
-        const tds = IR_REPORT_COLS.map(col => {
-          const raw = col === 'Дата' ? sbFmtDate(row[col]) : row[col];
-          const cls = [];
+    function irComputeSummary(rows, engines){
+      const n=rows.length;
+      const avg=(key)=> {
+        const xs=rows.map(r=>r._mae&&r._mae[key]).filter(v=>v!=null&&isFinite(v));
+        return xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:null;
+      };
+      if(engines.compare || (engines.legacy && engines.auto)){
+        const L={
+          mae1x2:avg('mae1x2L'), maeAh:avg('maeAhL'), maeOu:avg('maeOuL'), maeDraw:avg('drawL'),
+        };
+        const A={
+          mae1x2:avg('mae1x2A'), maeAh:avg('maeAhA'), maeOu:avg('maeOuA'), maeDraw:avg('drawA'),
+        };
+        const score=(o)=> (o.mae1x2||0)+(o.maeAh||0)+(o.maeOu||0);
+        return {n, mode:'compare', legacy:L, auto:A, winner:irWinner(score(L), score(A))};
+      }
+      const eng=engines.legacy?'legacy':'auto';
+      return {
+        n, mode:eng,
+        legacy: eng==='legacy'?{mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw')}:null,
+        auto: eng==='auto'?{mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw')}:null,
+        winner: eng==='legacy'?'Legacy':'Auto',
+      };
+    }
+    function irFmtMae(v){ return v==null||!isFinite(v)?'—':v.toFixed(3); }
+    function irRenderSummary(sum){
+      const el=document.getElementById('irSummaryBody');
+      if(!el) return;
+      if(!sum){ el.innerHTML='Сформируйте отчёт — здесь появятся MAE и победитель.'; return; }
+      const block=(title,o)=>{
+        if(!o) return '';
+        return `<div class="ir-sum-block"><div style="font-weight:600;margin-bottom:4px">${title}</div>
+          <div class="ir-sum-row"><span>1X2 MAE</span><span>${irFmtMae(o.mae1x2)}</span></div>
+          <div class="ir-sum-row"><span>AH MAE</span><span>${irFmtMae(o.maeAh)}</span></div>
+          <div class="ir-sum-row"><span>OU MAE</span><span>${irFmtMae(o.maeOu)}</span></div>
+          <div class="ir-sum-row"><span>Draw MAE</span><span>${irFmtMae(o.maeDraw)}</span></div>
+        </div>`;
+      };
+      el.innerHTML = `<div class="ir-sum-row"><span>Всего матчей</span><span><b>${sum.n}</b></span></div>`
+        + block('Legacy', sum.legacy)
+        + block('Auto', sum.auto)
+        + (sum.mode==='compare' ? `<div class="ir-winner">Победитель: ${escapeHtml(sum.winner)}</div>` : '')
+        + `<div class="small" style="margin-top:8px;color:#94a3b8">Конфиг: ${escapeHtml((GM_MATRIX_CFG&&GM_MATRIX_CFG.configSource)||'model_config.json')}</div>`;
+    }
+    function irSetReportStatus(msg,isErr){
+      const el=document.getElementById('irReportStatus');
+      if(!el) return;
+      el.style.display=msg?'block':'none';
+      el.classList.toggle('err',!!isErr);
+      el.textContent=msg||'';
+    }
+    function irRenderReportTable(rows, cols){
+      const head=document.getElementById('irReportHead');
+      const body=document.getElementById('irReportBody');
+      const wrap=document.getElementById('irReportTableWrap');
+      if(!head||!body||!wrap) return;
+      irActiveCols=cols||IR_SINGLE_COLS;
+      head.innerHTML=irActiveCols.map(c=>`<th>${escapeHtml(c)}</th>`).join('');
+      body.innerHTML=rows.map(row=>{
+        const tds=irActiveCols.map(col=>{
+          const raw=col==='Дата'?sbFmtDate(row[col]):row[col];
+          const cls=[];
           if(!IR_TEXT_COLS.has(col)) cls.push('num');
-          if(String(col).includes('delta') && raw != null && isFinite(raw)){
-            if(raw > 0) cls.push('delta-pos');
-            else if(raw < 0) cls.push('delta-neg');
+          if((String(col).includes('_d')||String(col).includes('delta'))&&raw!=null&&isFinite(raw)){
+            if(raw>0) cls.push('delta-pos'); else if(raw<0) cls.push('delta-neg');
           }
-          return `<td class="${cls.join(' ')}">${escapeHtml(irFmtDisplay(raw, col))}</td>`;
+          if(IR_WIN_COLS.has(col)){
+            if(raw==='Auto') cls.push('win-auto');
+            if(raw==='Legacy') cls.push('win-legacy');
+          }
+          return `<td class="${cls.join(' ')}">${escapeHtml(irFmtDisplay(raw,col))}</td>`;
         }).join('');
         return `<tr>${tds}</tr>`;
       }).join('');
-      wrap.style.display = rows.length ? 'block' : 'none';
+      wrap.style.display=rows.length?'block':'none';
     }
     function irCsvEscape(v){
-      const s = v == null ? '' : String(v);
-      if(/[",;\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      const s=v==null?'':String(v);
+      if(/[",;\n\r]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
       return s;
     }
     function irExportReportCsv(){
       if(!irReportRows.length){ alert('Нет данных для экспорта'); return; }
-      const sep = ';';
-      const head = IR_REPORT_COLS.join(sep);
-      const lines = irReportRows.map(row => IR_REPORT_COLS.map(col => {
-        const raw = col === 'Дата' ? sbFmtDate(row[col]) : row[col];
-        return irCsvEscape(irFmtCell(raw, col));
+      const cols=irActiveCols.length?irActiveCols:IR_SINGLE_COLS;
+      const sep=';';
+      const head=cols.join(sep);
+      const lines=irReportRows.map(row=>cols.map(col=>{
+        const raw=col==='Дата'?sbFmtDate(row[col]):row[col];
+        return irCsvEscape(irFmtCell(raw,col));
       }).join(sep));
-      const bom = '\uFEFF';
-      const blob = new Blob([bom + head + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `inactive_report_${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      const blob=new Blob(['\uFEFF'+head+'\n'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      const mode=irReportMode();
+      a.download=`model_${mode}_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click(); URL.revokeObjectURL(a.href);
     }
     async function irRunReport(){
-      const leagueFilter = (document.getElementById('irLeagueFilter')||{}).value || '';
-      const marginFrac = irParseMarginPct();
-      const mode = irSelectedModelMode();
-      const modeLabel = mode === 'auto' ? 'Auto Marginals + Copula' : 'Poisson + Dixon-Coles + ничья';
-      const exportBtn = document.getElementById('irExportCsv');
-      irReportRows = [];
-      if(exportBtn) exportBtn.disabled = true;
-      irSetReportStatus(`Загрузка неактивных матчей… (модель: ${modeLabel})`);
-      irRenderReportTable([]);
-      await loadSupabaseConfig();
-      if(!window.__SB.leagues || !window.__SB.leagues.length) await sbFetchLeaguesList();
-      if(!window.__SB.seasons || !window.__SB.seasons.length) await sbLoadSeasonSummary();
-      const inactive = await irFetchInactiveMatches(leagueFilter || null);
-      if(!inactive.length){
-        irSetReportStatus('Неактивных матчей не найдено (active=false).', true);
+      await loadGoalMatrixConfig();
+      irSyncModeCheckboxes();
+      const engines=irEnginesSelected();
+      if(!engines.legacy && !engines.auto){
+        irSetReportStatus('Выберите хотя бы одну модель: Legacy или Auto.', true);
         return;
       }
-      const byLeague = {};
-      inactive.forEach(m => {
-        const lid = String(m.league_id || '');
-        if(!lid) return;
-        if(!byLeague[lid]) byLeague[lid] = [];
+      const leagueFilter=(document.getElementById('irLeagueFilter')||{}).value||'';
+      const marginFrac=irParseMarginPct();
+      const exportBtn=document.getElementById('irExportCsv');
+      irReportRows=[]; irReportSummary=null;
+      if(exportBtn) exportBtn.disabled=true;
+      irRenderSummary(null);
+      const modeTxt=engines.compare?'Compare':(engines.legacy?'Legacy':'Auto');
+      irSetReportStatus(`Загрузка неактивных матчей… (${modeTxt})`);
+      irRenderReportTable([], engines.compare?IR_COMPARE_COLS:IR_SINGLE_COLS);
+      await loadSupabaseConfig();
+      if(!window.__SB.leagues||!window.__SB.leagues.length) await sbFetchLeaguesList();
+      if(!window.__SB.seasons||!window.__SB.seasons.length) await sbLoadSeasonSummary();
+      let inactive=await irFetchInactiveMatches(leagueFilter||null);
+      inactive=irFilterMatches(inactive);
+      if(!inactive.length){
+        irSetReportStatus('Матчей не найдено (active=false + фильтры).', true);
+        return;
+      }
+      const byLeague={};
+      inactive.forEach(m=>{
+        const lid=String(m.league_id||''); if(!lid) return;
+        if(!byLeague[lid]) byLeague[lid]=[];
         byLeague[lid].push(m);
       });
-      const leagueIds = Object.keys(byLeague).sort((a, b) => {
-        const na = byLeague[a][0].league_name || a;
-        const nb = byLeague[b][0].league_name || b;
+      const leagueIds=Object.keys(byLeague).sort((a,b)=>{
+        const na=byLeague[a][0].league_name||a, nb=byLeague[b][0].league_name||b;
         return String(na).localeCompare(String(nb));
       });
-      const out = [];
-      let skippedLeagues = 0;
-      for(let li = 0; li < leagueIds.length; li++){
-        const leagueId = leagueIds[li];
-        const leagueName = byLeague[leagueId][0].league_name || leagueId;
-        irSetReportStatus(`Лига ${li + 1}/${leagueIds.length}: ${leagueName} — обучение (${modeLabel})…`);
-        const activeMatches = await irFetchActiveMatchesForLeague(leagueId);
-        const parsed = goalMatchesToRaw(activeMatches);
-        let model = null;
-        if(parsed.valid >= 2){
-          const seasonIds = [...new Set(parsed.raw.map(r => r.seasonId).filter(s => s != null))];
-          const cfg = irBaselineCfg(irBuildSeasonWeights(leagueId, seasonIds), mode);
-          try {
-            model = irTrainModel(parsed.raw, cfg, mode);
-          } catch (e){
-            console.warn('ir train', leagueId, e);
-            model = null;
-          }
-        } else {
-          skippedLeagues++;
-        }
-        const matches = byLeague[leagueId];
-        for(const m of matches){
-          const homeId = gmTeamKey(m.home_team_id, m.home_team);
-          const awayId = gmTeamKey(m.away_team_id, m.away_team);
-          let prices = null;
-          if(model && homeId && awayId){
-            prices = irPredictPrices(model, homeId, awayId, {
-              neutral: !!m.is_neutral,
-              derby: sbIsDerby(m),
-            }, marginFrac);
-          }
-          out.push(irBuildReportRow(m, prices));
+      const out=[]; let skipped=0;
+      for(let li=0; li<leagueIds.length; li++){
+        const leagueId=leagueIds[li];
+        const leagueName=byLeague[leagueId][0].league_name||leagueId;
+        irSetReportStatus(`Лига ${li+1}/${leagueIds.length}: ${leagueName} — обучение…`);
+        const activeMatches=await irFetchActiveMatchesForLeague(leagueId);
+        const parsed=goalMatchesToRaw(activeMatches);
+        let modelL=null, modelA=null;
+        if(parsed.valid>=2){
+          const seasonIds=[...new Set(parsed.raw.map(r=>r.seasonId).filter(s=>s!=null))];
+          const weights=irBuildSeasonWeights(leagueId, seasonIds);
+          try{
+            if(engines.legacy) modelL=irTrainModel(parsed.raw, irBaselineCfg(weights,'legacy'), 'legacy');
+            if(engines.auto) modelA=irTrainModel(parsed.raw, irBaselineCfg(weights,'auto'), 'auto');
+          }catch(e){ console.warn('ir train', leagueId, e); }
+        } else skipped++;
+        for(const m of byLeague[leagueId]){
+          const homeId=gmTeamKey(m.home_team_id,m.home_team);
+          const awayId=gmTeamKey(m.away_team_id,m.away_team);
+          const opt={neutral:!!m.is_neutral, derby:sbIsDerby(m)};
+          const leg=(modelL&&homeId&&awayId)?irPredictBundle(modelL,homeId,awayId,opt,marginFrac):null;
+          const aut=(modelA&&homeId&&awayId)?irPredictBundle(modelA,homeId,awayId,opt,marginFrac):null;
+          if(engines.compare || (engines.legacy&&engines.auto)) out.push(irBuildCompareRow(m,leg,aut));
+          else if(engines.legacy) out.push(irBuildSingleRow(m,leg,'legacy'));
+          else out.push(irBuildSingleRow(m,aut,'auto'));
         }
       }
-      irReportRows = out;
-      irRenderReportTable(irReportRows);
-      if(exportBtn) exportBtn.disabled = !irReportRows.length;
-      const warn = skippedLeagues ? `; ${skippedLeagues} лиг без обучения (<2 активных матчей с полной линией)` : '';
-      irSetReportStatus(`Готово: ${irReportRows.length} матч., ${leagueIds.length} лиг, модель «${modeLabel}», маржа ${(marginFrac * 100).toFixed(1)}%${warn}`);
+      irReportRows=out;
+      const cols=(engines.compare||(engines.legacy&&engines.auto))?IR_COMPARE_COLS:IR_SINGLE_COLS;
+      irRenderReportTable(irReportRows, cols);
+      irReportSummary=irComputeSummary(irReportRows, engines);
+      // normalize single-mode mae keys into summary already handled
+      if(!(engines.compare||(engines.legacy&&engines.auto))){
+        // rebuild summary from _mae single keys
+        const xs=irReportRows.map(r=>r._mae).filter(Boolean);
+        const avg=k=>{ const a=xs.map(o=>o[k]).filter(v=>v!=null&&isFinite(v)); return a.length?a.reduce((x,y)=>x+y,0)/a.length:null; };
+        const block={mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw')};
+        irReportSummary={n:out.length, mode:engines.legacy?'legacy':'auto', legacy:engines.legacy?block:null, auto:engines.auto?block:null, winner:engines.legacy?'Legacy':'Auto'};
+      }
+      irRenderSummary(irReportSummary);
+      if(exportBtn) exportBtn.disabled=!irReportRows.length;
+      const warn=skipped?`; ${skipped} лиг без обучения`:'';
+      irSetReportStatus(`Готово: ${irReportRows.length} матч., режим ${modeTxt}, маржа ${(marginFrac*100).toFixed(1)}%${warn}`);
     }
     function irPopulateLeagueFilter(){
-      const sel = document.getElementById('irLeagueFilter');
+      const sel=document.getElementById('irLeagueFilter');
       if(!sel) return;
-      const prev = sel.value;
-      const leagues = window.__SB.leagues || [];
-      sel.innerHTML = '<option value="">Все лиги</option>' + leagues.map(l =>
-        `<option value="${escapeHtml(l.id)}">${escapeHtml(l.name)}</option>`
-      ).join('');
-      if(prev && leagues.some(l => String(l.id) === String(prev))) sel.value = prev;
+      const prev=sel.value;
+      const leagues=window.__SB.leagues||[];
+      sel.innerHTML='<option value="">Все лиги</option>'+leagues.map(l=>`<option value="${escapeHtml(l.id)}">${escapeHtml(l.name)}</option>`).join('');
+      if(prev&&leagues.some(l=>String(l.id)===String(prev))) sel.value=prev;
+      irPopulateSeasonFilter();
+    }
+    function irPopulateSeasonFilter(){
+      const sel=document.getElementById('irSeasonFilter');
+      if(!sel) return;
+      const leagueId=(document.getElementById('irLeagueFilter')||{}).value||'';
+      const prev=sel.value;
+      let seasons=window.__SB.seasons||[];
+      if(leagueId) seasons=seasons.filter(s=>String(s.league_id)===String(leagueId));
+      seasons=[...seasons].sort((a,b)=>String(b.season_label||'').localeCompare(String(a.season_label||'')));
+      sel.innerHTML='<option value="">Все сезоны</option>'+seasons.map(s=>`<option value="${escapeHtml(s.season_id)}">${escapeHtml(s.season_label||s.season_id)}</option>`).join('');
+      if(prev&&seasons.some(s=>String(s.season_id)===String(prev))) sel.value=prev;
     }
     async function irInitReportTab(){
-      try {
+      try{
+        await loadGoalMatrixConfig();
         await loadSupabaseConfig();
-        if(!window.__SB.leagues || !window.__SB.leagues.length) await sbFetchLeaguesList();
+        if(!window.__SB.leagues||!window.__SB.leagues.length) await sbFetchLeaguesList();
+        if(!window.__SB.seasons||!window.__SB.seasons.length) await sbLoadSeasonSummary();
+        const defMode=irCfgPart('compare.defaultMode','compare');
+        const radio=document.querySelector(`input[name="irReportMode"][value="${defMode}"]`);
+        if(radio) radio.checked=true;
+        const mg=document.getElementById('irMarginPct');
+        if(mg && !(mg.value||'').trim()) mg.value=String(irCfgPart('compare.defaultMarginPct',3));
+        irSyncModeCheckboxes();
         irPopulateLeagueFilter();
-      } catch (e){
+      }catch(e){
         console.error('irInitReportTab', e);
-        irSetReportStatus('Ошибка загрузки лиг: ' + (e.message || e), true);
+        irSetReportStatus('Ошибка загрузки: '+(e.message||e), true);
       }
     }
-    window.irInitReportTab = irInitReportTab;
-    bindClick('irRunReport', () => { irRunReport().catch(e => { console.error(e); irSetReportStatus(e.message || String(e), true); }); });
-    bindClick('irExportCsv', () => irExportReportCsv());
+    window.irInitReportTab=irInitReportTab;
+    document.querySelectorAll('input[name="irReportMode"]').forEach(el=>{
+      el.addEventListener('change', irSyncModeCheckboxes);
+    });
+    document.getElementById('irLeagueFilter')?.addEventListener('change', irPopulateSeasonFilter);
+    bindClick('irRunReport', ()=>{ irRunReport().catch(e=>{ console.error(e); irSetReportStatus(e.message||String(e), true); }); });
+    bindClick('irExportCsv', ()=>irExportReportCsv());
     // ========== END INACTIVE REPORT ==========
 
     bindClick('goalHistClear',()=>{

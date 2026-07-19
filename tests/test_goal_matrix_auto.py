@@ -16,11 +16,11 @@ def test_config_loads_without_db():
     cfg = gma.load_goal_matrix_config()
     assert cfg["modelMode"] == "auto"
     assert cfg["jointMatrixMode"] == "gaussian_copula"
-    assert cfg["useDixonColes"] is False
-    assert cfg["useDrawModel"] is False
     assert 0 in cfg["alphaCandidates"]
     assert cfg["nbMinImprovementPct"] >= 1
     assert cfg["minMatchesForLeagueAlpha"] == 200
+    assert "legacy" in cfg and isinstance(cfg["legacy"], dict)
+    assert "compare" in cfg
 
 
 def test_alpha0_marginals_match_poisson():

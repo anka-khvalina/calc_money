@@ -21,7 +21,8 @@ except ImportError:  # pragma: no cover
 
 _EPS = 1e-12
 _ROOT = Path(__file__).resolve().parents[1]
-_DEFAULT_CONFIG_PATH = _ROOT / "config" / "goal_matrix.json"
+_DEFAULT_CONFIG_PATH = _ROOT / "config" / "model_config.json"
+_LEGACY_FLAT_PATH = _ROOT / "config" / "goal_matrix.json"
 
 _DEFAULT_CFG = {
     "modelMode": "auto",
@@ -41,15 +42,51 @@ _DEFAULT_CFG = {
 }
 
 
+def _flatten_nested_model_config(data: Dict) -> Dict:
+    """Преобразовать model_config.json (nested) в плоский вид для тестов/калибровки."""
+    if "matrix" not in data and "autoMarginal" not in data:
+        return data
+    m = data.get("matrix") or {}
+    a = data.get("autoMarginal") or {}
+    c = data.get("copula") or {}
+    L = data.get("legacy") or {}
+    out = dict(_DEFAULT_CFG)
+    out.update({
+        "maxGoals": m.get("maxGoals", out["maxGoals"]),
+        "tailEpsilon": m.get("tailEpsilon", out["tailEpsilon"]),
+        "lambdaMin": m.get("lambdaMin", out["lambdaMin"]),
+        "alphaCandidates": a.get("alphaCandidates", out["alphaCandidates"]),
+        "nbMinImprovementPct": a.get("nbMinImprovementPct", out["nbMinImprovementPct"]),
+        "minMatchesForLeagueAlpha": a.get("minMatchesForLeagueAlpha", out["minMatchesForLeagueAlpha"]),
+        "alphaPenalty": a.get("alphaPenalty", out["alphaPenalty"]),
+        "vppWeight": a.get("vppWeight", out["vppWeight"]),
+        "rhoCandidates": c.get("rhoCandidates", out["rhoCandidates"]),
+        "rhoMinImprovementPct": c.get("rhoMinImprovementPct", out["rhoMinImprovementPct"]),
+        "useDixonColes": bool(L.get("useDixonColes", False)),
+        "useDrawModel": bool(L.get("useDrawModel", False)),
+        "legacy": L,
+        "train": data.get("train") or {},
+        "compare": data.get("compare") or {},
+    })
+    return out
+
+
 def load_goal_matrix_config(path: Optional[Path] = None) -> Dict:
-    """Загрузить runtime-конфиг матрицы (без БД)."""
+    """Загрузить runtime-конфиг матрицы (без БД). Предпочтительно model_config.json."""
     cfg = dict(_DEFAULT_CFG)
-    p = Path(path) if path else _DEFAULT_CONFIG_PATH
-    if p.is_file():
+    candidates = []
+    if path:
+        candidates.append(Path(path))
+    else:
+        candidates.extend([_DEFAULT_CONFIG_PATH, _LEGACY_FLAT_PATH])
+    for p in candidates:
+        if not p.is_file():
+            continue
         with p.open("r", encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, dict):
-            cfg.update(data)
+            cfg.update(_flatten_nested_model_config(data))
+            break
     return cfg
 
 

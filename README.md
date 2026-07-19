@@ -17,7 +17,7 @@
 
 Матчи и команды — **Supabase** (`v_matches_full`, `leagues`, `team`).  
 Конфиг: `config/supabase.json`, `web/supabase.config.json`.  
-Параметры матрицы (α/ρ grid, без записи в БД): `config/goal_matrix.json`, `web/goal_matrix.config.json`.
+Параметры моделей (без записи в БД): `config/model_config.json`, `web/model_config.json` (matrix / auto / copula / legacy / compare).
 
 ## Документация
 

@@ -1,0 +1,55 @@
+{
+  "matrix": {
+    "maxGoals": 10,
+    "tailEpsilon": 1e-6,
+    "lambdaMin": 0.05
+  },
+  "autoMarginal": {
+    "enabled": true,
+    "alphaCandidates": [0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.15, 0.18, 0.22, 0.26, 0.30],
+    "nbMinImprovementPct": 1,
+    "minMatchesForLeagueAlpha": 200,
+    "alphaPenalty": 0.5,
+    "vppWeight": 0.15
+  },
+  "copula": {
+    "enabled": true,
+    "rhoCandidates": [0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.15, 0.18, 0.22, 0.25],
+    "rhoMinImprovementPct": 0.5
+  },
+  "legacy": {
+    "useDixonColes": true,
+    "useDrawModel": true,
+    "fitGamma": true,
+    "dcGamma": 0.0,
+    "gammaMax": 0.20,
+    "drawMode": "residual_dc",
+    "drawQMin": 0.95,
+    "drawQMax": 1.15,
+    "drawQResMin": 0.95,
+    "drawQResMax": 1.15,
+    "drawLossWeight": 1.5
+  },
+  "train": {
+    "alphaAh": 0.25,
+    "alphaT": 0.5,
+    "regLambda": 0.10,
+    "regLambdaAttack": 0.10,
+    "regLambdaDefense": 0.10,
+    "priorAlpha": 0.7,
+    "dCalMode": "soft",
+    "dCalBMin": 0.90,
+    "dCalBMax": 1.03,
+    "dCalBPenalty": 2.0,
+    "dBigFavMode": "linear",
+    "dBigFavThreshold": 1.25,
+    "dBigFavSlope": 0.75,
+    "dBigFavCap": 2.00,
+    "sCalMode": "off",
+    "derbyHDefault": 0.7
+  },
+  "compare": {
+    "defaultMode": "compare",
+    "defaultMarginPct": 3
+  }
+}
