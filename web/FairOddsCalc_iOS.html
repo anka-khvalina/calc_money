@@ -1117,10 +1117,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <div class="ir-lab-main">
           <div class="ir-controls-card">
             <div class="ir-mode-row">
-              <span style="font-weight:600;color:#10204a">Режим отчёта:</span>
-              <label><input type="radio" name="irReportMode" value="compare" checked /> <span>Compare</span></label>
+              <span style="font-weight:600;color:#10204a">Отчёт:</span>
               <label><input type="radio" name="irReportMode" value="legacy" /> <span>Legacy</span></label>
               <label><input type="radio" name="irReportMode" value="auto" /> <span>Auto</span></label>
+              <label><input type="radio" name="irReportMode" value="compare" checked /> <span>Сравнение</span></label>
             </div>
             <div class="ir-mode-row" style="margin-bottom:0">
               <span style="font-weight:600;color:#10204a">Считать:</span>
@@ -1145,8 +1145,12 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <label>Дата до</label>
               <input id="irDateTo" type="date" />
             </div>
+            <label class="ir-mode-row" style="margin:0;padding-bottom:2px">
+              <input type="checkbox" id="irUseMargin" />
+              <span>Маржа %</span>
+            </label>
             <div class="field" style="max-width:90px">
-              <label>Маржа %</label>
+              <label>%</label>
               <input id="irMarginPct" type="text" value="3" />
             </div>
             <button type="button" id="irRunReport" class="btn primary">Сформировать</button>
@@ -1171,19 +1175,19 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <h4>Что означают режимы</h4>
         <dl>
           <div>
-            <dt>Compare</dt>
-            <dd>Сравнивает обе модели на одних и тех же inactive-матчах. В таблице — коэффициенты Legacy и Auto, разница (Δ) и победитель по каждому рынку. В диагностике — MAE по 1X2 / AH / OU / ничьей и общий победитель.</dd>
+            <dt>Сравнение</dt>
+            <dd>За один прогон считает обе модели на одних и тех же inactive-матчах. Коэффициенты AH/OU сравниваются на <b>рыночной линии</b> (не на своей main line модели). Отдельно показывается отклонение собственной main line. В диагностике — MAE и победитель.</dd>
           </div>
           <div>
             <dt>Legacy</dt>
-            <dd>Старая модель: Poisson + Dixon–Coles + отдельная модель ничьей. Считает линию «по-старому». Нужна как эталон: с ней сравниваем новую модель. На вкладках «Линия» и «История» не используется.</dd>
+            <dd>Исторический pipeline: восстановление S/D → Poisson → независимая матрица → Dixon–Coles → отдельная draw-model → старая калибровка. Полностью изолирован от Auto (без NB, без Copula). На вкладках «Линия» и «История» не используется.</dd>
           </div>
           <div>
             <dt>Auto (новая модель)</dt>
-            <dd>Новая модель: ожидаемые голы → Auto Marginals (Poisson/NB) → Gaussian Copula → единая матрица счетов → все рынки. Ничья берётся только с диагонали матрицы. Именно эта модель стоит на вкладке «Линия».</dd>
+            <dd>Новый pipeline: S/D → Auto Marginals (Poisson/NB) → Gaussian Copula → единая матрица → рынки. Без Dixon–Coles и без draw-model; ничья = сумма диагонали. Это модель вкладки «Линия».</dd>
           </div>
         </dl>
-        <p class="ir-glossary-note">Чекбоксы «Считать» выбирают, какие модели гонять в одном прогоне. В режиме Compare обычно включают обе. Параметры моделей — в <code>model_config.json</code> (блок выше). БД при отчёте не меняется.</p>
+        <p class="ir-glossary-note"><b>Маржа:</b> выкл → модель и эталон в fair (эталон очищается Shin de-vig). Вкл → модель с маржой %, эталон как в БД (raw). Параметры — в <code>model_config.json</code>. БД при отчёте не меняется.</p>
       </div>
     </section>
 
@@ -1203,7 +1207,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <li><b>Линия</b> — обучение модели и расчёт линии матча (главная вкладка).</li>
         <li><b>Справочник</b> — команды по лигам (и логотипы). Списки команд в «Линии» берутся отсюда.</li>
         <li><b>История</b> — просмотр сохранённых сезонов и матчей из Supabase. Отсюда данные можно загрузить в «Линию».</li>
-        <li><b>Сравнение моделей</b> — backtest-лаборатория на inactive-матчах: режимы Legacy / Auto / Compare, сводка MAE и победитель. Параметры в <code>model_config.json</code>. Вкладки «Линия» и «История» не меняются.</li>
+        <li><b>Сравнение моделей</b> — два независимых pipeline на inactive-матчах: <b>Legacy</b> (Poisson+DC+draw) и <b>Auto</b> (Marginals+Copula). AH/OU сравниваются на рыночной линии; main line — отдельно. Галка «Маржа»: выкл → эталон fair (de-vig), вкл → эталон raw из БД. Параметры в <code>model_config.json</code>.</li>
         <li><b>Справка</b> — этот раздел.</li>
       </ul>
 
@@ -6728,32 +6732,35 @@ bash scripts/update_and_serve.sh --start</div>
     let irReportSummary = null;
 
     const IR_COMPARE_COLS = [
-      'Дата','Лига','Дома','Гости',
+      'Дата','Лига','Дома','Гости','etalon_layer',
       '1','X','2','AH1','AH','AH2','O','Тот','U',
-      '1_L','X_L','2_L','AH1_L','AH_L','AH2_L','O_L','Тот_L','U_L',
-      '1_A','X_A','2_A','AH1_A','AH_A','AH2_A','O_A','Тот_A','U_A',
-      '1_dL','X_dL','2_dL','AH1_dL','AH_dL','AH2_dL','O_dL','Тот_dL','U_dL',
-      '1_dA','X_dA','2_dA','AH1_dA','AH_dA','AH2_dA','O_dA','Тот_dA','U_dA',
+      '1_L','X_L','2_L','AH1_L','AH_main_L','AH2_L','O_L','Тот_main_L','U_L',
+      '1_A','X_A','2_A','AH1_A','AH_main_A','AH2_A','O_A','Тот_main_A','U_A',
+      '1_dL','X_dL','2_dL','AH1_dL','AH_line_dL','AH2_dL','O_dL','Тот_line_dL','U_dL',
+      '1_dA','X_dA','2_dA','AH1_dA','AH_line_dA','AH2_dA','O_dA','Тот_line_dA','U_dA',
       'winner_1x2','winner_AH','winner_OU','winner_row',
     ];
     const IR_SINGLE_COLS = [
-      'Дата','Лига','Дома','Гости','calc_model',
+      'Дата','Лига','Дома','Гости','calc_model','etalon_layer',
       '1','X','2','AH1','AH','AH2','O','Тот','U',
-      '1_pr','X_pr','2_pr','AH1_pr','AH_pr','AH2_pr','O_pr','Тот_pr','U_pr',
-      '1_delta','X_delta','2_delta','AH1_delta','AH_delta','AH2_delta','O_delta','Тот_delta','U_delta',
+      '1_pr','X_pr','2_pr','AH1_pr','AH_main_pr','AH2_pr','O_pr','Тот_main_pr','U_pr',
+      '1_delta','X_delta','2_delta','AH1_delta','AH_line_delta','AH2_delta','O_delta','Тот_line_delta','U_delta',
       'selected_distribution','alpha_final','rho_final','dc_gamma','lambda_home','lambda_away',
       'matrix_sum','matrix_tail','p_00','p_11','p_btts_yes',
       'model_total_mean','model_total_variance','model_total_variance_ratio',
     ];
     const IR_TEXT_COLS = new Set([
-      'Дата','Лига','Дома','Гости','calc_model','selected_distribution',
+      'Дата','Лига','Дома','Гости','calc_model','selected_distribution','etalon_layer',
       'winner_1x2','winner_AH','winner_OU','winner_row',
     ]);
     const IR_LINE_COLS = new Set([
       'AH','Тот','AH_pr','Тот_pr','AH_L','Тот_L','AH_A','Тот_A',
+      'AH_main_L','Тот_main_L','AH_main_A','Тот_main_A','AH_main_pr','Тот_main_pr',
       'AH_delta','Тот_delta','AH_dL','Тот_dL','AH_dA','Тот_dA',
+      'AH_line_dL','Тот_line_dL','AH_line_dA','Тот_line_dA','AH_line_delta','Тот_line_delta',
     ]);
     const IR_WIN_COLS = new Set(['winner_1x2','winner_AH','winner_OU','winner_row']);
+    const IR_ODDS_KEYS = ['1','X','2','AH1','AH2','O','U'];
 
     function irCfgPart(path, fallback){
       const root = GM_MODEL_CFG || GM_MATRIX_CFG || {};
@@ -6785,48 +6792,71 @@ bash scripts/update_and_serve.sh --start</div>
       else if(mode === 'auto'){ leg.checked = false; aut.checked = true; leg.disabled = true; aut.disabled = true; }
       else { leg.disabled = false; aut.disabled = false; if(!leg.checked && !aut.checked){ leg.checked = true; aut.checked = true; } }
     }
+    function irPickNum(obj, key, fallback){
+      if(obj && obj[key] != null && isFinite(Number(obj[key]))) return Number(obj[key]);
+      return fallback;
+    }
+    function irPickStr(obj, key, fallback){
+      if(obj && obj[key] != null && obj[key] !== '') return String(obj[key]);
+      return fallback;
+    }
     function irBaselineCfg(seasonWeightsById, mode){
+      // Two independent configs: Legacy never reads Auto α/ρ; Auto never enables DC/draw.
       const legacy = mode !== 'auto';
       const L = irCfgPart('legacy', {}) || {};
-      const T = irCfgPart('train', {}) || {};
-      const M = irCfgPart('matrix', {}) || {};
+      const Ldc = L.dixonColes || {};
+      const Ldraw = L.drawModel || {};
+      const Lcal = L.calibration || {};
+      const Ltr = L.train || {};
+      const Lmx = L.matrix || {};
+      const A = irCfgPart('auto', {}) || {};
+      const Atr = A.train || {};
+      const Amx = A.matrix || {};
+      const Tshared = irCfgPart('train', {}) || {};
+      const Mshared = irCfgPart('matrix', {}) || {};
+      const T = legacy ? Object.assign({}, Tshared, Ltr) : Object.assign({}, Tshared, Atr);
+      const M = legacy ? Object.assign({}, Mshared, Lmx) : Object.assign({}, Mshared, Amx);
+      const Cal = legacy ? Object.assign({}, Tshared, Lcal) : Object.assign({}, Tshared, Atr);
+      const useDc = legacy && (Ldc.enabled !== false) && (L.useDixonColes !== false);
+      const useDraw = legacy && (Ldraw.enabled !== false) && (L.useDrawModel !== false);
+      const drawMode = irPickStr(Ldraw, 'mode', L.drawMode || 'residual_dc');
       return {
-        maxGoals: M.maxGoals != null ? M.maxGoals : GM_MAX,
-        alphaAh: T.alphaAh != null ? T.alphaAh : 0.25,
+        maxGoals: irPickNum(M, 'maxGoals', GM_MAX),
+        alphaAh: irPickNum(T, 'alphaAh', 0.25),
         pAh: 2, minWAh: 0.15, maxWAh: 1,
-        alphaT: T.alphaT != null ? T.alphaT : 0.5,
+        alphaT: irPickNum(T, 'alphaT', 0.5),
         deltaAh: 0.5, deltaLam: 0.25, maxIter: 30, tol: 1e-4,
-        drawLoss: L.drawLossWeight != null ? L.drawLossWeight : 1.5,
+        drawLoss: irPickNum(Ldraw, 'drawLossWeight', irPickNum(L, 'drawLossWeight', 1.5)),
         seasonDefault: 1.0, seasonWeightsById: seasonWeightsById || {},
-        priorAlpha: T.priorAlpha != null ? T.priorAlpha : 0.7, promotedN: 3,
-        regLambda: T.regLambda != null ? T.regLambda : 0.10,
-        regLambdaAttack: T.regLambdaAttack != null ? T.regLambdaAttack : 0.1,
-        regLambdaDefense: T.regLambdaDefense != null ? T.regLambdaDefense : 0.1,
+        priorAlpha: irPickNum(T, 'priorAlpha', 0.7), promotedN: 3,
+        regLambda: irPickNum(T, 'regLambda', 0.10),
+        regLambdaAttack: irPickNum(T, 'regLambdaAttack', 0.1),
+        regLambdaDefense: irPickNum(T, 'regLambdaDefense', 0.1),
         dClampLowTeam: 3, dClampEarlyFraction: 0.25,
         derbyShrinkTau: 30,
-        derbyHDefault: T.derbyHDefault != null ? T.derbyHDefault : 0.7,
+        derbyHDefault: irPickNum(T, 'derbyHDefault', 0.7),
         derbyMinMatches: 3,
-        dCalMode: T.dCalMode || 'soft',
-        dCalBMin: T.dCalBMin != null ? T.dCalBMin : 0.90,
-        dCalBMax: T.dCalBMax != null ? T.dCalBMax : 1.03,
-        dCalBPenalty: T.dCalBPenalty != null ? T.dCalBPenalty : 2.0,
-        dBigFavMode: T.dBigFavMode || 'linear',
-        dBigFavThreshold: T.dBigFavThreshold != null ? T.dBigFavThreshold : 1.25,
-        dBigFavSlope: T.dBigFavSlope != null ? T.dBigFavSlope : 0.75,
-        dBigFavCap: T.dBigFavCap != null ? T.dBigFavCap : 2.00,
-        useDraw: legacy ? (L.useDrawModel !== false) : false,
-        useDc: legacy ? (L.useDixonColes !== false) : false,
+        dCalMode: irPickStr(Cal, 'dCalMode', 'soft'),
+        dCalBMin: irPickNum(Cal, 'dCalBMin', 0.90),
+        dCalBMax: irPickNum(Cal, 'dCalBMax', 1.03),
+        dCalBPenalty: irPickNum(Cal, 'dCalBPenalty', 2.0),
+        dBigFavMode: irPickStr(Cal, 'dBigFavMode', 'linear'),
+        dBigFavThreshold: irPickNum(Cal, 'dBigFavThreshold', 1.25),
+        dBigFavSlope: irPickNum(Cal, 'dBigFavSlope', 0.75),
+        dBigFavCap: irPickNum(Cal, 'dBigFavCap', 2.00),
+        useDraw: !!useDraw,
+        useDc: !!useDc,
         modelProfile: 'baseline',
-        drawMode: L.drawMode || 'residual_dc',
-        qmin: L.drawQMin != null ? L.drawQMin : 0.95,
-        qmax: L.drawQMax != null ? L.drawQMax : 1.15,
-        qResMin: L.drawQResMin != null ? L.drawQResMin : 0.95,
-        qResMax: L.drawQResMax != null ? L.drawQResMax : 1.15,
-        sCalMode: T.sCalMode || 'off',
-        sCalMaxDelta: 0.15,
-        gammaMax: L.gammaMax != null ? L.gammaMax : 0.20,
-        fitGamma: L.fitGamma !== false,
-        fixedDcGamma: L.dcGamma != null ? L.dcGamma : 0,
+        drawMode,
+        qmin: irPickNum(Ldraw, 'qMin', irPickNum(L, 'drawQMin', 0.95)),
+        qmax: irPickNum(Ldraw, 'qMax', irPickNum(L, 'drawQMax', 1.15)),
+        qResMin: irPickNum(Ldraw, 'qResMin', irPickNum(L, 'drawQResMin', 0.95)),
+        qResMax: irPickNum(Ldraw, 'qResMax', irPickNum(L, 'drawQResMax', 1.15)),
+        sCalMode: irPickStr(Cal, 'sCalMode', 'off'),
+        sCalMaxDelta: irPickNum(Cal, 'sCalMaxDelta', 0.15),
+        gammaMax: irPickNum(Ldc, 'gammaMax', irPickNum(L, 'gammaMax', 0.20)),
+        fitGamma: legacy ? ((Ldc.fitGamma != null ? Ldc.fitGamma : L.fitGamma) !== false) : false,
+        fixedDcGamma: irPickNum(Ldc, 'gamma', irPickNum(L, 'dcGamma', 0)),
         irEngine: legacy ? 'legacy' : 'auto',
       };
     }
@@ -6995,15 +7025,25 @@ bash scripts/update_and_serve.sh --start</div>
       ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
       return model;
     }
+    /** Entry point: historical Legacy pipeline (Poisson + DC + draw). Isolated from Auto. */
+    function calculateLegacyModel(raw, cfg){
+      return irTrainLegacy(raw, Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw!==false, irEngine:'legacy'}));
+    }
+    /** Entry point: Auto Marginals + Gaussian Copula. Never uses DC/draw. */
+    function calculateAutoModel(raw, cfg){
+      const model=gmTrain(raw, Object.assign({}, cfg, {useDc:false, useDraw:false, irEngine:'auto'}), null, []);
+      model.irEngine='auto';
+      return model;
+    }
     function irTrainModel(raw,cfg,mode){
-      if(mode==='auto'){
-        const model=gmTrain(raw, Object.assign({}, cfg, {useDc:false, useDraw:false, irEngine:'auto'}), null, []);
-        model.irEngine='auto';
-        return model;
-      }
-      return irTrainLegacy(raw,cfg);
+      if(mode==='auto') return calculateAutoModel(raw, cfg);
+      return calculateLegacyModel(raw, cfg);
+    }
+    function irUseMarginOn(){
+      return !!(document.getElementById('irUseMargin')||{}).checked;
     }
     function irParseMarginPct(){
+      if(!irUseMarginOn()) return 0;
       const def = irCfgPart('compare.defaultMarginPct', 3);
       const v=parseFloat(String((document.getElementById('irMarginPct')||{}).value || def).replace(',','.'));
       return isNaN(v)||v<0 ? 0 : v/100;
@@ -7084,33 +7124,65 @@ bash scripts/update_and_serve.sh --start</div>
         return true;
       });
     }
-    function irEtalonFromMatch(m){
-      return {
+    function irEtalonFromMatch(m, useMargin){
+      // useMargin=true → эталон raw как в БД; false → Shin/fair de-vig (без маржи бука).
+      const meta={
         Дата:m.match_date||'', Лига:m.league_name||sbLeagueName(m.league_id)||'',
         Дома:m.home_team||'', Гости:m.away_team||'',
-        AH1:gmF(m.ah_home_odds), AH:gmF(m.closing_ah_home), AH2:gmF(m.ah_away_odds),
-        O:gmF(m.over_odds), Тот:gmF(m.closing_total_line), U:gmF(m.under_odds),
-        '1':gmF(m.home_odds), X:gmF(m.draw_odds), '2':gmF(m.away_odds),
+        AH:gmF(m.closing_ah_home), Тот:gmF(m.closing_total_line),
+        etalon_layer: useMargin ? 'raw_db' : 'fair_devig',
       };
+      const raw1=gmF(m.home_odds), rawX=gmF(m.draw_odds), raw2=gmF(m.away_odds);
+      const rawAh1=gmF(m.ah_home_odds), rawAh2=gmF(m.ah_away_odds);
+      const rawO=gmF(m.over_odds), rawU=gmF(m.under_odds);
+      if(useMargin){
+        return Object.assign(meta, {
+          AH1:rawAh1, AH2:rawAh2, O:rawO, U:rawU,
+          '1':raw1, X:rawX, '2':raw2,
+        });
+      }
+      let k1=null, kx=null, k2=null;
+      if(raw1!=null && rawX!=null && raw2!=null && raw1>1 && rawX>1 && raw2>1){
+        try{
+          const [p1,px,p2]=shinDevig(raw1,rawX,raw2);
+          if(p1>0&&px>0&&p2>0){ k1=1/p1; kx=1/px; k2=1/p2; }
+        }catch(_e){ /* keep null */ }
+      }
+      const fairAh=gmFairTwoWayFromRaw(rawAh1, rawAh2);
+      const fairTot=gmFairTwoWayFromRaw(rawO, rawU);
+      return Object.assign(meta, {
+        '1':k1, X:kx, '2':k2,
+        AH1:fairAh?fairAh.k1:null, AH2:fairAh?fairAh.k2:null,
+        O:fairTot?fairTot.k1:null, U:fairTot?fairTot.k2:null,
+      });
     }
-    function irPredictBundle(model, homeId, awayId, opt, marginFrac){
+    function irPredictAtMarket(model, homeId, awayId, opt, marginFrac, marketLines){
+      // Prices AH/OU on the *market* line; main lines returned separately for line-delta.
       if(!model) return null;
       try{
         const engine=model.irEngine||(model.cfg&&model.cfg.irEngine)||'auto';
         const pred=engine==='legacy' ? irPredictLegacy(model,homeId,awayId,opt) : gmPredict(model,homeId,awayId,opt);
-        const mk=pred.markets; const t=mk.mainTotal; const a=mk.mainAh; const mg=marginFrac||0;
+        const mk=pred.markets;
+        const mainAh=mk.mainAh, mainTot=mk.mainTotal;
+        const mg=marginFrac||0;
+        const mktAh=marketLines && marketLines.AH!=null ? marketLines.AH : null;
+        const mktTot=marketLines && marketLines.Тот!=null ? marketLines.Тот : null;
+        const ahAt=(mktAh!=null && isFinite(mktAh)) ? gmAhMarket(pred.mat, mktAh) : mainAh;
+        const totAt=(mktTot!=null && isFinite(mktTot)) ? gmTotMarket(pred.mat, mktTot) : mainTot;
         const d=pred.matDiag||{};
         return {
           engine,
           '1': irMarginOddsFromProb(mk.p1,mg),
           X: irMarginOddsFromProb(mk.px,mg),
           '2': irMarginOddsFromProb(mk.p2,mg),
-          AH1: irMarginOddsFromProb(1/a.home,mg),
-          AH: a.line,
-          AH2: irMarginOddsFromProb(1/a.away,mg),
-          O: irMarginOddsFromProb(1/t.over,mg),
-          Тот: t.line,
-          U: irMarginOddsFromProb(1/t.under,mg),
+          AH1: irMarginOddsFromProb(1/ahAt.home,mg),
+          AH2: irMarginOddsFromProb(1/ahAt.away,mg),
+          AH_main: mainAh.line,
+          O: irMarginOddsFromProb(1/totAt.over,mg),
+          U: irMarginOddsFromProb(1/totAt.under,mg),
+          Тот_main: mainTot.line,
+          priced_ah_line: ahAt.line,
+          priced_tot_line: totAt.line,
           selected_distribution: pred.selectedDistribution||model.selectedDistribution||null,
           alpha_final: pred.alphaFinal!=null?pred.alphaFinal:(model.alphaFinal||0),
           rho_final: pred.rhoFinal!=null?pred.rhoFinal:(model.rhoFinal||0),
@@ -7122,20 +7194,31 @@ bash scripts/update_and_serve.sh --start</div>
         };
       }catch(_e){ return null; }
     }
-    function irBuildCompareRow(match, leg, aut){
-      const mkt=irEtalonFromMatch(match);
+    function irPredictBundle(model, homeId, awayId, opt, marginFrac, marketLines){
+      return irPredictAtMarket(model, homeId, awayId, opt, marginFrac, marketLines);
+    }
+    function irMapModelSide(row, src, suf){
+      if(!src) return;
+      IR_ODDS_KEYS.forEach(k=>{ row[`${k}_${suf}`]=src[k]!=null?src[k]:null; });
+      row[`AH_main_${suf}`]=src.AH_main!=null?src.AH_main:null;
+      row[`Тот_main_${suf}`]=src.Тот_main!=null?src.Тот_main:null;
+    }
+    function irBuildCompareRow(match, leg, aut, useMargin){
+      const mkt=irEtalonFromMatch(match, !!useMargin);
       const row=Object.assign({}, mkt);
-      const mapSide=(src, suf)=>{
-        if(!src) return;
-        ['1','X','2','AH1','AH','AH2','O','Тот','U'].forEach(k=>{ row[`${k}_${suf}`]=src[k]!=null?src[k]:null; });
-      };
-      mapSide(leg,'L'); mapSide(aut,'A');
-      ['1','X','2','AH1','AH','AH2','O','Тот','U'].forEach(k=>{
+      irMapModelSide(row, leg, 'L');
+      irMapModelSide(row, aut, 'A');
+      IR_ODDS_KEYS.forEach(k=>{
         row[`${k}_dL`]=irDelta(row[`${k}_L`], mkt[k]);
         row[`${k}_dA`]=irDelta(row[`${k}_A`], mkt[k]);
       });
+      row.AH_line_dL=irDelta(row.AH_main_L, mkt.AH);
+      row.AH_line_dA=irDelta(row.AH_main_A, mkt.AH);
+      row.Тот_line_dL=irDelta(row.Тот_main_L, mkt.Тот);
+      row.Тот_line_dA=irDelta(row.Тот_main_A, mkt.Тот);
       const mae1x2L=irAbsMae([row['1_dL'],row.X_dL,row['2_dL']]);
       const mae1x2A=irAbsMae([row['1_dA'],row.X_dA,row['2_dA']]);
+      // AH/OU MAE только по кэфам на рыночной линии (не смешивать с line-delta).
       const maeAhL=irAbsMae([row.AH1_dL,row.AH2_dL]);
       const maeAhA=irAbsMae([row.AH1_dA,row.AH2_dA]);
       const maeOuL=irAbsMae([row.O_dL,row.U_dL]);
@@ -7151,14 +7234,18 @@ bash scripts/update_and_serve.sh --start</div>
       row._mae={mae1x2L,mae1x2A,maeAhL,maeAhA,maeOuL,maeOuA, drawL:irAbsMae([row.X_dL]), drawA:irAbsMae([row.X_dA])};
       return row;
     }
-    function irBuildSingleRow(match, prices, engine){
-      const row=irEtalonFromMatch(match);
+    function irBuildSingleRow(match, prices, engine, useMargin){
+      const row=irEtalonFromMatch(match, !!useMargin);
       const pr=prices||{};
       row.calc_model=engine==='legacy'?'legacy_dc':'auto_copula';
-      ['1','X','2','AH1','AH','AH2','O','Тот','U'].forEach(k=>{
+      IR_ODDS_KEYS.forEach(k=>{
         row[`${k}_pr`]=pr[k]!=null?pr[k]:null;
         row[`${k}_delta`]=irDelta(row[`${k}_pr`], row[k]);
       });
+      row.AH_main_pr=pr.AH_main!=null?pr.AH_main:null;
+      row.Тот_main_pr=pr.Тот_main!=null?pr.Тот_main:null;
+      row.AH_line_delta=irDelta(row.AH_main_pr, row.AH);
+      row.Тот_line_delta=irDelta(row.Тот_main_pr, row.Тот);
       row.selected_distribution=pr.selected_distribution!=null?pr.selected_distribution:null;
       row.alpha_final=pr.alpha_final!=null?pr.alpha_final:null;
       row.rho_final=pr.rho_final!=null?pr.rho_final:null;
@@ -7223,46 +7310,46 @@ bash scripts/update_and_serve.sh --start</div>
       const autoEl=document.getElementById('irParamsAuto');
       if(!legEl || !autoEl) return;
       const L=irCfgPart('legacy', {})||{};
+      const Ldc=L.dixonColes||{};
+      const Ldraw=L.drawModel||{};
+      const Lcal=L.calibration||{};
+      const Ltr=L.train||{};
+      const Lmx=L.matrix||{};
+      const Asec=irCfgPart('auto', {})||{};
+      const Atr=Asec.train||{};
+      const Amx=Asec.matrix||{};
       const A=irCfgPart('autoMarginal', {})||{};
       const C=irCfgPart('copula', {})||{};
       const M=irCfgPart('matrix', {})||{};
       const T=irCfgPart('train', {})||{};
       const mx=GM_MATRIX_CFG||{};
-      legEl.innerHTML = '<h5>Legacy (Poisson + DC + Draw)</h5>' + irParamsRowsHtml([
-        ['Dixon-Coles', L.useDixonColes !== false],
-        ['Модель ничьи', L.useDrawModel !== false],
-        ['fit γ', L.fitGamma !== false],
-        ['dcGamma (fixed)', L.dcGamma != null ? L.dcGamma : 0],
-        ['gammaMax', L.gammaMax != null ? L.gammaMax : 0.20],
-        ['drawMode', L.drawMode || 'residual_dc'],
-        ['drawQMin / Max', `${L.drawQMin != null ? L.drawQMin : 0.95} / ${L.drawQMax != null ? L.drawQMax : 1.15}`],
-        ['qResMin / Max', `${L.drawQResMin != null ? L.drawQResMin : 0.95} / ${L.drawQResMax != null ? L.drawQResMax : 1.15}`],
-        ['drawLossWeight', L.drawLossWeight != null ? L.drawLossWeight : 1.5],
-        ['maxGoals', M.maxGoals != null ? M.maxGoals : (mx.maxGoals || 10)],
-        ['lambdaMin', M.lambdaMin != null ? M.lambdaMin : (mx.lambdaMin || 0.05)],
-        ['α форы / тотала', `${T.alphaAh != null ? T.alphaAh : 0.25} / ${T.alphaT != null ? T.alphaT : 0.5}`],
-        ['λ r / A / Df', `${T.regLambda != null ? T.regLambda : 0.10} / ${T.regLambdaAttack != null ? T.regLambdaAttack : 0.10} / ${T.regLambdaDefense != null ? T.regLambdaDefense : 0.10}`],
-        ['dCalMode', T.dCalMode || 'soft'],
-        ['b min / max', `${T.dCalBMin != null ? T.dCalBMin : 0.90} / ${T.dCalBMax != null ? T.dCalBMax : 1.03}`],
-        ['sCalMode', T.sCalMode || 'off'],
+      const num=(o,k,fb)=> (o && o[k]!=null ? o[k] : fb);
+      legEl.innerHTML = '<h5>Legacy (изолированный pipeline)</h5>' + irParamsRowsHtml([
+        ['pipeline', 'S/D → Poisson → DC → draw'],
+        ['Dixon-Coles', (Ldc.enabled!=null?Ldc.enabled:L.useDixonColes) !== false],
+        ['Модель ничьи', (Ldraw.enabled!=null?Ldraw.enabled:L.useDrawModel) !== false],
+        ['fit γ', (Ldc.fitGamma!=null?Ldc.fitGamma:L.fitGamma) !== false],
+        ['γ fixed / max', `${num(Ldc,'gamma', num(L,'dcGamma',0))} / ${num(Ldc,'gammaMax', num(L,'gammaMax',0.20))}`],
+        ['drawMode', Ldraw.mode || L.drawMode || 'residual_dc'],
+        ['qMin / qMax', `${num(Ldraw,'qMin', num(L,'drawQMin',0.95))} / ${num(Ldraw,'qMax', num(L,'drawQMax',1.15))}`],
+        ['drawLossWeight', num(Ldraw,'drawLossWeight', num(L,'drawLossWeight',1.5))],
+        ['maxGoals', num(Lmx,'maxGoals', num(M,'maxGoals', mx.maxGoals||10))],
+        ['α форы / тотала', `${num(Ltr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Ltr,'alphaT', num(T,'alphaT',0.5))}`],
+        ['dCalMode / sCalMode', `${Lcal.dCalMode||T.dCalMode||'soft'} / ${Lcal.sCalMode||T.sCalMode||'off'}`],
+        ['Copula / NB', 'запрещены'],
       ]);
-      autoEl.innerHTML = '<h5>Auto (Marginals + Copula)</h5>' + irParamsRowsHtml([
+      autoEl.innerHTML = '<h5>Auto (изолированный pipeline)</h5>' + irParamsRowsHtml([
+        ['pipeline', 'S/D → Marginals → Copula'],
         ['Auto Marginals', A.enabled !== false],
         ['Gaussian Copula', C.enabled !== false],
         ['alphaCandidates', A.alphaCandidates || mx.alphaCandidates || []],
         ['rhoCandidates', C.rhoCandidates || mx.rhoCandidates || []],
-        ['nbMinImprovementPct', A.nbMinImprovementPct != null ? A.nbMinImprovementPct : (mx.nbMinImprovementPct || 1)],
-        ['rhoMinImprovementPct', C.rhoMinImprovementPct != null ? C.rhoMinImprovementPct : (mx.rhoMinImprovementPct || 0.5)],
-        ['minMatchesForLeagueAlpha', A.minMatchesForLeagueAlpha != null ? A.minMatchesForLeagueAlpha : (mx.minMatchesForLeagueAlpha || 200)],
-        ['alphaPenalty', A.alphaPenalty != null ? A.alphaPenalty : (mx.alphaPenalty || 0.5)],
-        ['vppWeight', A.vppWeight != null ? A.vppWeight : (mx.vppWeight || 0.15)],
-        ['maxGoals', M.maxGoals != null ? M.maxGoals : (mx.maxGoals || 10)],
-        ['lambdaMin', M.lambdaMin != null ? M.lambdaMin : (mx.lambdaMin || 0.05)],
-        ['tailEpsilon', M.tailEpsilon != null ? M.tailEpsilon : (mx.tailEpsilon || 1e-6)],
-        ['Dixon-Coles / Draw', 'выкл'],
-        ['α форы / тотала', `${T.alphaAh != null ? T.alphaAh : 0.25} / ${T.alphaT != null ? T.alphaT : 0.5}`],
-        ['λ r / A / Df', `${T.regLambda != null ? T.regLambda : 0.10} / ${T.regLambdaAttack != null ? T.regLambdaAttack : 0.10} / ${T.regLambdaDefense != null ? T.regLambdaDefense : 0.10}`],
-        ['dCalMode', T.dCalMode || 'soft'],
+        ['nbMinImprovementPct', num(A,'nbMinImprovementPct', mx.nbMinImprovementPct||1)],
+        ['rhoMinImprovementPct', num(C,'rhoMinImprovementPct', mx.rhoMinImprovementPct||0.5)],
+        ['maxGoals', num(Amx,'maxGoals', num(M,'maxGoals', mx.maxGoals||10))],
+        ['Dixon-Coles / Draw', 'запрещены'],
+        ['α форы / тотала', `${num(Atr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Atr,'alphaT', num(T,'alphaT',0.5))}`],
+        ['dCalMode', Atr.dCalMode || T.dCalMode || 'soft'],
       ]);
     }
     function irRenderSummary(sum){
@@ -7346,13 +7433,15 @@ bash scripts/update_and_serve.sh --start</div>
         return;
       }
       const leagueFilter=(document.getElementById('irLeagueFilter')||{}).value||'';
+      const useMargin=irUseMarginOn();
       const marginFrac=irParseMarginPct();
       const exportBtn=document.getElementById('irExportCsv');
       irReportRows=[]; irReportSummary=null;
       if(exportBtn) exportBtn.disabled=true;
       irRenderSummary(null);
-      const modeTxt=engines.compare?'Compare':(engines.legacy?'Legacy':'Auto');
-      irSetReportStatus(`Загрузка неактивных матчей… (${modeTxt})`);
+      const modeTxt=engines.compare?'Сравнение':(engines.legacy?'Legacy':'Auto');
+      const etalonTxt=useMargin?`эталон raw БД, маржа ${(marginFrac*100).toFixed(1)}%`:'эталон fair (de-vig), модель без маржи';
+      irSetReportStatus(`Загрузка неактивных матчей… (${modeTxt}; ${etalonTxt})`);
       irRenderReportTable([], engines.compare?IR_COMPARE_COLS:IR_SINGLE_COLS);
       await loadSupabaseConfig();
       if(!window.__SB.leagues||!window.__SB.leagues.length) await sbFetchLeaguesList();
@@ -7393,20 +7482,19 @@ bash scripts/update_and_serve.sh --start</div>
           const homeId=gmTeamKey(m.home_team_id,m.home_team);
           const awayId=gmTeamKey(m.away_team_id,m.away_team);
           const opt={neutral:!!m.is_neutral, derby:sbIsDerby(m)};
-          const leg=(modelL&&homeId&&awayId)?irPredictBundle(modelL,homeId,awayId,opt,marginFrac):null;
-          const aut=(modelA&&homeId&&awayId)?irPredictBundle(modelA,homeId,awayId,opt,marginFrac):null;
-          if(engines.compare || (engines.legacy&&engines.auto)) out.push(irBuildCompareRow(m,leg,aut));
-          else if(engines.legacy) out.push(irBuildSingleRow(m,leg,'legacy'));
-          else out.push(irBuildSingleRow(m,aut,'auto'));
+          const marketLines={AH:gmF(m.closing_ah_home), Тот:gmF(m.closing_total_line)};
+          const leg=(modelL&&homeId&&awayId)?irPredictBundle(modelL,homeId,awayId,opt,marginFrac,marketLines):null;
+          const aut=(modelA&&homeId&&awayId)?irPredictBundle(modelA,homeId,awayId,opt,marginFrac,marketLines):null;
+          if(engines.compare || (engines.legacy&&engines.auto)) out.push(irBuildCompareRow(m,leg,aut,useMargin));
+          else if(engines.legacy) out.push(irBuildSingleRow(m,leg,'legacy',useMargin));
+          else out.push(irBuildSingleRow(m,aut,'auto',useMargin));
         }
       }
       irReportRows=out;
       const cols=(engines.compare||(engines.legacy&&engines.auto))?IR_COMPARE_COLS:IR_SINGLE_COLS;
       irRenderReportTable(irReportRows, cols);
       irReportSummary=irComputeSummary(irReportRows, engines);
-      // normalize single-mode mae keys into summary already handled
       if(!(engines.compare||(engines.legacy&&engines.auto))){
-        // rebuild summary from _mae single keys
         const xs=irReportRows.map(r=>r._mae).filter(Boolean);
         const avg=k=>{ const a=xs.map(o=>o[k]).filter(v=>v!=null&&isFinite(v)); return a.length?a.reduce((x,y)=>x+y,0)/a.length:null; };
         const block={mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw')};
@@ -7415,7 +7503,7 @@ bash scripts/update_and_serve.sh --start</div>
       irRenderSummary(irReportSummary);
       if(exportBtn) exportBtn.disabled=!irReportRows.length;
       const warn=skipped?`; ${skipped} лиг без обучения`:'';
-      irSetReportStatus(`Готово: ${irReportRows.length} матч., режим ${modeTxt}, маржа ${(marginFrac*100).toFixed(1)}%${warn}`);
+      irSetReportStatus(`Готово: ${irReportRows.length} матч., режим ${modeTxt}; ${etalonTxt}; AH/OU на рыночной линии${warn}`);
     }
     function irPopulateLeagueFilter(){
       const sel=document.getElementById('irLeagueFilter');
@@ -7449,6 +7537,8 @@ bash scripts/update_and_serve.sh --start</div>
         if(radio) radio.checked=true;
         const mg=document.getElementById('irMarginPct');
         if(mg && !(mg.value||'').trim()) mg.value=String(irCfgPart('compare.defaultMarginPct',3));
+        const useMg=document.getElementById('irUseMargin');
+        if(useMg) useMg.checked=!!irCfgPart('compare.defaultUseMargin', false);
         irSyncModeCheckboxes();
         irPopulateLeagueFilter();
       }catch(e){
