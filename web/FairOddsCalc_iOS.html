@@ -7158,6 +7158,65 @@ bash scripts/update_and_serve.sh --start</div>
       };
     }
     function irFmtMae(v){ return v==null||!isFinite(v)?'—':v.toFixed(3); }
+    function irFmtParam(v){
+      if(v==null) return '—';
+      if(typeof v==='boolean') return v ? 'да' : 'нет';
+      if(Array.isArray(v)) return v.map(x => (typeof x==='number' ? (Number.isInteger(x)?String(x):Number(x).toFixed(2)) : String(x))).join(', ');
+      if(typeof v==='number') return Number.isInteger(v) ? String(v) : (Math.abs(v)<1e-3 && v!==0 ? v.toExponential(1) : String(v));
+      return String(v);
+    }
+    function irParamsRowsHtml(pairs){
+      return pairs.map(([k,v]) =>
+        `<div class="ir-sum-row"><span>${escapeHtml(k)}</span><span>${escapeHtml(irFmtParam(v))}</span></div>`
+      ).join('');
+    }
+    function irRenderModelParams(){
+      const legEl=document.getElementById('irParamsLegacy');
+      const autoEl=document.getElementById('irParamsAuto');
+      if(!legEl || !autoEl) return;
+      const L=irCfgPart('legacy', {})||{};
+      const A=irCfgPart('autoMarginal', {})||{};
+      const C=irCfgPart('copula', {})||{};
+      const M=irCfgPart('matrix', {})||{};
+      const T=irCfgPart('train', {})||{};
+      const mx=GM_MATRIX_CFG||{};
+      legEl.innerHTML = '<h5>Legacy (Poisson + DC + Draw)</h5>' + irParamsRowsHtml([
+        ['Dixon-Coles', L.useDixonColes !== false],
+        ['Модель ничьи', L.useDrawModel !== false],
+        ['fit γ', L.fitGamma !== false],
+        ['dcGamma (fixed)', L.dcGamma != null ? L.dcGamma : 0],
+        ['gammaMax', L.gammaMax != null ? L.gammaMax : 0.20],
+        ['drawMode', L.drawMode || 'residual_dc'],
+        ['drawQMin / Max', `${L.drawQMin != null ? L.drawQMin : 0.95} / ${L.drawQMax != null ? L.drawQMax : 1.15}`],
+        ['qResMin / Max', `${L.drawQResMin != null ? L.drawQResMin : 0.95} / ${L.drawQResMax != null ? L.drawQResMax : 1.15}`],
+        ['drawLossWeight', L.drawLossWeight != null ? L.drawLossWeight : 1.5],
+        ['maxGoals', M.maxGoals != null ? M.maxGoals : (mx.maxGoals || 10)],
+        ['lambdaMin', M.lambdaMin != null ? M.lambdaMin : (mx.lambdaMin || 0.05)],
+        ['α форы / тотала', `${T.alphaAh != null ? T.alphaAh : 0.25} / ${T.alphaT != null ? T.alphaT : 0.5}`],
+        ['λ r / A / Df', `${T.regLambda != null ? T.regLambda : 0.10} / ${T.regLambdaAttack != null ? T.regLambdaAttack : 0.10} / ${T.regLambdaDefense != null ? T.regLambdaDefense : 0.10}`],
+        ['dCalMode', T.dCalMode || 'soft'],
+        ['b min / max', `${T.dCalBMin != null ? T.dCalBMin : 0.90} / ${T.dCalBMax != null ? T.dCalBMax : 1.03}`],
+        ['sCalMode', T.sCalMode || 'off'],
+      ]);
+      autoEl.innerHTML = '<h5>Auto (Marginals + Copula)</h5>' + irParamsRowsHtml([
+        ['Auto Marginals', A.enabled !== false],
+        ['Gaussian Copula', C.enabled !== false],
+        ['alphaCandidates', A.alphaCandidates || mx.alphaCandidates || []],
+        ['rhoCandidates', C.rhoCandidates || mx.rhoCandidates || []],
+        ['nbMinImprovementPct', A.nbMinImprovementPct != null ? A.nbMinImprovementPct : (mx.nbMinImprovementPct || 1)],
+        ['rhoMinImprovementPct', C.rhoMinImprovementPct != null ? C.rhoMinImprovementPct : (mx.rhoMinImprovementPct || 0.5)],
+        ['minMatchesForLeagueAlpha', A.minMatchesForLeagueAlpha != null ? A.minMatchesForLeagueAlpha : (mx.minMatchesForLeagueAlpha || 200)],
+        ['alphaPenalty', A.alphaPenalty != null ? A.alphaPenalty : (mx.alphaPenalty || 0.5)],
+        ['vppWeight', A.vppWeight != null ? A.vppWeight : (mx.vppWeight || 0.15)],
+        ['maxGoals', M.maxGoals != null ? M.maxGoals : (mx.maxGoals || 10)],
+        ['lambdaMin', M.lambdaMin != null ? M.lambdaMin : (mx.lambdaMin || 0.05)],
+        ['tailEpsilon', M.tailEpsilon != null ? M.tailEpsilon : (mx.tailEpsilon || 1e-6)],
+        ['Dixon-Coles / Draw', 'выкл'],
+        ['α форы / тотала', `${T.alphaAh != null ? T.alphaAh : 0.25} / ${T.alphaT != null ? T.alphaT : 0.5}`],
+        ['λ r / A / Df', `${T.regLambda != null ? T.regLambda : 0.10} / ${T.regLambdaAttack != null ? T.regLambdaAttack : 0.10} / ${T.regLambdaDefense != null ? T.regLambdaDefense : 0.10}`],
+        ['dCalMode', T.dCalMode || 'soft'],
+      ]);
+    }
     function irRenderSummary(sum){
       const el=document.getElementById('irSummaryBody');
       if(!el) return;
@@ -7333,6 +7392,7 @@ bash scripts/update_and_serve.sh --start</div>
     async function irInitReportTab(){
       try{
         await loadGoalMatrixConfig();
+        irRenderModelParams();
         await loadSupabaseConfig();
         if(!window.__SB.leagues||!window.__SB.leagues.length) await sbFetchLeaguesList();
         if(!window.__SB.seasons||!window.__SB.seasons.length) await sbLoadSeasonSummary();
