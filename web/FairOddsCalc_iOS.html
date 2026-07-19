@@ -1118,13 +1118,13 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <div class="ir-controls-card">
             <div class="ir-mode-row">
               <span style="font-weight:600;color:#10204a">Отчёт:</span>
-              <label><input type="radio" name="irReportMode" value="legacy" /> <span>Legacy</span></label>
+              <label><input type="radio" name="irReportMode" value="legacy" /> <span>Legacy (candidate)</span></label>
               <label><input type="radio" name="irReportMode" value="auto" /> <span>Auto</span></label>
               <label><input type="radio" name="irReportMode" value="compare" checked /> <span>Сравнение</span></label>
             </div>
             <div class="ir-mode-row" style="margin-bottom:0">
               <span style="font-weight:600;color:#10204a">Считать:</span>
-              <label><input type="checkbox" id="irUseLegacy" checked /> <span>Legacy (Poisson + DC + Draw)</span></label>
+              <label><input type="checkbox" id="irUseLegacy" checked /> <span>Legacy candidate (Poisson + DC + Draw)</span></label>
               <label><input type="checkbox" id="irUseAuto" checked /> <span>Auto (Marginals + Copula)</span></label>
             </div>
           </div>
@@ -1172,22 +1172,23 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </aside>
       </div>
       <div class="ir-glossary" id="irGlossary">
-        <h4>Что означают режимы</h4>
+        <h4>Что означают режимы и колонки</h4>
         <dl>
           <div>
             <dt>Сравнение</dt>
-            <dd>За один прогон считает обе модели на одних и тех же inactive-матчах. Коэффициенты AH/OU сравниваются на <b>рыночной линии</b> (не на своей main line модели). Отдельно показывается отклонение собственной main line. В диагностике — MAE и победитель.</dd>
+            <dd>Обе модели на одних inactive-матчах. <b>winner_AH / winner_OU / winner_row</b> считаются только по кэфам на рыночной линии (<code>*_at_market</code> / <code>*_d*_mkt</code>). Отклонение main line — отдельные колонки <code>AH_line_d*</code>, <code>Total_line_d*</code> и <code>winner_AH_line</code> / <code>winner_OU_line</code>.</dd>
           </div>
           <div>
-            <dt>Legacy</dt>
-            <dd>Исторический pipeline: восстановление S/D → Poisson → независимая матрица → Dixon–Coles → отдельная draw-model → старая калибровка. Полностью изолирован от Auto (без NB, без Copula). На вкладках «Линия» и «История» не используется.</dd>
+            <dt>Legacy (candidate)</dt>
+            <dd>Кандидат исторического pipeline: S/D → Poisson → DC → draw-model. Пока нет сверки с сохранённым historical Legacy reference — режим не называется гарантированно восстановленной Legacy.</dd>
           </div>
           <div>
-            <dt>Auto (новая модель)</dt>
-            <dd>Новый pipeline: S/D → Auto Marginals (Poisson/NB) → Gaussian Copula → единая матрица → рынки. Без Dixon–Coles и без draw-model; ничья = сумма диагонали. Это модель вкладки «Линия».</dd>
+            <dt>Auto</dt>
+            <dd>S/D → Marginals → Copula; ничья = диагональ. Без DC и draw-model.</dd>
           </div>
         </dl>
-        <p class="ir-glossary-note"><b>Маржа:</b> выкл → модель и эталон в fair (эталон очищается Shin de-vig). Вкл → модель с маржой %, эталон как в БД (raw). Параметры — в <code>model_config.json</code>. БД при отчёте не меняется.</p>
+        <p class="ir-glossary-note"><b>AH/OU:</b> <code>AH1_L_at_market</code> — кэф Legacy на <code>AH_market</code>, даже если <code>AH_main_L</code> другая. <code>same_ah_L=yes</code> только значит, что main line совпала с рынком (для справки), на валидность <code>*_dL_mkt</code> не влияет.<br>
+        <b>Маржа:</b> выкл → fair/de-vig; вкл → эталон raw БД + модель с %.</p>
       </div>
     </section>
 
@@ -6732,35 +6733,53 @@ bash scripts/update_and_serve.sh --start</div>
     let irReportSummary = null;
 
     const IR_COMPARE_COLS = [
-      'Дата','Лига','Дома','Гости','etalon_layer',
-      '1','X','2','AH1','AH','AH2','O','Тот','U',
-      '1_L','X_L','2_L','AH1_L','AH_main_L','AH2_L','O_L','Тот_main_L','U_L',
-      '1_A','X_A','2_A','AH1_A','AH_main_A','AH2_A','O_A','Тот_main_A','U_A',
-      '1_dL','X_dL','2_dL','AH1_dL','AH_line_dL','AH2_dL','O_dL','Тот_line_dL','U_dL',
-      '1_dA','X_dA','2_dA','AH1_dA','AH_line_dA','AH2_dA','O_dA','Тот_line_dA','U_dA',
-      'winner_1x2','winner_AH','winner_OU','winner_row',
+      'Дата','Лига','Дома','Гости','etalon_layer','engine_L','engine_A',
+      // 1X2 market / models / deltas
+      '1','X','2',
+      '1_L','X_L','2_L',
+      '1_A','X_A','2_A',
+      '1_dL','X_dL','2_dL',
+      '1_dA','X_dA','2_dA',
+      'winner_1x2',
+      // AH: market line + main lines + line deltas (NOT odds)
+      'AH_market','AH_main_L','AH_main_A','AH_line_dL','AH_line_dA','same_ah_L','same_ah_A','winner_AH_line',
+      // AH odds priced ONLY at market line
+      'AH1','AH2',
+      'AH1_L_at_market','AH2_L_at_market','AH1_A_at_market','AH2_A_at_market',
+      'AH1_dL_mkt','AH2_dL_mkt','AH1_dA_mkt','AH2_dA_mkt','winner_AH',
+      // Total: market line + main lines + line deltas
+      'Total_market','Total_main_L','Total_main_A','Total_line_dL','Total_line_dA','same_tot_L','same_tot_A','winner_OU_line',
+      // OU odds priced ONLY at market total
+      'O','U',
+      'O_L_at_market','U_L_at_market','O_A_at_market','U_A_at_market',
+      'O_dL_mkt','U_dL_mkt','O_dA_mkt','U_dA_mkt','winner_OU',
+      'winner_row',
     ];
     const IR_SINGLE_COLS = [
       'Дата','Лига','Дома','Гости','calc_model','etalon_layer',
-      '1','X','2','AH1','AH','AH2','O','Тот','U',
-      '1_pr','X_pr','2_pr','AH1_pr','AH_main_pr','AH2_pr','O_pr','Тот_main_pr','U_pr',
-      '1_delta','X_delta','2_delta','AH1_delta','AH_line_delta','AH2_delta','O_delta','Тот_line_delta','U_delta',
+      '1','X','2','AH1','AH_market','AH2','O','Total_market','U',
+      '1_pr','X_pr','2_pr',
+      'AH1_at_market','AH_main','AH2_at_market','AH_line_delta',
+      'O_at_market','Total_main','U_at_market','Total_line_delta',
+      '1_delta','X_delta','2_delta','AH1_delta_mkt','AH2_delta_mkt','O_delta_mkt','U_delta_mkt',
+      'same_ah','same_tot',
       'selected_distribution','alpha_final','rho_final','dc_gamma','lambda_home','lambda_away',
       'matrix_sum','matrix_tail','p_00','p_11','p_btts_yes',
       'model_total_mean','model_total_variance','model_total_variance_ratio',
     ];
     const IR_TEXT_COLS = new Set([
       'Дата','Лига','Дома','Гости','calc_model','selected_distribution','etalon_layer',
-      'winner_1x2','winner_AH','winner_OU','winner_row',
+      'engine_L','engine_A',
+      'same_ah_L','same_ah_A','same_tot_L','same_tot_A','same_ah','same_tot',
+      'winner_1x2','winner_AH','winner_OU','winner_AH_line','winner_OU_line','winner_row',
     ]);
     const IR_LINE_COLS = new Set([
-      'AH','Тот','AH_pr','Тот_pr','AH_L','Тот_L','AH_A','Тот_A',
-      'AH_main_L','Тот_main_L','AH_main_A','Тот_main_A','AH_main_pr','Тот_main_pr',
-      'AH_delta','Тот_delta','AH_dL','Тот_dL','AH_dA','Тот_dA',
-      'AH_line_dL','Тот_line_dL','AH_line_dA','Тот_line_dA','AH_line_delta','Тот_line_delta',
+      'AH_market','Total_market','AH_main_L','AH_main_A','Total_main_L','Total_main_A',
+      'AH_main','Total_main','AH_line_dL','AH_line_dA','Total_line_dL','Total_line_dA',
+      'AH_line_delta','Total_line_delta',
     ]);
-    const IR_WIN_COLS = new Set(['winner_1x2','winner_AH','winner_OU','winner_row']);
-    const IR_ODDS_KEYS = ['1','X','2','AH1','AH2','O','U'];
+    const IR_WIN_COLS = new Set(['winner_1x2','winner_AH','winner_OU','winner_AH_line','winner_OU_line','winner_row']);
+    const IR_SAME_LINE_EPS = 1e-6;
 
     function irCfgPart(path, fallback){
       const root = GM_MODEL_CFG || GM_MATRIX_CFG || {};
@@ -7124,12 +7143,24 @@ bash scripts/update_and_serve.sh --start</div>
         return true;
       });
     }
+    function irSameLine(a, b){
+      if(a==null||b==null||!isFinite(a)||!isFinite(b)) return false;
+      return Math.abs(Number(a)-Number(b)) < IR_SAME_LINE_EPS;
+    }
+    function irApplyMarginToFairOdds(fairOdds, mg){
+      // fairOdds already = 1/p; with margin → 1/(p*(1+mg)) = fairOdds/(1+mg)
+      if(!(fairOdds>1)||!isFinite(fairOdds)) return null;
+      if(!mg||mg<=0) return fairOdds;
+      return fairOdds/(1+mg);
+    }
     function irEtalonFromMatch(m, useMargin){
       // useMargin=true → эталон raw как в БД; false → Shin/fair de-vig (без маржи бука).
+      const ahLine=gmF(m.closing_ah_home);
+      const totLine=gmF(m.closing_total_line);
       const meta={
         Дата:m.match_date||'', Лига:m.league_name||sbLeagueName(m.league_id)||'',
         Дома:m.home_team||'', Гости:m.away_team||'',
-        AH:gmF(m.closing_ah_home), Тот:gmF(m.closing_total_line),
+        AH_market:ahLine, Total_market:totLine,
         etalon_layer: useMargin ? 'raw_db' : 'fair_devig',
       };
       const raw1=gmF(m.home_odds), rawX=gmF(m.draw_odds), raw2=gmF(m.away_odds);
@@ -7157,7 +7188,7 @@ bash scripts/update_and_serve.sh --start</div>
       });
     }
     function irPredictAtMarket(model, homeId, awayId, opt, marginFrac, marketLines){
-      // Prices AH/OU on the *market* line; main lines returned separately for line-delta.
+      // AH/OU odds ALWAYS on market line. Main lines returned separately for line-delta only.
       if(!model) return null;
       try{
         const engine=model.irEngine||(model.cfg&&model.cfg.irEngine)||'auto';
@@ -7165,24 +7196,29 @@ bash scripts/update_and_serve.sh --start</div>
         const mk=pred.markets;
         const mainAh=mk.mainAh, mainTot=mk.mainTotal;
         const mg=marginFrac||0;
-        const mktAh=marketLines && marketLines.AH!=null ? marketLines.AH : null;
-        const mktTot=marketLines && marketLines.Тот!=null ? marketLines.Тот : null;
-        const ahAt=(mktAh!=null && isFinite(mktAh)) ? gmAhMarket(pred.mat, mktAh) : mainAh;
-        const totAt=(mktTot!=null && isFinite(mktTot)) ? gmTotMarket(pred.mat, mktTot) : mainTot;
+        const mktAh=marketLines && marketLines.AH!=null && isFinite(marketLines.AH) ? Number(marketLines.AH) : null;
+        const mktTot=marketLines && marketLines.Тот!=null && isFinite(marketLines.Тот) ? Number(marketLines.Тот) : null;
+        if(mktAh==null || mktTot==null){
+          console.warn('irPredictAtMarket: missing market lines', marketLines);
+        }
+        // gmAhMarket/gmTotMarket return fair ODDS in .home/.away/.over/.under
+        const ahAt = mktAh!=null ? gmAhMarket(pred.mat, mktAh) : null;
+        const totAt = mktTot!=null ? gmTotMarket(pred.mat, mktTot) : null;
         const d=pred.matDiag||{};
         return {
-          engine,
-          '1': irMarginOddsFromProb(mk.p1,mg),
-          X: irMarginOddsFromProb(mk.px,mg),
-          '2': irMarginOddsFromProb(mk.p2,mg),
-          AH1: irMarginOddsFromProb(1/ahAt.home,mg),
-          AH2: irMarginOddsFromProb(1/ahAt.away,mg),
+          engine: engine==='legacy' ? 'legacy_candidate' : 'auto',
+          '1': irApplyMarginToFairOdds(mk.p1>0?1/mk.p1:null, mg),
+          X: irApplyMarginToFairOdds(mk.px>0?1/mk.px:null, mg),
+          '2': irApplyMarginToFairOdds(mk.p2>0?1/mk.p2:null, mg),
+          // odds AT market lines only
+          AH1_at_market: ahAt ? irApplyMarginToFairOdds(ahAt.home, mg) : null,
+          AH2_at_market: ahAt ? irApplyMarginToFairOdds(ahAt.away, mg) : null,
+          O_at_market: totAt ? irApplyMarginToFairOdds(totAt.over, mg) : null,
+          U_at_market: totAt ? irApplyMarginToFairOdds(totAt.under, mg) : null,
+          priced_ah_line: ahAt ? ahAt.line : null,
+          priced_tot_line: totAt ? totAt.line : null,
           AH_main: mainAh.line,
-          O: irMarginOddsFromProb(1/totAt.over,mg),
-          U: irMarginOddsFromProb(1/totAt.under,mg),
-          Тот_main: mainTot.line,
-          priced_ah_line: ahAt.line,
-          priced_tot_line: totAt.line,
+          Total_main: mainTot.line,
           selected_distribution: pred.selectedDistribution||model.selectedDistribution||null,
           alpha_final: pred.alphaFinal!=null?pred.alphaFinal:(model.alphaFinal||0),
           rho_final: pred.rhoFinal!=null?pred.rhoFinal:(model.rhoFinal||0),
@@ -7197,55 +7233,106 @@ bash scripts/update_and_serve.sh --start</div>
     function irPredictBundle(model, homeId, awayId, opt, marginFrac, marketLines){
       return irPredictAtMarket(model, homeId, awayId, opt, marginFrac, marketLines);
     }
-    function irMapModelSide(row, src, suf){
-      if(!src) return;
-      IR_ODDS_KEYS.forEach(k=>{ row[`${k}_${suf}`]=src[k]!=null?src[k]:null; });
-      row[`AH_main_${suf}`]=src.AH_main!=null?src.AH_main:null;
-      row[`Тот_main_${suf}`]=src.Тот_main!=null?src.Тот_main:null;
-    }
     function irBuildCompareRow(match, leg, aut, useMargin){
       const mkt=irEtalonFromMatch(match, !!useMargin);
       const row=Object.assign({}, mkt);
-      irMapModelSide(row, leg, 'L');
-      irMapModelSide(row, aut, 'A');
-      IR_ODDS_KEYS.forEach(k=>{
+      row.engine_L = leg ? (leg.engine||'legacy_candidate') : null;
+      row.engine_A = aut ? (aut.engine||'auto') : null;
+      // 1X2
+      ['1','X','2'].forEach(k=>{
+        row[`${k}_L`]=leg && leg[k]!=null ? leg[k] : null;
+        row[`${k}_A`]=aut && aut[k]!=null ? aut[k] : null;
         row[`${k}_dL`]=irDelta(row[`${k}_L`], mkt[k]);
         row[`${k}_dA`]=irDelta(row[`${k}_A`], mkt[k]);
       });
-      row.AH_line_dL=irDelta(row.AH_main_L, mkt.AH);
-      row.AH_line_dA=irDelta(row.AH_main_A, mkt.AH);
-      row.Тот_line_dL=irDelta(row.Тот_main_L, mkt.Тот);
-      row.Тот_line_dA=irDelta(row.Тот_main_A, mkt.Тот);
+      // AH lines
+      row.AH_main_L = leg && leg.AH_main!=null ? leg.AH_main : null;
+      row.AH_main_A = aut && aut.AH_main!=null ? aut.AH_main : null;
+      row.AH_line_dL = irDelta(row.AH_main_L, mkt.AH_market);
+      row.AH_line_dA = irDelta(row.AH_main_A, mkt.AH_market);
+      row.same_ah_L = irSameLine(row.AH_main_L, mkt.AH_market) ? 'yes' : 'no';
+      row.same_ah_A = irSameLine(row.AH_main_A, mkt.AH_market) ? 'yes' : 'no';
+      // AH odds at market line only
+      row.AH1_L_at_market = leg ? leg.AH1_at_market : null;
+      row.AH2_L_at_market = leg ? leg.AH2_at_market : null;
+      row.AH1_A_at_market = aut ? aut.AH1_at_market : null;
+      row.AH2_A_at_market = aut ? aut.AH2_at_market : null;
+      row.AH1_dL_mkt = irDelta(row.AH1_L_at_market, mkt.AH1);
+      row.AH2_dL_mkt = irDelta(row.AH2_L_at_market, mkt.AH2);
+      row.AH1_dA_mkt = irDelta(row.AH1_A_at_market, mkt.AH1);
+      row.AH2_dA_mkt = irDelta(row.AH2_A_at_market, mkt.AH2);
+      // Total lines
+      row.Total_main_L = leg && leg.Total_main!=null ? leg.Total_main : null;
+      row.Total_main_A = aut && aut.Total_main!=null ? aut.Total_main : null;
+      row.Total_line_dL = irDelta(row.Total_main_L, mkt.Total_market);
+      row.Total_line_dA = irDelta(row.Total_main_A, mkt.Total_market);
+      row.same_tot_L = irSameLine(row.Total_main_L, mkt.Total_market) ? 'yes' : 'no';
+      row.same_tot_A = irSameLine(row.Total_main_A, mkt.Total_market) ? 'yes' : 'no';
+      // OU odds at market total only
+      row.O_L_at_market = leg ? leg.O_at_market : null;
+      row.U_L_at_market = leg ? leg.U_at_market : null;
+      row.O_A_at_market = aut ? aut.O_at_market : null;
+      row.U_A_at_market = aut ? aut.U_at_market : null;
+      row.O_dL_mkt = irDelta(row.O_L_at_market, mkt.O);
+      row.U_dL_mkt = irDelta(row.U_L_at_market, mkt.U);
+      row.O_dA_mkt = irDelta(row.O_A_at_market, mkt.O);
+      row.U_dA_mkt = irDelta(row.U_A_at_market, mkt.U);
+
       const mae1x2L=irAbsMae([row['1_dL'],row.X_dL,row['2_dL']]);
       const mae1x2A=irAbsMae([row['1_dA'],row.X_dA,row['2_dA']]);
-      // AH/OU MAE только по кэфам на рыночной линии (не смешивать с line-delta).
-      const maeAhL=irAbsMae([row.AH1_dL,row.AH2_dL]);
-      const maeAhA=irAbsMae([row.AH1_dA,row.AH2_dA]);
-      const maeOuL=irAbsMae([row.O_dL,row.U_dL]);
-      const maeOuA=irAbsMae([row.O_dA,row.U_dA]);
+      const maeAhMktL=irAbsMae([row.AH1_dL_mkt,row.AH2_dL_mkt]);
+      const maeAhMktA=irAbsMae([row.AH1_dA_mkt,row.AH2_dA_mkt]);
+      const maeOuMktL=irAbsMae([row.O_dL_mkt,row.U_dL_mkt]);
+      const maeOuMktA=irAbsMae([row.O_dA_mkt,row.U_dA_mkt]);
+      const maeAhLineL=irAbsMae([row.AH_line_dL]);
+      const maeAhLineA=irAbsMae([row.AH_line_dA]);
+      const maeOuLineL=irAbsMae([row.Total_line_dL]);
+      const maeOuLineA=irAbsMae([row.Total_line_dA]);
+
       row.winner_1x2=irWinner(mae1x2L,mae1x2A);
-      row.winner_AH=irWinner(maeAhL,maeAhA);
-      row.winner_OU=irWinner(maeOuL,maeOuA);
-      const scoreL=(mae1x2L||0)+(maeAhL||0)+(maeOuL||0);
-      const scoreA=(mae1x2A||0)+(maeAhA||0)+(maeOuA||0);
-      const hasL=mae1x2L!=null||maeAhL!=null||maeOuL!=null;
-      const hasA=mae1x2A!=null||maeAhA!=null||maeOuA!=null;
+      // winner_AH / winner_OU = ONLY odds-at-market (valid even when main lines differ)
+      row.winner_AH=irWinner(maeAhMktL,maeAhMktA);
+      row.winner_OU=irWinner(maeOuMktL,maeOuMktA);
+      row.winner_AH_line=irWinner(maeAhLineL,maeAhLineA);
+      row.winner_OU_line=irWinner(maeOuLineL,maeOuLineA);
+      const scoreL=(mae1x2L||0)+(maeAhMktL||0)+(maeOuMktL||0);
+      const scoreA=(mae1x2A||0)+(maeAhMktA||0)+(maeOuMktA||0);
+      const hasL=mae1x2L!=null||maeAhMktL!=null||maeOuMktL!=null;
+      const hasA=mae1x2A!=null||maeAhMktA!=null||maeOuMktA!=null;
       row.winner_row=(!hasL&&!hasA)?'—':irWinner(hasL?scoreL:null, hasA?scoreA:null);
-      row._mae={mae1x2L,mae1x2A,maeAhL,maeAhA,maeOuL,maeOuA, drawL:irAbsMae([row.X_dL]), drawA:irAbsMae([row.X_dA])};
+      row._mae={
+        mae1x2L,mae1x2A,
+        maeAhL:maeAhMktL, maeAhA:maeAhMktA,
+        maeOuL:maeOuMktL, maeOuA:maeOuMktA,
+        maeAhLineL, maeAhLineA, maeOuLineL, maeOuLineA,
+        drawL:irAbsMae([row.X_dL]), drawA:irAbsMae([row.X_dA]),
+        sameAhL: row.same_ah_L==='yes', sameAhA: row.same_ah_A==='yes',
+        sameTotL: row.same_tot_L==='yes', sameTotA: row.same_tot_A==='yes',
+      };
       return row;
     }
     function irBuildSingleRow(match, prices, engine, useMargin){
       const row=irEtalonFromMatch(match, !!useMargin);
       const pr=prices||{};
-      row.calc_model=engine==='legacy'?'legacy_dc':'auto_copula';
-      IR_ODDS_KEYS.forEach(k=>{
+      row.calc_model=engine==='legacy'?'legacy_candidate':'auto_copula';
+      ['1','X','2'].forEach(k=>{
         row[`${k}_pr`]=pr[k]!=null?pr[k]:null;
         row[`${k}_delta`]=irDelta(row[`${k}_pr`], row[k]);
       });
-      row.AH_main_pr=pr.AH_main!=null?pr.AH_main:null;
-      row.Тот_main_pr=pr.Тот_main!=null?pr.Тот_main:null;
-      row.AH_line_delta=irDelta(row.AH_main_pr, row.AH);
-      row.Тот_line_delta=irDelta(row.Тот_main_pr, row.Тот);
+      row.AH1_at_market=pr.AH1_at_market!=null?pr.AH1_at_market:null;
+      row.AH2_at_market=pr.AH2_at_market!=null?pr.AH2_at_market:null;
+      row.O_at_market=pr.O_at_market!=null?pr.O_at_market:null;
+      row.U_at_market=pr.U_at_market!=null?pr.U_at_market:null;
+      row.AH_main=pr.AH_main!=null?pr.AH_main:null;
+      row.Total_main=pr.Total_main!=null?pr.Total_main:null;
+      row.AH_line_delta=irDelta(row.AH_main, row.AH_market);
+      row.Total_line_delta=irDelta(row.Total_main, row.Total_market);
+      row.AH1_delta_mkt=irDelta(row.AH1_at_market, row.AH1);
+      row.AH2_delta_mkt=irDelta(row.AH2_at_market, row.AH2);
+      row.O_delta_mkt=irDelta(row.O_at_market, row.O);
+      row.U_delta_mkt=irDelta(row.U_at_market, row.U);
+      row.same_ah=irSameLine(row.AH_main, row.AH_market)?'yes':'no';
+      row.same_tot=irSameLine(row.Total_main, row.Total_market)?'yes':'no';
       row.selected_distribution=pr.selected_distribution!=null?pr.selected_distribution:null;
       row.alpha_final=pr.alpha_final!=null?pr.alpha_final:null;
       row.rho_final=pr.rho_final!=null?pr.rho_final:null;
@@ -7262,9 +7349,11 @@ bash scripts/update_and_serve.sh --start</div>
       row.model_total_variance_ratio=pr.model_total_variance_ratio!=null?pr.model_total_variance_ratio:null;
       row._mae={
         mae1x2:irAbsMae([row['1_delta'],row.X_delta,row['2_delta']]),
-        maeAh:irAbsMae([row.AH1_delta,row.AH2_delta]),
-        maeOu:irAbsMae([row.O_delta,row.U_delta]),
+        maeAh:irAbsMae([row.AH1_delta_mkt,row.AH2_delta_mkt]),
+        maeOu:irAbsMae([row.O_delta_mkt,row.U_delta_mkt]),
         maeDraw:irAbsMae([row.X_delta]),
+        maeAhLine:irAbsMae([row.AH_line_delta]),
+        maeOuLine:irAbsMae([row.Total_line_delta]),
       };
       return row;
     }
@@ -7274,21 +7363,31 @@ bash scripts/update_and_serve.sh --start</div>
         const xs=rows.map(r=>r._mae&&r._mae[key]).filter(v=>v!=null&&isFinite(v));
         return xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:null;
       };
+      const rate=(key)=> {
+        const xs=rows.map(r=>r._mae&&r._mae[key]).filter(v=>v!=null);
+        if(!xs.length) return null;
+        return xs.filter(Boolean).length/xs.length;
+      };
       if(engines.compare || (engines.legacy && engines.auto)){
         const L={
           mae1x2:avg('mae1x2L'), maeAh:avg('maeAhL'), maeOu:avg('maeOuL'), maeDraw:avg('drawL'),
+          maeAhLine:avg('maeAhLineL'), maeOuLine:avg('maeOuLineL'),
+          sameAhRate:rate('sameAhL'), sameTotRate:rate('sameTotL'),
         };
         const A={
           mae1x2:avg('mae1x2A'), maeAh:avg('maeAhA'), maeOu:avg('maeOuA'), maeDraw:avg('drawA'),
+          maeAhLine:avg('maeAhLineA'), maeOuLine:avg('maeOuLineA'),
+          sameAhRate:rate('sameAhA'), sameTotRate:rate('sameTotA'),
         };
+        // winner by odds-at-market only (1x2 + AH_mkt + OU_mkt), not line deltas
         const score=(o)=> (o.mae1x2||0)+(o.maeAh||0)+(o.maeOu||0);
         return {n, mode:'compare', legacy:L, auto:A, winner:irWinner(score(L), score(A))};
       }
       const eng=engines.legacy?'legacy':'auto';
       return {
         n, mode:eng,
-        legacy: eng==='legacy'?{mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw')}:null,
-        auto: eng==='auto'?{mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw')}:null,
+        legacy: eng==='legacy'?{mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw'),maeAhLine:avg('maeAhLine'),maeOuLine:avg('maeOuLine')}:null,
+        auto: eng==='auto'?{mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw'),maeAhLine:avg('maeAhLine'),maeOuLine:avg('maeOuLine')}:null,
         winner: eng==='legacy'?'Legacy':'Auto',
       };
     }
@@ -7356,20 +7455,25 @@ bash scripts/update_and_serve.sh --start</div>
       const el=document.getElementById('irSummaryBody');
       if(!el) return;
       if(!sum){ el.innerHTML='Сформируйте отчёт — здесь появятся MAE и победитель.'; return; }
+      const pct=(v)=> v==null||!isFinite(v)?'—':(100*v).toFixed(0)+'%';
       const block=(title,o)=>{
         if(!o) return '';
         return `<div class="ir-sum-block"><div style="font-weight:600;margin-bottom:4px">${title}</div>
-          <div class="ir-sum-row"><span>1X2 MAE</span><span>${irFmtMae(o.mae1x2)}</span></div>
-          <div class="ir-sum-row"><span>AH MAE</span><span>${irFmtMae(o.maeAh)}</span></div>
-          <div class="ir-sum-row"><span>OU MAE</span><span>${irFmtMae(o.maeOu)}</span></div>
+          <div class="ir-sum-row"><span>1X2 MAE (odds)</span><span>${irFmtMae(o.mae1x2)}</span></div>
+          <div class="ir-sum-row"><span>AH MAE @ market line</span><span>${irFmtMae(o.maeAh)}</span></div>
+          <div class="ir-sum-row"><span>OU MAE @ market total</span><span>${irFmtMae(o.maeOu)}</span></div>
           <div class="ir-sum-row"><span>Draw MAE</span><span>${irFmtMae(o.maeDraw)}</span></div>
+          <div class="ir-sum-row"><span>AH line MAE</span><span>${irFmtMae(o.maeAhLine)}</span></div>
+          <div class="ir-sum-row"><span>Total line MAE</span><span>${irFmtMae(o.maeOuLine)}</span></div>
+          <div class="ir-sum-row"><span>same AH main</span><span>${pct(o.sameAhRate)}</span></div>
+          <div class="ir-sum-row"><span>same Total main</span><span>${pct(o.sameTotRate)}</span></div>
         </div>`;
       };
       el.innerHTML = `<div class="ir-sum-row"><span>Всего матчей</span><span><b>${sum.n}</b></span></div>`
-        + block('Legacy', sum.legacy)
+        + block('Legacy (candidate)', sum.legacy)
         + block('Auto', sum.auto)
-        + (sum.mode==='compare' ? `<div class="ir-winner">Победитель: ${escapeHtml(sum.winner)}</div>` : '')
-        + `<div class="small" style="margin-top:8px;color:#94a3b8">Конфиг: ${escapeHtml((GM_MATRIX_CFG&&GM_MATRIX_CFG.configSource)||'model_config.json')}</div>`;
+        + (sum.mode==='compare' ? `<div class="ir-winner">Победитель (1X2+AH@mkt+OU@mkt): ${escapeHtml(sum.winner)}</div>` : '')
+        + `<div class="small" style="margin-top:8px;color:#94a3b8">AH/OU MAE — только кэфы на рыночной линии. Line MAE — отдельно. Конфиг: ${escapeHtml((GM_MATRIX_CFG&&GM_MATRIX_CFG.configSource)||'model_config.json')}</div>`;
     }
     function irSetReportStatus(msg,isErr){
       const el=document.getElementById('irReportStatus');
@@ -7497,13 +7601,14 @@ bash scripts/update_and_serve.sh --start</div>
       if(!(engines.compare||(engines.legacy&&engines.auto))){
         const xs=irReportRows.map(r=>r._mae).filter(Boolean);
         const avg=k=>{ const a=xs.map(o=>o[k]).filter(v=>v!=null&&isFinite(v)); return a.length?a.reduce((x,y)=>x+y,0)/a.length:null; };
-        const block={mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw')};
+        const block={mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw'),maeAhLine:avg('maeAhLine'),maeOuLine:avg('maeOuLine')};
         irReportSummary={n:out.length, mode:engines.legacy?'legacy':'auto', legacy:engines.legacy?block:null, auto:engines.auto?block:null, winner:engines.legacy?'Legacy':'Auto'};
       }
       irRenderSummary(irReportSummary);
       if(exportBtn) exportBtn.disabled=!irReportRows.length;
       const warn=skipped?`; ${skipped} лиг без обучения`:'';
-      irSetReportStatus(`Готово: ${irReportRows.length} матч., режим ${modeTxt}; ${etalonTxt}; AH/OU на рыночной линии${warn}`);
+      const sameNote=engines.compare?`; winner_AH/OU = odds @ market line`:'';
+      irSetReportStatus(`Готово: ${irReportRows.length} матч., режим ${modeTxt}; ${etalonTxt}; AH/OU кэфы на рыночной линии${sameNote}${warn}`);
     }
     function irPopulateLeagueFilter(){
       const sel=document.getElementById('irLeagueFilter');
