@@ -290,6 +290,21 @@
     .ir-summary-card .ir-sum-block{ margin-top:10px; padding-top:8px; border-top:1px solid #e2e8f0; }
     .ir-summary-card .ir-sum-row{ display:flex; justify-content:space-between; gap:8px; margin:2px 0; }
     .ir-summary-card .ir-winner{ font-weight:700; color:#0f766e; margin-top:8px; }
+    .ir-params-panel{ margin:0 0 12px; border:1px solid var(--line); border-radius:10px; background:#f8fafc; }
+    .ir-params-panel > summary{ cursor:pointer; padding:10px 12px; font-weight:600; color:#10204a; font-size:13px; list-style:none; }
+    .ir-params-panel > summary::-webkit-details-marker{ display:none; }
+    .ir-params-panel > summary::before{ content:'▸ '; color:#64748b; }
+    .ir-params-panel[open] > summary::before{ content:'▾ '; }
+    .ir-params-body{ padding:0 12px 12px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    @media (max-width:700px){ .ir-params-body{ grid-template-columns:1fr; } }
+    .ir-params-col{ background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:10px; font-size:12px; color:#334155; }
+    .ir-params-col h5{ margin:0 0 6px; font-size:12px; color:#10204a; }
+    .ir-params-col .ir-sum-row{ display:flex; justify-content:space-between; gap:8px; margin:2px 0; }
+    .ir-params-col .ir-sum-row span:last-child{ font-variant-numeric:tabular-nums; color:#0f172a; text-align:right; word-break:break-all; }
+    .ir-summary-card details > summary{ cursor:pointer; font-weight:600; color:#10204a; list-style:none; }
+    .ir-summary-card details > summary::-webkit-details-marker{ display:none; }
+    .ir-summary-card details > summary::before{ content:'▸ '; color:#64748b; }
+    .ir-summary-card details[open] > summary::before{ content:'▾ '; }
     .ir-mode-row{ display:flex; flex-wrap:wrap; gap:12px 16px; align-items:center; margin:0 0 8px; font-size:13px; }
     .ir-mode-row label{ display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
     .ir-report-status{ margin:8px 0; padding:10px 12px; border-radius:8px; background:#f8fafc; border:1px solid var(--line); font-size:13px; }
@@ -1063,6 +1078,13 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <section id="tab-inactreport" class="panel">
       <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Сравнение моделей (Backtest)</h3>
       <p class="small" style="margin:0 0 10px">Лаборатория моделей на матчах <code>active=false</code>. Обучение — на активных матчах лиги; БД не меняется. Вкладки «Линия» и «История» не затрагиваются. Параметры — <code>model_config.json</code>.</p>
+      <details id="irParamsPanel" class="ir-params-panel">
+        <summary>Параметры моделей (из model_config.json)</summary>
+        <div class="ir-params-body" id="irParamsBody">
+          <div class="ir-params-col" id="irParamsLegacy"><h5>Legacy</h5><div class="small" style="color:#94a3b8">Загрузка…</div></div>
+          <div class="ir-params-col" id="irParamsAuto"><h5>Auto</h5><div class="small" style="color:#94a3b8">Загрузка…</div></div>
+        </div>
+      </details>
       <div class="ir-lab-layout">
         <div class="ir-lab-main">
           <div class="ir-mode-row">
@@ -1109,8 +1131,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           </div>
         </div>
         <aside class="ir-summary-card" id="irSummaryCard">
-          <h4>Диагностика</h4>
-          <div id="irSummaryBody" class="small" style="color:#64748b">Сформируйте отчёт — здесь появятся MAE и победитель.</div>
+          <details open>
+            <summary>Диагностика</summary>
+            <div id="irSummaryBody" class="small" style="color:#64748b;margin-top:8px">Сформируйте отчёт — здесь появятся MAE и победитель.</div>
+          </details>
         </aside>
       </div>
     </section>
