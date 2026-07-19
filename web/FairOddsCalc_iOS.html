@@ -1050,11 +1050,18 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <!-- TAB INACTIVE REPORT (read-only analytics, isolated from Line training) -->
     <section id="tab-inactreport" class="panel">
       <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Сравнение расчёта с эталоном (inactive)</h3>
-      <p class="small" style="margin:0 0 10px">Read-only отчёт: только матчи <code>active=false</code>. По каждой лиге отдельно обучается модель на активных матчах, затем для неактивных считается линия с маржой. Исходные данные в БД не изменяются.</p>
+      <p class="small" style="margin:0 0 10px">Read-only отчёт: только матчи <code>active=false</code>. По каждой лиге отдельно обучается модель на активных матчах, затем для неактивных считается линия с маржой. Исходные данные в БД не изменяются. Вкладки «Линия» и «История» не затрагиваются.</p>
       <div class="ir-report-toolbar">
         <div class="field" style="min-width:180px">
           <label>Лига</label>
           <select id="irLeagueFilter"><option value="">Все лиги</option></select>
+        </div>
+        <div class="field" style="min-width:260px;flex:1.2">
+          <label>Модель расчёта</label>
+          <select id="irModelMode">
+            <option value="legacy" selected>Старая: Poisson + Dixon-Coles + ничья</option>
+            <option value="auto">Новая: Auto Marginals + Copula</option>
+          </select>
         </div>
         <div class="field" style="max-width:90px">
           <label>Маржа %</label>
@@ -6572,24 +6579,32 @@ bash scripts/update_and_serve.sh --start</div>
 
     // ========== INACTIVE REPORT (read-only, isolated; does not modify Line tab logic) ==========
     const IR_REPORT_COLS = [
-      'Дата','Лига','Дома','Гости',
+      'Дата','Лига','Дома','Гости','calc_model',
       'AH1','AH','AH2','O','Тот','U','1','X','2',
       'AH1_pr','AH_pr','AH2_pr','O_pr','Тот_pr','U_pr','1_pr','X_pr','2_pr',
       'AH1_delta','AH_delta','AH2_delta','O_delta','Тот_delta','U_delta','1_delta','X_delta','2_delta',
-      'selected_distribution','alpha_final','rho_final','lambda_home','lambda_away',
+      'selected_distribution','alpha_final','rho_final','dc_gamma','lambda_home','lambda_away',
       'matrix_sum','matrix_tail','p_00','p_11','p_btts_yes',
       'model_total_mean','model_total_variance','model_total_variance_ratio',
     ];
-    const IR_TEXT_COLS = new Set(['Дата','Лига','Дома','Гости','selected_distribution']);
+    const IR_TEXT_COLS = new Set(['Дата','Лига','Дома','Гости','calc_model','selected_distribution']);
     const IR_ODDS_COLS = new Set(['AH1','AH2','O','U','1','X','2','AH1_pr','AH2_pr','O_pr','U_pr','1_pr','X_pr','2_pr','AH1_delta','AH2_delta','O_delta','U_delta','1_delta','X_delta','2_delta']);
     const IR_LINE_COLS = new Set(['AH','Тот','AH_pr','Тот_pr','AH_delta','Тот_delta']);
     const IR_DIAG_COLS = new Set([
-      'alpha_final','rho_final','lambda_home','lambda_away','matrix_sum','matrix_tail',
+      'alpha_final','rho_final','dc_gamma','lambda_home','lambda_away','matrix_sum','matrix_tail',
       'p_00','p_11','p_btts_yes','model_total_mean','model_total_variance','model_total_variance_ratio',
     ]);
     let irReportRows = [];
 
-    function irBaselineCfg(seasonWeightsById){
+    function irSelectedModelMode(){
+      const v = (document.getElementById('irModelMode')||{}).value || 'legacy';
+      return v === 'auto' ? 'auto' : 'legacy';
+    }
+    function irModelModeLabel(mode){
+      return mode === 'auto' ? 'auto_copula' : 'legacy_dc';
+    }
+    function irBaselineCfg(seasonWeightsById, mode){
+      const legacy = mode !== 'auto';
       return {
         maxGoals: GM_MAX, alphaAh: 0.25, pAh: 2, minWAh: 0.15, maxWAh: 1,
         alphaT: 0.5, deltaAh: 0.5, deltaLam: 0.25, maxIter: 30, tol: 1e-4, drawLoss: 1.5,
@@ -6600,10 +6615,178 @@ bash scripts/update_and_serve.sh --start</div>
         derbyShrinkTau: 30, derbyHDefault: 0.7, derbyMinMatches: 3,
         dCalMode: 'soft', dCalBMin: 0.90, dCalBMax: 1.03, dCalBPenalty: 2.0,
         dBigFavMode: 'linear', dBigFavThreshold: 1.25, dBigFavSlope: 0.75, dBigFavCap: 2.00,
-        useDraw: false, useDc: false, modelProfile: 'baseline', drawMode: 'residual_dc',
-        qmin: 0.95, qmax: 1.05, qResMin: 0.98, qResMax: 1.03,
+        // legacy inactive: Poisson + Dixon-Coles + draw (до переработки); auto: без DC/draw
+        useDraw: legacy, useDc: legacy, modelProfile: 'baseline', drawMode: 'residual_dc',
+        qmin: 0.95, qmax: 1.15, qResMin: 0.95, qResMax: 1.15,
         sCalMode: 'off', sCalMaxDelta: 0.15, gammaMax: 0.20,
+        irEngine: legacy ? 'legacy' : 'auto',
       };
+    }
+    /** Калибровка a,b,c,d,+γ как до переработки (только для inactive legacy). */
+    function irCalibrateLegacy(ms, st, gl, cfg){
+      const used = ms.filter(m => m.p1 != null);
+      if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0,n1x2:0};
+      const pre = used.map(m => {
+        const derby = gmDerbyHome(m);
+        const hEff = gmEffectiveH(st, cfg, m.iHome === 0, derby);
+        const dm = (st.ratings[m.home] || 0) - (st.ratings[m.away] || 0) + hEff;
+        const kHg = Math.abs(st.H) > 1e-9 ? hEff / st.H : 1;
+        const lh = Math.exp(gl.mu + (gl.attack[m.home] || 0) - (gl.defense[m.away] || 0) + gl.hg * m.iHome * kHg);
+        const la = Math.exp(gl.mu + (gl.attack[m.away] || 0) - (gl.defense[m.home] || 0));
+        return [m, dm, lh + la, m.wBase];
+      });
+      const sOff = cfg.sCalMode === 'off';
+      const dOff = (cfg.dCalMode || 'soft') === 'off';
+      function lossCore(a, b, c, d, g){
+        if(d <= 0) return 1e9;
+        const gc = gmClipGamma(g, cfg);
+        let tot = gmSCalPenalty(c, d, cfg) + gmDCalPenalty(b, cfg);
+        for(const [m, dm, sm, w] of pre){
+          const sf = gmApplySCal(sm, c, d, cfg); if(sf <= 0.2) return 1e9;
+          const dc = gmApplyDCal(dm, a, b, cfg);
+          const df = gmClampD(dc.dUsed, sf);
+          const lh = (sf + df) / 2, la = (sf - df) / 2;
+          if(lh <= 0 || la <= 0) return 1e9;
+          let mat = gmMatrix(lh, la, cfg.maxGoals);
+          if(cfg.useDc && gc) mat = gmDC(mat, lh, la, gc);
+          const [p1, px, p2] = gm1x2(mat);
+          tot += w * ((p1 - m.p1) ** 2 + cfg.drawLoss * (px - m.px) ** 2 + (p2 - m.p2) ** 2);
+        }
+        return tot;
+      }
+      let full;
+      if(sOff){
+        if(cfg.useDc){
+          if(dOff){
+            const x = gmNelder(p => lossCore(p[0], 1, 0, 1, p[1]), [0, 0]);
+            full = [x[0], 1, 0, 1, gmClipGamma(x[1], cfg)];
+          } else {
+            const x = gmNelder(p => lossCore(p[0], p[1], 0, 1, p[2]), [0, 1, 0]);
+            full = [x[0], x[1], 0, 1, gmClipGamma(x[2], cfg)];
+          }
+        } else {
+          if(dOff){
+            const x = gmNelder(p => lossCore(p[0], 1, 0, 1, 0), [0]);
+            full = [x[0], 1, 0, 1, 0];
+          } else {
+            const x = gmNelder(p => lossCore(p[0], p[1], 0, 1, 0), [0, 1]);
+            full = [x[0], x[1], 0, 1, 0];
+          }
+        }
+      } else if(cfg.useDc){
+        if(dOff){
+          const x = gmNelder(p => lossCore(p[0], 1, p[1], p[2], p[3]), [0, 0, 1, 0]);
+          full = [x[0], 1, x[1], x[2], gmClipGamma(x[3], cfg)];
+        } else {
+          const x = gmNelder(p => lossCore(p[0], p[1], p[2], p[3], p[4]), [0, 1, 0, 1, 0]);
+          full = [x[0], x[1], x[2], x[3], gmClipGamma(x[4], cfg)];
+        }
+      } else {
+        if(dOff){
+          const x = gmNelder(p => lossCore(p[0], 1, p[1], p[2], 0), [0, 0, 1]);
+          full = [x[0], 1, x[1], x[2], 0];
+        } else {
+          const x = gmNelder(p => lossCore(p[0], p[1], p[2], p[3], 0), [0, 1, 0, 1]);
+          full = [x[0], x[1], x[2], x[3], 0];
+        }
+      }
+      const bOut = dOff ? 1 : ((cfg.dCalMode || 'soft') === 'free' ? full[1] : gmBoundB(full[1], cfg));
+      return {a: full[0], b: bOut, c: full[2], d: full[3], gamma: full[4], n1x2: used.length};
+    }
+    function irProb1x2Legacy(s, d, cfg, gamma){
+      const df = gmClampD(d, s);
+      const lh = (s + df) / 2, la = (s - df) / 2;
+      if(lh <= 0 || la <= 0) return [0, 0, 0];
+      let mat = gmMatrix(lh, la, cfg.maxGoals || GM_MAX);
+      if(cfg.useDc && gamma) mat = gmDC(mat, lh, la, gamma);
+      return gm1x2(mat);
+    }
+    function irFitDrawResidualLegacy(ms, st, gl, cal, cfg){
+      const def = {alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default',mode:'residual_dc'};
+      const gamma = cfg.useDc ? (cal.gamma || 0) : 0;
+      const rows = [];
+      for(const m of ms){
+        if(m.px == null) continue;
+        const w1x2 = (m.raw.ho && m.raw.dо && m.raw.ao) ? 1.0 : 0.0;
+        const w = m.wBase * w1x2; if(w <= 0) continue;
+        const {sCal, dCal} = gmCalibratedSdForMatch(m, st, gl, cal, cfg);
+        const [, pxDc] = irProb1x2Legacy(sCal, dCal, cfg, gamma);
+        if(pxDc <= 1e-9) continue;
+        let q = m.px / pxDc;
+        const [qLo, qHi] = gmEffectiveQBounds(cfg, 'residual_dc');
+        q = Math.min(qHi * 1.5, Math.max(qLo * 0.5, q));
+        if(q <= 0) continue;
+        const da = Math.abs(dCal), S = sCal;
+        rows.push([[1, da, S, S * S, da * S], Math.log(q), w]);
+      }
+      if(rows.length < 6) return def;
+      let beta; try { beta = gmWls(rows, 5); } catch (_e){ return def; }
+      const dm = {alpha:beta[0],betaD:beta[1],betaS:beta[2],betaS2:beta[3],betaDxS:beta[4],source:'fitted',mode:'residual_dc'};
+      const q0 = gmDrawQMult(dm, 0, 2.6, cfg);
+      if(!(q0 >= 0.85 && q0 <= 1.15)) return def;
+      return dm;
+    }
+    function irPredictLegacy(model, homeId, awayId, opt){
+      const {st, gl, cal, draw, cfg} = model;
+      const iHome = opt.neutral ? 0 : 1;
+      const names = model.teamNames || {};
+      const homeName = names[homeId] || homeId, awayName = names[awayId] || awayId;
+      const hEff = gmEffectiveH(st, cfg, opt.neutral, !!opt.derby);
+      const R = t => t in st.ratings ? st.ratings[t] : gmPromoted(st.ratings, cfg.promotedN);
+      const A = t => t in gl.attack ? gl.attack[t] : gmPromoted(gl.attack, cfg.promotedN);
+      const Df = t => t in gl.defense ? gl.defense[t] : gmPromoted(gl.defense, cfg.promotedN);
+      const kHg = Math.abs(st.H) > 1e-9 ? hEff / st.H : 1;
+      const dm = R(homeId) - R(awayId) + hEff;
+      const lhAD = Math.exp(gl.mu + A(homeId) - Df(awayId) + gl.hg * iHome * kHg);
+      const laAD = Math.exp(gl.mu + A(awayId) - Df(homeId));
+      const sm = lhAD + laAD;
+      const dc = gmApplyDCal(dm, cal.a, cal.b, cfg);
+      let sf = gmApplySCal(sm, cal.c, cal.d, cfg);
+      let df = gmClampD(dc.dUsed, sf);
+      const lh = (sf + df) / 2, la = (sf - df) / 2;
+      let mat = gmMatrix(lh, la, cfg.maxGoals || GM_MAX);
+      if(cfg.useDc && cal.gamma) mat = gmDC(mat, lh, la, cal.gamma);
+      let dtarget = null, diag = null;
+      if(cfg.useDraw && draw){
+        const pxMat = gmDrawProb(mat);
+        const [qmin, qmax] = gmEffectiveQBounds(cfg, draw.mode);
+        if(draw.mode === 'residual_dc') dtarget = gmDrawQMult(draw, df, sf, cfg) * pxMat;
+        else dtarget = gmDrawTarget(draw, df, sf);
+        [mat, diag] = gmAdjustDraw(mat, dtarget, qmin, qmax);
+      }
+      const matDiag = gmMatrixDiagnostics(mat, lh, la, 0);
+      return {
+        homeId, awayId, homeName, awayName, lh, la, df, sf, mat, matDiag,
+        alphaFinal: 0, rhoFinal: 0, dcGamma: cal.gamma || 0,
+        selectedDistribution: 'poisson_dc',
+        markets: gmMarkets(mat), drawTarget: dtarget, drawDiag: diag,
+      };
+    }
+    function irTrainLegacy(raw, cfg){
+      const cfgL = Object.assign({}, cfg, {useDc: true, useDraw: true, irEngine: 'legacy'});
+      const ms = gmPrepare(raw, cfgL);
+      const st = gmFitStrength(ms, cfgL, null);
+      const gl = gmFitAD(ms, cfgL, null);
+      const cal = irCalibrateLegacy(ms, st, gl, cfgL);
+      const draw = cfgL.drawMode === 'residual_dc'
+        ? irFitDrawResidualLegacy(ms, st, gl, cal, cfgL)
+        : gmFitDraw(ms, cfgL);
+      const model = {
+        st, gl, cal, draw, cfg: cfgL, nMatches: ms.length, teamNames: {},
+        alphaFinal: 0, rhoFinal: 0, selectedDistribution: 'poisson_dc',
+        nbImprovementPct: 0, matrixCalib: {status: 'legacy_dc', nMatches: ms.length},
+        irEngine: 'legacy',
+      };
+      ms.forEach(m => { model.teamNames[m.home] = m.homeName; model.teamNames[m.away] = m.awayName; });
+      return model;
+    }
+    function irTrainModel(raw, cfg, mode){
+      if(mode === 'auto'){
+        const model = gmTrain(raw, Object.assign({}, cfg, {useDc: false, useDraw: false, irEngine: 'auto'}), null, []);
+        model.irEngine = 'auto';
+        return model;
+      }
+      return irTrainLegacy(raw, cfg);
     }
     function irParseMarginPct(){
       const v = parseFloat(String((document.getElementById('irMarginPct')||{}).value || '3').replace(',', '.'));
@@ -6620,7 +6803,7 @@ bash scripts/update_and_serve.sh --start</div>
       if(IR_ODDS_COLS.has(col)) return val.toFixed(3);
       if(IR_DIAG_COLS.has(col)){
         if(col === 'matrix_sum' || col === 'p_00' || col === 'p_11' || col === 'p_btts_yes') return Number(val).toFixed(6);
-        if(col === 'alpha_final' || col === 'rho_final') return Number(val).toFixed(4);
+        if(col === 'alpha_final' || col === 'rho_final' || col === 'dc_gamma') return Number(val).toFixed(4);
         return Number(val).toFixed(4);
       }
       return String(val);
@@ -6692,13 +6875,17 @@ bash scripts/update_and_serve.sh --start</div>
     function irPredictPrices(model, homeId, awayId, opt, marginFrac){
       if(!model) return null;
       try {
-        const pred = gmPredict(model, homeId, awayId, opt);
+        const engine = model.irEngine || (model.cfg && model.cfg.irEngine) || 'auto';
+        const pred = engine === 'legacy'
+          ? irPredictLegacy(model, homeId, awayId, opt)
+          : gmPredict(model, homeId, awayId, opt);
         const mk = pred.markets;
         const t = mk.mainTotal;
         const a = mk.mainAh;
         const mg = marginFrac || 0;
         const d = pred.matDiag || {};
         return {
+          calc_model: irModelModeLabel(engine),
           AH1_pr: irMarginOddsFromProb(1 / a.home, mg),
           AH_pr: a.line,
           AH2_pr: irMarginOddsFromProb(1 / a.away, mg),
@@ -6708,9 +6895,10 @@ bash scripts/update_and_serve.sh --start</div>
           '1_pr': irMarginOddsFromProb(mk.p1, mg),
           X_pr: irMarginOddsFromProb(mk.px, mg),
           '2_pr': irMarginOddsFromProb(mk.p2, mg),
-          selected_distribution: pred.selectedDistribution || model.selectedDistribution || 'poisson_like',
+          selected_distribution: pred.selectedDistribution || model.selectedDistribution || (engine === 'legacy' ? 'poisson_dc' : 'poisson_like'),
           alpha_final: pred.alphaFinal != null ? pred.alphaFinal : (model.alphaFinal || 0),
           rho_final: pred.rhoFinal != null ? pred.rhoFinal : (model.rhoFinal || 0),
+          dc_gamma: engine === 'legacy' ? (pred.dcGamma != null ? pred.dcGamma : ((model.cal && model.cal.gamma) || 0)) : null,
           lambda_home: pred.lh,
           lambda_away: pred.la,
           matrix_sum: d.sum,
@@ -6729,6 +6917,7 @@ bash scripts/update_and_serve.sh --start</div>
     function irBuildReportRow(match, prices){
       const row = irEtalonFromMatch(match);
       const pr = prices || {};
+      row.calc_model = pr.calc_model != null ? pr.calc_model : null;
       row.AH1_pr = pr.AH1_pr != null ? pr.AH1_pr : null;
       row.AH_pr = pr.AH_pr != null ? pr.AH_pr : null;
       row.AH2_pr = pr.AH2_pr != null ? pr.AH2_pr : null;
@@ -6750,6 +6939,7 @@ bash scripts/update_and_serve.sh --start</div>
       row.selected_distribution = pr.selected_distribution != null ? pr.selected_distribution : null;
       row.alpha_final = pr.alpha_final != null ? pr.alpha_final : null;
       row.rho_final = pr.rho_final != null ? pr.rho_final : null;
+      row.dc_gamma = pr.dc_gamma != null ? pr.dc_gamma : null;
       row.lambda_home = pr.lambda_home != null ? pr.lambda_home : null;
       row.lambda_away = pr.lambda_away != null ? pr.lambda_away : null;
       row.matrix_sum = pr.matrix_sum != null ? pr.matrix_sum : null;
@@ -6814,10 +7004,12 @@ bash scripts/update_and_serve.sh --start</div>
     async function irRunReport(){
       const leagueFilter = (document.getElementById('irLeagueFilter')||{}).value || '';
       const marginFrac = irParseMarginPct();
+      const mode = irSelectedModelMode();
+      const modeLabel = mode === 'auto' ? 'Auto Marginals + Copula' : 'Poisson + Dixon-Coles + ничья';
       const exportBtn = document.getElementById('irExportCsv');
       irReportRows = [];
       if(exportBtn) exportBtn.disabled = true;
-      irSetReportStatus('Загрузка неактивных матчей…');
+      irSetReportStatus(`Загрузка неактивных матчей… (модель: ${modeLabel})`);
       irRenderReportTable([]);
       await loadSupabaseConfig();
       if(!window.__SB.leagues || !window.__SB.leagues.length) await sbFetchLeaguesList();
@@ -6844,15 +7036,15 @@ bash scripts/update_and_serve.sh --start</div>
       for(let li = 0; li < leagueIds.length; li++){
         const leagueId = leagueIds[li];
         const leagueName = byLeague[leagueId][0].league_name || leagueId;
-        irSetReportStatus(`Лига ${li + 1}/${leagueIds.length}: ${leagueName} — обучение…`);
+        irSetReportStatus(`Лига ${li + 1}/${leagueIds.length}: ${leagueName} — обучение (${modeLabel})…`);
         const activeMatches = await irFetchActiveMatchesForLeague(leagueId);
         const parsed = goalMatchesToRaw(activeMatches);
         let model = null;
         if(parsed.valid >= 2){
           const seasonIds = [...new Set(parsed.raw.map(r => r.seasonId).filter(s => s != null))];
-          const cfg = irBaselineCfg(irBuildSeasonWeights(leagueId, seasonIds));
+          const cfg = irBaselineCfg(irBuildSeasonWeights(leagueId, seasonIds), mode);
           try {
-            model = gmTrain(parsed.raw, cfg, null, []);
+            model = irTrainModel(parsed.raw, cfg, mode);
           } catch (e){
             console.warn('ir train', leagueId, e);
             model = null;
@@ -6878,7 +7070,7 @@ bash scripts/update_and_serve.sh --start</div>
       irRenderReportTable(irReportRows);
       if(exportBtn) exportBtn.disabled = !irReportRows.length;
       const warn = skippedLeagues ? `; ${skippedLeagues} лиг без обучения (<2 активных матчей с полной линией)` : '';
-      irSetReportStatus(`Готово: ${irReportRows.length} матч., ${leagueIds.length} лиг, маржа ${(marginFrac * 100).toFixed(1)}%${warn}`);
+      irSetReportStatus(`Готово: ${irReportRows.length} матч., ${leagueIds.length} лиг, модель «${modeLabel}», маржа ${(marginFrac * 100).toFixed(1)}%${warn}`);
     }
     function irPopulateLeagueFilter(){
       const sel = document.getElementById('irLeagueFilter');
