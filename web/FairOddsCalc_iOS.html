@@ -282,6 +282,59 @@
     .goal-predict-table--compare td.delta-ok{ color:#166534; }
     .goal-predict-table--compare td.delta-warn{ color:#b45309; font-weight:600; }
     .ir-report-toolbar{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:10px; }
+    .ir-lab-layout{ display:grid; grid-template-columns:minmax(0,1fr) minmax(220px,280px); gap:12px; align-items:start; }
+    @media (max-width:900px){ .ir-lab-layout{ grid-template-columns:1fr; } }
+    .ir-lab-main{ min-width:0; }
+    .ir-summary-card{ background:#f8fafc; border:1px solid var(--line); border-radius:10px; padding:12px; font-size:12px; line-height:1.45; color:#334155; position:sticky; top:8px; }
+    .ir-summary-card h4{ margin:0 0 8px; font-size:13px; color:#10204a; }
+    .ir-summary-card .ir-sum-block{ margin-top:10px; padding-top:8px; border-top:1px solid #e2e8f0; }
+    .ir-summary-card .ir-sum-row{ display:flex; justify-content:space-between; gap:8px; margin:2px 0; }
+    .ir-summary-card .ir-winner{ font-weight:700; color:#0f766e; margin-top:8px; }
+    .ir-params-panel{ margin:0 0 12px; border:1px solid var(--line); border-radius:10px; background:#f8fafc; }
+    .ir-params-panel > summary{ cursor:pointer; padding:10px 12px; font-weight:600; color:#10204a; font-size:13px; list-style:none; }
+    .ir-params-panel > summary::-webkit-details-marker{ display:none; }
+    .ir-params-panel > summary::before{ content:'▸ '; color:#64748b; }
+    .ir-params-panel[open] > summary::before{ content:'▾ '; }
+    .ir-params-body{ padding:0 12px 12px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    @media (max-width:700px){ .ir-params-body{ grid-template-columns:1fr; } }
+    .ir-params-col{ background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:10px; font-size:12px; color:#334155; }
+    .ir-params-col h5{ margin:0 0 6px; font-size:12px; color:#10204a; }
+    .ir-params-col .ir-sum-row{ display:flex; justify-content:space-between; gap:8px; margin:2px 0; }
+    .ir-params-col .ir-sum-row span:last-child{ font-variant-numeric:tabular-nums; color:#0f172a; text-align:right; word-break:break-all; }
+    .ir-summary-card details > summary{ cursor:pointer; font-weight:600; color:#10204a; list-style:none; }
+    .ir-summary-card details > summary::-webkit-details-marker{ display:none; }
+    .ir-summary-card details > summary::before{ content:'▸ '; color:#64748b; }
+    .ir-summary-card details[open] > summary::before{ content:'▾ '; }
+    .ir-mode-row{
+      display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center;
+      margin:0 0 10px; font-size:13px; line-height:1.35;
+    }
+    .ir-mode-row > span{ flex:0 0 auto; white-space:nowrap; }
+    .ir-mode-row label{
+      display:inline-flex !important; align-items:center; gap:8px;
+      margin:0; cursor:pointer; font-size:13px; color:var(--text);
+      white-space:nowrap; flex:0 0 auto;
+    }
+    .ir-mode-row input[type="radio"],
+    .ir-mode-row input[type="checkbox"]{
+      width:auto !important; min-width:16px; max-width:16px; height:16px;
+      margin:0; padding:0; flex:0 0 16px;
+      border:none; border-radius:0; background:transparent;
+      accent-color:var(--accent);
+    }
+    .ir-controls-card{
+      margin:0 0 12px; padding:12px; border:1px solid var(--line);
+      border-radius:10px; background:#fff;
+    }
+    .ir-glossary{
+      margin-top:16px; padding:14px 16px; border:1px solid var(--line);
+      border-radius:10px; background:#f8fafc; font-size:13px; line-height:1.5; color:#334155;
+    }
+    .ir-glossary h4{ margin:0 0 10px; font-size:14px; color:#10204a; }
+    .ir-glossary dl{ margin:0; display:grid; gap:10px; }
+    .ir-glossary dt{ font-weight:700; color:#10204a; margin:0 0 2px; }
+    .ir-glossary dd{ margin:0; color:#475569; }
+    .ir-glossary .ir-glossary-note{ margin:12px 0 0; font-size:12px; color:#64748b; }
     .ir-report-status{ margin:8px 0; padding:10px 12px; border-radius:8px; background:#f8fafc; border:1px solid var(--line); font-size:13px; }
     .ir-report-status.err{ background:#fef2f2; border-color:#fecaca; color:#991b1b; }
     .ir-report-table-wrap{ overflow:auto; max-height:70vh; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
@@ -291,6 +344,8 @@
     .ir-report-table td.num{ text-align:right; font-variant-numeric:tabular-nums; }
     .ir-report-table td.delta-pos{ color:#b45309; }
     .ir-report-table td.delta-neg{ color:#166534; }
+    .ir-report-table td.win-auto{ color:#0f766e; font-weight:600; }
+    .ir-report-table td.win-legacy{ color:#1d4ed8; font-weight:600; }
     .ir-report-table tr:hover td{ background:#fafbff; }
     .shin-details{
       margin-top:10px; padding:10px 12px; background:#f8fafc;
@@ -538,7 +593,7 @@
       <button type="button" class="tab-btn active" data-tab="goal"><span class="tab-ico" aria-hidden="true">📈</span> Линия</button>
       <button type="button" class="tab-btn" data-tab="teams"><span class="tab-ico" aria-hidden="true">📋</span> Справочник</button>
       <button type="button" class="tab-btn" data-tab="hist"><span class="tab-ico" aria-hidden="true">🕓</span> История</button>
-      <button type="button" class="tab-btn" data-tab="inactreport"><span class="tab-ico" aria-hidden="true">📊</span> Отчёт inactive</button>
+      <button type="button" class="tab-btn" data-tab="inactreport"><span class="tab-ico" aria-hidden="true">📊</span> Сравнение моделей</button>
       <button type="button" class="tab-btn" data-tab="help"><span class="tab-ico" aria-hidden="true">❓</span> Справка</button>
     </div>
 
@@ -813,114 +868,17 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 
         <div class="goal-train-col goal-train-col--profile">
           <div class="goal-config-card">
-            <div class="goal-profile-bar">
-              <label class="block-label" for="goalModelProfile">Профиль модели</label>
-              <select id="goalModelProfile">
-                <option value="baseline" selected>Рыночный baseline</option>
-                <option value="custom">Свои настройки</option>
-              </select>
-              <span class="hint">S cal off · DC on · draw off</span>
+            <div class="block-label" style="margin-bottom:6px">Модель расчета</div>
+            <div class="goal-model-auto-status" style="margin:0 0 8px;font-size:0.9em;line-height:1.55;color:#334155">
+              <div>Режим модели: <b>Auto</b></div>
+              <div>Калибровка: <span id="goalModelCalibStatus">требуется</span></div>
+              <div>Дата последней калибровки: <span id="goalModelCalibDate">—</span></div>
+              <div>Матчей в выборке: <span id="goalModelCalibN">—</span></div>
             </div>
-
-            <div class="goal-main-settings">
-              <div class="field">
-                <label>α форы</label><input id="goalAlphaAh" value="0.25" />
-                <div class="hint">Крупные форы слабее в рейтинге силы.</div>
-              </div>
-              <div class="field">
-                <label>α тотала</label><input id="goalAlphaT" value="0.5" />
-                <div class="hint">Экстремальные тоталы слабее в attack/defense.</div>
-              </div>
-              <div class="field">
-                <label>λ A / Df</label><input id="goalRegLambdaAD" value="0.10" />
-                <div class="hint">L2 на атаку и оборону.</div>
-              </div>
-              <div class="field">
-                <label>λ r</label><input id="goalRegLambdaR" value="0.10" />
-                <div class="hint">L2 на рейтинги силы r.</div>
-              </div>
-              <div class="goal-dc-row">
-                <label>
-                  <input id="goalUseDc" type="checkbox" checked style="width:auto;margin:0" />
-                  <span class="small">Dixon-Coles</span>
-                </label>
-                <div class="field goal-gamma-inline">
-                  <label>γ max</label><input id="goalGammaMax" value="0.20" />
-                </div>
-              </div>
-            </div>
-
             <details id="goalExperimentalPanel" class="goal-exp-panel">
-              <summary>Экспериментально</summary>
-              <div class="goal-exp-body row" style="flex-wrap:wrap;gap:10px;align-items:flex-start;">
-                <div class="field" style="min-width:100%;flex:1">
-                  <label>prior α</label><input id="goalPriorAlpha" value="0.7" />
-                </div>
-                <div class="field" style="min-width:100%;flex:1">
-                  <label>дерби H×</label><input id="goalDerbyHDefault" value="0.7" />
-                </div>
-                <div class="field" style="min-width:100%;flex:1">
-                  <label>калибр. S</label>
-                  <select id="goalSCalMode">
-                    <option value="off" selected>off</option>
-                    <option value="soft">soft</option>
-                    <option value="free">free</option>
-                  </select>
-                </div>
-                <div class="field" style="min-width:100%;flex:1">
-                  <label>max |ΔS|</label><input id="goalSCalMaxDelta" value="0.15" />
-                </div>
-                <div class="field" style="min-width:100%;flex:1">
-                  <label>калибр. D</label>
-                  <select id="goalDCalMode">
-                    <option value="soft" selected>soft</option>
-                    <option value="free">free</option>
-                    <option value="off">off (b=1)</option>
-                  </select>
-                </div>
-                <div class="field" style="min-width:45%;flex:1">
-                  <label>b min</label><input id="goalDCalBMin" value="0.90" />
-                </div>
-                <div class="field" style="min-width:45%;flex:1">
-                  <label>b max</label><input id="goalDCalBMax" value="1.03" />
-                </div>
-                <div class="field" style="min-width:100%;flex:1">
-                  <label>λ штраф b</label><input id="goalDCalBPenalty" value="2.00" />
-                </div>
-                <div class="field" style="min-width:100%;flex:1">
-                  <label>Shrink больших |D|</label>
-                  <select id="goalDBigFavMode">
-                    <option value="linear" selected>linear tail</option>
-                    <option value="tanh">tanh cap</option>
-                    <option value="off">off</option>
-                  </select>
-                </div>
-                <div class="field" style="min-width:30%;flex:1">
-                  <label>|D| порог</label><input id="goalDBigFavThr" value="1.25" />
-                </div>
-                <div class="field" style="min-width:30%;flex:1">
-                  <label>хвост k</label><input id="goalDBigFavSlope" value="0.75" />
-                </div>
-                <div class="field" style="min-width:30%;flex:1">
-                  <label>D cap (tanh)</label><input id="goalDBigFavCap" value="2.00" />
-                </div>
-                <label style="display:flex;align-items:flex-start;gap:6px;min-width:100%">
-                  <input id="goalUseDraw" type="checkbox" style="width:auto;margin-top:2px" />
-                  <span class="small">Модель ничьи</span>
-                </label>
-                <div class="field" style="min-width:100%;flex:1" id="goalDrawModeWrap" hidden>
-                  <label>режим ничьи</label>
-                  <select id="goalDrawMode">
-                    <option value="residual_dc" selected>residual (после DC)</option>
-                    <option value="legacy">legacy (абс. P_X)</option>
-                  </select>
-                </div>
-                <div class="field" style="min-width:45%;flex:1" id="goalQBoundsWrap" hidden>
-                  <label>q_min</label><input id="goalQmin" value="0.95" />
-                </div>
-                <div class="field" style="min-width:45%;flex:1" id="goalQBoundsMaxWrap" hidden>
-                  <label>q_max</label><input id="goalQmax" value="1.05" />
-                </div>
+              <summary>Диагностика</summary>
+              <div class="goal-exp-body" style="font-size:0.85em;line-height:1.55;color:#334155">
+                <div id="goalModelAutoStatus">Обучите модель для отображения диагностики.</div>
               </div>
             </details>
           </div>
@@ -1144,28 +1102,93 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="clhMeta" class="meta"></div>
     </section>
 
-    <!-- TAB INACTIVE REPORT (read-only analytics, isolated from Line training) -->
+    <!-- TAB MODEL COMPARISON / BACKTEST (inactive matches; isolated from Line/History) -->
     <section id="tab-inactreport" class="panel">
-      <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Сравнение расчёта с эталоном (inactive)</h3>
-      <p class="small" style="margin:0 0 10px">Read-only отчёт: только матчи <code>active=false</code>. По каждой лиге отдельно обучается модель на активных матчах, затем для неактивных считается линия с маржой. Исходные данные в БД не изменяются.</p>
-      <div class="ir-report-toolbar">
-        <div class="field" style="min-width:180px">
-          <label>Лига</label>
-          <select id="irLeagueFilter"><option value="">Все лиги</option></select>
+      <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Сравнение моделей (Backtest)</h3>
+      <p class="small" style="margin:0 0 10px">Лаборатория моделей на матчах <code>active=false</code>. Обучение — на активных матчах лиги; БД не меняется. Вкладки «Линия» и «История» не затрагиваются. Параметры — <code>model_config.json</code>.</p>
+      <details id="irParamsPanel" class="ir-params-panel">
+        <summary>Параметры моделей (из model_config.json)</summary>
+        <div class="ir-params-body" id="irParamsBody">
+          <div class="ir-params-col" id="irParamsLegacy"><h5>Legacy</h5><div class="small" style="color:#94a3b8">Загрузка…</div></div>
+          <div class="ir-params-col" id="irParamsAuto"><h5>Auto</h5><div class="small" style="color:#94a3b8">Загрузка…</div></div>
         </div>
-        <div class="field" style="max-width:90px">
-          <label>Маржа %</label>
-          <input id="irMarginPct" type="text" value="3" />
+      </details>
+      <div class="ir-lab-layout">
+        <div class="ir-lab-main">
+          <div class="ir-controls-card">
+            <div class="ir-mode-row">
+              <span style="font-weight:600;color:#10204a">Отчёт:</span>
+              <label><input type="radio" name="irReportMode" value="legacy" /> <span>Legacy (candidate)</span></label>
+              <label><input type="radio" name="irReportMode" value="auto" /> <span>Auto</span></label>
+              <label><input type="radio" name="irReportMode" value="compare" checked /> <span>Сравнение</span></label>
+            </div>
+            <div class="ir-mode-row" style="margin-bottom:0">
+              <span style="font-weight:600;color:#10204a">Считать:</span>
+              <label><input type="checkbox" id="irUseLegacy" checked /> <span>Legacy candidate (Poisson + DC + Draw)</span></label>
+              <label><input type="checkbox" id="irUseAuto" checked /> <span>Auto (Marginals + Copula)</span></label>
+            </div>
+          </div>
+          <div class="ir-report-toolbar">
+            <div class="field" style="min-width:160px">
+              <label>Лига</label>
+              <select id="irLeagueFilter"><option value="">Все лиги</option></select>
+            </div>
+            <div class="field" style="min-width:140px">
+              <label>Сезон</label>
+              <select id="irSeasonFilter"><option value="">Все сезоны</option></select>
+            </div>
+            <div class="field" style="max-width:130px">
+              <label>Дата от</label>
+              <input id="irDateFrom" type="date" />
+            </div>
+            <div class="field" style="max-width:130px">
+              <label>Дата до</label>
+              <input id="irDateTo" type="date" />
+            </div>
+            <label class="ir-mode-row" style="margin:0;padding-bottom:2px">
+              <input type="checkbox" id="irUseMargin" />
+              <span>Маржа %</span>
+            </label>
+            <div class="field" style="max-width:90px">
+              <label>%</label>
+              <input id="irMarginPct" type="text" value="3" />
+            </div>
+            <button type="button" id="irRunReport" class="btn primary">Сформировать</button>
+            <button type="button" id="irExportCsv" class="btn" disabled>Скачать CSV</button>
+          </div>
+          <div id="irReportStatus" class="ir-report-status" style="display:none"></div>
+          <div id="irReportTableWrap" class="ir-report-table-wrap" style="display:none">
+            <table id="irReportTable" class="ir-report-table">
+              <thead><tr id="irReportHead"></tr></thead>
+              <tbody id="irReportBody"></tbody>
+            </table>
+          </div>
         </div>
-        <button type="button" id="irRunReport" class="btn primary">Сформировать отчёт</button>
-        <button type="button" id="irExportCsv" class="btn" disabled>Скачать CSV</button>
+        <aside class="ir-summary-card" id="irSummaryCard">
+          <details open>
+            <summary>Диагностика</summary>
+            <div id="irSummaryBody" class="small" style="color:#64748b;margin-top:8px">Сформируйте отчёт — здесь появятся MAE и победитель.</div>
+          </details>
+        </aside>
       </div>
-      <div id="irReportStatus" class="ir-report-status" style="display:none"></div>
-      <div id="irReportTableWrap" class="ir-report-table-wrap" style="display:none">
-        <table id="irReportTable" class="ir-report-table">
-          <thead><tr id="irReportHead"></tr></thead>
-          <tbody id="irReportBody"></tbody>
-        </table>
+      <div class="ir-glossary" id="irGlossary">
+        <h4>Что означают режимы и колонки</h4>
+        <dl>
+          <div>
+            <dt>Сравнение</dt>
+            <dd>Обе модели на одних inactive-матчах. <b>winner_AH / winner_OU / winner_row</b> считаются только по кэфам на рыночной линии (<code>*_at_market</code> / <code>*_d*_mkt</code>). Отклонение main line — отдельные колонки <code>AH_line_d*</code>, <code>Total_line_d*</code> и <code>winner_AH_line</code> / <code>winner_OU_line</code>.</dd>
+          </div>
+          <div>
+            <dt>Legacy (candidate)</dt>
+            <dd>Кандидат исторического pipeline: S/D → Poisson → DC → draw-model. Пока нет сверки с сохранённым historical Legacy reference — режим не называется гарантированно восстановленной Legacy.</dd>
+          </div>
+          <div>
+            <dt>Auto</dt>
+            <dd>S/D → Marginals → Copula; ничья = диагональ. Без DC и draw-model.</dd>
+          </div>
+        </dl>
+        <p class="ir-glossary-note"><b>AH/OU:</b> <code>AH1_L_at_market</code> — кэф Legacy на <code>AH_market</code>, даже если <code>AH_main_L</code> другая. <code>same_ah_L=yes</code> только значит, что main line совпала с рынком (для справки), на валидность <code>*_dL_mkt</code> не влияет.<br>
+        <b>Маржа:</b> выкл → fair/de-vig; вкл → эталон raw БД + модель с %.</p>
       </div>
     </section>
 
@@ -1176,7 +1199,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       из <b>исторических закрывающих (closing) коэффициентов</b>. Всё считается из <b>одной матрицы счетов</b>,
       поэтому рынки согласованы между собой.</p>
       <div class="help-flow">
-        история closing-линий → скрытые <b>S, D</b> → <b>λ<sub>h</sub>, λ<sub>a</sub></b> → матрица <b>P(i,j)</b> → коррекция ничьи → <b>вся линия</b>
+        история closing-линий → скрытые <b>S, D</b> → <b>λ<sub>h</sub>, λ<sub>a</sub></b> → Auto Marginals + Gaussian Copula → матрица <b>P(i,j)</b> → <b>вся линия</b>
       </div>
       <p class="small">λ<sub>h</sub>, λ<sub>a</sub> — ожидаемые голы хозяев/гостей; S = λ<sub>h</sub>+λ<sub>a</sub>; D = λ<sub>h</sub>−λ<sub>a</sub>; i, j — голы хозяев и гостей.</p>
 
@@ -1185,7 +1208,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <li><b>Линия</b> — обучение модели и расчёт линии матча (главная вкладка).</li>
         <li><b>Справочник</b> — команды по лигам (и логотипы). Списки команд в «Линии» берутся отсюда.</li>
         <li><b>История</b> — просмотр сохранённых сезонов и матчей из Supabase. Отсюда данные можно загрузить в «Линию».</li>
-        <li><b>Отчёт inactive</b> — сравнение расчётных коэффициентов с эталоном по неактивным матчам (read-only, без изменения БД).</li>
+        <li><b>Сравнение моделей</b> — два независимых pipeline на inactive-матчах: <b>Legacy</b> (Poisson+DC+draw) и <b>Auto</b> (Marginals+Copula). AH/OU сравниваются на рыночной линии; main line — отдельно. Галка «Маржа»: выкл → эталон fair (de-vig), вкл → эталон raw из БД. Параметры в <code>model_config.json</code>.</li>
         <li><b>Справка</b> — этот раздел.</li>
       </ul>
 
@@ -1266,15 +1289,13 @@ log λ<sub>a</sub> = μ + A<sub>гости</sub> − Df<sub>хозяева</sub>
 
       <h3>5. Калибровка под 1X2</h3>
       <div class="formula">D<sub>final</sub> = a + b·D<sub>модель</sub>
-S<sub>final</sub> = c + d·S<sub>модель</sub>
-<span class="m"># + Dixon-Coles γ для счетов 0:0, 1:0, 0:1, 1:1</span></div>
+S<sub>final</sub> = c + d·S<sub>модель</sub></div>
 
-      <h3>6. Модель ничьи и коррекция матрицы</h3>
-      <div class="formula">logit(P<sub>X</sub>) = α + β<sub>D</sub>·|D| + β<sub>S</sub>·S + β<sub>S2</sub>·S² + β<sub>D×S</sub>·|D|·S
-P<sub>X</sub><sup>target</sup> = 1 / (1 + e<sup>−logit</sup>)</div>
-      <p>Целевая ничья корректирует диагональ матрицы (кламп q<sub>min</sub>…q<sub>max</sub>):</p>
-      <div class="formula">q = clamp( P<sub>X</sub><sup>target</sup> / P<sub>X</sub><sup>матрица</sup> , q<sub>min</sub> , q<sub>max</sub> )
-P'(i,i) = q·P(i,i) ,   P'(i,j) = c·P(i,j)   <span class="m"># сумма снова = 1</span></div>
+      <h3>6. Единая score matrix (Auto)</h3>
+      <div class="formula">λ<sub>h</sub>, λ<sub>a</sub> → Auto Marginals (Poisson при α=0 / NegBin при α&gt;0)
+→ Gaussian Copula (ρ) → joint P(i,j)
+P<sub>X</sub> = Σ<sub>i</sub> P(i,i)</div>
+      <p>Параметры α и ρ калибруются автоматически по лиге/сезону. Dixon–Coles и отдельная модель ничьи не используются.</p>
 
       <h3>Веса матча при обучении</h3>
       <div class="formula">w<sub>base</sub> = W<sub>сезон</sub> × match_weight × neutral_mult
@@ -1310,12 +1331,11 @@ w<sub>line тотал</sub> = clamp( 1 / (1 + α<sub>тотала</sub>·(S−S�
           <li>Считаем <b>H<sub>eff</sub></b> (нейтраль → 0; дерби → shrink(H+δ); иначе H<sub>league</sub>).</li>
           <li>Считаем <b>D<sub>pred</sub> = r<sub>h</sub>−r<sub>a</sub> + H<sub>eff</sub></b>.</li>
           <li>Считаем <b>S<sub>pred</sub></b> из log-модели голов + калибровка <b>a,b,c,d</b>.</li>
-          <li><b>λ<sub>h</sub>, λ<sub>a</sub></b> → пуассоновская матрица P(i,j).</li>
-          <li>Опционально: Dixon–Coles, коррекция ничьи (q<sub>min</sub>…q<sub>max</sub>).</li>
-          <li>Из <b>одной</b> матрицы: 1X2, тоталы, форы (знак как у бука), ИТ, топ счетов.</li>
+          <li><b>λ<sub>h</sub>, λ<sub>a</sub></b> → Auto Marginals + Gaussian Copula → единая матрица P(i,j).</li>
+          <li>Из <b>одной</b> матрицы: 1X2, тоталы, форы, BTTS, ИТ, exact score.</li>
         </ol>
       </div>
-      <div class="formula">P(i,j) = Pois(i; λ<sub>h</sub>) · Pois(j; λ<sub>a</sub>)
+      <div class="formula">P(i,j) = CopulaΔ(F<sub>h</sub>, F<sub>a</sub>; ρ)   <span class="m"># при ρ=0: F<sub>h</sub>′·F<sub>a</sub>′</span>
 П1 = Σ<sub>i&gt;j</sub> P ,  X = Σ<sub>i=j</sub> P ,  П2 = Σ<sub>i&lt;j</sub> P
 K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+маржа%))</div>
       <p>Команда не участвовала в обучении → рейтинг <b>новичка</b> (среднее N слабейших). Имена — из <b>Справочника</b>.  
@@ -1325,15 +1345,9 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       <div class="table-wrap"><table>
         <thead><tr><th>Настройка</th><th>На что влияет</th></tr></thead>
         <tbody>
-          <tr><td>α форы</td><td>Приглушение матчей с большим перевесом сил при обучении рейтинга. Больше → крупные форы влияют меньше.</td></tr>
-          <tr><td>α тотала</td><td>Приглушение матчей с экстремальным тоталом при обучении атаки/обороны.</td></tr>
-          <tr><td>prior α</td><td>При повторном «Обучить модель» стягивает рейтинги и A/Df к предыдущей модели (0.7 = 70%). Первое обучение — без prior.</td></tr>
-          <tr><td>q_min / q_max</td><td>Предел изменения ничьи из матрицы (±10% по умолчанию). 0.85–1.15 — только для экспериментов.</td></tr>
-          <tr><td>Модель ничьи</td><td>Вкл — отдельная модель ничьи + коррекция диагонали. Выкл — ничья как из Пуассона.</td></tr>
-          <tr><td>Dixon-Coles</td><td>Поправка низких счетов (0:0, 1:0, 0:1, 1:1).</td></tr>
-          <tr><td>match_weight / neutral_weight</td><td>Веса матча (▼ Веса). Дерби меняет H при прогнозе, не вес.</td></tr>
+          <tr><td>Режим модели Auto</td><td>α (дисперсия) и ρ (зависимость голов) подбираются автоматически по лиге. Ручной выбор Poisson/NB/DC недоступен.</td></tr>
           <tr><td>Веса сезонов</td><td>Множитель для каждого выбранного сезона при загрузке из Supabase.</td></tr>
-          <tr><td>новичок: N слабейших</td><td>Команде без матчей рейтинг = среднее N слабейших команд лиги.</td></tr>
+          <tr><td>match_weight / neutral_weight</td><td>Веса матча (▼ Веса). Дерби меняет H при прогнозе, не вес.</td></tr>
           <tr><td>Нейтраль / Дерби / Маржа</td><td>Параметры конкретного прогноза: без домашнего преимущества / дерби / кэфы с маржой.</td></tr>
         </tbody>
       </table></div>
@@ -3189,7 +3203,70 @@ bash scripts/update_and_serve.sh --start</div>
 
     // =================================================================
     // Голевая модель: closing lines → S/D → λ → матрица → все рынки
+    // Все числовые пороги — runtime config (без БД): model_config.json
     // =================================================================
+    let GM_MODEL_CFG = null;
+    let GM_MATRIX_CFG = {
+      modelMode: 'auto',
+      jointMatrixMode: 'gaussian_copula',
+      maxGoals: 10,
+      tailEpsilon: 1e-6,
+      lambdaMin: 0.05,
+      alphaCandidates: [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.26,0.30],
+      rhoCandidates: [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.25],
+      nbMinImprovementPct: 1,
+      rhoMinImprovementPct: 0.5,
+      minMatchesForLeagueAlpha: 200,
+      alphaPenalty: 0.5,
+      vppWeight: 0.15,
+      useDixonColes: false,
+      useDrawModel: false,
+    };
+    function gmFlattenModelConfig(raw){
+      if(!raw || typeof raw !== 'object') return;
+      GM_MODEL_CFG = raw;
+      const m = raw.matrix || {};
+      const a = raw.autoMarginal || {};
+      const c = raw.copula || {};
+      const L = raw.legacy || {};
+      const t = raw.train || {};
+      GM_MATRIX_CFG = Object.assign({}, GM_MATRIX_CFG, {
+        maxGoals: m.maxGoals != null ? m.maxGoals : GM_MATRIX_CFG.maxGoals,
+        tailEpsilon: m.tailEpsilon != null ? m.tailEpsilon : GM_MATRIX_CFG.tailEpsilon,
+        lambdaMin: m.lambdaMin != null ? m.lambdaMin : GM_MATRIX_CFG.lambdaMin,
+        alphaCandidates: Array.isArray(a.alphaCandidates) ? a.alphaCandidates : GM_MATRIX_CFG.alphaCandidates,
+        nbMinImprovementPct: a.nbMinImprovementPct != null ? a.nbMinImprovementPct : GM_MATRIX_CFG.nbMinImprovementPct,
+        minMatchesForLeagueAlpha: a.minMatchesForLeagueAlpha != null ? a.minMatchesForLeagueAlpha : GM_MATRIX_CFG.minMatchesForLeagueAlpha,
+        alphaPenalty: a.alphaPenalty != null ? a.alphaPenalty : GM_MATRIX_CFG.alphaPenalty,
+        vppWeight: a.vppWeight != null ? a.vppWeight : GM_MATRIX_CFG.vppWeight,
+        rhoCandidates: Array.isArray(c.rhoCandidates) ? c.rhoCandidates : GM_MATRIX_CFG.rhoCandidates,
+        rhoMinImprovementPct: c.rhoMinImprovementPct != null ? c.rhoMinImprovementPct : GM_MATRIX_CFG.rhoMinImprovementPct,
+        useDixonColes: !!L.useDixonColes,
+        useDrawModel: !!L.useDrawModel,
+        legacy: L,
+        train: t,
+        compare: raw.compare || {},
+        configSource: 'model_config.json',
+      });
+    }
+    async function loadGoalMatrixConfig(){
+      try {
+        let res = await fetchWithTimeout(webAssetUrl('model_config.json'), {}, CONFIG_FETCH_TIMEOUT_MS);
+        if(res.ok){
+          const cfg = await res.json();
+          if(cfg && cfg.matrix){ gmFlattenModelConfig(cfg); return GM_MATRIX_CFG; }
+          if(cfg && typeof cfg === 'object') GM_MATRIX_CFG = Object.assign({}, GM_MATRIX_CFG, cfg);
+          return GM_MATRIX_CFG;
+        }
+        // backward-compatible flat file
+        res = await fetchWithTimeout(webAssetUrl('goal_matrix.config.json'), {}, CONFIG_FETCH_TIMEOUT_MS);
+        if(!res.ok) return GM_MATRIX_CFG;
+        const flat = await res.json();
+        if(flat && typeof flat === 'object') GM_MATRIX_CFG = Object.assign({}, GM_MATRIX_CFG, flat, {configSource:'goal_matrix.config.json'});
+      } catch (_e){ /* defaults */ }
+      return GM_MATRIX_CFG;
+    }
+    loadGoalMatrixConfig();
     const GM_MAX = 10;
     const _gmFact = [1];
     function gmFact(n){ for(let i=_gmFact.length;i<=n;i++) _gmFact[i]=_gmFact[i-1]*i; return _gmFact[n]; }
@@ -3210,6 +3287,163 @@ bash scripts/update_and_serve.sh --start</div>
       for(let i=0;i<2;i++) for(let j=0;j<2;j++) if(o[i][j]<0) o[i][j]=0;
       return gmNorm(o);
     }
+
+    // ---- Negative Binomial + Gaussian Copula joint score matrix ----
+    function gmLogGamma(z){
+      // Lanczos approximation, accurate for z > 0
+      const g=7, c=[0.99999999999980993,676.5203681218851,-1259.1392167224028,
+        771.32342877765313,-176.61502916214059,12.507343278686905,
+        -0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+      if(z<0.5) return Math.log(Math.PI/Math.sin(Math.PI*z))-gmLogGamma(1-z);
+      const x=z-1; let t=x+g+0.5; let s=c[0];
+      for(let i=1;i<g+2;i++) s+=c[i]/(x+i);
+      return 0.5*Math.log(2*Math.PI)+(x+0.5)*Math.log(t)-t+Math.log(s);
+    }
+    function gmNegBinPmf(k, mu, alpha){
+      // NB2: Var=mu+alpha*mu^2; r=1/alpha, p=1/(1+alpha*mu)
+      if(alpha<=1e-12) return gmPois(k, mu);
+      const r=1/alpha, p=1/(1+alpha*mu);
+      // P(k) = Gamma(r+k)/(Gamma(r)*k!) * p^r * (1-p)^k
+      return Math.exp(gmLogGamma(r+k)-gmLogGamma(r)-gmLogGamma(k+1)+r*Math.log(p)+k*Math.log(1-p));
+    }
+    function gmMarginalPmf(mu, alpha, maxGoals){
+      const pmf=[]; let s=0;
+      for(let k=0;k<=maxGoals;k++){ const v=gmNegBinPmf(k,mu,alpha); pmf.push(v); s+=v; }
+      if(s>1e-12) for(let k=0;k<=maxGoals;k++) pmf[k]/=s;
+      return pmf;
+    }
+    function gmMarginalCdf(pmf){
+      const cdf=[]; let s=0;
+      for(let k=0;k<pmf.length;k++){ s+=pmf[k]; cdf.push(Math.min(1,s)); }
+      return cdf;
+    }
+    function gmInvNorm(p){
+      // Acklam rational approximation, max error ~4.5e-4
+      p=Math.max(1e-12,Math.min(1-1e-12,p));
+      const a=[-3.969683028665376e1,2.209460984245205e2,-2.759285104469687e2,
+               1.383577518672690e2,-3.066479806614716e1,2.506628277459239];
+      const b=[-5.447609879822406e1,1.615858368580409e2,-1.556989798598866e2,
+               6.680131188771972e1,-1.328068155288572e1];
+      const c=[-7.784894002430293e-3,-3.223964580411365e-1,-2.400758277161838,
+               -2.549732539343734,4.374664141464968,2.938163982698783];
+      const d=[7.784695709041462e-3,3.224671290700398e-1,2.445134137142996,3.754408661907416];
+      const plo=0.02425, phi=1-plo;
+      let q,r;
+      if(p<plo){ q=Math.sqrt(-2*Math.log(p));
+        return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/(((( d[0]*q+d[1])*q+d[2])*q+d[3])*q+1); }
+      if(p<=phi){ q=p-0.5; r=q*q;
+        return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1); }
+      q=Math.sqrt(-2*Math.log(1-p));
+      return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/(((( d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+    }
+    function gmStdNormCdf(x){
+      // Abramowitz & Stegun 26.2.17 approximation
+      const t=1/(1+0.2316419*Math.abs(x));
+      const poly=t*(0.319381530+t*(-0.356563782+t*(1.781477937+t*(-1.821255978+t*1.330274429))));
+      const d=1-poly*Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);
+      return x>=0?d:1-d;
+    }
+    function gmBivNormCdf(x, y, rho){
+      // Drezner-style approximation for bivariate normal CDF
+      rho=Math.max(-0.999,Math.min(0.999,rho));
+      if(Math.abs(rho)<1e-9) return gmStdNormCdf(x)*gmStdNormCdf(y);
+      // Abramowitz & Stegun / Drezner 1978 Gauss-Legendre quadrature (10-point)
+      const w=[0.1713244923791703,0.3607615730481386,0.4679139345726910,
+               0.1713244923791703,0.3607615730481386,0.4679139345726910,
+               0.1713244923791703,0.3607615730481386,0.4679139345726910,
+               0.1713244923791703];
+      const ab=[0.9324695142031521,0.6612093864662645,0.2386191860831969,
+                -0.9324695142031521,-0.6612093864662645,-0.2386191860831969,
+                0.9324695142031521,0.6612093864662645,0.2386191860831969,
+                -0.9324695142031521];
+      // Use Owen's T-function approach: BN(h,k,rho)=Phi(h)*Phi(k)+2*T(h,(k-rho*h)/sqrt(1-rho^2))+... (complex)
+      // Simpler: direct numerical integration via variable transform
+      // B(x,y,r) via GL quadrature on rho
+      // For |rho|<1 use the classical 10-point GL on the integral representation
+      const hh=x, kk=y, r=rho;
+      const hs=-0.5*(hh*hh+kk*kk), bk=1-r*r;
+      let bv=0;
+      if(r<0 && (hh*kk>=0 || (hh>=0&&kk<0))) bv=-gmStdNormCdf(-hh<-kk?-hh:-kk);
+      if(r>0 && hh*kk<0) bv=gmStdNormCdf(hh>0?kk:hh);
+      // 10-point Gauss-Legendre on [0, arcsin(rho)]
+      const asin_r=Math.asin(r);
+      const half=asin_r/2;
+      const gl_w=[0.2955242247147529,0.2955242247147529,0.2692667193099963,0.2692667193099963,
+                  0.2190863625159820,0.2190863625159820,0.1494513491505806,0.1494513491505806,
+                  0.0666713443086881,0.0666713443086881];
+      const gl_x=[0.1488743389816312,-0.1488743389816312,0.4333953941292472,-0.4333953941292472,
+                  0.6794095682990244,-0.6794095682990244,0.8650633666889845,-0.8650633666889845,
+                  0.9739065285171717,-0.9739065285171717];
+      let sum=0;
+      for(let i=0;i<10;i++){
+        const si=Math.sin(half*gl_x[i]+half);
+        sum+=gl_w[i]*Math.exp((si*(2*hh*kk-si*(hh*hh+kk*kk)))/(2*(1-si*si)));
+      }
+      return gmStdNormCdf(hh)*gmStdNormCdf(kk)+half*sum/(2*Math.PI);
+    }
+    function gmGaussCopulaCdf(u, v, rho){
+      u=Math.max(1e-12,Math.min(1-1e-12,u));
+      v=Math.max(1e-12,Math.min(1-1e-12,v));
+      return gmBivNormCdf(gmInvNorm(u),gmInvNorm(v),rho);
+    }
+    function gmVppFromPmf(pmf){
+      const p=[0,0,0,0,0,0];
+      for(let k=0;k<pmf.length;k++){ if(k<5) p[k]+=pmf[k]; else p[5]+=pmf[k]; }
+      return {p, vpp:[p[0]-p[1], p[1]-p[2], p[2]-p[3], p[3]-p[4]]};
+    }
+    function gmTotalGoalsPmf(mat){
+      const n=mat.length, out=Array(2*(n-1)+1).fill(0);
+      for(let i=0;i<n;i++) for(let j=0;j<n;j++) out[i+j]+=mat[i][j];
+      return out;
+    }
+    function gmVppError(modelVpp, targetVpp){
+      let e=0;
+      for(let i=0;i<4;i++) e+=(modelVpp.vpp[i]-targetVpp.vpp[i])**2;
+      return e;
+    }
+    function gmJointScoreMatrix(lh, la, alpha, rho, maxGoals){
+      if(maxGoals==null) maxGoals=(GM_MATRIX_CFG.maxGoals!=null?GM_MATRIX_CFG.maxGoals:GM_MAX);
+      const lamMin=GM_MATRIX_CFG.lambdaMin!=null?GM_MATRIX_CFG.lambdaMin:0.05;
+      lh=Math.max(lamMin,lh); la=Math.max(lamMin,la);
+      alpha=alpha||0; rho=rho||0;
+      const pmfH=gmMarginalPmf(lh,alpha,maxGoals);
+      const pmfA=gmMarginalPmf(la,alpha,maxGoals);
+      const cdfH=gmMarginalCdf(pmfH);
+      const cdfA=gmMarginalCdf(pmfA);
+      const mat=[];
+      for(let i=0;i<=maxGoals;i++){
+        const row=[];
+        const fhI=cdfH[i], fhIm1=(i>0?cdfH[i-1]:0);
+        for(let j=0;j<=maxGoals;j++){
+          const faJ=cdfA[j], faJm1=(j>0?cdfA[j-1]:0);
+          let p;
+          if(Math.abs(rho)<1e-9){
+            p=pmfH[i]*pmfA[j];
+          } else {
+            p=gmGaussCopulaCdf(fhI,faJ,rho)
+             -gmGaussCopulaCdf(fhIm1,faJ,rho)
+             -gmGaussCopulaCdf(fhI,faJm1,rho)
+             +gmGaussCopulaCdf(fhIm1,faJm1,rho);
+          }
+          row.push(Math.max(0,p));
+        }
+        mat.push(row);
+      }
+      return gmNorm(mat);
+    }
+    function gmMatrixDiagnostics(mat, lh, la, alpha){
+      let s=0,p00=0,p11=0,pBtts=0,meanTotal=0,varTotal=0;
+      const n=mat.length;
+      for(let i=0;i<n;i++) for(let j=0;j<n;j++){
+        const v=mat[i][j]; s+=v; p00+=(i===0&&j===0?v:0); p11+=(i===1&&j===1?v:0);
+        if(i>0&&j>0) pBtts+=v; meanTotal+=v*(i+j);
+      }
+      for(let i=0;i<n;i++) for(let j=0;j<n;j++) varTotal+=mat[i][j]*Math.pow(i+j-meanTotal,2);
+      const varRatio=meanTotal>1e-12?varTotal/meanTotal:1;
+      let tail=0; for(let i=0;i<n;i++) tail+=mat[i][n-1]+mat[n-1][i]; tail-=mat[n-1][n-1];
+      return {sum:s,p00,p11,pBtts,meanTotal,varTotal,varRatio,tail,lh,la,alpha:alpha||0};
+    }
+
     function gmComps(line){ const f=Math.round((line-Math.floor(line))*100)/100; return (f===0.25||f===0.75)?[line-0.25,line+0.25]:[line]; }
     function gmAhHomeS(i,j,l){ const m=(i-j)+l; if(m>1e-12) return [1,0]; if(m<-1e-12) return [0,1]; return [0,0]; }
     function gmAhHome(i,j,l){ const c=gmComps(l); let w=0,x=0; for(const t of c){ const u=gmAhHomeS(i,j,t); w+=u[0]; x+=u[1]; } return [w/c.length,x/c.length]; }
@@ -3555,15 +3789,14 @@ bash scripts/update_and_serve.sh --start</div>
         const la=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0)); return [m,dm,lh+la,m.wBase]; });
       const sOff=cfg.sCalMode==='off';
       const dOff=(cfg.dCalMode||'soft')==='off';
-      function lossCore(a,b,c,d,g){
+      function lossCore(a,b,c,d){
         if(d<=0) return 1e9;
-        const gc=gmClipGamma(g,cfg);
         let tot=gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
         for(const [m,dm,sm,w] of pre){
           const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
           const dc=gmApplyDCal(dm,a,b,cfg);
           const df=gmClampD(dc.dUsed,sf); const lh=(sf+df)/2,la=(sf-df)/2; if(lh<=0||la<=0) return 1e9;
-          let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&gc) mat=gmDC(mat,lh,la,gc);
+          const mat=gmJointScoreMatrix(lh,la,0,0,cfg.maxGoals);
           const [p1,px,p2]=gm1x2(mat);
           tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
         }
@@ -3571,42 +3804,24 @@ bash scripts/update_and_serve.sh --start</div>
       }
       let full;
       if(sOff){
-        if(cfg.useDc){
-          if(dOff){
-            const x=gmNelder(p=>lossCore(p[0],1,0,1,p[1]),[0,0]);
-            full=[x[0],1,0,1,gmClipGamma(x[1],cfg)];
-          } else {
-            const x=gmNelder(p=>lossCore(p[0],p[1],0,1,p[2]),[0,1,0]);
-            full=[x[0],x[1],0,1,gmClipGamma(x[2],cfg)];
-          }
-        } else {
-          if(dOff){
-            const x=gmNelder(p=>lossCore(p[0],1,0,1,0),[0]);
-            full=[x[0],1,0,1,0];
-          } else {
-            const x=gmNelder(p=>lossCore(p[0],p[1],0,1,0),[0,1]);
-            full=[x[0],x[1],0,1,0];
-          }
-        }
-      } else if(cfg.useDc){
         if(dOff){
-          const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2],p[3]),[0,0,1,0]);
-          full=[x[0],1,x[1],x[2],gmClipGamma(x[3],cfg)];
+          const x=gmNelder(p=>lossCore(p[0],1,0,1),[0]);
+          full=[x[0],1,0,1];
         } else {
-          const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],p[4]),[0,1,0,1,0]);
-          full=[x[0],x[1],x[2],x[3],gmClipGamma(x[4],cfg)];
+          const x=gmNelder(p=>lossCore(p[0],p[1],0,1),[0,1]);
+          full=[x[0],x[1],0,1];
         }
       } else {
         if(dOff){
-          const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2],0),[0,0,1]);
-          full=[x[0],1,x[1],x[2],0];
+          const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2]),[0,0,1]);
+          full=[x[0],1,x[1],x[2]];
         } else {
-          const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],0),[0,1,0,1]);
-          full=[x[0],x[1],x[2],x[3],0];
+          const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3]),[0,1,0,1]);
+          full=[x[0],x[1],x[2],x[3]];
         }
       }
       const bOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
-      return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:full[4],n1x2:used.length};
+      return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:0,n1x2:used.length};
     }
     function gmEffectiveQBounds(cfg, drawMode){
       const mode=drawMode||cfg.drawMode||'residual_dc';
@@ -3641,8 +3856,6 @@ bash scripts/update_and_serve.sh --start</div>
     function goalApplyModelProfile(){
       const p=gmModelProfile();
       if(p!=='baseline') return;
-      const dc=document.getElementById('goalUseDc'); if(dc) dc.checked=true;
-      const draw=document.getElementById('goalUseDraw'); if(draw) draw.checked=false;
       const sc=document.getElementById('goalSCalMode'); if(sc) sc.value='off';
       const dcm=document.getElementById('goalDCalMode'); if(dcm) dcm.value='soft';
       const bmin=document.getElementById('goalDCalBMin'); if(bmin) bmin.value='0.90';
@@ -3653,7 +3866,6 @@ bash scripts/update_and_serve.sh --start</div>
       const dslope=document.getElementById('goalDBigFavSlope'); if(dslope) dslope.value='0.75';
       const dcap=document.getElementById('goalDBigFavCap'); if(dcap) dcap.value='2.00';
       const panel=document.getElementById('goalExperimentalPanel'); if(panel) panel.open=false;
-      gmToggleDrawQUi();
     }
     function goalMarkCustomProfile(){
       const sel=document.getElementById('goalModelProfile');
@@ -3741,13 +3953,17 @@ bash scripts/update_and_serve.sh --start</div>
       const tot=tg.map(l=>gmTotMarket(m,l)), ah=ag.map(l=>gmAhMarket(m,l));
       const mt=tot.reduce((a,b)=>Math.abs(b.over-b.under)<Math.abs(a.over-a.under)?b:a);
       const ma=ah.reduce((a,b)=>Math.abs(b.home-b.away)<Math.abs(a.home-a.away)?b:a);
-      return {p1,px,p2,mainTotal:mt,mainAh:ma,totals:tot,
+      let bttsYes=0;
+      for(let i=1;i<m.length;i++) for(let j=1;j<m.length;j++) bttsYes+=m[i][j];
+      bttsYes=Math.min(Math.max(bttsYes,1e-9),1-1e-9);
+      const bttsNo=1-bttsYes;
+      return {p1,px,p2,bttsYes,bttsNo,mainTotal:mt,mainAh:ma,totals:tot,
         ttH:[0.5,1.5,2.5].map(l=>[l,...gmTeamTot(m,l,true)]), ttA:[0.5,1.5,2.5].map(l=>[l,...gmTeamTot(m,l,false)]),
         top:gmTop(m,8)};
     }
     function gmPromoted(vals,n){ const arr=Object.values(vals); if(!arr.length) return 0; const w=arr.slice().sort((a,b)=>a-b).slice(0,Math.max(1,n)); return w.reduce((a,b)=>a+b,0)/w.length; }
     function gmPredict(model,homeId,awayId,opt){
-      const {st,gl,cal,draw,cfg}=model; const iHome=opt.neutral?0:1;
+      const {st,gl,cal,cfg}=model; const iHome=opt.neutral?0:1;
       const names=model.teamNames||{};
       const homeName=names[homeId]||homeId, awayName=names[awayId]||awayId;
       const hEff=gmEffectiveH(st,cfg,opt.neutral,!!opt.derby);
@@ -3761,16 +3977,15 @@ bash scripts/update_and_serve.sh --start</div>
       let sf=gmApplySCal(sm,cal.c,cal.d,cfg);
       let df=gmClampD(dc.dUsed,sf);
       const lh=(sf+df)/2, la=(sf-df)/2;
-      let mat=gmMatrix(lh,la,cfg.maxGoals); if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
-      let dtarget=null,diag=null;
-      if(cfg.useDraw){
-        const pxMat=gmDrawProb(mat);
-        const [qmin,qmax]=gmEffectiveQBounds(cfg, draw.mode);
-        if(draw.mode==='residual_dc') dtarget=gmDrawQMult(draw,df,sf,cfg)*pxMat;
-        else dtarget=gmDrawTarget(draw,df,sf);
-        [mat,diag]=gmAdjustDraw(mat,dtarget,qmin,qmax);
-      }
-      return {homeId,awayId,homeName,awayName,lh,la,df,sf,markets:gmMarkets(mat),drawTarget:dtarget,drawDiag:diag};
+      const alpha=model.alphaFinal||0, rho=model.rhoFinal||0;
+      const mat=gmJointScoreMatrix(lh,la,alpha,rho,cfg.maxGoals||GM_MAX);
+      const matDiag=gmMatrixDiagnostics(mat,lh,la,alpha);
+      return {
+        homeId,awayId,homeName,awayName,lh,la,df,sf,mat,matDiag,
+        alphaFinal:alpha, rhoFinal:rho,
+        selectedDistribution: model.selectedDistribution || (alpha>1e-9?'negbin':'poisson_like'),
+        markets:gmMarkets(mat),drawTarget:null,drawDiag:null
+      };
     }
     function gmDClampSensitiveTags(m, teamCounts, earlyCutoff, cfg){
       const tags=[];
@@ -3840,12 +4055,11 @@ bash scripts/update_and_serve.sh --start</div>
       else summary=`q clamp ${clampPct.toFixed(0)}% (${nClamped}/${nEval}) — >${warnPct}%, проверьте ${model.cfg.useDc?'DC+ничья':'матрица→ничья'}`;
       return { nEval, nClamped, clampPct, nNearOne, nearOnePct, stable, summary, rows };
     }
-    function gmProb1x2FromSd(s, d, cfg, gamma=0){
+    function gmProb1x2FromSd(s, d, cfg, gamma=0, alpha=0, rho=0){
       const df=gmClampD(d,s);
-      const lh=(s+df)/2, la=(s-df)/2;
+      const lh=Math.max(0.05,(s+df)/2), la=Math.max(0.05,(s-df)/2);
       if(lh<=0||la<=0) return [0,0,0];
-      let mat=gmMatrix(lh,la,cfg.maxGoals);
-      if(cfg.useDc&&gamma) mat=gmDC(mat,lh,la,gamma);
+      const mat=gmJointScoreMatrix(lh,la,alpha||0,rho||0,cfg.maxGoals||GM_MAX);
       return gm1x2(mat);
     }
     function gmDrawHarmDiagnostics(model, ms, lowSThreshold=2.3){
@@ -4199,43 +4413,185 @@ bash scripts/update_and_serve.sh --start</div>
         summary,
       };
     }
+    function gmCalibrateDispersion(model, ms){
+      const {st, gl, cal, cfg} = model;
+      const mxCfg = GM_MATRIX_CFG || {};
+      const minN = mxCfg.minMatchesForLeagueAlpha != null ? mxCfg.minMatchesForLeagueAlpha : 200;
+      const nbMin = mxCfg.nbMinImprovementPct != null ? mxCfg.nbMinImprovementPct : 1;
+      const rhoMin = mxCfg.rhoMinImprovementPct != null ? mxCfg.rhoMinImprovementPct : 0.5;
+      const alphaPen = mxCfg.alphaPenalty != null ? mxCfg.alphaPenalty : 0.5;
+      const vppW = mxCfg.vppWeight != null ? mxCfg.vppWeight : 0.15;
+      const lamMin = mxCfg.lambdaMin != null ? mxCfg.lambdaMin : 0.05;
+      const used = ms.filter(m => (m.pOver != null || m.p1 != null) && m.lh > 0 && m.la > 0);
+      const nMatches = used.length;
+
+      // Shrink to 0 if too few matches (config, not DB)
+      if(nMatches < minN){
+        model.alphaFinal = 0; model.rhoFinal = 0;
+        model.selectedDistribution = 'poisson_like';
+        model.nbImprovementPct = 0;
+        model.matrixCalib = { status: `shrunk_to_0 (n=${nMatches}<${minN})`, nMatches, alphaCandidates: 0, rhoCandidates: 0, vppError: null };
+        return;
+      }
+
+      function matchLoss(m, lh, la, alpha, rho){
+        let loss = 0, n = 0;
+        const mat = gmJointScoreMatrix(lh, la, alpha, rho, cfg.maxGoals||GM_MAX);
+        if(m.pOver != null){
+          const totLine = m.raw && m.raw.tot != null ? m.raw.tot : 2.5;
+          let pOv = 0;
+          for(let i=0;i<mat.length;i++) for(let j=0;j<mat.length;j++){
+            const u=gmTot(i+j,totLine,'over'); pOv+=mat[i][j]*u[0];
+          }
+          loss += (pOv - m.pOver)**2; n++;
+        }
+        if(m.p1 != null){
+          const [p1,px,p2] = gm1x2(mat);
+          loss += 0.5*((p1-m.p1)**2 + (p2-m.p2)**2); n += 0.5;
+          if(m.px != null){ loss += (px-m.px)**2; n++; }
+        }
+        return n > 0 ? loss / n : 0;
+      }
+
+      function computeLhLa(m){
+        const {sCal, dCal} = gmCalibratedSdForMatch(m, st, gl, cal, cfg);
+        const lh = Math.max(lamMin, (sCal+dCal)/2);
+        const la = Math.max(lamMin, (sCal-dCal)/2);
+        return {lh, la, sCal};
+      }
+
+      // Target VPP: mixture of Poisson(S_market) across matches (no FT scores in DB)
+      const targetTot = Array(2*GM_MAX+1).fill(0);
+      let tw = 0;
+      for(const m of used){
+        const S = m.S != null ? m.S : (m.lh+m.la);
+        if(!(S>0)) continue;
+        for(let g=0;g<=2*GM_MAX;g++) targetTot[g]+=gmPois(g,S);
+        tw++;
+      }
+      if(tw>0) for(let g=0;g<targetTot.length;g++) targetTot[g]/=tw;
+      const targetVpp = gmVppFromPmf(targetTot);
+
+      // Step 1: grid search over alpha (rho=0)
+      const alphaCands = Array.isArray(mxCfg.alphaCandidates) ? mxCfg.alphaCandidates.slice() : [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.26,0.30];
+      const alphaLosses = alphaCands.map(alpha => {
+        let tot = 0, n = 0;
+        const avgTot = Array(2*GM_MAX+1).fill(0);
+        for(const m of used){
+          const {lh,la} = computeLhLa(m);
+          tot += matchLoss(m,lh,la,alpha,0) + alphaPen*alpha*alpha;
+          const mat = gmJointScoreMatrix(lh,la,alpha,0,cfg.maxGoals||GM_MAX);
+          const tpmf = gmTotalGoalsPmf(mat);
+          for(let g=0;g<tpmf.length && g<avgTot.length;g++) avgTot[g]+=tpmf[g];
+          n++;
+        }
+        if(n>0) for(let g=0;g<avgTot.length;g++) avgTot[g]/=n;
+        const vppErr = gmVppError(gmVppFromPmf(avgTot), targetVpp);
+        return n > 0 ? tot/n + vppW*vppErr : 1e9;
+      });
+      const bestAlphaIdx = alphaLosses.reduce((bi,v,i)=>v<alphaLosses[bi]?i:bi, 0);
+      let alphaFinal = alphaCands[bestAlphaIdx];
+      const loss0 = alphaLosses[0], lossBest = alphaLosses[bestAlphaIdx];
+      const nbImprovementPct = loss0 > 1e-12 ? 100*(loss0-lossBest)/loss0 : 0;
+      if(nbImprovementPct < nbMin) alphaFinal = 0;
+
+      // Step 2: grid search over rho with alphaFinal
+      const rhoCands = Array.isArray(mxCfg.rhoCandidates) ? mxCfg.rhoCandidates.slice() : [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.25];
+      const rhoLosses = rhoCands.map(rho => {
+        let tot = 0, n = 0;
+        for(const m of used){
+          if(m.p1 == null) continue;
+          const {lh,la} = computeLhLa(m);
+          const mat = gmJointScoreMatrix(lh,la,alphaFinal,rho,cfg.maxGoals||GM_MAX);
+          const [p1,px,p2] = gm1x2(mat);
+          if(m.pOver != null){
+            const totLine = m.raw&&m.raw.tot!=null?m.raw.tot:2.5;
+            let pOv = 0;
+            for(let i=0;i<mat.length;i++) for(let j=0;j<mat.length;j++){
+              const u=gmTot(i+j,totLine,'over'); pOv+=mat[i][j]*u[0];
+            }
+            tot += (pOv-m.pOver)**2; n++;
+          }
+          tot += 0.5*((p1-m.p1)**2 + (p2-m.p2)**2); n += 0.5;
+          if(m.px != null){ tot += (px-m.px)**2; n++; }
+        }
+        return n > 0 ? tot/n : 1e9;
+      });
+      const bestRhoIdx = rhoLosses.reduce((bi,v,i)=>v<rhoLosses[bi]?i:bi, 0);
+      let rhoFinal = rhoCands[bestRhoIdx];
+      const rhoImprovementPct = rhoLosses[0] > 1e-12 ? 100*(rhoLosses[0]-rhoLosses[bestRhoIdx])/rhoLosses[0] : 0;
+      if(rhoImprovementPct < rhoMin) rhoFinal = 0;
+
+      // Final VPP diagnostic at chosen params
+      const avgTotFinal = Array(2*GM_MAX+1).fill(0);
+      let nn=0;
+      for(const m of used){
+        const {lh,la}=computeLhLa(m);
+        const mat=gmJointScoreMatrix(lh,la,alphaFinal,rhoFinal,cfg.maxGoals||GM_MAX);
+        const tpmf=gmTotalGoalsPmf(mat);
+        for(let g=0;g<tpmf.length&&g<avgTotFinal.length;g++) avgTotFinal[g]+=tpmf[g];
+        nn++;
+      }
+      if(nn>0) for(let g=0;g<avgTotFinal.length;g++) avgTotFinal[g]/=nn;
+      const finalVpp = gmVppFromPmf(avgTotFinal);
+      const vppError = gmVppError(finalVpp, targetVpp);
+
+      model.alphaFinal = alphaFinal;
+      model.rhoFinal = rhoFinal;
+      model.selectedDistribution = alphaFinal > 1e-9 ? 'negbin' : 'poisson_like';
+      model.nbImprovementPct = nbImprovementPct;
+      model.vppProfile = finalVpp;
+      model.matrixCalib = {
+        status: 'calibrated', nMatches,
+        alphaCandidates: alphaCands.length, rhoCandidates: rhoCands.length,
+        alphaLoss0: loss0, alphaLossBest: lossBest, nbImprovementPct,
+        rhoLoss0: rhoLosses[0], rhoLossBest: rhoLosses[bestRhoIdx], rhoImprovementPct,
+        vppError, vpp: finalVpp,
+        configSource: (GM_MATRIX_CFG && GM_MATRIX_CFG.configSource) || 'model_config.json',
+      };
+    }
+
     function gmTrain(raw,cfg,prior,inactiveRaw){
+      cfg = Object.assign({}, cfg, {
+        useDc:false, useDraw:false,
+        maxGoals: (GM_MATRIX_CFG && GM_MATRIX_CFG.maxGoals) || (cfg && cfg.maxGoals) || GM_MAX,
+      });
       const ms=gmPrepare(raw,cfg);
       const dClamp=gmDClampDiagnostics(ms, cfg);
       const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
-      const draw=gmFitDrawForConfig(ms,st,gl,cal,cfg);
+      const draw={alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'disabled',mode:'legacy'};
       const calDiag=gmAssessCalibration(cal,cfg);
-      const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag,teamNames:{}};
+      const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag,teamNames:{},
+        alphaFinal:0, rhoFinal:0, selectedDistribution:'poisson_like', nbImprovementPct:0, matrixCalib:null};
       ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
-      model.drawQDiag=gmDrawQDiagnostics(model, ms);
+      gmCalibrateDispersion(model, ms);
+      model.drawQDiag={nEval:0,nClamped:0,clampPct:0,nNearOne:0,nearOnePct:0,stable:true,summary:'модель ничьи выкл',rows:[]};
       model.sdDiag=gmSd1x2Diagnostics(model, ms);
-      model.drawHarmDiag=gmDrawHarmDiagnostics(model, ms);
+      model.drawHarmDiag={nMatches:0,summary:'ничья отключена'};
       model.inactiveDiag=gmInactiveDDiagnostics(model, inactiveRaw||[]);
       model.trainMargin1x2=gmTrainMargin1x2Diagnostics(raw, cfg);
       return model;
     }
     let gmModel=null;
     function gmCfg(){
-      const f=(id,d)=>{ const v=parseFloat((document.getElementById(id).value||'').replace(',','.')); return isNaN(v)?d:v; };
-      return { maxGoals:GM_MAX, alphaAh:f('goalAlphaAh',0.25), pAh:2, minWAh:0.15, maxWAh:1,
-        alphaT:f('goalAlphaT',0.5), deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
+      return { maxGoals:GM_MAX, alphaAh:0.25, pAh:2, minWAh:0.15, maxWAh:1,
+        alphaT:0.5, deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
         seasonDefault:1.0,
         seasonWeightsById: goalSeasonWeightById || {},
-        priorAlpha:f('goalPriorAlpha',0.7), promotedN:3,
-        regLambda:f('goalRegLambdaR',0.10), regLambdaAttack:f('goalRegLambdaAD',0.1), regLambdaDefense:f('goalRegLambdaAD',0.1),
+        priorAlpha:0.7, promotedN:3,
+        regLambda:0.10, regLambdaAttack:0.1, regLambdaDefense:0.1,
         dClampLowTeam:3, dClampEarlyFraction:0.25,
-        derbyShrinkTau:30, derbyHDefault:f('goalDerbyHDefault',0.7), derbyMinMatches:3,
-        dCalMode:gmResolvedDCalMode(), dCalBMin:f('goalDCalBMin',0.90), dCalBMax:f('goalDCalBMax',1.03), dCalBPenalty:f('goalDCalBPenalty',2.0),
-        dBigFavMode:(document.getElementById('goalDBigFavMode')||{}).value||'linear',
-        dBigFavThreshold:f('goalDBigFavThr',1.25), dBigFavSlope:f('goalDBigFavSlope',0.75), dBigFavCap:f('goalDBigFavCap',2.00),
-        useDraw:gmModelProfile()!=='baseline'&&gmIsExperimentalOpen()&&document.getElementById('goalUseDraw').checked,
-        useDc:document.getElementById('goalUseDc').checked,
-        modelProfile:gmModelProfile(),
-        drawMode:(document.getElementById('goalDrawMode')||{}).value||'residual_dc',
-        qmin:f('goalQmin',0.95), qmax:f('goalQmax',1.05),
+        derbyShrinkTau:30, derbyHDefault:0.7, derbyMinMatches:3,
+        dCalMode:'soft', dCalBMin:0.90, dCalBMax:1.03, dCalBPenalty:2.0,
+        dBigFavMode:'linear',
+        dBigFavThreshold:1.25, dBigFavSlope:0.75, dBigFavCap:2.00,
+        useDraw:false, useDc:false,
+        modelProfile:'baseline',
+        drawMode:'residual_dc',
+        qmin:0.95, qmax:1.05,
         qResMin:0.98, qResMax:1.03,
-        sCalMode:gmResolvedSCalMode(),
-        sCalMaxDelta:f('goalSCalMaxDelta',0.15), gammaMax:f('goalGammaMax',0.20) };
+        sCalMode:'off',
+        sCalMaxDelta:0.15, gammaMax:0.20 };
     }
     function gmSeasonWeight(rec, cfg){
       const def = cfg.seasonDefault != null ? cfg.seasonDefault : 1.0;
@@ -5557,32 +5913,12 @@ bash scripts/update_and_serve.sh --start</div>
         html += '<div class="small" style="margin-top:8px;font-weight:600">Веса сезонов</div>'
           + goalRenderTrainTable(seasonRows.map(([a,b]) => [a, b, 'num']));
       }
-      html += '<div class="small" style="margin-top:8px;font-weight:600">Параметры обучения (вход)</div>'
+      html += '<div class="small" style="margin-top:8px;font-weight:600">Параметры обучения</div>'
         + goalRenderTrainTable([
-          ['Профиль', cfg.modelProfile==='custom'?'свои настройки':'рыночный baseline', ''],
-          ['α форы', goalFmtTrainNum(cfg.alphaAh, 2), 'num'],
-          ['α тотала', goalFmtTrainNum(cfg.alphaT, 2), 'num'],
-          ['λ A / Df', goalFmtTrainNum(cfg.regLambdaAttack, 2), 'num'],
-          ['λ r', goalFmtTrainNum(cfg.regLambda, 2), 'num'],
-          ['Dixon-Coles', cfg.useDc ? 'вкл' : 'выкл', ''],
-          ['γ max', goalFmtTrainNum(cfg.gammaMax, 2), 'num'],
+          ['Режим модели', 'Auto', ''],
+          ['Матрица', 'Auto Marginals + Gaussian Copula', ''],
+          ['Ничья', 'сумма диагонали матрицы', ''],
         ]);
-      if (cfg.modelProfile === 'custom' || cfg.useDraw || cfg.sCalMode !== 'off' || cfg.dCalMode !== 'soft' || cfg.dBigFavMode !== 'linear'){
-        html += '<div class="small" style="margin-top:8px;font-weight:600">Экспериментальные параметры</div>'
-          + goalRenderTrainTable([
-            ['дерби H×', goalFmtTrainNum(cfg.derbyHDefault, 2), 'num'],
-            ['prior α', goalFmtTrainNum(cfg.priorAlpha, 2), 'num'],
-            ['калибр. S', cfg.sCalMode || 'off', cfg.sCalMode === 'free' ? 'warn' : ''],
-            ['max |ΔS|', goalFmtTrainNum(cfg.sCalMaxDelta, 2), 'num'],
-            ['калибр. D', cfg.dCalMode || 'soft', cfg.dCalMode === 'free' ? 'warn' : ''],
-            ['b min / b max', `${goalFmtTrainNum(cfg.dCalBMin, 2)} / ${goalFmtTrainNum(cfg.dCalBMax, 2)}`, 'num'],
-            ['λ_b', goalFmtTrainNum(cfg.dCalBPenalty, 2), 'num'],
-            ['shrink |D|', cfg.dBigFavMode || 'off', ''],
-            ['|D| порог / k / cap', `${goalFmtTrainNum(cfg.dBigFavThreshold, 2)} / ${goalFmtTrainNum(cfg.dBigFavSlope, 2)} / ${goalFmtTrainNum(cfg.dBigFavCap, 2)}`, 'num'],
-            ['Модель ничьи', cfg.useDraw ? (`вкл (${cfg.drawMode || 'residual_dc'})`) : 'выкл', ''],
-            ...(cfg.useDraw ? [['q_min / q_max', `${goalFmtTrainNum(cfg.qmin, 2)} / ${goalFmtTrainNum(cfg.qmax, 2)}`, 'num']] : []),
-          ]);
-      }
       box.innerHTML = html;
       card.style.display = '';
     }
@@ -5594,15 +5930,21 @@ bash scripts/update_and_serve.sh --start</div>
         card.style.display = 'none';
         return;
       }
-      const { st, gl, cal, draw, dClamp, calDiag, drawQDiag, sdDiag, drawHarmDiag, inactiveDiag } = gmModel;
+      const { st, gl, cal, dClamp, calDiag, sdDiag, inactiveDiag } = gmModel;
+      const dist = gmModel.selectedDistribution || 'poisson_like';
+      const alphaFin = gmModel.alphaFinal != null ? gmModel.alphaFinal : 0;
+      const rhoFin = gmModel.rhoFinal != null ? gmModel.rhoFinal : 0;
+      const nbImprPct = gmModel.nbImprovementPct != null ? gmModel.nbImprovementPct : 0;
       const rows = [
         ['Обучено', escapeHtml(goalFmtTrainDt(goalTrainState.trainedAt)), ''],
         ['Команд в модели', String(Object.keys(st.ratings).length), 'num'],
+        ['Режим модели', 'Auto', ''],
+        ['Распределение', dist === 'negbin' ? 'Negative Binomial' : 'Poisson-like', ''],
+        ['Alpha final', goalFmtTrainNum(alphaFin, 4), 'num'],
+        ['Rho final', goalFmtTrainNum(rhoFin, 4), 'num'],
+        ['NB improvement %', `${goalFmtTrainNum(nbImprPct, 2)}%`, nbImprPct >= 1 ? 'ok' : ''],
         ['H (лига)', goalFmtTrainNum(st.H, 3), 'num'],
         ['δ_derby', goalFmtTrainNum(st.deltaDerby, 3), 'num'],
-        ['n_derby', String(st.derbyN || 0), 'num'],
-        ['H_derby', goalFmtTrainNum(st.hDerby != null ? st.hDerby : st.H, 3), 'num'],
-        ['k_derby', goalFmtTrainNum(st.kDerby != null ? st.kDerby : 1, 3), 'num'],
         ['RMSE (сила D)', goalFmtTrainNum(st.rmse, 3), 'num'],
         ['μ (голы)', goalFmtTrainNum(gl.mu, 3), 'num'],
         ['H_g (голы)', goalFmtTrainNum(gl.hg, 3), 'num'],
@@ -5610,134 +5952,31 @@ bash scripts/update_and_serve.sh --start</div>
         ['Калибр. c, d', `${goalFmtTrainNum(cal.c, 3)}, ${goalFmtTrainNum(cal.d, 3)}`, 'num'],
         ['Калибровка 1X2', escapeHtml(calDiag ? calDiag.summary : '—'), calDiag && !calDiag.stable ? 'warn' : ''],
       ];
+      if (gmModel.matrixCalib && gmModel.matrixCalib.status){
+        rows.push(['Статус калибровки матрицы', escapeHtml(gmModel.matrixCalib.status), '']);
+        if (gmModel.matrixCalib.nMatches != null){
+          rows.push(['Матчей калибровки', String(gmModel.matrixCalib.nMatches), 'num']);
+        }
+      }
       if (gmModel.trainMargin1x2 && gmModel.trainMargin1x2.nMatches > 0){
         const tm = gmModel.trainMargin1x2;
-        rows.push(['Маржа 1X2 для линии', `${goalFmtTrainNum(tm.avgPct, 1)}% <span class="small">(factor ${goalFmtTrainNum(tm.marginFactor, 4)}, ${tm.nMatches} матч.)</span>`, 'num']);
-      }
-      if (drawHarmDiag && drawHarmDiag.nMatches > 0){
-        rows.push(['Ничья: Пуассон / DC / финал', `${goalFmtTrainNum(drawHarmDiag.meanErrPxPoisson, 3)} / ${goalFmtTrainNum(drawHarmDiag.meanErrPxAfterDc, 3)} / ${goalFmtTrainNum(drawHarmDiag.meanErrPxFinal, 3)}`, drawHarmDiag.harmsWorseThanAfterDc ? 'warn' : '']);
-        rows.push(['Draw vs DC', escapeHtml(drawHarmDiag.summary), drawHarmDiag.harmsWorseThanAfterDc ? 'warn' : '']);
-        if (drawHarmDiag.lowSN > 0){
-          rows.push([`S<${goalFmtTrainNum(drawHarmDiag.lowSThreshold, 1)}: PX рынок/Пуассон/DC/финал`,
-            `${goalFmtTrainNum(drawHarmDiag.lowSMeanPxMarket, 3)} / ${goalFmtTrainNum(drawHarmDiag.lowSMeanPxPoisson, 3)} / ${goalFmtTrainNum(drawHarmDiag.lowSMeanPxAfterDc, 3)} / ${goalFmtTrainNum(drawHarmDiag.lowSMeanPxFinal, 3)}`,
-            drawHarmDiag.lowSMeanPxPoisson < drawHarmDiag.lowSMeanPxMarket - 0.01 ? 'warn' : 'num']);
-        }
-      }
-      if (drawQDiag && drawQDiag.nEval > 0){
-        const qLabel = gmModel.cfg && gmModel.cfg.useDc ? 'q clamp (DC→ничья)' : 'q clamp (матрица→ничья)';
-        rows.push([qLabel, escapeHtml(drawQDiag.summary), drawQDiag.stable ? '' : 'warn']);
+        rows.push(['Маржа 1X2 для линии', `${goalFmtTrainNum(tm.avgPct, 1)}% <span class="small">(${tm.nMatches} матч.)</span>`, 'num']);
       }
       if (sdDiag && sdDiag.nEval > 0){
-        rows.push(['S/D→1X2 (ничья)', escapeHtml(sdDiag.summary), sdDiag.stable ? '' : 'warn']);
-        rows.push(['PX ошибка до/после', `${goalFmtTrainNum(sdDiag.biasPxModel, 3)} / ${goalFmtTrainNum(sdDiag.biasPxCal, 3)}`, sdDiag.stable ? '' : 'warn']);
+        rows.push(['1X2 / PX', escapeHtml(sdDiag.summary), sdDiag.stable ? '' : 'warn']);
         rows.push(['Средн. S рынок/модель/калибр.', `${goalFmtTrainNum(sdDiag.avgSMarket, 2)} / ${goalFmtTrainNum(sdDiag.avgSModel, 2)} / ${goalFmtTrainNum(sdDiag.avgSCal, 2)}`, 'num']);
-        rows.push(['Средн. ΔS (калибр.)', goalFmtTrainNum(sdDiag.avgDeltaS, 3), Math.abs(sdDiag.avgDeltaS) > 0.25 ? 'warn' : 'num']);
-        if (sdDiag.avgSMinusLine != null && !Number.isNaN(sdDiag.avgSMinusLine)){
-          rows.push(['S−линия (OU)', goalFmtTrainNum(sdDiag.avgSMinusLine, 3), Math.abs(sdDiag.avgSMinusLine) > 0.20 ? 'warn' : 'num']);
-        }
-        rows.push(['Матчей PX_matrix < рынок', `${sdDiag.nPxUnderModel} (${goalFmtTrainNum(sdDiag.pctPxUnderModel, 0)}%)`, sdDiag.pctPxUnderModel > 55 ? 'warn' : '']);
       }
       if (inactiveDiag && inactiveDiag.nEval > 0){
-        rows.push(['Inactive D_model vs D_etalon_fair', escapeHtml(inactiveDiag.summary), inactiveDiag.pctOverGap > 55 ? 'warn' : '']);
-        rows.push(['Ошибка D / |D|', `${goalFmtTrainNum(inactiveDiag.meanErrD, 3)} / ${goalFmtTrainNum(inactiveDiag.meanAbsErrD, 3)}`, 'num']);
-        rows.push(['over_gap_fair > 0', `${inactiveDiag.nOverGap} (${goalFmtTrainNum(inactiveDiag.pctOverGap, 0)}%)`, inactiveDiag.pctOverGap > 55 ? 'warn' : '']);
-        if (inactiveDiag.avgEtalonMargin1x2 > 0){
-          rows.push(['Средн. маржа эталона 1X2', `${goalFmtTrainNum(inactiveDiag.avgEtalonMargin1x2, 1)}%`, 'num']);
-        }
-        if (inactiveDiag.strongNEval > 0){
-          rows.push([`|D_etalon_fair| > 1.25 (${inactiveDiag.strongNEval})`, `|err|=${goalFmtTrainNum(inactiveDiag.strongMeanAbsErr, 3)}, over_gap_fair ${goalFmtTrainNum(inactiveDiag.strongPctOverGap, 0)}%`, inactiveDiag.strongPctOverGap > 55 ? 'warn' : '']);
-        }
-        if (inactiveDiag.avgUnderdogOddsRatioFair > 0){
-          const udDetail = inactiveDiag.avgUnderdogOddsRatioRaw > 0
-            ? `fair ${goalFmtTrainNum(inactiveDiag.avgUnderdogOddsRatioFair, 3)}, raw ${goalFmtTrainNum(inactiveDiag.avgUnderdogOddsRatioRaw, 3)}`
-            : `fair ${goalFmtTrainNum(inactiveDiag.avgUnderdogOddsRatioFair, 3)}`;
-          rows.push(['Avg underdog odds ratio', udDetail, inactiveDiag.avgUnderdogOddsRatioFair > 1.20 ? 'warn' : 'num']);
-        }
+        rows.push(['Inactive D vs эталон', escapeHtml(inactiveDiag.summary), inactiveDiag.pctOverGap > 55 ? 'warn' : '']);
       }
-      if (gmModel.cfg && gmModel.cfg.useDc){
-        rows.push(['Dixon-Coles', 'включён', '']);
-        rows.push(['γ', goalFmtTrainNum(cal.gamma, 4), 'num']);
-      } else {
-        rows.push(['Dixon-Coles', 'выключен', '']);
-        rows.push(['γ', 'не используется', '']);
-      }
-      rows.push(['Ничья (источник)', escapeHtml(draw.source || '—'), '']);
       if (dClamp){
         const clampCls = (dClamp.pct > 2 || dClamp.nSensitive > 0) ? 'warn' : '';
         const clampDetail = dClamp.nHit
           ? `${dClamp.nHit} из ${dClamp.nTotal} (${goalFmtTrainNum(dClamp.pct, 1)}%)`
-            + (dClamp.nSensitive ? `, чувствит. ${dClamp.nSensitive}` : '')
-            + `, max |trim|=${goalFmtTrainNum(dClamp.maxAbsTrim, 3)}`
           : `0 из ${dClamp.nTotal}`;
-        rows.push(['D clamp / граница', clampDetail, clampCls]);
-      }
-      if (draw.source === 'fitted'){
-        rows.push(['Ничья α', goalFmtTrainNum(draw.alpha, 3), 'num']);
-        rows.push(['β_D, β_S', `${goalFmtTrainNum(draw.betaD, 3)}, ${goalFmtTrainNum(draw.betaS, 3)}`, 'num']);
-        rows.push(['β_S2, β_D×S', `${goalFmtTrainNum(draw.betaS2, 3)}, ${goalFmtTrainNum(draw.betaDxS, 3)}`, 'num']);
+        rows.push(['D clamp', clampDetail, clampCls]);
       }
       box.innerHTML = goalRenderTrainTable(rows);
-      if (dClamp && dClamp.rows && dClamp.rows.length){
-        const clampRows = dClamp.rows.slice(0, 12).map(r => {
-          const bound = r.atLo ? 'lo' : (r.atHi ? 'hi' : 'trim');
-          const ah = r.ah != null ? goalFmtTrainNum(r.ah, 2) : '—';
-          const tagStr = r.tags && r.tags.length ? ` · ${r.tags.join(', ')}` : '';
-          return [
-            `${escapeHtml(r.home)} — ${escapeHtml(r.away)}${r.sensitive ? ' ⚠' : ''}`,
-            `S=${goalFmtTrainNum(r.S,2)} AH=${ah} D ${goalFmtTrainNum(r.dRaw,3)}→${goalFmtTrainNum(r.dUsed,3)} trim=${goalFmtTrainNum(r.trim,3)} [${bound}]${escapeHtml(tagStr)}`,
-            (r.sensitive || Math.abs(r.trim) > 0.2) ? 'warn' : '',
-          ];
-        });
-        box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Матчи с упором D (⚠ — дерби / нейтраль / мало матчей / начало сезона)</div>'
-          + goalRenderTrainTable(clampRows);
-      }
-      if (drawQDiag && drawQDiag.rows && drawQDiag.rows.length){
-        const qRows = drawQDiag.rows.slice(0, 10).map(r => [
-          `${escapeHtml(r.home)} — ${escapeHtml(r.away)}`,
-          `q_raw=${goalFmtTrainNum(r.qRaw,3)} → q=${goalFmtTrainNum(r.q,3)} [${r.clampLow?'q_min':(r.clampHigh?'q_max':'?')}]`,
-          'warn',
-        ]);
-        box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Матчи с q на границе (DC → draw)</div>'
-          + goalRenderTrainTable(qRows);
-      }
-      if (sdDiag && sdDiag.nEval > 0){
-        if (sdDiag.byS && sdDiag.byS.length){
-          const sRows = sdDiag.byS.map(g => [
-            escapeHtml(g.label), `${g.n} матч.`,
-            `err_X: рынок ${goalFmtTrainNum(g.avgErrXMarket,3)}, модель ${goalFmtTrainNum(g.avgErrXModel,3)}, калибр. ${goalFmtTrainNum(g.avgErrXCal,3)}`,
-            Math.abs(g.avgErrXModel) > 0.03 ? 'warn' : '',
-          ]);
-          box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Ошибка ничьи по тоталу S</div>'
-            + goalRenderTrainTable(sRows);
-        }
-        if (sdDiag.byD && sdDiag.byD.length){
-          const dRows = sdDiag.byD.map(g => [
-            escapeHtml(g.label), `${g.n} матч.`,
-            `err_X: рынок ${goalFmtTrainNum(g.avgErrXMarket,3)}, модель ${goalFmtTrainNum(g.avgErrXModel,3)}, калибр. ${goalFmtTrainNum(g.avgErrXCal,3)}`,
-            Math.abs(g.avgErrXModel) > 0.03 ? 'warn' : '',
-          ]);
-          box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Ошибка ничьи по |D|</div>'
-            + goalRenderTrainTable(dRows);
-        }
-        if (sdDiag.rows && sdDiag.rows.length){
-          const worst = sdDiag.rows.slice(0, 10).map(r => [
-            `${escapeHtml(r.home)} — ${escapeHtml(r.away)}`,
-            `err_X=${goalFmtTrainNum(r.errXModel,3)} S=${goalFmtTrainNum(r.sMarket,2)}/${goalFmtTrainNum(r.sModel,2)} ΔS=${goalFmtTrainNum(r.deltaSCal,2)} tot=${r.closingTotal!=null?goalFmtTrainNum(r.closingTotal,2):'—'}`,
-            r.errXModel < -0.04 ? 'warn' : '',
-          ]);
-          box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Топ занижения ничьи (модель S/D → матрица)</div>'
-            + goalRenderTrainTable(worst);
-        }
-      }
-      if (inactiveDiag && inactiveDiag.rows && inactiveDiag.rows.length){
-        const topRows = inactiveDiag.rows.slice(0, 10).map(r => [
-          `${escapeHtml(r.home)} — ${escapeHtml(r.away)}`,
-          `D_model=${goalFmtTrainNum(r.dModel,3)} vs D_etalon_fair=${goalFmtTrainNum(r.dEtalonFair,3)}; over_gap=${goalFmtTrainNum(r.overGapFair,3)}; underdog_ratio_fair=${r.underdogRatioFair!=null?goalFmtTrainNum(r.underdogRatioFair,2):'—'}${r.etalonMargin1x2!=null?`; etalon_margin=${goalFmtTrainNum(r.etalonMargin1x2,1)}%`:''}`,
-          r.overGapFair > 0.15 ? 'warn' : '',
-        ]);
-        box.innerHTML += '<div class="small" style="margin-top:8px;font-weight:600">Топ переоценки фаворита (inactive)</div>'
-          + goalRenderTrainTable(topRows);
-      }
       card.style.display = '';
     }
     function goalTrainQuality(n){
@@ -5762,36 +6001,11 @@ bash scripts/update_and_serve.sh --start</div>
         el.innerHTML=chips.join('');
         return;
       }
-      const sd=gmModel.sdDiag;
-      const harm=gmModel.drawHarmDiag;
-      const cal=gmModel.cal;
-      const clamp=gmModel.dClamp;
-      const inactive=gmModel.inactiveDiag;
-      const deltaS=sd?sd.avgDeltaS:0;
-      const sOk=Math.abs(deltaS)<0.01;
-      chips.push(`<span class="goal-chip ${sOk?'ok':''}">${sOk?'S stable':('ΔS '+goalFmtTrainNum(deltaS,3))}</span>`);
-      if(harm && harm.nMatches>0){
-        const pxChip=`PX: ${goalFmtTrainNum(harm.meanErrPxPoisson,3)} → ${goalFmtTrainNum(harm.meanErrPxFinal,3)}`;
-        chips.push(`<span class="goal-chip ${harm.harmsWorseThanAfterDc?'warn':''}">${pxChip}</span>`);
-      }
-      if(gmModel.cfg && gmModel.cfg.useDc){
-        chips.push(`<span class="goal-chip">DC γ=${goalFmtTrainNum(cal.gamma,3)}</span>`);
-      }
-      if(clamp){
-        const cw=clamp.nHit>0||(clamp.nSensitive>0);
-        chips.push(`<span class="goal-chip ${cw?'warn':''}">D clamp ${clamp.nHit}/${clamp.nTotal}</span>`);
-      }
-      if(harm && harm.harmsWorseThanAfterDc){
-        chips.push('<span class="goal-chip warn">draw harms DC</span>');
-      }
+      const dist = gmModel.selectedDistribution || 'poisson_like';
+      chips.push(`<span class="goal-chip ok">Auto</span>`);
+      chips.push(`<span class="goal-chip">${dist==='negbin'?'Negative Binomial':'Poisson-like'}</span>`);
       if(gmModel.calDiag && !gmModel.calDiag.stable){
         chips.push('<span class="goal-chip warn">калибр. 1X2</span>');
-      }
-      if(inactive && inactive.nEval>0){
-        chips.push(`<span class="goal-chip ${inactive.pctOverGap>55?'warn':''}">over_gap_fair ${goalFmtTrainNum(inactive.pctOverGap,0)}%</span>`);
-        if(inactive.avgUnderdogOddsRatioFair > 0){
-          chips.push(`<span class="goal-chip ${inactive.avgUnderdogOddsRatioFair>1.20?'warn':''}">UD fair ${goalFmtTrainNum(inactive.avgUnderdogOddsRatioFair,2)}</span>`);
-        }
       }
       if(gmModel.trainMargin1x2 && gmModel.trainMargin1x2.avgPct != null){
         chips.push(`<span class="goal-chip">маржа ${goalFmtTrainNum(gmModel.trainMargin1x2.avgPct,1)}%</span>`);
@@ -5810,31 +6024,71 @@ bash scripts/update_and_serve.sh --start</div>
         if (!hasData){
           banner.classList.add('idle');
           banner.textContent = 'Выберите лигу и сезоны → «Загрузить из БД» → «Обучить модель».';
+          const calibEl = document.getElementById('goalModelCalibStatus');
+          if(calibEl) calibEl.textContent = 'требуется';
+          const dateEl = document.getElementById('goalModelCalibDate');
+          if(dateEl) dateEl.textContent = '—';
+          const nEl = document.getElementById('goalModelCalibN');
+          if(nEl) nEl.textContent = '—';
+          const autoEl = document.getElementById('goalModelAutoStatus');
+          if(autoEl) autoEl.textContent = 'Обучите модель для отображения диагностики.';
         } else if (!hasModel){
           banner.classList.add(qual.tier === 'warn' ? 'warn' : 'idle');
           banner.textContent = qual.detail;
+          const calibEl = document.getElementById('goalModelCalibStatus');
+          if(calibEl) calibEl.textContent = 'требуется';
+          const dateEl = document.getElementById('goalModelCalibDate');
+          if(dateEl) dateEl.textContent = '—';
+          const nEl = document.getElementById('goalModelCalibN');
+          if(nEl) nEl.textContent = String(n);
+          const autoEl = document.getElementById('goalModelAutoStatus');
+          if(autoEl) autoEl.textContent = 'Обучите модель для отображения диагностики.';
         } else {
-          const clamp = gmModel.dClamp;
           const calDiag = gmModel.calDiag;
-          const drawQDiag = gmModel.drawQDiag;
-          const drawHarmDiag = gmModel.drawHarmDiag;
-          const inactiveDiag = gmModel.inactiveDiag;
           const calWarn = calDiag && !calDiag.stable;
-          const qWarn = drawQDiag && drawQDiag.nEval > 0 && !drawQDiag.stable;
-          const harmWarn = drawHarmDiag && drawHarmDiag.harmsWorseThanAfterDc;
-          const clampWarn = clamp && ((clamp.nHit > 0 && clamp.pct > 2) || (clamp.nSensitive > 0));
-          const inactiveWarn = inactiveDiag && inactiveDiag.nEval > 0 && inactiveDiag.pctOverGap > 55;
-          banner.classList.add((qual.tier === 'warn' || clampWarn || calWarn || qWarn || harmWarn || inactiveWarn) ? 'warn' : 'ok');
-          const warns=[];
-          if(calWarn) warns.push('калибровка 1X2 нестабильна');
-          if(qWarn) warns.push(`q clamp ${goalFmtTrainNum(drawQDiag.clampPct,0)}%`);
-          if(harmWarn) warns.push('модель ничьи ухудшает DC');
-          if(clampWarn && clamp.nHit>0) warns.push(`D clamp ${clamp.nHit}/${clamp.nTotal}`);
-          if(inactiveWarn) warns.push(`over_gap_fair ${goalFmtTrainNum(inactiveDiag.pctOverGap,0)}%`);
+          const calib = gmModel.matrixCalib;
+          const calibOk = calib && String(calib.status||'').indexOf('calibrated') === 0;
+          const calibErr = calib && String(calib.status||'').indexOf('error') >= 0;
+          banner.classList.add((qual.tier === 'warn' || calWarn || calibErr) ? 'warn' : 'ok');
           const trained=goalFmtTrainDt(goalTrainState.trainedAt);
-          banner.textContent = warns.length
-            ? `Обучено ${trained}. ${warns.join(' · ')}`
-            : `Обучено ${trained}. Профиль: ${gmModel.cfg.modelProfile==='custom'?'свои':'рыночный baseline'}.`;
+          const dist = gmModel.selectedDistribution || 'poisson_like';
+          banner.textContent = calWarn
+            ? `Обучено ${trained}. Калибровка 1X2 нестабильна.`
+            : `Обучено ${trained}. Модель: Auto · калибровка ${calibOk ? 'актуальна' : (calib ? calib.status : 'выполнена')}.`;
+          const calibEl = document.getElementById('goalModelCalibStatus');
+          if(calibEl){
+            calibEl.textContent = calibErr ? 'ошибка' : (calibOk ? 'выполнена' : (calib ? String(calib.status) : 'выполнена'));
+          }
+          const dateEl = document.getElementById('goalModelCalibDate');
+          if(dateEl) dateEl.textContent = trained || '—';
+          const nEl = document.getElementById('goalModelCalibN');
+          if(nEl) nEl.textContent = String((calib && calib.nMatches != null) ? calib.nMatches : (gmModel.nMatches || n));
+          const autoEl = document.getElementById('goalModelAutoStatus');
+          if(autoEl){
+            const league = (goalLoadedMeta && goalLoadedMeta.leagueName) || '—';
+            const alphaFin = gmModel.alphaFinal != null ? gmModel.alphaFinal : 0;
+            const rhoFin = gmModel.rhoFinal != null ? gmModel.rhoFinal : 0;
+            const nbImpr = gmModel.nbImprovementPct != null ? gmModel.nbImprovementPct : 0;
+            const sd = gmModel.sdDiag;
+            const lines = [
+              `<div>Лига: ${escapeHtml(league)}</div>`,
+              `<div>Распределение: ${dist==='negbin'?'Negative Binomial':'Poisson-like'}</div>`,
+              `<div>Alpha final: ${alphaFin.toFixed(4)}</div>`,
+              `<div>Rho final: ${rhoFin.toFixed(4)}</div>`,
+              `<div>NB improvement %: ${nbImpr.toFixed(2)}%</div>`,
+              `<div>Матчей: ${(calib && calib.nMatches != null) ? calib.nMatches : (gmModel.nMatches || n)}</div>`,
+            ];
+            if(sd && sd.nEval > 0){
+              lines.push(`<div>1X2 MAE / PX: ${escapeHtml(sd.summary || '—')}</div>`);
+            }
+            if(calib){
+              if(calib.vppError != null) lines.push(`<div>VPP error: ${Number(calib.vppError).toFixed(6)}</div>`);
+              if(calib.alphaLossBest != null) lines.push(`<div>Alpha loss best: ${Number(calib.alphaLossBest).toFixed(6)}</div>`);
+              if(calib.rhoLossBest != null) lines.push(`<div>Rho loss best: ${Number(calib.rhoLossBest).toFixed(6)}</div>`);
+              lines.push(`<div>Конфиг: ${escapeHtml(calib.configSource || 'runtime defaults')}</div>`);
+            }
+            autoEl.innerHTML = lines.join('');
+          }
         }
       }
       goalRenderTrainDataPanel();
@@ -6209,33 +6463,6 @@ bash scripts/update_and_serve.sh --start</div>
       catch (e){ alert(e.message || e); }
     });
 
-    ['goalAlphaAh','goalAlphaT','goalRegLambdaAD','goalRegLambdaR','goalDerbyHDefault','goalQmin','goalQmax','goalPriorAlpha','goalSCalMaxDelta','goalGammaMax','goalDCalBMin','goalDCalBMax','goalDCalBPenalty','goalDBigFavThr','goalDBigFavSlope','goalDBigFavCap'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.addEventListener('input', () => { goalMarkCustomProfile(); goalUpdateTrainUI(); });
-    });
-    ['goalUseDraw','goalUseDc','goalDrawMode','goalSCalMode','goalDCalMode','goalDBigFavMode'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.addEventListener('change', () => {
-        goalMarkCustomProfile();
-        gmToggleDrawQUi();
-        goalUpdateTrainUI();
-      });
-    });
-    const goalExpPanel = document.getElementById('goalExperimentalPanel');
-    if (goalExpPanel){
-      goalExpPanel.addEventListener('toggle', () => {
-        gmToggleDrawQUi();
-        goalUpdateTrainUI();
-      });
-    }
-    const goalProfileSel = document.getElementById('goalModelProfile');
-    if (goalProfileSel){
-      goalProfileSel.addEventListener('change', () => {
-        goalApplyModelProfile();
-        goalUpdateTrainUI();
-      });
-    }
-    gmToggleDrawQUi();
     document.getElementById('goalSeasonWeightsTable')?.addEventListener('input', e => {
       if (e.target.classList.contains('goal-season-w')) goalUpdateTrainUI();
     });
@@ -6499,300 +6726,938 @@ bash scripts/update_and_serve.sh --start</div>
       return {html, summary};
     }
 
-    // ========== INACTIVE REPORT (read-only, isolated; does not modify Line tab logic) ==========
-    const IR_REPORT_COLS = [
-      'Дата','Лига','Дома','Гости',
-      'AH1','AH','AH2','O','Тот','U','1','X','2',
-      'AH1_pr','AH_pr','AH2_pr','O_pr','Тот_pr','U_pr','1_pr','X_pr','2_pr',
-      'AH1_delta','AH_delta','AH2_delta','O_delta','Тот_delta','U_delta','1_delta','X_delta','2_delta',
-    ];
-    const IR_TEXT_COLS = new Set(['Дата','Лига','Дома','Гости']);
-    const IR_ODDS_COLS = new Set(['AH1','AH2','O','U','1','X','2','AH1_pr','AH2_pr','O_pr','U_pr','1_pr','X_pr','2_pr','AH1_delta','AH2_delta','O_delta','U_delta','1_delta','X_delta','2_delta']);
-    const IR_LINE_COLS = new Set(['AH','Тот','AH_pr','Тот_pr','AH_delta','Тот_delta']);
+    // ========== INACTIVE REPORT / MODEL COMPARISON LAB ==========
+    // Isolated from Line/History. Params from model_config.json.
     let irReportRows = [];
+    let irActiveCols = [];
+    let irReportSummary = null;
 
-    function irBaselineCfg(seasonWeightsById){
+    const IR_COMPARE_COLS = [
+      'Дата','Лига','Дома','Гости','etalon_layer','engine_L','engine_A',
+      // 1X2 market / models / deltas
+      '1','X','2',
+      '1_L','X_L','2_L',
+      '1_A','X_A','2_A',
+      '1_dL','X_dL','2_dL',
+      '1_dA','X_dA','2_dA',
+      'winner_1x2',
+      // AH: market line + main lines + line deltas (NOT odds)
+      'AH_market','AH_main_L','AH_main_A','AH_line_dL','AH_line_dA','same_ah_L','same_ah_A','winner_AH_line',
+      // AH odds priced ONLY at market line
+      'AH1','AH2',
+      'AH1_L_at_market','AH2_L_at_market','AH1_A_at_market','AH2_A_at_market',
+      'AH1_dL_mkt','AH2_dL_mkt','AH1_dA_mkt','AH2_dA_mkt','winner_AH',
+      // Total: market line + main lines + line deltas
+      'Total_market','Total_main_L','Total_main_A','Total_line_dL','Total_line_dA','same_tot_L','same_tot_A','winner_OU_line',
+      // OU odds priced ONLY at market total
+      'O','U',
+      'O_L_at_market','U_L_at_market','O_A_at_market','U_A_at_market',
+      'O_dL_mkt','U_dL_mkt','O_dA_mkt','U_dA_mkt','winner_OU',
+      'winner_row',
+    ];
+    const IR_SINGLE_COLS = [
+      'Дата','Лига','Дома','Гости','calc_model','etalon_layer',
+      '1','X','2','AH1','AH_market','AH2','O','Total_market','U',
+      '1_pr','X_pr','2_pr',
+      'AH1_at_market','AH_main','AH2_at_market','AH_line_delta',
+      'O_at_market','Total_main','U_at_market','Total_line_delta',
+      '1_delta','X_delta','2_delta','AH1_delta_mkt','AH2_delta_mkt','O_delta_mkt','U_delta_mkt',
+      'same_ah','same_tot',
+      'selected_distribution','alpha_final','rho_final','dc_gamma','lambda_home','lambda_away',
+      'matrix_sum','matrix_tail','p_00','p_11','p_btts_yes',
+      'model_total_mean','model_total_variance','model_total_variance_ratio',
+    ];
+    const IR_TEXT_COLS = new Set([
+      'Дата','Лига','Дома','Гости','calc_model','selected_distribution','etalon_layer',
+      'engine_L','engine_A',
+      'same_ah_L','same_ah_A','same_tot_L','same_tot_A','same_ah','same_tot',
+      'winner_1x2','winner_AH','winner_OU','winner_AH_line','winner_OU_line','winner_row',
+    ]);
+    const IR_LINE_COLS = new Set([
+      'AH_market','Total_market','AH_main_L','AH_main_A','Total_main_L','Total_main_A',
+      'AH_main','Total_main','AH_line_dL','AH_line_dA','Total_line_dL','Total_line_dA',
+      'AH_line_delta','Total_line_delta',
+    ]);
+    const IR_WIN_COLS = new Set(['winner_1x2','winner_AH','winner_OU','winner_AH_line','winner_OU_line','winner_row']);
+    const IR_SAME_LINE_EPS = 1e-6;
+
+    function irCfgPart(path, fallback){
+      const root = GM_MODEL_CFG || GM_MATRIX_CFG || {};
+      let cur = root;
+      for(const k of path.split('.')){
+        if(cur == null || typeof cur !== 'object') return fallback;
+        cur = cur[k];
+      }
+      return cur != null ? cur : fallback;
+    }
+    function irReportMode(){
+      const el = document.querySelector('input[name="irReportMode"]:checked');
+      return (el && el.value) || 'compare';
+    }
+    function irEnginesSelected(){
+      const mode = irReportMode();
+      if(mode === 'legacy') return {legacy:true, auto:false, compare:false};
+      if(mode === 'auto') return {legacy:false, auto:true, compare:false};
+      const leg = !!(document.getElementById('irUseLegacy')||{}).checked;
+      const aut = !!(document.getElementById('irUseAuto')||{}).checked;
+      return {legacy:leg, auto:aut, compare:leg && aut};
+    }
+    function irSyncModeCheckboxes(){
+      const mode = irReportMode();
+      const leg = document.getElementById('irUseLegacy');
+      const aut = document.getElementById('irUseAuto');
+      if(!leg || !aut) return;
+      if(mode === 'legacy'){ leg.checked = true; aut.checked = false; leg.disabled = true; aut.disabled = true; }
+      else if(mode === 'auto'){ leg.checked = false; aut.checked = true; leg.disabled = true; aut.disabled = true; }
+      else { leg.disabled = false; aut.disabled = false; if(!leg.checked && !aut.checked){ leg.checked = true; aut.checked = true; } }
+    }
+    function irPickNum(obj, key, fallback){
+      if(obj && obj[key] != null && isFinite(Number(obj[key]))) return Number(obj[key]);
+      return fallback;
+    }
+    function irPickStr(obj, key, fallback){
+      if(obj && obj[key] != null && obj[key] !== '') return String(obj[key]);
+      return fallback;
+    }
+    function irBaselineCfg(seasonWeightsById, mode){
+      // Two independent configs: Legacy never reads Auto α/ρ; Auto never enables DC/draw.
+      const legacy = mode !== 'auto';
+      const L = irCfgPart('legacy', {}) || {};
+      const Ldc = L.dixonColes || {};
+      const Ldraw = L.drawModel || {};
+      const Lcal = L.calibration || {};
+      const Ltr = L.train || {};
+      const Lmx = L.matrix || {};
+      const A = irCfgPart('auto', {}) || {};
+      const Atr = A.train || {};
+      const Amx = A.matrix || {};
+      const Tshared = irCfgPart('train', {}) || {};
+      const Mshared = irCfgPart('matrix', {}) || {};
+      const T = legacy ? Object.assign({}, Tshared, Ltr) : Object.assign({}, Tshared, Atr);
+      const M = legacy ? Object.assign({}, Mshared, Lmx) : Object.assign({}, Mshared, Amx);
+      const Cal = legacy ? Object.assign({}, Tshared, Lcal) : Object.assign({}, Tshared, Atr);
+      const useDc = legacy && (Ldc.enabled !== false) && (L.useDixonColes !== false);
+      const useDraw = legacy && (Ldraw.enabled !== false) && (L.useDrawModel !== false);
+      const drawMode = irPickStr(Ldraw, 'mode', L.drawMode || 'residual_dc');
       return {
-        maxGoals: GM_MAX, alphaAh: 0.25, pAh: 2, minWAh: 0.15, maxWAh: 1,
-        alphaT: 0.5, deltaAh: 0.5, deltaLam: 0.25, maxIter: 30, tol: 1e-4, drawLoss: 1.5,
+        maxGoals: irPickNum(M, 'maxGoals', GM_MAX),
+        alphaAh: irPickNum(T, 'alphaAh', 0.25),
+        pAh: 2, minWAh: 0.15, maxWAh: 1,
+        alphaT: irPickNum(T, 'alphaT', 0.5),
+        deltaAh: 0.5, deltaLam: 0.25, maxIter: 30, tol: 1e-4,
+        drawLoss: irPickNum(Ldraw, 'drawLossWeight', irPickNum(L, 'drawLossWeight', 1.5)),
         seasonDefault: 1.0, seasonWeightsById: seasonWeightsById || {},
-        priorAlpha: 0.7, promotedN: 3,
-        regLambda: 0.10, regLambdaAttack: 0.1, regLambdaDefense: 0.1,
+        priorAlpha: irPickNum(T, 'priorAlpha', 0.7), promotedN: 3,
+        regLambda: irPickNum(T, 'regLambda', 0.10),
+        regLambdaAttack: irPickNum(T, 'regLambdaAttack', 0.1),
+        regLambdaDefense: irPickNum(T, 'regLambdaDefense', 0.1),
         dClampLowTeam: 3, dClampEarlyFraction: 0.25,
-        derbyShrinkTau: 30, derbyHDefault: 0.7, derbyMinMatches: 3,
-        dCalMode: 'soft', dCalBMin: 0.90, dCalBMax: 1.03, dCalBPenalty: 2.0,
-        dBigFavMode: 'linear', dBigFavThreshold: 1.25, dBigFavSlope: 0.75, dBigFavCap: 2.00,
-        useDraw: false, useDc: true, modelProfile: 'baseline', drawMode: 'residual_dc',
-        qmin: 0.95, qmax: 1.05, qResMin: 0.98, qResMax: 1.03,
-        sCalMode: 'off', sCalMaxDelta: 0.15, gammaMax: 0.20,
+        derbyShrinkTau: 30,
+        derbyHDefault: irPickNum(T, 'derbyHDefault', 0.7),
+        derbyMinMatches: 3,
+        dCalMode: irPickStr(Cal, 'dCalMode', 'soft'),
+        dCalBMin: irPickNum(Cal, 'dCalBMin', 0.90),
+        dCalBMax: irPickNum(Cal, 'dCalBMax', 1.03),
+        dCalBPenalty: irPickNum(Cal, 'dCalBPenalty', 2.0),
+        dBigFavMode: irPickStr(Cal, 'dBigFavMode', 'linear'),
+        dBigFavThreshold: irPickNum(Cal, 'dBigFavThreshold', 1.25),
+        dBigFavSlope: irPickNum(Cal, 'dBigFavSlope', 0.75),
+        dBigFavCap: irPickNum(Cal, 'dBigFavCap', 2.00),
+        useDraw: !!useDraw,
+        useDc: !!useDc,
+        modelProfile: 'baseline',
+        drawMode,
+        qmin: irPickNum(Ldraw, 'qMin', irPickNum(L, 'drawQMin', 0.95)),
+        qmax: irPickNum(Ldraw, 'qMax', irPickNum(L, 'drawQMax', 1.15)),
+        qResMin: irPickNum(Ldraw, 'qResMin', irPickNum(L, 'drawQResMin', 0.95)),
+        qResMax: irPickNum(Ldraw, 'qResMax', irPickNum(L, 'drawQResMax', 1.15)),
+        sCalMode: irPickStr(Cal, 'sCalMode', 'off'),
+        sCalMaxDelta: irPickNum(Cal, 'sCalMaxDelta', 0.15),
+        gammaMax: irPickNum(Ldc, 'gammaMax', irPickNum(L, 'gammaMax', 0.20)),
+        fitGamma: legacy ? ((Ldc.fitGamma != null ? Ldc.fitGamma : L.fitGamma) !== false) : false,
+        fixedDcGamma: irPickNum(Ldc, 'gamma', irPickNum(L, 'dcGamma', 0)),
+        irEngine: legacy ? 'legacy' : 'auto',
       };
     }
-    function irParseMarginPct(){
-      const v = parseFloat(String((document.getElementById('irMarginPct')||{}).value || '3').replace(',', '.'));
-      return isNaN(v) || v < 0 ? 0 : v / 100;
-    }
-    function irFmtCell(val, col){
-      if(val == null) return '';
-      if(IR_TEXT_COLS.has(col)){
-        const s = String(val).trim();
-        return s;
+    function irCalibrateLegacy(ms, st, gl, cfg){
+      const used = ms.filter(m => m.p1 != null);
+      if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0,n1x2:0};
+      const pre = used.map(m => {
+        const derby = gmDerbyHome(m);
+        const hEff = gmEffectiveH(st, cfg, m.iHome === 0, derby);
+        const dm = (st.ratings[m.home] || 0) - (st.ratings[m.away] || 0) + hEff;
+        const kHg = Math.abs(st.H) > 1e-9 ? hEff / st.H : 1;
+        const lh = Math.exp(gl.mu + (gl.attack[m.home] || 0) - (gl.defense[m.away] || 0) + gl.hg * m.iHome * kHg);
+        const la = Math.exp(gl.mu + (gl.attack[m.away] || 0) - (gl.defense[m.home] || 0));
+        return [m, dm, lh + la, m.wBase];
+      });
+      const sOff = cfg.sCalMode === 'off';
+      const dOff = (cfg.dCalMode || 'soft') === 'off';
+      if(cfg.useDc && cfg.fitGamma === false){
+        const gFix = gmClipGamma(cfg.fixedDcGamma || 0, cfg);
+        function lossNoG(a,b,c,d){
+          if(d<=0) return 1e9;
+          let tot = gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
+          for(const [m,dm,sm,w] of pre){
+            const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
+            const dc=gmApplyDCal(dm,a,b,cfg);
+            const df=gmClampD(dc.dUsed,sf); const lh=(sf+df)/2,la=(sf-df)/2;
+            if(lh<=0||la<=0) return 1e9;
+            let mat=gmMatrix(lh,la,cfg.maxGoals);
+            if(gFix) mat=gmDC(mat,lh,la,gFix);
+            const [p1,px,p2]=gm1x2(mat);
+            tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
+          }
+          return tot;
+        }
+        let full;
+        if(sOff){
+          if(dOff){ const x=gmNelder(p=>lossNoG(p[0],1,0,1),[0]); full=[x[0],1,0,1]; }
+          else { const x=gmNelder(p=>lossNoG(p[0],p[1],0,1),[0,1]); full=[x[0],x[1],0,1]; }
+        } else if(dOff){
+          const x=gmNelder(p=>lossNoG(p[0],1,p[1],p[2]),[0,0,1]); full=[x[0],1,x[1],x[2]];
+        } else {
+          const x=gmNelder(p=>lossNoG(p[0],p[1],p[2],p[3]),[0,1,0,1]); full=[x[0],x[1],x[2],x[3]];
+        }
+        const bOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
+        return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:gFix,n1x2:used.length};
       }
+      function lossCore(a,b,c,d,g){
+        if(d<=0) return 1e9;
+        const gc=gmClipGamma(g,cfg);
+        let tot=gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
+        for(const [m,dm,sm,w] of pre){
+          const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
+          const dc=gmApplyDCal(dm,a,b,cfg);
+          const df=gmClampD(dc.dUsed,sf); const lh=(sf+df)/2,la=(sf-df)/2;
+          if(lh<=0||la<=0) return 1e9;
+          let mat=gmMatrix(lh,la,cfg.maxGoals);
+          if(cfg.useDc&&gc) mat=gmDC(mat,lh,la,gc);
+          const [p1,px,p2]=gm1x2(mat);
+          tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
+        }
+        return tot;
+      }
+      let full;
+      if(sOff){
+        if(cfg.useDc){
+          if(dOff){ const x=gmNelder(p=>lossCore(p[0],1,0,1,p[1]),[0,0]); full=[x[0],1,0,1,gmClipGamma(x[1],cfg)]; }
+          else { const x=gmNelder(p=>lossCore(p[0],p[1],0,1,p[2]),[0,1,0]); full=[x[0],x[1],0,1,gmClipGamma(x[2],cfg)]; }
+        } else {
+          if(dOff){ const x=gmNelder(p=>lossCore(p[0],1,0,1,0),[0]); full=[x[0],1,0,1,0]; }
+          else { const x=gmNelder(p=>lossCore(p[0],p[1],0,1,0),[0,1]); full=[x[0],x[1],0,1,0]; }
+        }
+      } else if(cfg.useDc){
+        if(dOff){ const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2],p[3]),[0,0,1,0]); full=[x[0],1,x[1],x[2],gmClipGamma(x[3],cfg)]; }
+        else { const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],p[4]),[0,1,0,1,0]); full=[x[0],x[1],x[2],x[3],gmClipGamma(x[4],cfg)]; }
+      } else {
+        if(dOff){ const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2],0),[0,0,1]); full=[x[0],1,x[1],x[2],0]; }
+        else { const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],0),[0,1,0,1]); full=[x[0],x[1],x[2],x[3],0]; }
+      }
+      const bOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
+      return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:full[4],n1x2:used.length};
+    }
+    function irProb1x2Legacy(s,d,cfg,gamma){
+      const df=gmClampD(d,s);
+      const lh=(s+df)/2, la=(s-df)/2;
+      if(lh<=0||la<=0) return [0,0,0];
+      let mat=gmMatrix(lh,la,cfg.maxGoals||GM_MAX);
+      if(cfg.useDc&&gamma) mat=gmDC(mat,lh,la,gamma);
+      return gm1x2(mat);
+    }
+    function irFitDrawResidualLegacy(ms,st,gl,cal,cfg){
+      const def={alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default',mode:'residual_dc'};
+      const gamma=cfg.useDc?(cal.gamma||0):0;
+      const rows=[];
+      for(const m of ms){
+        if(m.px==null) continue;
+        const w1x2=(m.raw.ho&&m.raw.dо&&m.raw.ao)?1.0:0.0;
+        const w=m.wBase*w1x2; if(w<=0) continue;
+        const {sCal,dCal}=gmCalibratedSdForMatch(m,st,gl,cal,cfg);
+        const [,pxDc]=irProb1x2Legacy(sCal,dCal,cfg,gamma);
+        if(pxDc<=1e-9) continue;
+        let q=m.px/pxDc;
+        const [qLo,qHi]=gmEffectiveQBounds(cfg,'residual_dc');
+        q=Math.min(qHi*1.5, Math.max(qLo*0.5, q));
+        if(q<=0) continue;
+        const da=Math.abs(dCal), S=sCal;
+        rows.push([[1,da,S,S*S,da*S],Math.log(q),w]);
+      }
+      if(rows.length<6) return def;
+      let beta; try{ beta=gmWls(rows,5);}catch(_e){ return def; }
+      const dm={alpha:beta[0],betaD:beta[1],betaS:beta[2],betaS2:beta[3],betaDxS:beta[4],source:'fitted',mode:'residual_dc'};
+      const q0=gmDrawQMult(dm,0,2.6,cfg);
+      if(!(q0>=0.85&&q0<=1.15)) return def;
+      return dm;
+    }
+    function irPredictLegacy(model,homeId,awayId,opt){
+      const {st,gl,cal,draw,cfg}=model;
+      const iHome=opt.neutral?0:1;
+      const names=model.teamNames||{};
+      const homeName=names[homeId]||homeId, awayName=names[awayId]||awayId;
+      const hEff=gmEffectiveH(st,cfg,opt.neutral,!!opt.derby);
+      const R=t=>t in st.ratings?st.ratings[t]:gmPromoted(st.ratings,cfg.promotedN);
+      const A=t=>t in gl.attack?gl.attack[t]:gmPromoted(gl.attack,cfg.promotedN);
+      const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
+      const kHg=Math.abs(st.H)>1e-9?hEff/st.H:1;
+      const dm=R(homeId)-R(awayId)+hEff;
+      const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
+      const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
+      const sm=lhAD+laAD;
+      const dc=gmApplyDCal(dm,cal.a,cal.b,cfg);
+      let sf=gmApplySCal(sm,cal.c,cal.d,cfg);
+      let df=gmClampD(dc.dUsed,sf);
+      const lh=(sf+df)/2, la=(sf-df)/2;
+      let mat=gmMatrix(lh,la,cfg.maxGoals||GM_MAX);
+      if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
+      let dtarget=null, diag=null;
+      if(cfg.useDraw&&draw){
+        const pxMat=gmDrawProb(mat);
+        const [qmin,qmax]=gmEffectiveQBounds(cfg, draw.mode);
+        if(draw.mode==='residual_dc') dtarget=gmDrawQMult(draw,df,sf,cfg)*pxMat;
+        else dtarget=gmDrawTarget(draw,df,sf);
+        [mat,diag]=gmAdjustDraw(mat,dtarget,qmin,qmax);
+      }
+      const matDiag=gmMatrixDiagnostics(mat,lh,la,0);
+      return {
+        homeId,awayId,homeName,awayName,lh,la,df,sf,mat,matDiag,
+        alphaFinal:0, rhoFinal:0, dcGamma:cal.gamma||0,
+        selectedDistribution:'poisson_dc',
+        markets:gmMarkets(mat), drawTarget:dtarget, drawDiag:diag,
+      };
+    }
+    function irTrainLegacy(raw,cfg){
+      const cfgL=Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw!==false, irEngine:'legacy'});
+      const ms=gmPrepare(raw,cfgL);
+      const st=gmFitStrength(ms,cfgL,null);
+      const gl=gmFitAD(ms,cfgL,null);
+      const cal=irCalibrateLegacy(ms,st,gl,cfgL);
+      const draw=cfgL.useDraw
+        ? ((cfgL.drawMode==='residual_dc') ? irFitDrawResidualLegacy(ms,st,gl,cal,cfgL) : gmFitDraw(ms,cfgL))
+        : {alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'disabled',mode:'legacy'};
+      const model={
+        st,gl,cal,draw,cfg:cfgL,nMatches:ms.length,teamNames:{},
+        alphaFinal:0,rhoFinal:0,selectedDistribution:'poisson_dc',
+        nbImprovementPct:0,matrixCalib:{status:'legacy_dc',nMatches:ms.length},
+        irEngine:'legacy',
+      };
+      ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
+      return model;
+    }
+    /** Entry point: historical Legacy pipeline (Poisson + DC + draw). Isolated from Auto. */
+    function calculateLegacyModel(raw, cfg){
+      return irTrainLegacy(raw, Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw!==false, irEngine:'legacy'}));
+    }
+    /** Entry point: Auto Marginals + Gaussian Copula. Never uses DC/draw. */
+    function calculateAutoModel(raw, cfg){
+      const model=gmTrain(raw, Object.assign({}, cfg, {useDc:false, useDraw:false, irEngine:'auto'}), null, []);
+      model.irEngine='auto';
+      return model;
+    }
+    function irTrainModel(raw,cfg,mode){
+      if(mode==='auto') return calculateAutoModel(raw, cfg);
+      return calculateLegacyModel(raw, cfg);
+    }
+    function irUseMarginOn(){
+      return !!(document.getElementById('irUseMargin')||{}).checked;
+    }
+    function irParseMarginPct(){
+      if(!irUseMarginOn()) return 0;
+      const def = irCfgPart('compare.defaultMarginPct', 3);
+      const v=parseFloat(String((document.getElementById('irMarginPct')||{}).value || def).replace(',','.'));
+      return isNaN(v)||v<0 ? 0 : v/100;
+    }
+    function irFmtCell(val,col){
+      if(val==null) return '';
+      if(IR_TEXT_COLS.has(col)) return String(val).trim();
       if(!isFinite(val)) return '';
-      if(IR_LINE_COLS.has(col)) return val.toFixed(2);
-      if(IR_ODDS_COLS.has(col)) return val.toFixed(3);
-      return String(val);
+      if(IR_LINE_COLS.has(col)) return Number(val).toFixed(2);
+      if(String(col).includes('alpha')||String(col).includes('rho')||col==='dc_gamma') return Number(val).toFixed(4);
+      if(String(col).startsWith('p_')||col==='matrix_sum'||col==='matrix_tail') return Number(val).toFixed(6);
+      if(String(col).includes('model_total')) return Number(val).toFixed(4);
+      return Number(val).toFixed(3);
     }
-    function irFmtDisplay(val, col){
-      const s = irFmtCell(val, col);
-      return s === '' ? '—' : s;
+    function irFmtDisplay(val,col){
+      const s=irFmtCell(val,col);
+      return s===''?'—':s;
     }
-    function irDelta(pr, et, isLine){
-      if(pr == null || et == null || !isFinite(pr) || !isFinite(et)) return null;
-      return pr - et;
+    function irDelta(pr,et){
+      if(pr==null||et==null||!isFinite(pr)||!isFinite(et)) return null;
+      return pr-et;
     }
-    function irMarginOddsFromProb(p, mg){
-      if(!(p > 0) || !isFinite(p)) return null;
-      if(!mg || mg <= 0) return 1 / p;
-      return 1 / (p * (1 + mg));
+    function irMarginOddsFromProb(p,mg){
+      if(!(p>0)||!isFinite(p)) return null;
+      if(!mg||mg<=0) return 1/p;
+      return 1/(p*(1+mg));
+    }
+    function irAbsMae(vals){
+      const xs=vals.filter(v=>v!=null&&isFinite(v));
+      if(!xs.length) return null;
+      return xs.reduce((a,b)=>a+Math.abs(b),0)/xs.length;
+    }
+    function irWinner(maeL, maeA){
+      if(maeL==null&&maeA==null) return '—';
+      if(maeL==null) return 'Auto';
+      if(maeA==null) return 'Legacy';
+      if(Math.abs(maeL-maeA)<1e-9) return 'tie';
+      return maeL<maeA ? 'Legacy' : 'Auto';
     }
     function irBuildSeasonWeights(leagueId, seasonIds){
-      const weights = {};
-      const seasons = (window.__SB.seasons || []).filter(s => String(s.league_id) === String(leagueId) && seasonIds.includes(s.season_id));
-      seasons.sort((a, b) => String(b.season_label || '').localeCompare(String(a.season_label || '')));
-      if(seasons.length){
-        seasons.forEach((s, i) => { weights[s.season_id] = goalDefaultSeasonWeight(i); });
-      } else {
-        seasonIds.forEach((sid, i) => { weights[sid] = goalDefaultSeasonWeight(i); });
-      }
+      const weights={};
+      const seasons=(window.__SB.seasons||[]).filter(s=>String(s.league_id)===String(leagueId)&&seasonIds.includes(s.season_id));
+      seasons.sort((a,b)=>String(b.season_label||'').localeCompare(String(a.season_label||'')));
+      if(seasons.length) seasons.forEach((s,i)=>{ weights[s.season_id]=goalDefaultSeasonWeight(i); });
+      else seasonIds.forEach((sid,i)=>{ weights[sid]=goalDefaultSeasonWeight(i); });
       return weights;
     }
     async function irFetchPagedMatches(extraQuery){
-      const pageSize = 1000;
-      let offset = 0;
-      const all = [];
+      const pageSize=1000; let offset=0; const all=[];
       while(true){
-        const q = `${extraQuery}&limit=${pageSize}&offset=${offset}`;
-        const batch = await sbFetch(`/v_matches_full?${q}`);
-        if(!Array.isArray(batch) || !batch.length) break;
+        const q=`${extraQuery}&limit=${pageSize}&offset=${offset}`;
+        const batch=await sbFetch(`/v_matches_full?${q}`);
+        if(!Array.isArray(batch)||!batch.length) break;
         all.push(...batch);
-        if(batch.length < pageSize) break;
-        offset += pageSize;
+        if(batch.length<pageSize) break;
+        offset+=pageSize;
       }
       return all;
     }
     async function irFetchInactiveMatches(leagueId){
-      let q = `select=${SB_MATCH_VIEW_SELECT}&active=eq.false&order=league_name.asc,match_date.asc,home_team.asc,away_team.asc`;
-      if(leagueId) q += `&league_id=eq.${encodeURIComponent(leagueId)}`;
+      let q=`select=${SB_MATCH_VIEW_SELECT}&active=eq.false&order=league_name.asc,match_date.asc,home_team.asc,away_team.asc`;
+      if(leagueId) q+=`&league_id=eq.${encodeURIComponent(leagueId)}`;
       return irFetchPagedMatches(q);
     }
     async function irFetchActiveMatchesForLeague(leagueId){
-      const q = `select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&active=eq.true&order=match_date.asc`;
+      const q=`select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&active=eq.true&order=match_date.asc`;
       return irFetchPagedMatches(q);
     }
-    function irEtalonFromMatch(m){
-      return {
-        Дата: m.match_date || '',
-        Лига: m.league_name || sbLeagueName(m.league_id) || '',
-        Дома: m.home_team || '',
-        Гости: m.away_team || '',
-        AH1: gmF(m.ah_home_odds),
-        AH: gmF(m.closing_ah_home),
-        AH2: gmF(m.ah_away_odds),
-        O: gmF(m.over_odds),
-        Тот: gmF(m.closing_total_line),
-        U: gmF(m.under_odds),
-        '1': gmF(m.home_odds),
-        X: gmF(m.draw_odds),
-        '2': gmF(m.away_odds),
+    function irFilterMatches(list){
+      const season=(document.getElementById('irSeasonFilter')||{}).value||'';
+      const dFrom=(document.getElementById('irDateFrom')||{}).value||'';
+      const dTo=(document.getElementById('irDateTo')||{}).value||'';
+      return list.filter(m=>{
+        if(season && String(m.season_id||'')!==String(season)) return false;
+        const d=String(m.match_date||'').slice(0,10);
+        if(dFrom && d && d<dFrom) return false;
+        if(dTo && d && d>dTo) return false;
+        return true;
+      });
+    }
+    function irSameLine(a, b){
+      if(a==null||b==null||!isFinite(a)||!isFinite(b)) return false;
+      return Math.abs(Number(a)-Number(b)) < IR_SAME_LINE_EPS;
+    }
+    function irApplyMarginToFairOdds(fairOdds, mg){
+      // fairOdds already = 1/p; with margin → 1/(p*(1+mg)) = fairOdds/(1+mg)
+      if(!(fairOdds>1)||!isFinite(fairOdds)) return null;
+      if(!mg||mg<=0) return fairOdds;
+      return fairOdds/(1+mg);
+    }
+    function irEtalonFromMatch(m, useMargin){
+      // useMargin=true → эталон raw как в БД; false → Shin/fair de-vig (без маржи бука).
+      const ahLine=gmF(m.closing_ah_home);
+      const totLine=gmF(m.closing_total_line);
+      const meta={
+        Дата:m.match_date||'', Лига:m.league_name||sbLeagueName(m.league_id)||'',
+        Дома:m.home_team||'', Гости:m.away_team||'',
+        AH_market:ahLine, Total_market:totLine,
+        etalon_layer: useMargin ? 'raw_db' : 'fair_devig',
       };
-    }
-    function irPredictPrices(model, homeId, awayId, opt, marginFrac){
-      if(!model) return null;
-      try {
-        const pred = gmPredict(model, homeId, awayId, opt);
-        const mk = pred.markets;
-        const t = mk.mainTotal;
-        const a = mk.mainAh;
-        const mg = marginFrac || 0;
-        return {
-          AH1_pr: irMarginOddsFromProb(1 / a.home, mg),
-          AH_pr: a.line,
-          AH2_pr: irMarginOddsFromProb(1 / a.away, mg),
-          O_pr: irMarginOddsFromProb(1 / t.over, mg),
-          Тот_pr: t.line,
-          U_pr: irMarginOddsFromProb(1 / t.under, mg),
-          '1_pr': irMarginOddsFromProb(mk.p1, mg),
-          X_pr: irMarginOddsFromProb(mk.px, mg),
-          '2_pr': irMarginOddsFromProb(mk.p2, mg),
-        };
-      } catch (_e){
-        return null;
+      const raw1=gmF(m.home_odds), rawX=gmF(m.draw_odds), raw2=gmF(m.away_odds);
+      const rawAh1=gmF(m.ah_home_odds), rawAh2=gmF(m.ah_away_odds);
+      const rawO=gmF(m.over_odds), rawU=gmF(m.under_odds);
+      if(useMargin){
+        return Object.assign(meta, {
+          AH1:rawAh1, AH2:rawAh2, O:rawO, U:rawU,
+          '1':raw1, X:rawX, '2':raw2,
+        });
       }
+      let k1=null, kx=null, k2=null;
+      if(raw1!=null && rawX!=null && raw2!=null && raw1>1 && rawX>1 && raw2>1){
+        try{
+          const [p1,px,p2]=shinDevig(raw1,rawX,raw2);
+          if(p1>0&&px>0&&p2>0){ k1=1/p1; kx=1/px; k2=1/p2; }
+        }catch(_e){ /* keep null */ }
+      }
+      const fairAh=gmFairTwoWayFromRaw(rawAh1, rawAh2);
+      const fairTot=gmFairTwoWayFromRaw(rawO, rawU);
+      return Object.assign(meta, {
+        '1':k1, X:kx, '2':k2,
+        AH1:fairAh?fairAh.k1:null, AH2:fairAh?fairAh.k2:null,
+        O:fairTot?fairTot.k1:null, U:fairTot?fairTot.k2:null,
+      });
     }
-    function irBuildReportRow(match, prices){
-      const row = irEtalonFromMatch(match);
-      const pr = prices || {};
-      row.AH1_pr = pr.AH1_pr != null ? pr.AH1_pr : null;
-      row.AH_pr = pr.AH_pr != null ? pr.AH_pr : null;
-      row.AH2_pr = pr.AH2_pr != null ? pr.AH2_pr : null;
-      row.O_pr = pr.O_pr != null ? pr.O_pr : null;
-      row.Тот_pr = pr.Тот_pr != null ? pr.Тот_pr : null;
-      row.U_pr = pr.U_pr != null ? pr.U_pr : null;
-      row['1_pr'] = pr['1_pr'] != null ? pr['1_pr'] : null;
-      row.X_pr = pr.X_pr != null ? pr.X_pr : null;
-      row['2_pr'] = pr['2_pr'] != null ? pr['2_pr'] : null;
-      row.AH1_delta = irDelta(row.AH1_pr, row.AH1, false);
-      row.AH_delta = irDelta(row.AH_pr, row.AH, true);
-      row.AH2_delta = irDelta(row.AH2_pr, row.AH2, false);
-      row.O_delta = irDelta(row.O_pr, row.O, false);
-      row.Тот_delta = irDelta(row.Тот_pr, row.Тот, true);
-      row.U_delta = irDelta(row.U_pr, row.U, false);
-      row['1_delta'] = irDelta(row['1_pr'], row['1'], false);
-      row.X_delta = irDelta(row.X_pr, row.X, false);
-      row['2_delta'] = irDelta(row['2_pr'], row['2'], false);
+    function irPredictAtMarket(model, homeId, awayId, opt, marginFrac, marketLines){
+      // AH/OU odds ALWAYS on market line. Main lines returned separately for line-delta only.
+      if(!model) return null;
+      try{
+        const engine=model.irEngine||(model.cfg&&model.cfg.irEngine)||'auto';
+        const pred=engine==='legacy' ? irPredictLegacy(model,homeId,awayId,opt) : gmPredict(model,homeId,awayId,opt);
+        const mk=pred.markets;
+        const mainAh=mk.mainAh, mainTot=mk.mainTotal;
+        const mg=marginFrac||0;
+        const mktAh=marketLines && marketLines.AH!=null && isFinite(marketLines.AH) ? Number(marketLines.AH) : null;
+        const mktTot=marketLines && marketLines.Тот!=null && isFinite(marketLines.Тот) ? Number(marketLines.Тот) : null;
+        if(mktAh==null || mktTot==null){
+          console.warn('irPredictAtMarket: missing market lines', marketLines);
+        }
+        // gmAhMarket/gmTotMarket return fair ODDS in .home/.away/.over/.under
+        const ahAt = mktAh!=null ? gmAhMarket(pred.mat, mktAh) : null;
+        const totAt = mktTot!=null ? gmTotMarket(pred.mat, mktTot) : null;
+        const d=pred.matDiag||{};
+        return {
+          engine: engine==='legacy' ? 'legacy_candidate' : 'auto',
+          '1': irApplyMarginToFairOdds(mk.p1>0?1/mk.p1:null, mg),
+          X: irApplyMarginToFairOdds(mk.px>0?1/mk.px:null, mg),
+          '2': irApplyMarginToFairOdds(mk.p2>0?1/mk.p2:null, mg),
+          // odds AT market lines only
+          AH1_at_market: ahAt ? irApplyMarginToFairOdds(ahAt.home, mg) : null,
+          AH2_at_market: ahAt ? irApplyMarginToFairOdds(ahAt.away, mg) : null,
+          O_at_market: totAt ? irApplyMarginToFairOdds(totAt.over, mg) : null,
+          U_at_market: totAt ? irApplyMarginToFairOdds(totAt.under, mg) : null,
+          priced_ah_line: ahAt ? ahAt.line : null,
+          priced_tot_line: totAt ? totAt.line : null,
+          AH_main: mainAh.line,
+          Total_main: mainTot.line,
+          selected_distribution: pred.selectedDistribution||model.selectedDistribution||null,
+          alpha_final: pred.alphaFinal!=null?pred.alphaFinal:(model.alphaFinal||0),
+          rho_final: pred.rhoFinal!=null?pred.rhoFinal:(model.rhoFinal||0),
+          dc_gamma: engine==='legacy' ? (pred.dcGamma!=null?pred.dcGamma:((model.cal&&model.cal.gamma)||0)) : null,
+          lambda_home: pred.lh, lambda_away: pred.la,
+          matrix_sum:d.sum, matrix_tail:d.tail, p_00:d.p00, p_11:d.p11,
+          p_btts_yes:d.pBtts!=null?d.pBtts:mk.bttsYes,
+          model_total_mean:d.meanTotal, model_total_variance:d.varTotal, model_total_variance_ratio:d.varRatio,
+        };
+      }catch(_e){ return null; }
+    }
+    function irPredictBundle(model, homeId, awayId, opt, marginFrac, marketLines){
+      return irPredictAtMarket(model, homeId, awayId, opt, marginFrac, marketLines);
+    }
+    function irBuildCompareRow(match, leg, aut, useMargin){
+      const mkt=irEtalonFromMatch(match, !!useMargin);
+      const row=Object.assign({}, mkt);
+      row.engine_L = leg ? (leg.engine||'legacy_candidate') : null;
+      row.engine_A = aut ? (aut.engine||'auto') : null;
+      // 1X2
+      ['1','X','2'].forEach(k=>{
+        row[`${k}_L`]=leg && leg[k]!=null ? leg[k] : null;
+        row[`${k}_A`]=aut && aut[k]!=null ? aut[k] : null;
+        row[`${k}_dL`]=irDelta(row[`${k}_L`], mkt[k]);
+        row[`${k}_dA`]=irDelta(row[`${k}_A`], mkt[k]);
+      });
+      // AH lines
+      row.AH_main_L = leg && leg.AH_main!=null ? leg.AH_main : null;
+      row.AH_main_A = aut && aut.AH_main!=null ? aut.AH_main : null;
+      row.AH_line_dL = irDelta(row.AH_main_L, mkt.AH_market);
+      row.AH_line_dA = irDelta(row.AH_main_A, mkt.AH_market);
+      row.same_ah_L = irSameLine(row.AH_main_L, mkt.AH_market) ? 'yes' : 'no';
+      row.same_ah_A = irSameLine(row.AH_main_A, mkt.AH_market) ? 'yes' : 'no';
+      // AH odds at market line only
+      row.AH1_L_at_market = leg ? leg.AH1_at_market : null;
+      row.AH2_L_at_market = leg ? leg.AH2_at_market : null;
+      row.AH1_A_at_market = aut ? aut.AH1_at_market : null;
+      row.AH2_A_at_market = aut ? aut.AH2_at_market : null;
+      row.AH1_dL_mkt = irDelta(row.AH1_L_at_market, mkt.AH1);
+      row.AH2_dL_mkt = irDelta(row.AH2_L_at_market, mkt.AH2);
+      row.AH1_dA_mkt = irDelta(row.AH1_A_at_market, mkt.AH1);
+      row.AH2_dA_mkt = irDelta(row.AH2_A_at_market, mkt.AH2);
+      // Total lines
+      row.Total_main_L = leg && leg.Total_main!=null ? leg.Total_main : null;
+      row.Total_main_A = aut && aut.Total_main!=null ? aut.Total_main : null;
+      row.Total_line_dL = irDelta(row.Total_main_L, mkt.Total_market);
+      row.Total_line_dA = irDelta(row.Total_main_A, mkt.Total_market);
+      row.same_tot_L = irSameLine(row.Total_main_L, mkt.Total_market) ? 'yes' : 'no';
+      row.same_tot_A = irSameLine(row.Total_main_A, mkt.Total_market) ? 'yes' : 'no';
+      // OU odds at market total only
+      row.O_L_at_market = leg ? leg.O_at_market : null;
+      row.U_L_at_market = leg ? leg.U_at_market : null;
+      row.O_A_at_market = aut ? aut.O_at_market : null;
+      row.U_A_at_market = aut ? aut.U_at_market : null;
+      row.O_dL_mkt = irDelta(row.O_L_at_market, mkt.O);
+      row.U_dL_mkt = irDelta(row.U_L_at_market, mkt.U);
+      row.O_dA_mkt = irDelta(row.O_A_at_market, mkt.O);
+      row.U_dA_mkt = irDelta(row.U_A_at_market, mkt.U);
+
+      const mae1x2L=irAbsMae([row['1_dL'],row.X_dL,row['2_dL']]);
+      const mae1x2A=irAbsMae([row['1_dA'],row.X_dA,row['2_dA']]);
+      const maeAhMktL=irAbsMae([row.AH1_dL_mkt,row.AH2_dL_mkt]);
+      const maeAhMktA=irAbsMae([row.AH1_dA_mkt,row.AH2_dA_mkt]);
+      const maeOuMktL=irAbsMae([row.O_dL_mkt,row.U_dL_mkt]);
+      const maeOuMktA=irAbsMae([row.O_dA_mkt,row.U_dA_mkt]);
+      const maeAhLineL=irAbsMae([row.AH_line_dL]);
+      const maeAhLineA=irAbsMae([row.AH_line_dA]);
+      const maeOuLineL=irAbsMae([row.Total_line_dL]);
+      const maeOuLineA=irAbsMae([row.Total_line_dA]);
+
+      row.winner_1x2=irWinner(mae1x2L,mae1x2A);
+      // winner_AH / winner_OU = ONLY odds-at-market (valid even when main lines differ)
+      row.winner_AH=irWinner(maeAhMktL,maeAhMktA);
+      row.winner_OU=irWinner(maeOuMktL,maeOuMktA);
+      row.winner_AH_line=irWinner(maeAhLineL,maeAhLineA);
+      row.winner_OU_line=irWinner(maeOuLineL,maeOuLineA);
+      const scoreL=(mae1x2L||0)+(maeAhMktL||0)+(maeOuMktL||0);
+      const scoreA=(mae1x2A||0)+(maeAhMktA||0)+(maeOuMktA||0);
+      const hasL=mae1x2L!=null||maeAhMktL!=null||maeOuMktL!=null;
+      const hasA=mae1x2A!=null||maeAhMktA!=null||maeOuMktA!=null;
+      row.winner_row=(!hasL&&!hasA)?'—':irWinner(hasL?scoreL:null, hasA?scoreA:null);
+      row._mae={
+        mae1x2L,mae1x2A,
+        maeAhL:maeAhMktL, maeAhA:maeAhMktA,
+        maeOuL:maeOuMktL, maeOuA:maeOuMktA,
+        maeAhLineL, maeAhLineA, maeOuLineL, maeOuLineA,
+        drawL:irAbsMae([row.X_dL]), drawA:irAbsMae([row.X_dA]),
+        sameAhL: row.same_ah_L==='yes', sameAhA: row.same_ah_A==='yes',
+        sameTotL: row.same_tot_L==='yes', sameTotA: row.same_tot_A==='yes',
+      };
       return row;
     }
-    function irSetReportStatus(msg, isErr){
-      const el = document.getElementById('irReportStatus');
-      if(!el) return;
-      el.style.display = msg ? 'block' : 'none';
-      el.classList.toggle('err', !!isErr);
-      el.textContent = msg || '';
+    function irBuildSingleRow(match, prices, engine, useMargin){
+      const row=irEtalonFromMatch(match, !!useMargin);
+      const pr=prices||{};
+      row.calc_model=engine==='legacy'?'legacy_candidate':'auto_copula';
+      ['1','X','2'].forEach(k=>{
+        row[`${k}_pr`]=pr[k]!=null?pr[k]:null;
+        row[`${k}_delta`]=irDelta(row[`${k}_pr`], row[k]);
+      });
+      row.AH1_at_market=pr.AH1_at_market!=null?pr.AH1_at_market:null;
+      row.AH2_at_market=pr.AH2_at_market!=null?pr.AH2_at_market:null;
+      row.O_at_market=pr.O_at_market!=null?pr.O_at_market:null;
+      row.U_at_market=pr.U_at_market!=null?pr.U_at_market:null;
+      row.AH_main=pr.AH_main!=null?pr.AH_main:null;
+      row.Total_main=pr.Total_main!=null?pr.Total_main:null;
+      row.AH_line_delta=irDelta(row.AH_main, row.AH_market);
+      row.Total_line_delta=irDelta(row.Total_main, row.Total_market);
+      row.AH1_delta_mkt=irDelta(row.AH1_at_market, row.AH1);
+      row.AH2_delta_mkt=irDelta(row.AH2_at_market, row.AH2);
+      row.O_delta_mkt=irDelta(row.O_at_market, row.O);
+      row.U_delta_mkt=irDelta(row.U_at_market, row.U);
+      row.same_ah=irSameLine(row.AH_main, row.AH_market)?'yes':'no';
+      row.same_tot=irSameLine(row.Total_main, row.Total_market)?'yes':'no';
+      row.selected_distribution=pr.selected_distribution!=null?pr.selected_distribution:null;
+      row.alpha_final=pr.alpha_final!=null?pr.alpha_final:null;
+      row.rho_final=pr.rho_final!=null?pr.rho_final:null;
+      row.dc_gamma=pr.dc_gamma!=null?pr.dc_gamma:null;
+      row.lambda_home=pr.lambda_home!=null?pr.lambda_home:null;
+      row.lambda_away=pr.lambda_away!=null?pr.lambda_away:null;
+      row.matrix_sum=pr.matrix_sum!=null?pr.matrix_sum:null;
+      row.matrix_tail=pr.matrix_tail!=null?pr.matrix_tail:null;
+      row.p_00=pr.p_00!=null?pr.p_00:null;
+      row.p_11=pr.p_11!=null?pr.p_11:null;
+      row.p_btts_yes=pr.p_btts_yes!=null?pr.p_btts_yes:null;
+      row.model_total_mean=pr.model_total_mean!=null?pr.model_total_mean:null;
+      row.model_total_variance=pr.model_total_variance!=null?pr.model_total_variance:null;
+      row.model_total_variance_ratio=pr.model_total_variance_ratio!=null?pr.model_total_variance_ratio:null;
+      row._mae={
+        mae1x2:irAbsMae([row['1_delta'],row.X_delta,row['2_delta']]),
+        maeAh:irAbsMae([row.AH1_delta_mkt,row.AH2_delta_mkt]),
+        maeOu:irAbsMae([row.O_delta_mkt,row.U_delta_mkt]),
+        maeDraw:irAbsMae([row.X_delta]),
+        maeAhLine:irAbsMae([row.AH_line_delta]),
+        maeOuLine:irAbsMae([row.Total_line_delta]),
+      };
+      return row;
     }
-    function irRenderReportTable(rows){
-      const head = document.getElementById('irReportHead');
-      const body = document.getElementById('irReportBody');
-      const wrap = document.getElementById('irReportTableWrap');
-      if(!head || !body || !wrap) return;
-      head.innerHTML = IR_REPORT_COLS.map(c => `<th>${escapeHtml(c)}</th>`).join('');
-      body.innerHTML = rows.map(row => {
-        const tds = IR_REPORT_COLS.map(col => {
-          const raw = col === 'Дата' ? sbFmtDate(row[col]) : row[col];
-          const cls = [];
+    function irComputeSummary(rows, engines){
+      const n=rows.length;
+      const avg=(key)=> {
+        const xs=rows.map(r=>r._mae&&r._mae[key]).filter(v=>v!=null&&isFinite(v));
+        return xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:null;
+      };
+      const rate=(key)=> {
+        const xs=rows.map(r=>r._mae&&r._mae[key]).filter(v=>v!=null);
+        if(!xs.length) return null;
+        return xs.filter(Boolean).length/xs.length;
+      };
+      if(engines.compare || (engines.legacy && engines.auto)){
+        const L={
+          mae1x2:avg('mae1x2L'), maeAh:avg('maeAhL'), maeOu:avg('maeOuL'), maeDraw:avg('drawL'),
+          maeAhLine:avg('maeAhLineL'), maeOuLine:avg('maeOuLineL'),
+          sameAhRate:rate('sameAhL'), sameTotRate:rate('sameTotL'),
+        };
+        const A={
+          mae1x2:avg('mae1x2A'), maeAh:avg('maeAhA'), maeOu:avg('maeOuA'), maeDraw:avg('drawA'),
+          maeAhLine:avg('maeAhLineA'), maeOuLine:avg('maeOuLineA'),
+          sameAhRate:rate('sameAhA'), sameTotRate:rate('sameTotA'),
+        };
+        // winner by odds-at-market only (1x2 + AH_mkt + OU_mkt), not line deltas
+        const score=(o)=> (o.mae1x2||0)+(o.maeAh||0)+(o.maeOu||0);
+        return {n, mode:'compare', legacy:L, auto:A, winner:irWinner(score(L), score(A))};
+      }
+      const eng=engines.legacy?'legacy':'auto';
+      return {
+        n, mode:eng,
+        legacy: eng==='legacy'?{mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw'),maeAhLine:avg('maeAhLine'),maeOuLine:avg('maeOuLine')}:null,
+        auto: eng==='auto'?{mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw'),maeAhLine:avg('maeAhLine'),maeOuLine:avg('maeOuLine')}:null,
+        winner: eng==='legacy'?'Legacy':'Auto',
+      };
+    }
+    function irFmtMae(v){ return v==null||!isFinite(v)?'—':v.toFixed(3); }
+    function irFmtParam(v){
+      if(v==null) return '—';
+      if(typeof v==='boolean') return v ? 'да' : 'нет';
+      if(Array.isArray(v)) return v.map(x => (typeof x==='number' ? (Number.isInteger(x)?String(x):Number(x).toFixed(2)) : String(x))).join(', ');
+      if(typeof v==='number') return Number.isInteger(v) ? String(v) : (Math.abs(v)<1e-3 && v!==0 ? v.toExponential(1) : String(v));
+      return String(v);
+    }
+    function irParamsRowsHtml(pairs){
+      return pairs.map(([k,v]) =>
+        `<div class="ir-sum-row"><span>${escapeHtml(k)}</span><span>${escapeHtml(irFmtParam(v))}</span></div>`
+      ).join('');
+    }
+    function irRenderModelParams(){
+      const legEl=document.getElementById('irParamsLegacy');
+      const autoEl=document.getElementById('irParamsAuto');
+      if(!legEl || !autoEl) return;
+      const L=irCfgPart('legacy', {})||{};
+      const Ldc=L.dixonColes||{};
+      const Ldraw=L.drawModel||{};
+      const Lcal=L.calibration||{};
+      const Ltr=L.train||{};
+      const Lmx=L.matrix||{};
+      const Asec=irCfgPart('auto', {})||{};
+      const Atr=Asec.train||{};
+      const Amx=Asec.matrix||{};
+      const A=irCfgPart('autoMarginal', {})||{};
+      const C=irCfgPart('copula', {})||{};
+      const M=irCfgPart('matrix', {})||{};
+      const T=irCfgPart('train', {})||{};
+      const mx=GM_MATRIX_CFG||{};
+      const num=(o,k,fb)=> (o && o[k]!=null ? o[k] : fb);
+      legEl.innerHTML = '<h5>Legacy (изолированный pipeline)</h5>' + irParamsRowsHtml([
+        ['pipeline', 'S/D → Poisson → DC → draw'],
+        ['Dixon-Coles', (Ldc.enabled!=null?Ldc.enabled:L.useDixonColes) !== false],
+        ['Модель ничьи', (Ldraw.enabled!=null?Ldraw.enabled:L.useDrawModel) !== false],
+        ['fit γ', (Ldc.fitGamma!=null?Ldc.fitGamma:L.fitGamma) !== false],
+        ['γ fixed / max', `${num(Ldc,'gamma', num(L,'dcGamma',0))} / ${num(Ldc,'gammaMax', num(L,'gammaMax',0.20))}`],
+        ['drawMode', Ldraw.mode || L.drawMode || 'residual_dc'],
+        ['qMin / qMax', `${num(Ldraw,'qMin', num(L,'drawQMin',0.95))} / ${num(Ldraw,'qMax', num(L,'drawQMax',1.15))}`],
+        ['drawLossWeight', num(Ldraw,'drawLossWeight', num(L,'drawLossWeight',1.5))],
+        ['maxGoals', num(Lmx,'maxGoals', num(M,'maxGoals', mx.maxGoals||10))],
+        ['α форы / тотала', `${num(Ltr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Ltr,'alphaT', num(T,'alphaT',0.5))}`],
+        ['dCalMode / sCalMode', `${Lcal.dCalMode||T.dCalMode||'soft'} / ${Lcal.sCalMode||T.sCalMode||'off'}`],
+        ['Copula / NB', 'запрещены'],
+      ]);
+      autoEl.innerHTML = '<h5>Auto (изолированный pipeline)</h5>' + irParamsRowsHtml([
+        ['pipeline', 'S/D → Marginals → Copula'],
+        ['Auto Marginals', A.enabled !== false],
+        ['Gaussian Copula', C.enabled !== false],
+        ['alphaCandidates', A.alphaCandidates || mx.alphaCandidates || []],
+        ['rhoCandidates', C.rhoCandidates || mx.rhoCandidates || []],
+        ['nbMinImprovementPct', num(A,'nbMinImprovementPct', mx.nbMinImprovementPct||1)],
+        ['rhoMinImprovementPct', num(C,'rhoMinImprovementPct', mx.rhoMinImprovementPct||0.5)],
+        ['maxGoals', num(Amx,'maxGoals', num(M,'maxGoals', mx.maxGoals||10))],
+        ['Dixon-Coles / Draw', 'запрещены'],
+        ['α форы / тотала', `${num(Atr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Atr,'alphaT', num(T,'alphaT',0.5))}`],
+        ['dCalMode', Atr.dCalMode || T.dCalMode || 'soft'],
+      ]);
+    }
+    function irRenderSummary(sum){
+      const el=document.getElementById('irSummaryBody');
+      if(!el) return;
+      if(!sum){ el.innerHTML='Сформируйте отчёт — здесь появятся MAE и победитель.'; return; }
+      const pct=(v)=> v==null||!isFinite(v)?'—':(100*v).toFixed(0)+'%';
+      const block=(title,o)=>{
+        if(!o) return '';
+        return `<div class="ir-sum-block"><div style="font-weight:600;margin-bottom:4px">${title}</div>
+          <div class="ir-sum-row"><span>1X2 MAE (odds)</span><span>${irFmtMae(o.mae1x2)}</span></div>
+          <div class="ir-sum-row"><span>AH MAE @ market line</span><span>${irFmtMae(o.maeAh)}</span></div>
+          <div class="ir-sum-row"><span>OU MAE @ market total</span><span>${irFmtMae(o.maeOu)}</span></div>
+          <div class="ir-sum-row"><span>Draw MAE</span><span>${irFmtMae(o.maeDraw)}</span></div>
+          <div class="ir-sum-row"><span>AH line MAE</span><span>${irFmtMae(o.maeAhLine)}</span></div>
+          <div class="ir-sum-row"><span>Total line MAE</span><span>${irFmtMae(o.maeOuLine)}</span></div>
+          <div class="ir-sum-row"><span>same AH main</span><span>${pct(o.sameAhRate)}</span></div>
+          <div class="ir-sum-row"><span>same Total main</span><span>${pct(o.sameTotRate)}</span></div>
+        </div>`;
+      };
+      el.innerHTML = `<div class="ir-sum-row"><span>Всего матчей</span><span><b>${sum.n}</b></span></div>`
+        + block('Legacy (candidate)', sum.legacy)
+        + block('Auto', sum.auto)
+        + (sum.mode==='compare' ? `<div class="ir-winner">Победитель (1X2+AH@mkt+OU@mkt): ${escapeHtml(sum.winner)}</div>` : '')
+        + `<div class="small" style="margin-top:8px;color:#94a3b8">AH/OU MAE — только кэфы на рыночной линии. Line MAE — отдельно. Конфиг: ${escapeHtml((GM_MATRIX_CFG&&GM_MATRIX_CFG.configSource)||'model_config.json')}</div>`;
+    }
+    function irSetReportStatus(msg,isErr){
+      const el=document.getElementById('irReportStatus');
+      if(!el) return;
+      el.style.display=msg?'block':'none';
+      el.classList.toggle('err',!!isErr);
+      el.textContent=msg||'';
+    }
+    function irRenderReportTable(rows, cols){
+      const head=document.getElementById('irReportHead');
+      const body=document.getElementById('irReportBody');
+      const wrap=document.getElementById('irReportTableWrap');
+      if(!head||!body||!wrap) return;
+      irActiveCols=cols||IR_SINGLE_COLS;
+      head.innerHTML=irActiveCols.map(c=>`<th>${escapeHtml(c)}</th>`).join('');
+      body.innerHTML=rows.map(row=>{
+        const tds=irActiveCols.map(col=>{
+          const raw=col==='Дата'?sbFmtDate(row[col]):row[col];
+          const cls=[];
           if(!IR_TEXT_COLS.has(col)) cls.push('num');
-          if(String(col).includes('delta') && raw != null && isFinite(raw)){
-            if(raw > 0) cls.push('delta-pos');
-            else if(raw < 0) cls.push('delta-neg');
+          if((String(col).includes('_d')||String(col).includes('delta'))&&raw!=null&&isFinite(raw)){
+            if(raw>0) cls.push('delta-pos'); else if(raw<0) cls.push('delta-neg');
           }
-          return `<td class="${cls.join(' ')}">${escapeHtml(irFmtDisplay(raw, col))}</td>`;
+          if(IR_WIN_COLS.has(col)){
+            if(raw==='Auto') cls.push('win-auto');
+            if(raw==='Legacy') cls.push('win-legacy');
+          }
+          return `<td class="${cls.join(' ')}">${escapeHtml(irFmtDisplay(raw,col))}</td>`;
         }).join('');
         return `<tr>${tds}</tr>`;
       }).join('');
-      wrap.style.display = rows.length ? 'block' : 'none';
+      wrap.style.display=rows.length?'block':'none';
     }
     function irCsvEscape(v){
-      const s = v == null ? '' : String(v);
-      if(/[",;\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      const s=v==null?'':String(v);
+      if(/[",;\n\r]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
       return s;
     }
     function irExportReportCsv(){
       if(!irReportRows.length){ alert('Нет данных для экспорта'); return; }
-      const sep = ';';
-      const head = IR_REPORT_COLS.join(sep);
-      const lines = irReportRows.map(row => IR_REPORT_COLS.map(col => {
-        const raw = col === 'Дата' ? sbFmtDate(row[col]) : row[col];
-        return irCsvEscape(irFmtCell(raw, col));
+      const cols=irActiveCols.length?irActiveCols:IR_SINGLE_COLS;
+      const sep=';';
+      const head=cols.join(sep);
+      const lines=irReportRows.map(row=>cols.map(col=>{
+        const raw=col==='Дата'?sbFmtDate(row[col]):row[col];
+        return irCsvEscape(irFmtCell(raw,col));
       }).join(sep));
-      const bom = '\uFEFF';
-      const blob = new Blob([bom + head + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `inactive_report_${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      const blob=new Blob(['\uFEFF'+head+'\n'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      const mode=irReportMode();
+      a.download=`model_${mode}_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click(); URL.revokeObjectURL(a.href);
     }
     async function irRunReport(){
-      const leagueFilter = (document.getElementById('irLeagueFilter')||{}).value || '';
-      const marginFrac = irParseMarginPct();
-      const exportBtn = document.getElementById('irExportCsv');
-      irReportRows = [];
-      if(exportBtn) exportBtn.disabled = true;
-      irSetReportStatus('Загрузка неактивных матчей…');
-      irRenderReportTable([]);
-      await loadSupabaseConfig();
-      if(!window.__SB.leagues || !window.__SB.leagues.length) await sbFetchLeaguesList();
-      if(!window.__SB.seasons || !window.__SB.seasons.length) await sbLoadSeasonSummary();
-      const inactive = await irFetchInactiveMatches(leagueFilter || null);
-      if(!inactive.length){
-        irSetReportStatus('Неактивных матчей не найдено (active=false).', true);
+      await loadGoalMatrixConfig();
+      irSyncModeCheckboxes();
+      const engines=irEnginesSelected();
+      if(!engines.legacy && !engines.auto){
+        irSetReportStatus('Выберите хотя бы одну модель: Legacy или Auto.', true);
         return;
       }
-      const byLeague = {};
-      inactive.forEach(m => {
-        const lid = String(m.league_id || '');
-        if(!lid) return;
-        if(!byLeague[lid]) byLeague[lid] = [];
+      const leagueFilter=(document.getElementById('irLeagueFilter')||{}).value||'';
+      const useMargin=irUseMarginOn();
+      const marginFrac=irParseMarginPct();
+      const exportBtn=document.getElementById('irExportCsv');
+      irReportRows=[]; irReportSummary=null;
+      if(exportBtn) exportBtn.disabled=true;
+      irRenderSummary(null);
+      const modeTxt=engines.compare?'Сравнение':(engines.legacy?'Legacy':'Auto');
+      const etalonTxt=useMargin?`эталон raw БД, маржа ${(marginFrac*100).toFixed(1)}%`:'эталон fair (de-vig), модель без маржи';
+      irSetReportStatus(`Загрузка неактивных матчей… (${modeTxt}; ${etalonTxt})`);
+      irRenderReportTable([], engines.compare?IR_COMPARE_COLS:IR_SINGLE_COLS);
+      await loadSupabaseConfig();
+      if(!window.__SB.leagues||!window.__SB.leagues.length) await sbFetchLeaguesList();
+      if(!window.__SB.seasons||!window.__SB.seasons.length) await sbLoadSeasonSummary();
+      let inactive=await irFetchInactiveMatches(leagueFilter||null);
+      inactive=irFilterMatches(inactive);
+      if(!inactive.length){
+        irSetReportStatus('Матчей не найдено (active=false + фильтры).', true);
+        return;
+      }
+      const byLeague={};
+      inactive.forEach(m=>{
+        const lid=String(m.league_id||''); if(!lid) return;
+        if(!byLeague[lid]) byLeague[lid]=[];
         byLeague[lid].push(m);
       });
-      const leagueIds = Object.keys(byLeague).sort((a, b) => {
-        const na = byLeague[a][0].league_name || a;
-        const nb = byLeague[b][0].league_name || b;
+      const leagueIds=Object.keys(byLeague).sort((a,b)=>{
+        const na=byLeague[a][0].league_name||a, nb=byLeague[b][0].league_name||b;
         return String(na).localeCompare(String(nb));
       });
-      const out = [];
-      let skippedLeagues = 0;
-      for(let li = 0; li < leagueIds.length; li++){
-        const leagueId = leagueIds[li];
-        const leagueName = byLeague[leagueId][0].league_name || leagueId;
-        irSetReportStatus(`Лига ${li + 1}/${leagueIds.length}: ${leagueName} — обучение…`);
-        const activeMatches = await irFetchActiveMatchesForLeague(leagueId);
-        const parsed = goalMatchesToRaw(activeMatches);
-        let model = null;
-        if(parsed.valid >= 2){
-          const seasonIds = [...new Set(parsed.raw.map(r => r.seasonId).filter(s => s != null))];
-          const cfg = irBaselineCfg(irBuildSeasonWeights(leagueId, seasonIds));
-          try {
-            model = gmTrain(parsed.raw, cfg, null, []);
-          } catch (e){
-            console.warn('ir train', leagueId, e);
-            model = null;
-          }
-        } else {
-          skippedLeagues++;
-        }
-        const matches = byLeague[leagueId];
-        for(const m of matches){
-          const homeId = gmTeamKey(m.home_team_id, m.home_team);
-          const awayId = gmTeamKey(m.away_team_id, m.away_team);
-          let prices = null;
-          if(model && homeId && awayId){
-            prices = irPredictPrices(model, homeId, awayId, {
-              neutral: !!m.is_neutral,
-              derby: sbIsDerby(m),
-            }, marginFrac);
-          }
-          out.push(irBuildReportRow(m, prices));
+      const out=[]; let skipped=0;
+      for(let li=0; li<leagueIds.length; li++){
+        const leagueId=leagueIds[li];
+        const leagueName=byLeague[leagueId][0].league_name||leagueId;
+        irSetReportStatus(`Лига ${li+1}/${leagueIds.length}: ${leagueName} — обучение…`);
+        const activeMatches=await irFetchActiveMatchesForLeague(leagueId);
+        const parsed=goalMatchesToRaw(activeMatches);
+        let modelL=null, modelA=null;
+        if(parsed.valid>=2){
+          const seasonIds=[...new Set(parsed.raw.map(r=>r.seasonId).filter(s=>s!=null))];
+          const weights=irBuildSeasonWeights(leagueId, seasonIds);
+          try{
+            if(engines.legacy) modelL=irTrainModel(parsed.raw, irBaselineCfg(weights,'legacy'), 'legacy');
+            if(engines.auto) modelA=irTrainModel(parsed.raw, irBaselineCfg(weights,'auto'), 'auto');
+          }catch(e){ console.warn('ir train', leagueId, e); }
+        } else skipped++;
+        for(const m of byLeague[leagueId]){
+          const homeId=gmTeamKey(m.home_team_id,m.home_team);
+          const awayId=gmTeamKey(m.away_team_id,m.away_team);
+          const opt={neutral:!!m.is_neutral, derby:sbIsDerby(m)};
+          const marketLines={AH:gmF(m.closing_ah_home), Тот:gmF(m.closing_total_line)};
+          const leg=(modelL&&homeId&&awayId)?irPredictBundle(modelL,homeId,awayId,opt,marginFrac,marketLines):null;
+          const aut=(modelA&&homeId&&awayId)?irPredictBundle(modelA,homeId,awayId,opt,marginFrac,marketLines):null;
+          if(engines.compare || (engines.legacy&&engines.auto)) out.push(irBuildCompareRow(m,leg,aut,useMargin));
+          else if(engines.legacy) out.push(irBuildSingleRow(m,leg,'legacy',useMargin));
+          else out.push(irBuildSingleRow(m,aut,'auto',useMargin));
         }
       }
-      irReportRows = out;
-      irRenderReportTable(irReportRows);
-      if(exportBtn) exportBtn.disabled = !irReportRows.length;
-      const warn = skippedLeagues ? `; ${skippedLeagues} лиг без обучения (<2 активных матчей с полной линией)` : '';
-      irSetReportStatus(`Готово: ${irReportRows.length} матч., ${leagueIds.length} лиг, маржа ${(marginFrac * 100).toFixed(1)}%${warn}`);
+      irReportRows=out;
+      const cols=(engines.compare||(engines.legacy&&engines.auto))?IR_COMPARE_COLS:IR_SINGLE_COLS;
+      irRenderReportTable(irReportRows, cols);
+      irReportSummary=irComputeSummary(irReportRows, engines);
+      if(!(engines.compare||(engines.legacy&&engines.auto))){
+        const xs=irReportRows.map(r=>r._mae).filter(Boolean);
+        const avg=k=>{ const a=xs.map(o=>o[k]).filter(v=>v!=null&&isFinite(v)); return a.length?a.reduce((x,y)=>x+y,0)/a.length:null; };
+        const block={mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw'),maeAhLine:avg('maeAhLine'),maeOuLine:avg('maeOuLine')};
+        irReportSummary={n:out.length, mode:engines.legacy?'legacy':'auto', legacy:engines.legacy?block:null, auto:engines.auto?block:null, winner:engines.legacy?'Legacy':'Auto'};
+      }
+      irRenderSummary(irReportSummary);
+      if(exportBtn) exportBtn.disabled=!irReportRows.length;
+      const warn=skipped?`; ${skipped} лиг без обучения`:'';
+      const sameNote=engines.compare?`; winner_AH/OU = odds @ market line`:'';
+      irSetReportStatus(`Готово: ${irReportRows.length} матч., режим ${modeTxt}; ${etalonTxt}; AH/OU кэфы на рыночной линии${sameNote}${warn}`);
     }
     function irPopulateLeagueFilter(){
-      const sel = document.getElementById('irLeagueFilter');
+      const sel=document.getElementById('irLeagueFilter');
       if(!sel) return;
-      const prev = sel.value;
-      const leagues = window.__SB.leagues || [];
-      sel.innerHTML = '<option value="">Все лиги</option>' + leagues.map(l =>
-        `<option value="${escapeHtml(l.id)}">${escapeHtml(l.name)}</option>`
-      ).join('');
-      if(prev && leagues.some(l => String(l.id) === String(prev))) sel.value = prev;
+      const prev=sel.value;
+      const leagues=window.__SB.leagues||[];
+      sel.innerHTML='<option value="">Все лиги</option>'+leagues.map(l=>`<option value="${escapeHtml(l.id)}">${escapeHtml(l.name)}</option>`).join('');
+      if(prev&&leagues.some(l=>String(l.id)===String(prev))) sel.value=prev;
+      irPopulateSeasonFilter();
+    }
+    function irPopulateSeasonFilter(){
+      const sel=document.getElementById('irSeasonFilter');
+      if(!sel) return;
+      const leagueId=(document.getElementById('irLeagueFilter')||{}).value||'';
+      const prev=sel.value;
+      let seasons=window.__SB.seasons||[];
+      if(leagueId) seasons=seasons.filter(s=>String(s.league_id)===String(leagueId));
+      seasons=[...seasons].sort((a,b)=>String(b.season_label||'').localeCompare(String(a.season_label||'')));
+      sel.innerHTML='<option value="">Все сезоны</option>'+seasons.map(s=>`<option value="${escapeHtml(s.season_id)}">${escapeHtml(s.season_label||s.season_id)}</option>`).join('');
+      if(prev&&seasons.some(s=>String(s.season_id)===String(prev))) sel.value=prev;
     }
     async function irInitReportTab(){
-      try {
+      try{
+        await loadGoalMatrixConfig();
+        irRenderModelParams();
         await loadSupabaseConfig();
-        if(!window.__SB.leagues || !window.__SB.leagues.length) await sbFetchLeaguesList();
+        if(!window.__SB.leagues||!window.__SB.leagues.length) await sbFetchLeaguesList();
+        if(!window.__SB.seasons||!window.__SB.seasons.length) await sbLoadSeasonSummary();
+        const defMode=irCfgPart('compare.defaultMode','compare');
+        const radio=document.querySelector(`input[name="irReportMode"][value="${defMode}"]`);
+        if(radio) radio.checked=true;
+        const mg=document.getElementById('irMarginPct');
+        if(mg && !(mg.value||'').trim()) mg.value=String(irCfgPart('compare.defaultMarginPct',3));
+        const useMg=document.getElementById('irUseMargin');
+        if(useMg) useMg.checked=!!irCfgPart('compare.defaultUseMargin', false);
+        irSyncModeCheckboxes();
         irPopulateLeagueFilter();
-      } catch (e){
+      }catch(e){
         console.error('irInitReportTab', e);
-        irSetReportStatus('Ошибка загрузки лиг: ' + (e.message || e), true);
+        irSetReportStatus('Ошибка загрузки: '+(e.message||e), true);
       }
     }
-    window.irInitReportTab = irInitReportTab;
-    bindClick('irRunReport', () => { irRunReport().catch(e => { console.error(e); irSetReportStatus(e.message || String(e), true); }); });
-    bindClick('irExportCsv', () => irExportReportCsv());
+    window.irInitReportTab=irInitReportTab;
+    document.querySelectorAll('input[name="irReportMode"]').forEach(el=>{
+      el.addEventListener('change', irSyncModeCheckboxes);
+    });
+    document.getElementById('irLeagueFilter')?.addEventListener('change', irPopulateSeasonFilter);
+    bindClick('irRunReport', ()=>{ irRunReport().catch(e=>{ console.error(e); irSetReportStatus(e.message||String(e), true); }); });
+    bindClick('irExportCsv', ()=>irExportReportCsv());
     // ========== END INACTIVE REPORT ==========
 
     bindClick('goalHistClear',()=>{
