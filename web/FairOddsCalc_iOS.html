@@ -326,6 +326,15 @@
       margin:0 0 12px; padding:12px; border:1px solid var(--line);
       border-radius:10px; background:#fff;
     }
+    .ir-glossary{
+      margin-top:16px; padding:14px 16px; border:1px solid var(--line);
+      border-radius:10px; background:#f8fafc; font-size:13px; line-height:1.5; color:#334155;
+    }
+    .ir-glossary h4{ margin:0 0 10px; font-size:14px; color:#10204a; }
+    .ir-glossary dl{ margin:0; display:grid; gap:10px; }
+    .ir-glossary dt{ font-weight:700; color:#10204a; margin:0 0 2px; }
+    .ir-glossary dd{ margin:0; color:#475569; }
+    .ir-glossary .ir-glossary-note{ margin:12px 0 0; font-size:12px; color:#64748b; }
     .ir-report-status{ margin:8px 0; padding:10px 12px; border-radius:8px; background:#f8fafc; border:1px solid var(--line); font-size:13px; }
     .ir-report-status.err{ background:#fef2f2; border-color:#fecaca; color:#991b1b; }
     .ir-report-table-wrap{ overflow:auto; max-height:70vh; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
@@ -1157,6 +1166,24 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <div id="irSummaryBody" class="small" style="color:#64748b;margin-top:8px">Сформируйте отчёт — здесь появятся MAE и победитель.</div>
           </details>
         </aside>
+      </div>
+      <div class="ir-glossary" id="irGlossary">
+        <h4>Что означают режимы</h4>
+        <dl>
+          <div>
+            <dt>Compare</dt>
+            <dd>Сравнивает обе модели на одних и тех же inactive-матчах. В таблице — коэффициенты Legacy и Auto, разница (Δ) и победитель по каждому рынку. В диагностике — MAE по 1X2 / AH / OU / ничьей и общий победитель.</dd>
+          </div>
+          <div>
+            <dt>Legacy</dt>
+            <dd>Старая модель: Poisson + Dixon–Coles + отдельная модель ничьей. Считает линию «по-старому». Нужна как эталон: с ней сравниваем новую модель. На вкладках «Линия» и «История» не используется.</dd>
+          </div>
+          <div>
+            <dt>Auto (новая модель)</dt>
+            <dd>Новая модель: ожидаемые голы → Auto Marginals (Poisson/NB) → Gaussian Copula → единая матрица счетов → все рынки. Ничья берётся только с диагонали матрицы. Именно эта модель стоит на вкладке «Линия».</dd>
+          </div>
+        </dl>
+        <p class="ir-glossary-note">Чекбоксы «Считать» выбирают, какие модели гонять в одном прогоне. В режиме Compare обычно включают обе. Параметры моделей — в <code>model_config.json</code> (блок выше). БД при отчёте не меняется.</p>
       </div>
     </section>
 
