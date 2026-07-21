@@ -46,25 +46,30 @@ Legacy (candidate)
 
 ## 2. Два независимых pipeline
 
-### 2.1. Legacy
+### 2.1. Legacy (baseline)
+
+Совпадает с профилем **baseline** до Auto:
 
 ```text
 Рыночные коэффициенты
         ↓
-Восстановление S и D (исторический алгоритм)
+Восстановление S и D
         ↓
 Poisson Marginals
         ↓
 Independent Probability Matrix
         ↓
-Dixon–Coles Correction
-        ↓
-Draw Model
-        ↓
-Калибровка Legacy
-        ↓
 Расчёт рынков
 ```
+
+**По умолчанию выключены** (как в baseline):
+
+- Dixon–Coles
+- Draw Model
+
+Их можно включать только явно в `model_config.json` → `legacy.*` или в компонент-recipe для эксперимента.
+
+> Ранее в черновике ТЗ фигурировал полный путь «Poisson → DC → Draw». Это **не** baseline продукта: в baseline `useDixonColes=false`, `useDrawModel=false`.
 
 ### 2.2. Auto
 

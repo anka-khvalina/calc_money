@@ -1153,7 +1153,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <p class="ir-field-hint ir-mode-hint-row">Какой pipeline считать: только старый (Legacy candidate), только новый (Auto) или оба сразу для сравнения на одних матчах.</p>
             <div class="ir-mode-row" style="margin-bottom:0">
               <span style="font-weight:600;color:#10204a">Считать:</span>
-              <label><input type="checkbox" id="irUseLegacy" checked /> <span>Legacy candidate (Poisson + DC + Draw)</span></label>
+              <label><input type="checkbox" id="irUseLegacy" checked /> <span>Legacy candidate (baseline: Poisson, DC/draw выкл)</span></label>
               <label><input type="checkbox" id="irUseAuto" checked /> <span>Auto (Marginals + Copula)</span></label>
             </div>
             <p class="ir-field-hint" style="margin-top:6px;margin-bottom:0">В режиме «Сравнение» можно оставить одну модель. В режимах Legacy/Auto галки фиксируются автоматически.</p>
@@ -1221,10 +1221,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <div class="field">
                 <label>Draw</label>
                 <select id="irCompDraw">
-                  <option value="legacy">Legacy Draw</option>
-                  <option value="off">Off (только диагональ)</option>
+                  <option value="off" selected>Off (только диагональ)</option>
+                  <option value="legacy">Legacy Draw (эксперимент)</option>
                 </select>
-                <span class="ir-field-hint">Отдельная draw-model или ничья = сумма диагонали.</span>
+                <span class="ir-field-hint">В baseline модель ничьи выключена. Draw — только для экспериментального recipe.</span>
               </div>
             </div>
             <p class="ir-field-hint" style="margin:0 12px 12px;max-width:none">В режиме «Сравнение» компоненты применяются к обеим колонкам только если включён эксперимент ниже. Иначе считаются полные pipeline Legacy и Auto.</p>
@@ -1281,15 +1281,17 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           </div>
           <div>
             <dt>Legacy (candidate)</dt>
-            <dd>Кандидат исторического pipeline: S/D → Poisson → DC → draw-model. Пока нет сверки с сохранённым historical Legacy reference — режим не называется гарантированно восстановленной Legacy.</dd>
+            <dd>Baseline до Auto: S/D → Poisson → независимая матрица. <b>Dixon–Coles и draw-model выключены</b> (как в baseline-профиле). Включить их можно только явно в конфиге / компонент-recipe для эксперимента.</dd>
           </div>
           <div>
             <dt>Auto</dt>
             <dd>S/D → Marginals → Copula; ничья = диагональ. Без DC и draw-model.</dd>
           </div>
         </dl>
-        <p class="ir-glossary-note"><b>AH/OU:</b> <code>AH1_L_at_market</code> — кэф Legacy на <code>AH_market</code>, даже если <code>AH_main_L</code> другая. <code>same_ah_L=yes</code> только значит, что main line совпала с рынком (для справки), на валидность <code>*_dL_mkt</code> не влияет.<br>
-        <b>Маржа:</b> выкл → fair/de-vig; вкл → эталон raw БД + модель с %.</p>
+        <p class="ir-glossary-note"><b>AH/OU:</b> <code>AH1_L_at_market</code> — кэф Legacy на <code>AH_market</code>, даже если <code>AH_main_L</code> другая.<br>
+        <b>Маржа:</b> выкл → fair/de-vig; вкл → эталон raw БД + модель с %.<br>
+        <b>Блоки отчёта:</b> 1X2 · Main Line · Odds@market · Диагностика. Summary справа + автовывод сверху.<br>
+        <b>Компоненты:</b> галка «Включить компонентный recipe» — колонка L считает выбранную сборку (S/D+матрица+draw), колонка A — полный Auto для контраста.</p>
       </div>
     </section>
 
@@ -6959,8 +6961,8 @@ bash scripts/update_and_serve.sh --start</div>
       const T = legacy ? Object.assign({}, Tshared, Ltr) : Object.assign({}, Tshared, Atr);
       const M = legacy ? Object.assign({}, Mshared, Lmx) : Object.assign({}, Mshared, Amx);
       const Cal = legacy ? Object.assign({}, Tshared, Lcal) : Object.assign({}, Tshared, Atr);
-      const useDc = legacy && (Ldc.enabled !== false) && (L.useDixonColes !== false);
-      const useDraw = legacy && (Ldraw.enabled !== false) && (L.useDrawModel !== false);
+      const useDc = legacy && (Ldc.enabled === true || L.useDixonColes === true);
+      const useDraw = legacy && (Ldraw.enabled === true || L.useDrawModel === true);
       const drawMode = irPickStr(Ldraw, 'mode', L.drawMode || 'residual_dc');
       return {
         maxGoals: irPickNum(M, 'maxGoals', GM_MAX),
@@ -7167,7 +7169,7 @@ bash scripts/update_and_serve.sh --start</div>
       ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
       return model;
     }
-    /** Entry point: historical Legacy pipeline (Poisson + DC + draw). Isolated from Auto. */
+    /** Entry point: baseline Legacy pipeline (Poisson independent; DC/draw off by config). Isolated from Auto. */
     function calculateLegacyModel(raw, cfg){
       return irTrainLegacy(raw, Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw!==false, irEngine:'legacy'}));
     }
@@ -7339,7 +7341,7 @@ bash scripts/update_and_serve.sh --start</div>
         calib:(document.getElementById('irCompCalib')||{}).value||'legacy',
         marginals:(document.getElementById('irCompMarginals')||{}).value||'poisson',
         joint:(document.getElementById('irCompJoint')||{}).value||'independent',
-        draw:(document.getElementById('irCompDraw')||{}).value||'legacy',
+        draw:(document.getElementById('irCompDraw')||{}).value||'off',
       };
     }
     function irRecipeLabel(r){
@@ -7824,14 +7826,14 @@ bash scripts/update_and_serve.sh --start</div>
       const num=(o,k,fb)=> (o && o[k]!=null ? o[k] : fb);
       const srcNote='<p class="ir-param-hint" style="margin:0 0 8px">Значения по умолчанию из <code>model_config.json</code>. Меняйте конфиг — здесь подставятся при следующем открытии вкладки.</p>';
       legEl.innerHTML = '<h5>Legacy (изолированный pipeline)</h5>' + srcNote + irParamsRowsHtml([
-        ['pipeline', 'S/D → Poisson → DC → draw', 'Полный исторический путь расчёта без Copula/NB'],
-        ['Dixon-Coles', (Ldc.enabled!=null?Ldc.enabled:L.useDixonColes) !== false, 'Поправка низких счетов 0:0 / 1:0 / 0:1 / 1:1'],
-        ['Модель ничьи', (Ldraw.enabled!=null?Ldraw.enabled:L.useDrawModel) !== false, 'Отдельная калибровка PX после матрицы'],
-        ['fit γ', (Ldc.fitGamma!=null?Ldc.fitGamma:L.fitGamma) !== false, 'Подбирать γ DC по 1X2; иначе брать fixed γ'],
-        ['γ fixed / max', `${num(Ldc,'gamma', num(L,'dcGamma',0))} / ${num(Ldc,'gammaMax', num(L,'gammaMax',0.20))}`, 'Стартовое/фиксированное γ и ограничение |γ|'],
-        ['drawMode', Ldraw.mode || L.drawMode || 'residual_dc', 'residual_dc = множитель q к PX матрицы; legacy = абсолютный target'],
-        ['qMin / qMax', `${num(Ldraw,'qMin', num(L,'drawQMin',0.95))} / ${num(Ldraw,'qMax', num(L,'drawQMax',1.15))}`, 'Клип множителя q при подгонке ничьи'],
-        ['drawLossWeight', num(Ldraw,'drawLossWeight', num(L,'drawLossWeight',1.5)), 'Вес ошибки PX в калибровке 1X2'],
+        ['pipeline', 'S/D → Poisson (baseline)', 'Как до Auto: независимая матрица; DC/draw по умолчанию выкл'],
+        ['Dixon-Coles', !!(Ldc.enabled===true || L.useDixonColes===true), 'В baseline выкл; включать только для эксперимента'],
+        ['Модель ничьи', !!(Ldraw.enabled===true || L.useDrawModel===true), 'В baseline выкл; ничья = диагональ матрицы'],
+        ['fit γ', !!(Ldc.fitGamma===true || L.fitGamma===true), 'Подбор γ DC — только если DC включён'],
+        ['γ fixed / max', `${num(Ldc,'gamma', num(L,'dcGamma',0))} / ${num(Ldc,'gammaMax', num(L,'gammaMax',0.20))}`, 'Параметры DC, если DC включён в конфиге'],
+        ['drawMode', Ldraw.mode || L.drawMode || 'residual_dc', 'Используется только при включённой draw-model'],
+        ['qMin / qMax', `${num(Ldraw,'qMin', num(L,'drawQMin',0.95))} / ${num(Ldraw,'qMax', num(L,'drawQMax',1.15))}`, 'Клип q — только если draw включён'],
+        ['drawLossWeight', num(Ldraw,'drawLossWeight', num(L,'drawLossWeight',1.5)), 'Вес PX в калибровке — при draw/1X2 fit'],
         ['maxGoals', num(Lmx,'maxGoals', num(M,'maxGoals', mx.maxGoals||10)), 'Размер матрицы счетов 0…N'],
         ['α форы / тотала', `${num(Ltr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Ltr,'alphaT', num(T,'alphaT',0.5))}`, 'Веса рынков AH/OU при восстановлении S/D'],
         ['dCalMode / sCalMode', `${Lcal.dCalMode||T.dCalMode||'soft'} / ${Lcal.sCalMode||T.sCalMode||'off'}`, 'Калибровка D и S после strength/AD'],

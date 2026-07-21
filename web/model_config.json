@@ -18,9 +18,9 @@
     "rhoMinImprovementPct": 0.5
   },
   "legacy": {
-    "useDixonColes": true,
-    "useDrawModel": true,
-    "fitGamma": true,
+    "useDixonColes": false,
+    "useDrawModel": false,
+    "fitGamma": false,
     "dcGamma": 0.0,
     "gammaMax": 0.20,
     "drawMode": "residual_dc",
@@ -38,14 +38,14 @@
       "lambdaMin": 0.05
     },
     "dixonColes": {
-      "enabled": true,
-      "fitGamma": true,
+      "enabled": false,
+      "fitGamma": false,
       "gamma": 0.0,
       "gammaMin": -0.20,
       "gammaMax": 0.20
     },
     "drawModel": {
-      "enabled": true,
+      "enabled": false,
       "mode": "residual_dc",
       "qMin": 0.95,
       "qMax": 1.15,
