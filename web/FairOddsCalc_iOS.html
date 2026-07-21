@@ -1156,6 +1156,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <div class="field" style="min-width:140px">
               <label>Сезон</label>
               <select id="irSeasonFilter"><option value="">Все сезоны</option></select>
+              <span class="ir-field-hint">Обучение и отчёт — только этот сезон (по умолчанию 2025-26).</span>
             </div>
             <div class="field" style="max-width:130px">
               <label>Дата от</label>
@@ -1257,7 +1258,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <dl>
           <div>
             <dt>Сравнение</dt>
-            <dd>Обе модели на одних inactive-матчах. <b>winner_AH / winner_OU / winner_row</b> считаются только по кэфам на рыночной линии (<code>*_at_market</code> / <code>*_d*_mkt</code>). Отклонение main line — отдельные колонки <code>AH_line_d*</code>, <code>Total_line_d*</code> и <code>winner_AH_line</code> / <code>winner_OU_line</code>.</dd>
+            <dd>Обе модели на одних inactive-матчах. Обучение — только на <b>выбранном сезоне</b> (по умолчанию 2025-26), не на всей истории лиги. <b>winner_AH / winner_OU / winner_row</b> считаются только по кэфам на рыночной линии (<code>*_at_market</code> / <code>*_d*_mkt</code>). Отклонение main line — отдельные колонки <code>AH_line_d*</code>, <code>Total_line_d*</code> и <code>winner_AH_line</code> / <code>winner_OU_line</code>.</dd>
           </div>
           <div>
             <dt>Legacy (candidate)</dt>
@@ -7571,9 +7572,29 @@ bash scripts/update_and_serve.sh --start</div>
       if(leagueId) q+=`&league_id=eq.${encodeURIComponent(leagueId)}`;
       return irFetchPagedMatches(q);
     }
-    async function irFetchActiveMatchesForLeague(leagueId){
-      const q=`select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&active=eq.true&order=match_date.asc`;
+    async function irFetchActiveMatchesForLeague(leagueId, seasonId){
+      let q=`select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&active=eq.true&order=match_date.asc`;
+      if(seasonId) q+=`&season_id=eq.${encodeURIComponent(seasonId)}`;
       return irFetchPagedMatches(q);
+    }
+    const IR_DEFAULT_SEASON_LABEL = '2025-26';
+    function irSelectedSeasonId(){
+      return String((document.getElementById('irSeasonFilter')||{}).value||'').trim();
+    }
+    function irResolveDefaultSeasonId(seasons){
+      const list = Array.isArray(seasons) ? seasons : [];
+      const hit = list.find(s => String(s.season_label||'') === IR_DEFAULT_SEASON_LABEL)
+        || list.find(s => String(s.season_label||'').includes(IR_DEFAULT_SEASON_LABEL));
+      return hit ? String(hit.season_id) : '';
+    }
+    function irEnsureSeasonSelected(){
+      const sel=document.getElementById('irSeasonFilter');
+      if(!sel) return '';
+      if(sel.value) return String(sel.value);
+      const seasons=Array.from(sel.options).slice(1).map(o=>({season_id:o.value, season_label:o.textContent||''}));
+      const def=irResolveDefaultSeasonId(seasons);
+      if(def) sel.value=def;
+      return String(sel.value||'');
     }
     function irMatchRotationMeta(match){
       const ann = gmAnnotateRotationTraining(match.home_rotation_code, match.away_rotation_code, gmCfg(), false);
@@ -7587,11 +7608,22 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function irFilterMatches(list){
       const season=(document.getElementById('irSeasonFilter')||{}).value||'';
+      const seasonSel=document.getElementById('irSeasonFilter');
+      const seasonLabel = (()=>{
+        if(!seasonSel || !seasonSel.selectedOptions || !seasonSel.selectedOptions[0]) return '';
+        const opt=seasonSel.selectedOptions[0];
+        return String(opt.getAttribute('data-season-label') || opt.textContent || '').trim();
+      })();
       const dFrom=(document.getElementById('irDateFrom')||{}).value||'';
       const dTo=(document.getElementById('irDateTo')||{}).value||'';
       const rot=(document.getElementById('irRotationFilter')||{}).value||'';
       return list.filter(m=>{
-        if(season && String(m.season_id||'')!==String(season)) return false;
+        if(season){
+          const mid=String(m.season_id||'');
+          const mlab=String(m.season_label||'').trim();
+          // Match by id OR by label (needed when "all leagues" shows one option per label).
+          if(mid!==String(season) && !(seasonLabel && mlab===seasonLabel)) return false;
+        }
         const d=String(m.match_date||'').slice(0,10);
         if(dFrom && d && d<dFrom) return false;
         if(dTo && d && d>dTo) return false;
@@ -8025,12 +8057,13 @@ bash scripts/update_and_serve.sh --start</div>
       const recipeActive = !!(sum.recipe && sum.recipe!=='full_pipeline');
       const leftTitle = recipeActive ? 'Recipe (L)' : 'Legacy (candidate)';
       const rightTitle = recipeActive ? 'Auto (контраст)' : 'Auto';
-      el.innerHTML = `<div class="ir-sum-row"><span>Всего матчей</span><span><b>${sum.n}</b></span></div>`
+      el.innerHTML = `<div class="ir-sum-row"><span>Inactive (оценка)</span><span><b>${sum.n}</b></span></div>`
+        + `<div class="ir-sum-row"><span>Active (обучение)</span><span><b>${sum.nActive!=null?sum.nActive:'—'}</b>${sum.nActiveExcluded?` <span class="small" style="font-weight:400">(+${sum.nActiveExcluded} без полной линии)</span>`:''}</span></div>`
         + (sum.recipe?`<div class="ir-sum-row"><span>Recipe</span><span>${escapeHtml(sum.recipe)}</span></div>`:'')
         + block(leftTitle, sum.legacy)
         + block(rightTitle, sum.auto)
         + (sum.mode==='compare' ? `<div class="ir-winner">Победитель (1X2+AH@mkt+OU@mkt): ${escapeHtml(sum.winner)}</div>` : '')
-        + `<div class="small" style="margin-top:8px;color:#94a3b8">AH/OU MAE — только кэфы на рыночной линии. Line MAE — отдельно. Ротация → training_weight при обучении. Конфиг: ${escapeHtml((GM_MATRIX_CFG&&GM_MATRIX_CFG.configSource)||'model_config.json')}</div>`;
+        + `<div class="small" style="margin-top:8px;color:#94a3b8">Inactive — матчи отчёта. Active — выборка обучения выбранного сезона. AH/OU MAE — кэфы на рыночной линии. Ротация → training_weight. Конфиг: ${escapeHtml((GM_MATRIX_CFG&&GM_MATRIX_CFG.configSource)||'model_config.json')}</div>`;
     }
     function irSetReportStatus(msg,isErr){
       const el=document.getElementById('irReportStatus');
@@ -8100,6 +8133,7 @@ bash scripts/update_and_serve.sh --start</div>
         if(irReportMode()==='compare'){ engines.legacy=true; engines.auto=true; engines.compare=true; }
       }
       const leagueFilter=(document.getElementById('irLeagueFilter')||{}).value||'';
+      const seasonFilter=irEnsureSeasonSelected();
       const useMargin=irUseMarginOn();
       const marginFrac=irParseMarginPct();
       const exportBtn=document.getElementById('irExportCsv');
@@ -8108,7 +8142,15 @@ bash scripts/update_and_serve.sh --start</div>
       irRenderSummary(null);
       const modeTxt=recipe?'Компоненты':(engines.compare?'Сравнение':(engines.legacy?'Legacy':'Auto'));
       const etalonTxt=useMargin?`эталон raw БД, маржа ${(marginFrac*100).toFixed(1)}%`:'эталон fair (de-vig), модель без маржи';
-      irSetReportStatus(`Загрузка неактивных матчей… (${modeTxt}; ${etalonTxt})`);
+      const seasonOpt=document.getElementById('irSeasonFilter');
+      const seasonLabel=seasonFilter && seasonOpt
+        ? ((seasonOpt.selectedOptions[0]&&seasonOpt.selectedOptions[0].textContent)||seasonFilter)
+        : (seasonFilter||IR_DEFAULT_SEASON_LABEL);
+      if(!seasonFilter){
+        irSetReportStatus('Выберите сезон для обучения (по умолчанию 2025-26).', true);
+        return;
+      }
+      irSetReportStatus(`Загрузка неактивных матчей… (${modeTxt}; сезон ${seasonLabel}; ${etalonTxt})`);
       irRenderReportTable([], (engines.compare||(engines.legacy&&engines.auto)||recipe)?IR_COMPARE_COLS:IR_SINGLE_COLS);
       await loadSupabaseConfig();
       if(!window.__SB.leagues||!window.__SB.leagues.length) await sbFetchLeaguesList();
@@ -8116,7 +8158,7 @@ bash scripts/update_and_serve.sh --start</div>
       let inactive=await irFetchInactiveMatches(leagueFilter||null);
       inactive=irFilterMatches(inactive);
       if(!inactive.length){
-        irSetReportStatus('Матчей не найдено (active=false + фильтры).', true);
+        irSetReportStatus(`Матчей не найдено (active=false + сезон ${seasonLabel} + фильтры).`, true);
         return;
       }
       const byLeague={};
@@ -8130,13 +8172,38 @@ bash scripts/update_and_serve.sh --start</div>
         return String(na).localeCompare(String(nb));
       });
       const out=[]; let skipped=0;
+      let nActiveTrain=0, nActiveFetched=0, nActiveExcluded=0;
       for(let li=0; li<leagueIds.length; li++){
         const leagueId=leagueIds[li];
         const leagueName=byLeague[leagueId][0].league_name||leagueId;
-        irSetReportStatus(`Лига ${li+1}/${leagueIds.length}: ${leagueName} — обучение…`);
-        const activeMatches=await irFetchActiveMatchesForLeague(leagueId);
+        irSetReportStatus(`Лига ${li+1}/${leagueIds.length}: ${leagueName} — обучение на сезоне ${seasonLabel}…`);
+        // Train ONLY on active matches of the selected season (not all league history).
+        const seasonIdForLeague = (()=>{
+          const wantLabel = String(seasonLabel||'').trim();
+          // Prefer this league's catalog entry with the same season_label (multi-league safe).
+          const cat=(window.__SB.seasons||[]).find(s=>
+            String(s.league_id)===String(leagueId) && String(s.season_label||'')===wantLabel);
+          if(cat) return String(cat.season_id);
+          if(seasonFilter && byLeague[leagueId].some(m=>String(m.season_id)===String(seasonFilter)))
+            return seasonFilter;
+          const fromInactive = byLeague[leagueId].find(m=>
+            wantLabel && String(m.season_label||'')===wantLabel && m.season_id!=null);
+          if(fromInactive) return String(fromInactive.season_id);
+          const byDefault=(window.__SB.seasons||[]).find(s=>
+            String(s.league_id)===String(leagueId) && String(s.season_label||'').includes(IR_DEFAULT_SEASON_LABEL));
+          if(byDefault) return String(byDefault.season_id);
+          return seasonFilter || '';
+        })();
+        if(!seasonIdForLeague){
+          skipped++;
+          continue;
+        }
+        const activeMatches=await irFetchActiveMatchesForLeague(leagueId, seasonIdForLeague);
+        nActiveFetched += (activeMatches&&activeMatches.length)||0;
         const ignoreRotation=!!(document.getElementById('irIgnoreRotation')||{}).checked;
         const parsed=goalMatchesToRaw(activeMatches, { ignoreRotation });
+        nActiveTrain += parsed.valid||0;
+        nActiveExcluded += parsed.excluded||0;
         let modelL=null, modelA=null;
         if(parsed.valid>=2){
           const seasonIds=[...new Set(parsed.raw.map(r=>r.seasonId).filter(s=>s!=null))];
@@ -8180,12 +8247,17 @@ bash scripts/update_and_serve.sh --start</div>
       } else if(irReportSummary && recipe){
         irReportSummary.recipe = irRecipeLabel(recipe);
       }
+      if(irReportSummary){
+        irReportSummary.nActive = nActiveTrain;
+        irReportSummary.nActiveFetched = nActiveFetched;
+        irReportSummary.nActiveExcluded = nActiveExcluded;
+      }
       irRenderSummary(irReportSummary);
       if(exportBtn) exportBtn.disabled=!irReportRows.length;
       const warn=skipped?`; ${skipped} лиг без обучения`:'';
       const sameNote=(engines.compare||recipe)?`; winner_AH/OU = odds @ market line`:'';
       const recipeNote=recipe?`; recipe ${irRecipeLabel(recipe)}; rotation weights in train`:'';
-      irSetReportStatus(`Готово: ${irReportRows.length} матч., режим ${modeTxt}; ${etalonTxt}; AH/OU кэфы на рыночной линии${sameNote}${recipeNote}${warn}`);
+      irSetReportStatus(`Готово: ${irReportRows.length} inactive / ${nActiveTrain} active (сезон ${seasonLabel}); режим ${modeTxt}; ${etalonTxt}; AH/OU кэфы на рыночной линии${sameNote}${recipeNote}${warn}`);
     }
     function irPopulateLeagueFilter(){
       const sel=document.getElementById('irLeagueFilter');
@@ -8204,8 +8276,25 @@ bash scripts/update_and_serve.sh --start</div>
       let seasons=window.__SB.seasons||[];
       if(leagueId) seasons=seasons.filter(s=>String(s.league_id)===String(leagueId));
       seasons=[...seasons].sort((a,b)=>String(b.season_label||'').localeCompare(String(a.season_label||'')));
-      sel.innerHTML='<option value="">Все сезоны</option>'+seasons.map(s=>`<option value="${escapeHtml(s.season_id)}">${escapeHtml(s.season_label||s.season_id)}</option>`).join('');
-      if(prev&&seasons.some(s=>String(s.season_id)===String(prev))) sel.value=prev;
+      // Deduplicate by season_label when "all leagues" — keep first id per label for the select,
+      // but training resolves per-league season_id by label.
+      const seenLabels=new Set();
+      const opts=[];
+      for(const s of seasons){
+        const lab=String(s.season_label||s.season_id||'');
+        if(!leagueId){
+          if(seenLabels.has(lab)) continue;
+          seenLabels.add(lab);
+        }
+        opts.push(s);
+      }
+      sel.innerHTML='<option value="">Все сезоны</option>'+opts.map(s=>`<option value="${escapeHtml(s.season_id)}" data-season-label="${escapeHtml(s.season_label||'')}">${escapeHtml(s.season_label||s.season_id)}</option>`).join('');
+      if(prev&&opts.some(s=>String(s.season_id)===String(prev))){
+        sel.value=prev;
+      } else {
+        const def=irResolveDefaultSeasonId(opts);
+        if(def) sel.value=def;
+      }
     }
     async function irInitReportTab(){
       try{
