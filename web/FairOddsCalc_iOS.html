@@ -931,6 +931,24 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <input id="goalDerby" type="checkbox" style="width:auto;margin-top:2px" />
           <span><span class="small">Дерби</span><span class="hint" style="display:block">Снижает домашнее преимущество H (оценивается по истории дерби в обучении).</span></span>
         </label>
+        <div class="field" style="min-width:150px">
+          <label>Ротация хозяев</label>
+          <select id="goalPredHomeRot">
+            <option value="none" selected>Нет</option>
+            <option value="middle">Умеренная</option>
+            <option value="high">Сильная</option>
+          </select>
+          <span class="hint" style="display:block">Для предупреждения; на кэфы не влияет.</span>
+        </div>
+        <div class="field" style="min-width:150px">
+          <label>Ротация гостей</label>
+          <select id="goalPredAwayRot">
+            <option value="none" selected>Нет</option>
+            <option value="middle">Умеренная</option>
+            <option value="high">Сильная</option>
+          </select>
+          <span class="hint" style="display:block">Для предупреждения; на кэфы не влияет.</span>
+        </div>
         <label style="display:flex;align-items:flex-start;gap:6px;">
           <input id="goalMargin" type="checkbox" style="width:auto;margin-top:2px" />
           <span><span class="small">Маржа %</span><span class="hint" style="display:block">Вкл → кэфы с заданной маржой (как у бука). Выкл → честные (сумма вероятностей 100%).</span></span>
@@ -1145,9 +1163,25 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <label>Дата до</label>
               <input id="irDateTo" type="date" />
             </div>
+            <div class="field" style="min-width:180px">
+              <label>Ротация</label>
+              <select id="irRotationFilter">
+                <option value="">Все матчи</option>
+                <option value="none">Без ротации</option>
+                <option value="middle">Умеренная ротация</option>
+                <option value="high">Сильная ротация</option>
+                <option value="home">Ротация хозяев</option>
+                <option value="away">Ротация гостей</option>
+                <option value="both">Ротация обеих команд</option>
+              </select>
+            </div>
             <label class="ir-mode-row" style="margin:0;padding-bottom:2px">
               <input type="checkbox" id="irUseMargin" />
               <span>Маржа %</span>
+            </label>
+            <label class="ir-mode-row" style="margin:0;padding-bottom:2px" title="Если вкл — training_weight=1 для всех матчей (игнор ротации при обучении)">
+              <input type="checkbox" id="irIgnoreRotation" />
+              <span>Без учёта ротации</span>
             </label>
             <div class="field" style="max-width:90px">
               <label>%</label>
@@ -3245,6 +3279,12 @@ bash scripts/update_and_serve.sh --start</div>
         useDrawModel: !!L.useDrawModel,
         legacy: L,
         train: t,
+        rotationTrainingWeights: Object.assign(
+          { none: 1.0, middle: 0.7, high: 0.0 },
+          (raw.rotationTrainingWeights && typeof raw.rotationTrainingWeights === 'object')
+            ? raw.rotationTrainingWeights
+            : ((t.rotationTrainingWeights && typeof t.rotationTrainingWeights === 'object') ? t.rotationTrainingWeights : {})
+        ),
         compare: raw.compare || {},
         configSource: 'model_config.json',
       });
@@ -3562,11 +3602,85 @@ bash scripts/update_and_serve.sh --start</div>
       return out;
     }
     */
+    const GM_ROTATION_WEIGHT_DEFAULTS = { none: 1.0, middle: 0.7, high: 0.0 };
+    function gmRotationTrainingWeights(cfg){
+      const src = (cfg && cfg.rotationTrainingWeights)
+        || (GM_MATRIX_CFG && GM_MATRIX_CFG.rotationTrainingWeights)
+        || (GM_MODEL_CFG && GM_MODEL_CFG.rotationTrainingWeights)
+        || GM_ROTATION_WEIGHT_DEFAULTS;
+      return {
+        none: Number(src.none != null ? src.none : 1.0),
+        middle: Number(src.middle != null ? src.middle : 0.7),
+        high: Number(src.high != null ? src.high : 0.0),
+      };
+    }
+    function gmNormalizeRotCode(code, logUnknown){
+      if (code == null || String(code).trim() === '') return 'none';
+      const raw = String(code).trim().toLowerCase();
+      if (raw === 'none' || raw === 'middle' || raw === 'high') return raw;
+      if (logUnknown) console.warn('Unknown rotation code', code, '→ none');
+      return 'none';
+    }
+    function gmTrainingWeightForRotation(homeCode, awayCode, cfg, logUnknown){
+      const w = gmRotationTrainingWeights(cfg);
+      const h = gmNormalizeRotCode(homeCode, logUnknown);
+      const a = gmNormalizeRotCode(awayCode, logUnknown);
+      return Math.min(w[h] != null ? w[h] : 1.0, w[a] != null ? w[a] : 1.0);
+    }
+    function gmRotationReason(homeCode, awayCode){
+      const h = gmNormalizeRotCode(homeCode);
+      const a = gmNormalizeRotCode(awayCode);
+      if (h === 'high' && a === 'high') return 'high_both';
+      if (h === 'high') return 'high_home';
+      if (a === 'high') return 'high_away';
+      if (h === 'middle' && a === 'middle') return 'middle_both';
+      if (h === 'middle') return 'middle_home';
+      if (a === 'middle') return 'middle_away';
+      return 'none';
+    }
+    function gmTrainingStatus(tw){
+      const w = Number(tw);
+      if (!(w > 1e-12)) return 'excluded';
+      if (w < 1 - 1e-12) return 'reduced';
+      return 'full';
+    }
+    function gmAnnotateRotationTraining(homeCode, awayCode, cfg, logUnknown){
+      const homeRot = gmNormalizeRotCode(homeCode, logUnknown);
+      const awayRot = gmNormalizeRotCode(awayCode, logUnknown);
+      const trainingWeight = gmTrainingWeightForRotation(homeRot, awayRot, cfg, false);
+      return {
+        homeRot, awayRot,
+        trainingWeight,
+        trainingStatus: gmTrainingStatus(trainingWeight),
+        rotationReason: gmRotationReason(homeRot, awayRot),
+      };
+    }
+    function gmSummarizeRotationTraining(rawRows, cfg){
+      const reasons = { high_home:0, high_away:0, high_both:0, middle_home:0, middle_away:0, middle_both:0, none:0 };
+      let full=0, reduced=0, excluded=0, effective=0;
+      (rawRows||[]).forEach(r => {
+        const ann = (r.trainingWeight != null)
+          ? { trainingWeight:r.trainingWeight, trainingStatus:r.trainingStatus||gmTrainingStatus(r.trainingWeight), rotationReason:r.rotationReason||gmRotationReason(r.homeRot,r.awayRot) }
+          : gmAnnotateRotationTraining(r.homeRot, r.awayRot, cfg||gmCfg(), false);
+        const tw = Number(ann.trainingWeight);
+        effective += tw;
+        const st = ann.trainingStatus || gmTrainingStatus(tw);
+        if (st === 'full') full++;
+        else if (st === 'reduced') reduced++;
+        else excluded++;
+        const reason = ann.rotationReason || 'none';
+        if (reasons[reason] != null) reasons[reason]++;
+      });
+      return { total:(rawRows||[]).length, full, reduced, excluded, effective, reasons };
+    }
     function gmMatchWeight(r, cfg){
       const wq = r.mw != null ? r.mw : 1.0;
       const wn = r.neu ? (r.neuw != null ? r.neuw : 1.0) : 1.0;
       const ws = gmSeasonWeight(r, cfg);
-      return ws * wq * wn;
+      const wr = (r.trainingWeight != null)
+        ? Number(r.trainingWeight)
+        : gmTrainingWeightForRotation(r.homeRot, r.awayRot, cfg, false);
+      return ws * wq * wn * (isFinite(wr) ? wr : 1.0);
     }
     function gmPrepare(raw,cfg){
       const ms=[];
@@ -3588,7 +3702,8 @@ bash scripts/update_and_serve.sh --start</div>
         }
         ms.push(m);
       }
-      const sv=ms.filter(m=>m.S!=null).map(m=>m.S);
+      // Exclude weight-0 (strong rotation) from S mean used for OU line weights
+      const sv=ms.filter(m=>m.S!=null && m.wBase>1e-12).map(m=>m.S);
       const sMean=sv.length?sv.reduce((a,b)=>a+b,0)/sv.length:0;
       for(const m of ms){ if(m.S==null) continue; const w=1/(1+cfg.alphaT*Math.pow(m.S-sMean,2)); m.wLineT=Math.min(1,Math.max(0.3,w)); }
       return ms;
@@ -4591,7 +4706,8 @@ bash scripts/update_and_serve.sh --start</div>
         qmin:0.95, qmax:1.05,
         qResMin:0.98, qResMax:1.03,
         sCalMode:'off',
-        sCalMaxDelta:0.15, gammaMax:0.20 };
+        sCalMaxDelta:0.15, gammaMax:0.20,
+        rotationTrainingWeights: gmRotationTrainingWeights(GM_MATRIX_CFG || GM_MODEL_CFG || {}) };
     }
     function gmSeasonWeight(rec, cfg){
       const def = cfg.seasonDefault != null ? cfg.seasonDefault : 1.0;
@@ -4879,8 +4995,8 @@ bash scripts/update_and_serve.sh --start</div>
       { col:'derby', label:'Дерби', hint:'факт дерби (да→1, нет→0 в БД); вес H считается при обучении' },
       { col:'match_w', label:'Вес матча', hint:'общий множитель важности матча' },
       { col:'neutr_w', label:'Нейтр. вес', hint:'коэфф. ослабления при обучении; только если «Нейтральное поле» = да' },
-      { col:'home_rot', label:'Ротация хозяев', hint:'уровень ротации состава хозяев (не влияет на модель)' },
-      { col:'away_rot', label:'Ротация гостей', hint:'уровень ротации состава гостей (не влияет на модель)' },
+      { col:'home_rot', label:'Ротация хозяев', hint:'уровень ротации; при обучении влияет на training_weight (high→0, middle→0.7)' },
+      { col:'away_rot', label:'Ротация гостей', hint:'уровень ротации; при обучении влияет на training_weight (high→0, middle→0.7)' },
       { col:'source', label:'Источник', hint:'источник closing-линии (по умолчанию Pinnacle)' },
       { col:'motivation', label:'Мотивация', hint:'флаг мотивации да/нет (не влияет на модель)' },
     ];
@@ -5871,6 +5987,7 @@ bash scripts/update_and_serve.sh --start</div>
       });
       const derbyN = goalLoadedRaw.filter(r => r.der).length;
       const neuN = goalLoadedRaw.filter(r => r.neu).length;
+      const rotSum = gmSummarizeRotationTraining(goalLoadedRaw, cfg);
       const rows = [
         ['Лига', escapeHtml(meta.leagueName || ''), ''],
         ['Сезоны', escapeHtml((meta.seasonLabels || []).join(', ')), ''],
@@ -5879,6 +5996,10 @@ bash scripts/update_and_serve.sh --start</div>
         ['Загружено из БД', escapeHtml(goalFmtTrainDt(goalTrainState.loadedAt)), ''],
         ['Дерби в выборке', String(derbyN), 'num'],
         ['Нейтральных матчей', String(neuN), 'num'],
+        ['Ротация: полный вес', String(rotSum.full), 'num'],
+        ['Ротация: пониженный вес', String(rotSum.reduced), 'num'],
+        ['Ротация: исключено (вес 0)', String(rotSum.excluded), 'num'],
+        ['Эффективный размер выборки', `<b>${goalFmtTrainNum(rotSum.effective, 1)}</b> <span class="small">(Σ training_weight)</span>`, 'num'],
         ['Inactive для контроля', `${meta.inactiveValid || 0}${meta.inactiveTotal ? ` из ${meta.inactiveTotal}` : ''}`, 'num'],
         ['Подпись данных', `<code>${escapeHtml(goalComputeDataSignature(goalLoadedRaw))}</code>`, ''],
       ];
@@ -5891,6 +6012,14 @@ bash scripts/update_and_serve.sh --start</div>
         html += '<div class="small" style="margin-top:8px;font-weight:600">Веса сезонов</div>'
           + goalRenderTrainTable(seasonRows.map(([a,b]) => [a, b, 'num']));
       }
+      const rr = rotSum.reasons || {};
+      html += '<div class="small" style="margin-top:8px;font-weight:600">Ротация составов (training_weight)</div>'
+        + goalRenderTrainTable([
+          ['Сильная хоз / гост / обе', `${rr.high_home||0} / ${rr.high_away||0} / ${rr.high_both||0}`, 'num'],
+          ['Умеренная хоз / гост / обе', `${rr.middle_home||0} / ${rr.middle_away||0} / ${rr.middle_both||0}`, 'num'],
+          ['Без ротации', String(rr.none||0), 'num'],
+          ['Веса из конфига', `none=${goalFmtTrainNum(gmRotationTrainingWeights(cfg).none,2)}, middle=${goalFmtTrainNum(gmRotationTrainingWeights(cfg).middle,2)}, high=${goalFmtTrainNum(gmRotationTrainingWeights(cfg).high,2)}`, ''],
+        ]);
       html += '<div class="small" style="margin-top:8px;font-weight:600">Параметры обучения</div>'
         + goalRenderTrainTable([
           ['Режим модели', 'Auto', ''],
@@ -6129,6 +6258,9 @@ bash scripts/update_and_serve.sh --start</div>
     function goalDbMatchToRaw(m){
       const homeName = String(m.home_team || '').trim();
       const awayName = String(m.away_team || '').trim();
+      const homeRot = gmNormalizeRotCode(m.home_rotation_code, true);
+      const awayRot = gmNormalizeRotCode(m.away_rotation_code, true);
+      const rot = gmAnnotateRotationTraining(homeRot, awayRot, gmCfg(), false);
       return {
         date: m.match_date || '',
         homeId: gmTeamKey(m.home_team_id, homeName),
@@ -6150,6 +6282,11 @@ bash scripts/update_and_serve.sh --start</div>
         der: sbIsDerby(m),
         derw: sbIsDerby(m) ? DERBY_FLAG_YES : DERBY_FLAG_NO,
         neuw: gmF(m.neutral_weight) != null ? gmF(m.neutral_weight) : 1.0,
+        homeRot: rot.homeRot,
+        awayRot: rot.awayRot,
+        trainingWeight: rot.trainingWeight,
+        trainingStatus: rot.trainingStatus,
+        rotationReason: rot.rotationReason,
         seasonId: m.season_id,
         seasonLabel: m.season_label || '',
         matchId: m.match_id,
@@ -6163,12 +6300,18 @@ bash scripts/update_and_serve.sh --start</div>
         && r.ovr != null && r.und != null);
     }
 
-    function goalMatchesToRaw(matches){
+    function goalMatchesToRaw(matches, opts){
+      const ignoreRotation = !!(opts && opts.ignoreRotation);
       const total = matches.length;
       const raw = [];
       let excluded = 0;
       matches.forEach(m => {
         const r = goalDbMatchToRaw(m);
+        if (ignoreRotation){
+          r.trainingWeight = 1;
+          r.trainingStatus = 'full';
+          r.rotationReason = 'none';
+        }
         if (!goalRawHasFullLine(r)){ excluded++; return; }
         raw.push(r);
       });
@@ -6468,7 +6611,13 @@ bash scripts/update_and_serve.sh --start</div>
         } catch (cmpErr){
           console.warn('inactive compare', cmpErr);
         }
-        const {html,summary}=gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch);
+        const homeRot = gmNormalizeRotCode((document.getElementById('goalPredHomeRot')||{}).value||'none');
+        const awayRot = gmNormalizeRotCode((document.getElementById('goalPredAwayRot')||{}).value||'none');
+        let rotationWarn = null;
+        if (homeRot === 'high' || awayRot === 'high'){
+          rotationWarn = 'У одной из команд указана сильная ротация. Модель не применяет отдельную поправку на текущий состав. Надежность расчета снижена.';
+        }
+        const {html,summary}=gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch,rotationWarn);
         const outEl=document.getElementById('goalOut');
         outEl.classList.remove('goal-predict-out--empty');
         outEl.innerHTML=html;
@@ -6610,7 +6759,7 @@ bash scripts/update_and_serve.sh --start</div>
           ${marginRows}
         </div>`;
     }
-    function gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch=null){
+    function gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch=null,rotationWarn=null){
       const mk=pred.markets;
       const k1x2=()=> useM&&mg>0?[1/(mk.p1*(1+mg)),1/(mk.px*(1+mg)),1/(mk.p2*(1+mg))]:[1/mk.p1,1/mk.px,1/mk.p2];
       const k2=(pa,pb,ka,kb)=> useM&&mg>0?[1/(pa*(1+mg)),1/(pb*(1+mg))]:[ka,kb];
@@ -6620,6 +6769,9 @@ bash scripts/update_and_serve.sh --start</div>
       const a=mk.mainAh, [ah,aa]=k2(1/a.home,1/a.away,a.home,a.away);
       const ahLine=`${a.line>=0?'+':''}${a.line}`;
       const title=`${escapeHtml(home)} — ${escapeHtml(away)}${neutral?' <span class="goal-predict-tag">нейтраль</span>':''}`;
+      const warnHtml = rotationWarn
+        ? `<div class="goal-predict-compare-note" style="margin:8px 0;padding:8px 10px;border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:8px">${escapeHtml(rotationWarn)}</div>`
+        : '';
       const meta=[
         `<span>λ<sub>h</sub> ${pred.lh.toFixed(3)}</span>`,
         `<span>λ<sub>a</sub> ${pred.la.toFixed(3)}</span>`,
@@ -6694,6 +6846,7 @@ bash scripts/update_and_serve.sh --start</div>
           <div class="goal-predict-meta">${meta}</div>
           ${drawLine}
         </div>
+        ${warnHtml}
         ${compareBlock}
         ${x1x2}
         ${mainMarkets}
@@ -6712,6 +6865,7 @@ bash scripts/update_and_serve.sh --start</div>
 
     const IR_COMPARE_COLS = [
       'Дата','Лига','Дома','Гости','etalon_layer','engine_L','engine_A',
+      'home_rotation_code','away_rotation_code','training_weight','training_status','rotation_reason',
       // 1X2 market / models / deltas
       '1','X','2',
       '1_L','X_L','2_L',
@@ -6735,6 +6889,7 @@ bash scripts/update_and_serve.sh --start</div>
     ];
     const IR_SINGLE_COLS = [
       'Дата','Лига','Дома','Гости','calc_model','etalon_layer',
+      'home_rotation_code','away_rotation_code','training_weight','training_status','rotation_reason',
       '1','X','2','AH1','AH_market','AH2','O','Total_market','U',
       '1_pr','X_pr','2_pr',
       'AH1_at_market','AH_main','AH2_at_market','AH_line_delta',
@@ -6748,6 +6903,7 @@ bash scripts/update_and_serve.sh --start</div>
     const IR_TEXT_COLS = new Set([
       'Дата','Лига','Дома','Гости','calc_model','selected_distribution','etalon_layer',
       'engine_L','engine_A',
+      'home_rotation_code','away_rotation_code','training_status','rotation_reason',
       'same_ah_L','same_ah_A','same_tot_L','same_tot_A','same_ah','same_tot',
       'winner_1x2','winner_AH','winner_OU','winner_AH_line','winner_OU_line','winner_row',
     ]);
@@ -6855,6 +7011,7 @@ bash scripts/update_and_serve.sh --start</div>
         fitGamma: legacy ? ((Ldc.fitGamma != null ? Ldc.fitGamma : L.fitGamma) !== false) : false,
         fixedDcGamma: irPickNum(Ldc, 'gamma', irPickNum(L, 'dcGamma', 0)),
         irEngine: legacy ? 'legacy' : 'auto',
+        rotationTrainingWeights: gmRotationTrainingWeights(Object.assign({}, GM_MATRIX_CFG||{}, Tshared, T)),
       };
     }
     function irCalibrateLegacy(ms, st, gl, cfg){
@@ -7110,15 +7267,39 @@ bash scripts/update_and_serve.sh --start</div>
       const q=`select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&active=eq.true&order=match_date.asc`;
       return irFetchPagedMatches(q);
     }
+    function irMatchRotationMeta(match){
+      const ann = gmAnnotateRotationTraining(match.home_rotation_code, match.away_rotation_code, gmCfg(), false);
+      return {
+        home_rotation_code: ann.homeRot,
+        away_rotation_code: ann.awayRot,
+        training_weight: ann.trainingWeight,
+        training_status: ann.trainingStatus,
+        rotation_reason: ann.rotationReason,
+      };
+    }
     function irFilterMatches(list){
       const season=(document.getElementById('irSeasonFilter')||{}).value||'';
       const dFrom=(document.getElementById('irDateFrom')||{}).value||'';
       const dTo=(document.getElementById('irDateTo')||{}).value||'';
+      const rot=(document.getElementById('irRotationFilter')||{}).value||'';
       return list.filter(m=>{
         if(season && String(m.season_id||'')!==String(season)) return false;
         const d=String(m.match_date||'').slice(0,10);
         if(dFrom && d && d<dFrom) return false;
         if(dTo && d && d>dTo) return false;
+        if(rot){
+          const meta=irMatchRotationMeta(m);
+          const h=meta.home_rotation_code, a=meta.away_rotation_code;
+          if(rot==='none' && !(h==='none' && a==='none')) return false;
+          if(rot==='middle'){
+            if(h==='high' || a==='high') return false;
+            if(!(h==='middle' || a==='middle')) return false;
+          }
+          if(rot==='high' && !(h==='high' || a==='high')) return false;
+          if(rot==='home' && h==='none') return false;
+          if(rot==='away' && a==='none') return false;
+          if(rot==='both' && (h==='none' || a==='none')) return false;
+        }
         return true;
       });
     }
@@ -7136,11 +7317,17 @@ bash scripts/update_and_serve.sh --start</div>
       // useMargin=true → эталон raw как в БД; false → Shin/fair de-vig (без маржи бука).
       const ahLine=gmF(m.closing_ah_home);
       const totLine=gmF(m.closing_total_line);
+      const rot=irMatchRotationMeta(m);
       const meta={
         Дата:m.match_date||'', Лига:m.league_name||sbLeagueName(m.league_id)||'',
         Дома:m.home_team||'', Гости:m.away_team||'',
         AH_market:ahLine, Total_market:totLine,
         etalon_layer: useMargin ? 'raw_db' : 'fair_devig',
+        home_rotation_code: rot.home_rotation_code,
+        away_rotation_code: rot.away_rotation_code,
+        training_weight: rot.training_weight,
+        training_status: rot.training_status,
+        rotation_reason: rot.rotation_reason,
       };
       const raw1=gmF(m.home_odds), rawX=gmF(m.draw_odds), raw2=gmF(m.away_odds);
       const rawAh1=gmF(m.ah_home_odds), rawAh2=gmF(m.ah_away_odds);
@@ -7551,7 +7738,8 @@ bash scripts/update_and_serve.sh --start</div>
         const leagueName=byLeague[leagueId][0].league_name||leagueId;
         irSetReportStatus(`Лига ${li+1}/${leagueIds.length}: ${leagueName} — обучение…`);
         const activeMatches=await irFetchActiveMatchesForLeague(leagueId);
-        const parsed=goalMatchesToRaw(activeMatches);
+        const ignoreRotation=!!(document.getElementById('irIgnoreRotation')||{}).checked;
+        const parsed=goalMatchesToRaw(activeMatches, { ignoreRotation });
         let modelL=null, modelA=null;
         if(parsed.valid>=2){
           const seasonIds=[...new Set(parsed.raw.map(r=>r.seasonId).filter(s=>s!=null))];

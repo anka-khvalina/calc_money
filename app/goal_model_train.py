@@ -26,9 +26,21 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 try:
     from . import goal_model as gm
     from . import team_ranking as tr
+    from .rotation_training import (
+        DEFAULT_ROTATION_TRAINING_WEIGHTS,
+        annotate_rotation_training,
+        normalize_rotation_code,
+        training_weight_for_rotation,
+    )
 except ImportError:  # pragma: no cover
     import goal_model as gm
     import team_ranking as tr
+    from rotation_training import (
+        DEFAULT_ROTATION_TRAINING_WEIGHTS,
+        annotate_rotation_training,
+        normalize_rotation_code,
+        training_weight_for_rotation,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -116,6 +128,11 @@ class ModelConfig:
     reg_lambda_attack: float = 0.10    # λ_A на attack
     reg_lambda_defense: float = 0.10     # λ_Df на defense
 
+    # ротация составов → training_weight (none/middle/high)
+    rotation_training_weights: Dict[str, float] = field(
+        default_factory=lambda: dict(DEFAULT_ROTATION_TRAINING_WEIGHTS)
+    )
+
 
 # --------------------------------------------------------------------------- #
 # Историческая запись матча
@@ -154,6 +171,8 @@ class RawMatch:
     quality_match_weight: Optional[float] = None
     derby_match_weight: Optional[float] = None
     neutral_match_weight: Optional[float] = None
+    home_rotation_code: str = "none"
+    away_rotation_code: str = "none"
 
 
 _CSV_ALIASES: Dict[str, str] = {
@@ -178,6 +197,8 @@ _CSV_ALIASES: Dict[str, str] = {
     "value": "value", "quality_value": "value", "quality_weight": "value",
     "derby_weight": "derby_weight", "derby_value": "derby_weight",
     "neutral_weight": "neutral_weight", "neutral_value": "neutral_weight",
+    "home_rotation_code": "home_rotation_code", "home_rot": "home_rotation_code",
+    "away_rotation_code": "away_rotation_code", "away_rot": "away_rotation_code",
 }
 
 
@@ -255,6 +276,8 @@ def parse_raw_matches(text: str) -> List["RawMatch"]:
             quality_match_weight=_to_float(rec.get("value")),
             derby_match_weight=_to_float(rec.get("derby_weight")),
             neutral_match_weight=_to_float(rec.get("neutral_weight")),
+            home_rotation_code=normalize_rotation_code(rec.get("home_rotation_code"), log_unknown=True),
+            away_rotation_code=normalize_rotation_code(rec.get("away_rotation_code"), log_unknown=True),
         ))
     return out
 
@@ -365,7 +388,12 @@ def base_weight(m: RawMatch, cfg: ModelConfig) -> float:
     w_s = season_weight(m.date, cfg)
     w_m = 1.0 if m.quality_match_weight is None else m.quality_match_weight
     w_n = _neutral_weight_mult(m)
-    return w_s * w_m * w_n
+    w_r = training_weight_for_rotation(
+        m.home_rotation_code,
+        m.away_rotation_code,
+        getattr(cfg, "rotation_training_weights", None),
+    )
+    return w_s * w_m * w_n * w_r
 
 
 # --------------------------------------------------------------------------- #

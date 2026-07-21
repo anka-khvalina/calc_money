@@ -124,6 +124,11 @@
     "sCalMode": "off",
     "derbyHDefault": 0.7
   },
+  "rotationTrainingWeights": {
+    "none": 1.0,
+    "middle": 0.7,
+    "high": 0.0
+  },
   "compare": {
     "defaultMode": "compare",
     "defaultMarginPct": 3,
