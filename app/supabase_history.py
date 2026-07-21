@@ -765,63 +765,9 @@ _MATCH_VIEW_SELECT = (
     "closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,"
     "over_odds,under_odds,home_odds,draw_odds,away_odds,"
     "is_neutral,match_weight,derby_weight,neutral_weight,"
+    "home_rotation_code,away_rotation_code,"
     "motivation,active,note"
 )
-_ROTATION_ENRICH_CHUNK = 150
-
-
-def _fetch_rotation_map(match_ids: List[int]) -> Dict[int, Dict[str, str]]:
-    """Ротация хранится в matches, но может отсутствовать в v_matches_full."""
-    out: Dict[int, Dict[str, str]] = {}
-    if not match_ids:
-        return out
-    unique = sorted({int(mid) for mid in match_ids})
-    for i in range(0, len(unique), _ROTATION_ENRICH_CHUNK):
-        chunk = unique[i : i + _ROTATION_ENRICH_CHUNK]
-        id_list = ",".join(str(mid) for mid in chunk)
-        q = urllib.parse.urlencode(
-            {
-                "select": "id,home_rotation_code,away_rotation_code",
-                "id": f"in.({id_list})",
-            }
-        )
-        try:
-            rows = _request("GET", f"/matches?{q}")
-        except SupabaseError:
-            continue
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            try:
-                mid = int(row["id"])
-            except (KeyError, TypeError, ValueError):
-                continue
-            out[mid] = {
-                "home_rotation_code": normalize_rotation_code(row.get("home_rotation_code")),
-                "away_rotation_code": normalize_rotation_code(row.get("away_rotation_code")),
-            }
-    return out
-
-
-def _enrich_match_rows_with_rotation(rows: List[dict]) -> None:
-    ids = [int(row["match_id"]) for row in rows if isinstance(row, dict) and row.get("match_id") is not None]
-    rot_map = _fetch_rotation_map(ids)
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        try:
-            mid = int(row["match_id"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        rot = rot_map.get(mid)
-        if not rot:
-            continue
-        row["home_rotation_code"] = rot["home_rotation_code"]
-        row["away_rotation_code"] = rot["away_rotation_code"]
-        row["home_rotation_name"] = rotation_label(rot["home_rotation_code"])
-        row["away_rotation_name"] = rotation_label(rot["away_rotation_code"])
 
 
 def fetch_active_match_counts(league_id: str) -> Dict[int, int]:
@@ -873,7 +819,6 @@ def fetch_matches(
     rows = _request("GET", f"/v_matches_full?{q}")
     if not isinstance(rows, list):
         raise SupabaseError("Некорректный ответ v_matches_full")
-    _enrich_match_rows_with_rotation(rows)
     out: List[MatchFull] = []
     for row in rows:
         ent = _parse_match_row(row)

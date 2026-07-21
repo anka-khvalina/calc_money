@@ -177,7 +177,9 @@ home_rotation_code, away_rotation_code,
 note, motivation, active
 ```
 
-Справочник уровней ротации: таблица `match_rotation_levels` (коды `none` / `middle` / `high`). В PATCH и БД — только код; на UI — `name_ru` из view или справочника.
+Справочник уровней ротации: таблица `match_rotation_levels` (коды `none` / `middle` / `high`).
+Чтение: `v_matches_full.home_rotation_code` / `away_rotation_code`.
+Запись: PATCH в `matches` — только код; на UI — `name_ru` из справочника.
 
 ### Валидация PATCH
 

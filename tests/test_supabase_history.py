@@ -120,16 +120,15 @@ def test_fetch_matches_filters_by_league_and_season():
                 "match_weight": 1,
                 "derby_weight": 1,
                 "neutral_weight": 1,
+                "home_rotation_code": "middle",
+                "away_rotation_code": "none",
                 "note": None,
                 "motivation": True,
                 "active": True,
             }
         ]
     ).encode()
-    rot_payload = json.dumps(
-        [{"id": 1, "home_rotation_code": "middle", "away_rotation_code": "none"}]
-    ).encode()
-    responses = [view_payload, rot_payload]
+    responses = [view_payload]
     urls: list[str] = []
 
     def _side_effect(req, *args, **kwargs):
@@ -140,6 +139,8 @@ def test_fetch_matches_filters_by_league_and_season():
     with patch("urllib.request.urlopen", side_effect=_side_effect):
         matches = sbh.fetch_matches("uuid-1", 4)
     assert any("league_id=eq.uuid-1" in url for url in urls)
+    assert any("home_rotation_code" in url for url in urls)
+    assert not any("/matches?" in url and "home_rotation_code" in url and "v_matches_full" not in url for url in urls)
     assert not any("active=eq.true" in url for url in urls)
     assert any("season_id=eq.4" in url for url in urls)
     assert matches[0].home_team == "Liverpool"
@@ -330,7 +331,7 @@ def test_parse_motivation_row():
     assert sbh._parse_motivation_row({"motivation": None}) is None
 
 
-def test_fetch_rotation_enrichment():
+def test_fetch_rotation_from_view():
     view_payload = json.dumps(
         [
             {
@@ -357,23 +358,25 @@ def test_fetch_rotation_enrichment():
                 "match_weight": 1.0,
                 "derby_weight": 0.0,
                 "neutral_weight": 1.0,
+                "home_rotation_code": "high",
+                "away_rotation_code": "none",
                 "note": None,
                 "motivation": True,
             }
         ]
     ).encode()
-    rot_payload = json.dumps(
-        [{"id": 10, "home_rotation_code": "high", "away_rotation_code": "none"}]
-    ).encode()
-    responses = [view_payload, rot_payload]
+    urls: list[str] = []
 
     def _side_effect(req, *args, **kwargs):
         url = getattr(req, "full_url", None) or req.get_full_url()
-        body = responses.pop(0)
-        return _mock_urlopen(body)
+        urls.append(url)
+        return _mock_urlopen(view_payload)
 
     with patch("urllib.request.urlopen", side_effect=_side_effect):
         matches = sbh.fetch_matches("uuid-1", 4)
+    assert len(urls) == 1
+    assert "v_matches_full" in urls[0]
+    assert "home_rotation_code" in urls[0]
     assert matches[0].home_rotation_code == "high"
     assert matches[0].away_rotation_code == "none"
 
@@ -430,15 +433,14 @@ def test_fetch_matches_active_only_filter():
                 "match_weight": 1,
                 "derby_weight": 1,
                 "neutral_weight": 1,
+                "home_rotation_code": "none",
+                "away_rotation_code": "none",
                 "note": None,
                 "motivation": True,
             }
         ]
     ).encode()
-    rot_payload = json.dumps(
-        [{"id": 1, "home_rotation_code": "none", "away_rotation_code": "none"}]
-    ).encode()
-    responses = [view_payload, rot_payload]
+    responses = [view_payload]
     urls: list[str] = []
 
     def _side_effect(req, *args, **kwargs):
@@ -449,3 +451,4 @@ def test_fetch_matches_active_only_filter():
     with patch("urllib.request.urlopen", side_effect=_side_effect):
         sbh.fetch_matches("uuid-1", 4, active_only=True)
     assert any("active=eq.true" in url for url in urls)
+    assert any("home_rotation_code" in url for url in urls)
