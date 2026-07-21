@@ -3304,6 +3304,18 @@ bash scripts/update_and_serve.sh --start</div>
       vppWeight: 0.15,
       useDixonColes: false,
       useDrawModel: false,
+      auto1x2Calib: {
+        enabled: true,
+        recalibrateSdWithMatrix: true,
+        refineAlphaRho: true,
+        w1x2: 1.0,
+        wAh: 0.35,
+        wOu: 0.25,
+        drawLoss: 2.0,
+        ahOuDegradeMaxPct: 5.0,
+        require1x2Improve: true,
+        requireBiasReduce: true,
+      },
     };
     function gmFlattenModelConfig(raw){
       if(!raw || typeof raw !== 'object') return;
@@ -3313,6 +3325,13 @@ bash scripts/update_and_serve.sh --start</div>
       const c = raw.copula || {};
       const L = raw.legacy || {};
       const t = raw.train || {};
+      const autoBlock = raw.auto || {};
+      const a1x2 = Object.assign(
+        {},
+        GM_MATRIX_CFG.auto1x2Calib || {},
+        (raw.auto1x2Calib && typeof raw.auto1x2Calib === 'object') ? raw.auto1x2Calib : {},
+        (autoBlock.auto1x2Calib && typeof autoBlock.auto1x2Calib === 'object') ? autoBlock.auto1x2Calib : {}
+      );
       GM_MATRIX_CFG = Object.assign({}, GM_MATRIX_CFG, {
         maxGoals: m.maxGoals != null ? m.maxGoals : GM_MATRIX_CFG.maxGoals,
         tailEpsilon: m.tailEpsilon != null ? m.tailEpsilon : GM_MATRIX_CFG.tailEpsilon,
@@ -3328,6 +3347,8 @@ bash scripts/update_and_serve.sh --start</div>
         useDrawModel: !!((L.drawModel && L.drawModel.enabled != null) ? L.drawModel.enabled : L.useDrawModel),
         legacy: L,
         train: t,
+        auto: autoBlock,
+        auto1x2Calib: a1x2,
         rotationTrainingWeights: Object.assign(
           { none: 1.0, middle: 0.7, high: 0.0 },
           (raw.rotationTrainingWeights && typeof raw.rotationTrainingWeights === 'object')
@@ -3337,6 +3358,21 @@ bash scripts/update_and_serve.sh --start</div>
         compare: raw.compare || {},
         configSource: 'model_config.json',
       });
+    }
+    function gmAuto1x2CalibCfg(){
+      const d = (GM_MATRIX_CFG && GM_MATRIX_CFG.auto1x2Calib) || {};
+      return {
+        enabled: d.enabled !== false,
+        recalibrateSdWithMatrix: d.recalibrateSdWithMatrix !== false,
+        refineAlphaRho: d.refineAlphaRho !== false,
+        w1x2: d.w1x2 != null ? Number(d.w1x2) : 1.0,
+        wAh: d.wAh != null ? Number(d.wAh) : 0.35,
+        wOu: d.wOu != null ? Number(d.wOu) : 0.25,
+        drawLoss: d.drawLoss != null ? Number(d.drawLoss) : 2.0,
+        ahOuDegradeMaxPct: d.ahOuDegradeMaxPct != null ? Number(d.ahOuDegradeMaxPct) : 5.0,
+        require1x2Improve: d.require1x2Improve !== false,
+        requireBiasReduce: d.requireBiasReduce !== false,
+      };
     }
     async function loadGoalMatrixConfig(){
       try {
@@ -3943,9 +3979,12 @@ bash scripts/update_and_serve.sh --start</div>
       const mx=cfg.gammaMax!=null?cfg.gammaMax:0.20;
       return Math.max(-mx, Math.min(mx, g));
     }
-    function gmCalibrate(ms,st,gl,cfg){
+    function gmCalibrate(ms,st,gl,cfg,alpha,rho,drawLossOverride){
       const used=ms.filter(m=>m.p1!=null);
       if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0,n1x2:0};
+      const aMat = alpha != null ? Number(alpha) : 0;
+      const rMat = rho != null ? Number(rho) : 0;
+      const dLoss = drawLossOverride != null ? Number(drawLossOverride) : (cfg.drawLoss != null ? cfg.drawLoss : 1.5);
       const pre=used.map(m=>{ const derby=gmDerbyHome(m); const hEff=gmEffectiveH(st,cfg,m.iHome===0,derby);
         const dm=(st.ratings[m.home]||0)-(st.ratings[m.away]||0)+hEff;
         const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
@@ -3960,9 +3999,9 @@ bash scripts/update_and_serve.sh --start</div>
           const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
           const dc=gmApplyDCal(dm,a,b,cfg);
           const df=gmClampD(dc.dUsed,sf); const lh=(sf+df)/2,la=(sf-df)/2; if(lh<=0||la<=0) return 1e9;
-          const mat=gmJointScoreMatrix(lh,la,0,0,cfg.maxGoals);
+          const mat=gmJointScoreMatrix(lh,la,aMat,rMat,cfg.maxGoals);
           const [p1,px,p2]=gm1x2(mat);
-          tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
+          tot+=w*((p1-m.p1)**2+dLoss*(px-m.px)**2+(p2-m.p2)**2);
         }
         return tot;
       }
@@ -4305,7 +4344,9 @@ bash scripts/update_and_serve.sh --start</div>
         const dCalUsed=gmClampD(dCalObj.dUsed,sCal);
         const [p1MktSd,pxMktSd,p2MktSd]=gmProb1x2FromSd(m.S,m.D,cfg,0);
         const [p1Mod,pxMod,p2Mod]=gmProb1x2FromSd(sModel,dModel,cfg,0);
-        const [p1Cal,pxCal,p2Cal]=gmProb1x2FromSd(sCal,dCalUsed,cfg,gamma);
+        const alpha = model.alphaFinal || 0, rho = model.rhoFinal || 0;
+        // Auto: final 1X2 from joint matrix (α,ρ). Legacy compare path keeps α=ρ=0 here.
+        const [p1Cal,pxCal,p2Cal]=gmProb1x2FromSd(sCal,dCalUsed,cfg,gamma,alpha,rho);
         const raw=m.raw||{};
         rows.push({
           home:m.homeName||m.home, away:m.awayName||m.away, date:raw.date,
@@ -4577,7 +4618,7 @@ bash scripts/update_and_serve.sh --start</div>
         summary,
       };
     }
-    function gmCalibrateDispersion(model, ms){
+    function gmCalibrateDispersion(model, ms, prio){
       const {st, gl, cal, cfg} = model;
       const mxCfg = GM_MATRIX_CFG || {};
       const minN = mxCfg.minMatchesForLeagueAlpha != null ? mxCfg.minMatchesForLeagueAlpha : 200;
@@ -4586,7 +4627,11 @@ bash scripts/update_and_serve.sh --start</div>
       const alphaPen = mxCfg.alphaPenalty != null ? mxCfg.alphaPenalty : 0.5;
       const vppW = mxCfg.vppWeight != null ? mxCfg.vppWeight : 0.15;
       const lamMin = mxCfg.lambdaMin != null ? mxCfg.lambdaMin : 0.05;
-      const used = ms.filter(m => (m.pOver != null || m.p1 != null) && m.lh > 0 && m.la > 0);
+      const w1x2 = prio && prio.w1x2 != null ? Number(prio.w1x2) : 1.0;
+      const wAh = prio && prio.wAh != null ? Number(prio.wAh) : 0;
+      const wOu = prio && prio.wOu != null ? Number(prio.wOu) : 1.0;
+      const dLoss = prio && prio.drawLoss != null ? Number(prio.drawLoss) : 1.0;
+      const used = ms.filter(m => (m.pOver != null || m.p1 != null || m.pAhHome != null) && m.lh > 0 && m.la > 0);
       const nMatches = used.length;
 
       // Shrink to 0 if too few matches (config, not DB)
@@ -4601,18 +4646,23 @@ bash scripts/update_and_serve.sh --start</div>
       function matchLoss(m, lh, la, alpha, rho){
         let loss = 0, n = 0;
         const mat = gmJointScoreMatrix(lh, la, alpha, rho, cfg.maxGoals||GM_MAX);
-        if(m.pOver != null){
+        if(m.pOver != null && wOu > 0){
           const totLine = m.raw && m.raw.tot != null ? m.raw.tot : 2.5;
           let pOv = 0;
           for(let i=0;i<mat.length;i++) for(let j=0;j<mat.length;j++){
             const u=gmTot(i+j,totLine,'over'); pOv+=mat[i][j]*u[0];
           }
-          loss += (pOv - m.pOver)**2; n++;
+          loss += wOu * (pOv - m.pOver)**2; n += wOu;
         }
-        if(m.p1 != null){
+        if(m.pAhHome != null && wAh > 0 && m.raw && m.raw.ah != null){
+          const ah = gmAhMarket(mat, m.raw.ah);
+          const pH = ah.home > 1e-12 ? 1/ah.home : 0;
+          loss += wAh * (pH - m.pAhHome)**2; n += wAh;
+        }
+        if(m.p1 != null && w1x2 > 0){
           const [p1,px,p2] = gm1x2(mat);
-          loss += 0.5*((p1-m.p1)**2 + (p2-m.p2)**2); n += 0.5;
-          if(m.px != null){ loss += (px-m.px)**2; n++; }
+          loss += w1x2 * (0.5*((p1-m.p1)**2 + (p2-m.p2)**2)); n += w1x2 * 0.5;
+          if(m.px != null){ loss += w1x2 * dLoss * (px-m.px)**2; n += w1x2 * dLoss; }
         }
         return n > 0 ? loss / n : 0;
       }
@@ -4664,20 +4714,10 @@ bash scripts/update_and_serve.sh --start</div>
       const rhoLosses = rhoCands.map(rho => {
         let tot = 0, n = 0;
         for(const m of used){
-          if(m.p1 == null) continue;
+          if(m.p1 == null && m.pOver == null && m.pAhHome == null) continue;
           const {lh,la} = computeLhLa(m);
-          const mat = gmJointScoreMatrix(lh,la,alphaFinal,rho,cfg.maxGoals||GM_MAX);
-          const [p1,px,p2] = gm1x2(mat);
-          if(m.pOver != null){
-            const totLine = m.raw&&m.raw.tot!=null?m.raw.tot:2.5;
-            let pOv = 0;
-            for(let i=0;i<mat.length;i++) for(let j=0;j<mat.length;j++){
-              const u=gmTot(i+j,totLine,'over'); pOv+=mat[i][j]*u[0];
-            }
-            tot += (pOv-m.pOver)**2; n++;
-          }
-          tot += 0.5*((p1-m.p1)**2 + (p2-m.p2)**2); n += 0.5;
-          if(m.px != null){ tot += (px-m.px)**2; n++; }
+          tot += matchLoss(m, lh, la, alphaFinal, rho);
+          n++;
         }
         return n > 0 ? tot/n : 1e9;
       });
@@ -4711,8 +4751,193 @@ bash scripts/update_and_serve.sh --start</div>
         alphaLoss0: loss0, alphaLossBest: lossBest, nbImprovementPct,
         rhoLoss0: rhoLosses[0], rhoLossBest: rhoLosses[bestRhoIdx], rhoImprovementPct,
         vppError, vpp: finalVpp,
+        priority: prio ? { w1x2, wAh, wOu, drawLoss: dLoss } : null,
         configSource: (GM_MATRIX_CFG && GM_MATRIX_CFG.configSource) || 'model_config.json',
       };
+    }
+
+    function gmAutoMarketQuality(model, ms){
+      const empty = {
+        n1x2:0, mae1x2:null, rmse1x2:null,
+        biasP1:null, biasPX:null, biasP2:null,
+        maeP1:null, maePX:null, maeP2:null,
+        pctOverP1:null, pctUnderP1:null, pctOverPX:null, pctUnderPX:null, pctOverP2:null, pctUnderP2:null,
+        nAh:0, maeAhLine:null, maeAhOdds:null,
+        nOu:0, maeOuLine:null, maeOuOdds:null,
+        biasAbsSum:null, summary:'нет данных',
+      };
+      if(!model || !ms || !ms.length) return empty;
+      let n1=0, sumAbs1=0, sumAbsX=0, sumAbs2=0, sumSq=0;
+      let sumE1=0, sumEX=0, sumE2=0;
+      let nOver1=0,nUnder1=0,nOverX=0,nUnderX=0,nOver2=0,nUnder2=0;
+      let nAh=0, sumAhLine=0, sumAhOdds=0;
+      let nOu=0, sumOuLine=0, sumOuOdds=0;
+      for(const m of ms){
+        if(!m.home || !m.away) continue;
+        if(!(m.wBase > 1e-12)) continue;
+        let pred;
+        try{
+          pred = gmPredict(model, m.home, m.away, { neutral: m.iHome===0, derby: gmDerbyHome(m) });
+        }catch(_e){ continue; }
+        const mk = pred.markets;
+        const mat = pred.mat;
+        if(m.p1 != null && m.px != null && m.p2 != null){
+          const e1 = mk.p1 - m.p1, eX = mk.px - m.px, e2 = mk.p2 - m.p2;
+          sumE1 += e1; sumEX += eX; sumE2 += e2;
+          sumAbs1 += Math.abs(e1); sumAbsX += Math.abs(eX); sumAbs2 += Math.abs(e2);
+          sumSq += e1*e1 + eX*eX + e2*e2;
+          if(e1 > 1e-12) nOver1++; else if(e1 < -1e-12) nUnder1++;
+          if(eX > 1e-12) nOverX++; else if(eX < -1e-12) nUnderX++;
+          if(e2 > 1e-12) nOver2++; else if(e2 < -1e-12) nUnder2++;
+          n1++;
+        }
+        const raw = m.raw || {};
+        if(raw.ah != null && m.pAhHome != null && isFinite(raw.ah)){
+          const main = mk.mainAh;
+          if(main && main.line != null) sumAhLine += Math.abs(main.line - raw.ah);
+          const ahM = gmAhMarket(mat, raw.ah);
+          const pH = ahM.home > 1e-12 ? 1/ahM.home : null;
+          const kH = m.pAhHome > 1e-12 ? 1/m.pAhHome : null;
+          const kA = (1-m.pAhHome) > 1e-12 ? 1/(1-m.pAhHome) : null;
+          if(pH != null && kH != null && kA != null){
+            sumAhOdds += Math.abs(ahM.home - kH) + Math.abs(ahM.away - kA);
+            nAh++;
+          } else if(main) nAh++;
+        }
+        if(raw.tot != null && m.pOver != null && isFinite(raw.tot)){
+          const mainT = mk.mainTotal;
+          if(mainT && mainT.line != null) sumOuLine += Math.abs(mainT.line - raw.tot);
+          const totM = gmTotMarket(mat, raw.tot);
+          const kO = m.pOver > 1e-12 ? 1/m.pOver : null;
+          const kU = (1-m.pOver) > 1e-12 ? 1/(1-m.pOver) : null;
+          if(kO != null && kU != null){
+            sumOuOdds += Math.abs(totM.over - kO) + Math.abs(totM.under - kU);
+            nOu++;
+          } else if(mainT) nOu++;
+        }
+      }
+      if(!n1 && !nAh && !nOu) return empty;
+      const mae1x2 = n1 ? (sumAbs1+sumAbsX+sumAbs2)/(3*n1) : null;
+      const rmse1x2 = n1 ? Math.sqrt(sumSq/(3*n1)) : null;
+      const biasP1 = n1 ? sumE1/n1 : null;
+      const biasPX = n1 ? sumEX/n1 : null;
+      const biasP2 = n1 ? sumE2/n1 : null;
+      const biasAbsSum = (biasP1!=null) ? Math.abs(biasP1)+Math.abs(biasPX)+Math.abs(biasP2) : null;
+      const pct = (c)=> n1 ? 100*c/n1 : null;
+      const out = {
+        n1x2:n1, mae1x2, rmse1x2,
+        biasP1, biasPX, biasP2,
+        maeP1: n1?sumAbs1/n1:null, maePX: n1?sumAbsX/n1:null, maeP2: n1?sumAbs2/n1:null,
+        pctOverP1:pct(nOver1), pctUnderP1:pct(nUnder1),
+        pctOverPX:pct(nOverX), pctUnderPX:pct(nUnderX),
+        pctOverP2:pct(nOver2), pctUnderP2:pct(nUnder2),
+        nAh, maeAhLine: nAh?sumAhLine/nAh:null, maeAhOdds: nAh?sumAhOdds/nAh:null,
+        nOu, maeOuLine: nOu?sumOuLine/nOu:null, maeOuOdds: nOu?sumOuOdds/nOu:null,
+        biasAbsSum,
+      };
+      const fmt = (v,d)=> v==null||!isFinite(v)?'—':v.toFixed(d);
+      out.summary = `1X2 MAE ${fmt(mae1x2,4)} RMSE ${fmt(rmse1x2,4)}; bias P1/PX/P2 ${fmt(biasP1,4)}/${fmt(biasPX,4)}/${fmt(biasP2,4)}; AH line/odds ${fmt(out.maeAhLine,3)}/${fmt(out.maeAhOdds,3)}; OU line/odds ${fmt(out.maeOuLine,3)}/${fmt(out.maeOuOdds,3)}`;
+      return out;
+    }
+
+    function gmAcceptAuto1x2Upgrade(before, after, opts){
+      const o = opts || gmAuto1x2CalibCfg();
+      const reasons = [];
+      const degradeMax = (o.ahOuDegradeMaxPct != null ? Number(o.ahOuDegradeMaxPct) : 5) / 100;
+      const maeB = before && before.mae1x2, maeA = after && after.mae1x2;
+      let improved1x2 = false;
+      if(maeB == null || maeA == null || !isFinite(maeB) || !isFinite(maeA)){
+        reasons.push('missing_1x2_mae');
+      } else if(o.require1x2Improve !== false){
+        if(maeA < maeB - 1e-12) improved1x2 = true;
+        else reasons.push('1x2_mae_not_improved');
+      } else {
+        improved1x2 = maeA <= maeB + 1e-12;
+      }
+      let biasOk = true;
+      if(o.requireBiasReduce !== false){
+        const sb = before && before.biasAbsSum, sa = after && after.biasAbsSum;
+        if(sb == null || sa == null || !isFinite(sb) || !isFinite(sa)){
+          reasons.push('missing_bias'); biasOk = false;
+        } else if(sa > sb + 1e-12){
+          reasons.push('systematic_bias_not_reduced'); biasOk = false;
+        }
+      }
+      function marketOk(key){
+        const vb = before && before[key], va = after && after[key];
+        if(vb == null || va == null || !isFinite(vb) || !isFinite(va)) return true;
+        if(vb <= 1e-12) return va <= vb + 1e-9;
+        return va <= vb * (1 + degradeMax) + 1e-12;
+      }
+      const ahOk = marketOk('maeAhLine') && marketOk('maeAhOdds');
+      const ouOk = marketOk('maeOuLine') && marketOk('maeOuOdds');
+      if(!ahOk) reasons.push('ah_degraded_beyond_threshold');
+      if(!ouOk) reasons.push('ou_degraded_beyond_threshold');
+      const accepted = improved1x2 && biasOk && ahOk && ouOk
+        && reasons.indexOf('missing_1x2_mae') < 0
+        && reasons.indexOf('missing_bias') < 0;
+      return {
+        accepted, improved1x2, biasOk, ahOk, ouOk, reasons,
+        ahOuDegradeMaxPct: degradeMax * 100,
+        biasBefore: before && before.biasAbsSum, biasAfter: after && after.biasAbsSum,
+        mae1x2Before: maeB, mae1x2After: maeA,
+      };
+    }
+
+    function gmApplyAuto1x2Calibration(model, ms){
+      const opts = gmAuto1x2CalibCfg();
+      if(!opts.enabled){
+        model.auto1x2Calib = { enabled:false, status:'disabled', quality: gmAutoMarketQuality(model, ms) };
+        return model;
+      }
+      const before = gmAutoMarketQuality(model, ms);
+      const snap = {
+        cal: Object.assign({}, model.cal),
+        alphaFinal: model.alphaFinal,
+        rhoFinal: model.rhoFinal,
+        selectedDistribution: model.selectedDistribution,
+        nbImprovementPct: model.nbImprovementPct,
+        matrixCalib: model.matrixCalib ? Object.assign({}, model.matrixCalib) : null,
+        vppProfile: model.vppProfile,
+      };
+      const {st, gl, cfg} = model;
+      const prio = { w1x2: opts.w1x2, wAh: opts.wAh, wOu: opts.wOu, drawLoss: opts.drawLoss };
+
+      if(opts.recalibrateSdWithMatrix){
+        model.cal = gmCalibrate(ms, st, gl, cfg, model.alphaFinal||0, model.rhoFinal||0, opts.drawLoss);
+      }
+      if(opts.refineAlphaRho){
+        gmCalibrateDispersion(model, ms, prio);
+      }
+      if(opts.recalibrateSdWithMatrix){
+        model.cal = gmCalibrate(ms, st, gl, cfg, model.alphaFinal||0, model.rhoFinal||0, opts.drawLoss);
+      }
+
+      const after = gmAutoMarketQuality(model, ms);
+      const gate = gmAcceptAuto1x2Upgrade(before, after, opts);
+      if(!gate.accepted){
+        model.cal = snap.cal;
+        model.alphaFinal = snap.alphaFinal;
+        model.rhoFinal = snap.rhoFinal;
+        model.selectedDistribution = snap.selectedDistribution;
+        model.nbImprovementPct = snap.nbImprovementPct;
+        model.matrixCalib = snap.matrixCalib;
+        model.vppProfile = snap.vppProfile;
+        model.auto1x2Calib = {
+          enabled:true, status:'rejected_keep_baseline',
+          before, after, gate, opts,
+          quality: before,
+        };
+        return model;
+      }
+      model.auto1x2Calib = {
+        enabled:true, status:'accepted',
+        before, after, gate, opts,
+        quality: after,
+        cal: { a: model.cal.a, b: model.cal.b, c: model.cal.c, d: model.cal.d },
+        alphaFinal: model.alphaFinal, rhoFinal: model.rhoFinal,
+      };
+      return model;
     }
 
     function gmTrain(raw,cfg,prior,inactiveRaw){
@@ -4728,12 +4953,16 @@ bash scripts/update_and_serve.sh --start</div>
       const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag,teamNames:{},
         alphaFinal:0, rhoFinal:0, selectedDistribution:'poisson_like', nbImprovementPct:0, matrixCalib:null};
       ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
+      // Bootstrap α/ρ (classic OU+1X2 mix), then Auto-only 1X2 refinement + acceptance gate.
+      // Legacy never calls gmTrain — calculateLegacyModel uses irTrainLegacy.
       gmCalibrateDispersion(model, ms);
+      gmApplyAuto1x2Calibration(model, ms);
       model.drawQDiag={nEval:0,nClamped:0,clampPct:0,nNearOne:0,nearOnePct:0,stable:true,summary:'модель ничьи выкл',rows:[]};
       model.sdDiag=gmSd1x2Diagnostics(model, ms);
       model.drawHarmDiag={nMatches:0,summary:'ничья отключена'};
       model.inactiveDiag=gmInactiveDDiagnostics(model, inactiveRaw||[]);
       model.trainMargin1x2=gmTrainMargin1x2Diagnostics(raw, cfg);
+      model.autoMarketQuality = (model.auto1x2Calib && model.auto1x2Calib.quality) || gmAutoMarketQuality(model, ms);
       return model;
     }
     let gmModel=null;
@@ -6121,6 +6350,28 @@ bash scripts/update_and_serve.sh --start</div>
       if (sdDiag && sdDiag.nEval > 0){
         rows.push(['1X2 / PX', escapeHtml(sdDiag.summary), sdDiag.stable ? '' : 'warn']);
         rows.push(['Средн. S рынок/модель/калибр.', `${goalFmtTrainNum(sdDiag.avgSMarket, 2)} / ${goalFmtTrainNum(sdDiag.avgSModel, 2)} / ${goalFmtTrainNum(sdDiag.avgSCal, 2)}`, 'num']);
+      }
+      const a1 = gmModel.auto1x2Calib;
+      const q = (a1 && a1.quality) || gmModel.autoMarketQuality;
+      if (a1){
+        const stLabel = a1.status === 'accepted' ? 'принята (1X2↑)'
+          : a1.status === 'rejected_keep_baseline' ? 'отклонена → baseline'
+          : (a1.status || '—');
+        rows.push(['Auto 1X2 калибровка', escapeHtml(stLabel), a1.status === 'accepted' ? 'ok' : (a1.status === 'rejected_keep_baseline' ? 'warn' : '')]);
+      }
+      if (q && q.n1x2 > 0){
+        rows.push(['1X2 MAE / RMSE (матрица)', `${goalFmtTrainNum(q.mae1x2, 4)} / ${goalFmtTrainNum(q.rmse1x2, 4)}`, 'num']);
+        rows.push(['Bias P1 / PX / P2', `${goalFmtTrainNum(q.biasP1, 4)} / ${goalFmtTrainNum(q.biasPX, 4)} / ${goalFmtTrainNum(q.biasP2, 4)}`, 'num']);
+        rows.push(['Доля завыш./заниж. PX', `${goalFmtTrainNum(q.pctOverPX, 0)}% / ${goalFmtTrainNum(q.pctUnderPX, 0)}%`, 'num']);
+        if (q.nAh > 0){
+          rows.push(['AH MAE линия / кэфы@mkt', `${goalFmtTrainNum(q.maeAhLine, 3)} / ${goalFmtTrainNum(q.maeAhOdds, 3)}`, 'num']);
+        }
+        if (q.nOu > 0){
+          rows.push(['OU MAE линия / кэфы@mkt', `${goalFmtTrainNum(q.maeOuLine, 3)} / ${goalFmtTrainNum(q.maeOuOdds, 3)}`, 'num']);
+        }
+        if (a1 && a1.before && a1.after && a1.status === 'accepted'){
+          rows.push(['1X2 MAE до → после', `${goalFmtTrainNum(a1.before.mae1x2, 4)} → ${goalFmtTrainNum(a1.after.mae1x2, 4)}`, 'ok']);
+        }
       }
       if (inactiveDiag && inactiveDiag.nEval > 0){
         rows.push(['Inactive D vs эталон', escapeHtml(inactiveDiag.summary), inactiveDiag.pctOverGap > 55 ? 'warn' : '']);
@@ -7737,7 +7988,7 @@ bash scripts/update_and_serve.sh --start</div>
         ['Copula / NB', 'выкл'],
       ]);
       autoEl.innerHTML = '<h5>Auto (изолированный pipeline)</h5>' + irParamsRowsHtml([
-        ['pipeline', 'S/D → Marginals → Copula'],
+        ['pipeline', 'S/D → Marginals → Copula → 1X2 из матрицы'],
         ['Auto Marginals', A.enabled !== false],
         ['Gaussian Copula', C.enabled !== false],
         ['alphaCandidates', A.alphaCandidates || mx.alphaCandidates || []],
@@ -7746,6 +7997,9 @@ bash scripts/update_and_serve.sh --start</div>
         ['rhoMinImprovementPct', num(C,'rhoMinImprovementPct', mx.rhoMinImprovementPct||0.5)],
         ['maxGoals', num(Amx,'maxGoals', num(M,'maxGoals', mx.maxGoals||10))],
         ['Dixon-Coles / Draw', 'запрещены'],
+        ['1X2 calib (SD@α,ρ)', (mx.auto1x2Calib&&mx.auto1x2Calib.enabled!==false)?'вкл':'выкл'],
+        ['приоритет 1X2/AH/OU', `${num(mx.auto1x2Calib||{},'w1x2',1)} / ${num(mx.auto1x2Calib||{},'wAh',0.35)} / ${num(mx.auto1x2Calib||{},'wOu',0.25)}`],
+        ['AH/OU degrade max %', num(mx.auto1x2Calib||{},'ahOuDegradeMaxPct',5)],
         ['α форы / тотала', `${num(Atr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Atr,'alphaT', num(T,'alphaT',0.5))}`],
         ['dCalMode', Atr.dCalMode || T.dCalMode || 'soft'],
       ]);
