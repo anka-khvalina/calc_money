@@ -62,8 +62,12 @@ def _flatten_nested_model_config(data: Dict) -> Dict:
         "vppWeight": a.get("vppWeight", out["vppWeight"]),
         "rhoCandidates": c.get("rhoCandidates", out["rhoCandidates"]),
         "rhoMinImprovementPct": c.get("rhoMinImprovementPct", out["rhoMinImprovementPct"]),
-        "useDixonColes": bool(L.get("useDixonColes", False)),
-        "useDrawModel": bool(L.get("useDrawModel", False)),
+        "useDixonColes": bool(
+            (L.get("dixonColes") or {}).get("enabled", L.get("useDixonColes", False))
+        ),
+        "useDrawModel": bool(
+            (L.get("drawModel") or {}).get("enabled", L.get("useDrawModel", False))
+        ),
         "legacy": L,
         "train": data.get("train") or {},
         "compare": data.get("compare") or {},

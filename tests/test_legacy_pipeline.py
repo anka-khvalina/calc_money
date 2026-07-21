@@ -122,7 +122,15 @@ def test_config_legacy_and_auto_sections_isolated():
     cfg = gma.load_goal_matrix_config()
     assert "legacy" in cfg and isinstance(cfg["legacy"], dict)
     leg = cfg["legacy"]
-    assert leg.get("useDixonColes", True) is True or (leg.get("dixonColes") or {}).get("enabled", True)
+    dc = leg.get("dixonColes") or {}
+    dm = leg.get("drawModel") or {}
+    assert dc.get("enabled", leg.get("useDixonColes", True)) is True
+    assert dm.get("enabled", leg.get("useDrawModel", False)) is False
+    # Historical Legacy surface: no draw-model knobs (mode/q/drawLoss)
+    for banned in ("mode", "qMin", "qMax", "qResMin", "qResMax", "drawLossWeight"):
+        assert banned not in dm
+    for banned in ("drawMode", "drawQMin", "drawQMax", "drawLossWeight"):
+        assert banned not in leg
     # Auto section must not enable DC/draw knobs used by Legacy
     auto = cfg.get("auto") or {}
     assert "dixonColes" not in auto
