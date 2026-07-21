@@ -3301,6 +3301,7 @@ bash scripts/update_and_serve.sh --start</div>
       nbMinImprovementPct: 1,
       rhoMinImprovementPct: 0.5,
       minMatchesForLeagueAlpha: 200,
+      minMatchesForLeagueRho: 100,
       alphaPenalty: 0.5,
       vppWeight: 0.15,
       useDixonColes: false,
@@ -3340,6 +3341,8 @@ bash scripts/update_and_serve.sh --start</div>
         alphaCandidates: Array.isArray(a.alphaCandidates) ? a.alphaCandidates : GM_MATRIX_CFG.alphaCandidates,
         nbMinImprovementPct: a.nbMinImprovementPct != null ? a.nbMinImprovementPct : GM_MATRIX_CFG.nbMinImprovementPct,
         minMatchesForLeagueAlpha: a.minMatchesForLeagueAlpha != null ? a.minMatchesForLeagueAlpha : GM_MATRIX_CFG.minMatchesForLeagueAlpha,
+        minMatchesForLeagueRho: c.minMatchesForLeagueRho != null ? c.minMatchesForLeagueRho
+          : (a.minMatchesForLeagueRho != null ? a.minMatchesForLeagueRho : GM_MATRIX_CFG.minMatchesForLeagueRho),
         alphaPenalty: a.alphaPenalty != null ? a.alphaPenalty : GM_MATRIX_CFG.alphaPenalty,
         vppWeight: a.vppWeight != null ? a.vppWeight : GM_MATRIX_CFG.vppWeight,
         rhoCandidates: Array.isArray(c.rhoCandidates) ? c.rhoCandidates : GM_MATRIX_CFG.rhoCandidates,
@@ -4679,7 +4682,9 @@ bash scripts/update_and_serve.sh --start</div>
     function gmCalibrateDispersion(model, ms, prio){
       const {st, gl, cal, cfg} = model;
       const mxCfg = GM_MATRIX_CFG || {};
-      const minN = mxCfg.minMatchesForLeagueAlpha != null ? mxCfg.minMatchesForLeagueAlpha : 200;
+      // Separate gates: α (NB) needs more data than ρ (copula). Avoid binary flip of both at n=200.
+      const minAlphaN = mxCfg.minMatchesForLeagueAlpha != null ? mxCfg.minMatchesForLeagueAlpha : 200;
+      const minRhoN = mxCfg.minMatchesForLeagueRho != null ? mxCfg.minMatchesForLeagueRho : 100;
       const nbMin = mxCfg.nbMinImprovementPct != null ? mxCfg.nbMinImprovementPct : 1;
       const rhoMin = mxCfg.rhoMinImprovementPct != null ? mxCfg.rhoMinImprovementPct : 0.5;
       const alphaPen = mxCfg.alphaPenalty != null ? mxCfg.alphaPenalty : 0.5;
@@ -4693,13 +4698,19 @@ bash scripts/update_and_serve.sh --start</div>
       const used = ms.filter(m => (m.pOver != null || m.p1 != null || m.pAhHome != null) && m.lh > 0 && m.la > 0 && gmTrainWeight(m)>0);
       const nMatches = used.length;
       const sumTrainW = used.reduce((s,m)=>s+gmTrainWeight(m),0);
+      const allowAlpha = nMatches >= minAlphaN;
+      const allowRho = nMatches >= minRhoN;
 
-      // Shrink to 0 if too few matches (config, not DB)
-      if(nMatches < minN){
+      // Both gated → Poisson-like independent matrix
+      if(!allowAlpha && !allowRho){
         model.alphaFinal = 0; model.rhoFinal = 0;
         model.selectedDistribution = 'poisson_like';
         model.nbImprovementPct = 0;
-        model.matrixCalib = { status: `shrunk_to_0 (n=${nMatches}<${minN})`, nMatches, sumTrainW, alphaCandidates: 0, rhoCandidates: 0, vppError: null };
+        model.matrixCalib = {
+          status: `shrunk_to_0 (n=${nMatches}<alpha${minAlphaN}/rho${minRhoN})`,
+          nMatches, sumTrainW, minMatchesForLeagueAlpha: minAlphaN, minMatchesForLeagueRho: minRhoN,
+          alphaCandidates: 0, rhoCandidates: 0, vppError: null,
+        };
         return;
       }
 
@@ -4747,47 +4758,61 @@ bash scripts/update_and_serve.sh --start</div>
       if(tw>0) for(let g=0;g<targetTot.length;g++) targetTot[g]/=tw;
       const targetVpp = gmVppFromPmf(targetTot);
 
-      // Step 1: grid search over alpha (rho=0) — loss = Σ(w·ℓ)/Σ(w)
       const alphaCands = Array.isArray(mxCfg.alphaCandidates) ? mxCfg.alphaCandidates.slice() : [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.26,0.30];
-      const alphaLosses = alphaCands.map(alpha => {
-        let tot = 0, sw = 0;
-        const avgTot = Array(2*GM_MAX+1).fill(0);
-        for(const m of used){
-          const w = gmTrainWeight(m);
-          const {lh,la} = computeLhLa(m);
-          tot += w * matchLoss(m,lh,la,alpha,0);
-          sw += w;
-          const mat = gmJointScoreMatrix(lh,la,alpha,0,cfg.maxGoals||GM_MAX);
-          const tpmf = gmTotalGoalsPmf(mat);
-          for(let g=0;g<tpmf.length && g<avgTot.length;g++) avgTot[g]+=w*tpmf[g];
-        }
-        if(sw>0) for(let g=0;g<avgTot.length;g++) avgTot[g]/=sw;
-        const vppErr = gmVppError(gmVppFromPmf(avgTot), targetVpp);
-        return sw > 0 ? tot/sw + alphaPen*alpha*alpha + vppW*vppErr : 1e9;
-      });
-      const bestAlphaIdx = alphaLosses.reduce((bi,v,i)=>v<alphaLosses[bi]?i:bi, 0);
-      let alphaFinal = alphaCands[bestAlphaIdx];
-      const loss0 = alphaLosses[0], lossBest = alphaLosses[bestAlphaIdx];
-      const nbImprovementPct = loss0 > 1e-12 ? 100*(loss0-lossBest)/loss0 : 0;
-      if(nbImprovementPct < nbMin) alphaFinal = 0;
-
-      // Step 2: grid search over rho with alphaFinal
       const rhoCands = Array.isArray(mxCfg.rhoCandidates) ? mxCfg.rhoCandidates.slice() : [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.25];
-      const rhoLosses = rhoCands.map(rho => {
-        let tot = 0, sw = 0;
-        for(const m of used){
-          if(m.p1 == null && m.pOver == null && m.pAhHome == null) continue;
-          const w = gmTrainWeight(m);
-          const {lh,la} = computeLhLa(m);
-          tot += w * matchLoss(m, lh, la, alphaFinal, rho);
-          sw += w;
-        }
-        return sw > 0 ? tot/sw : 1e9;
-      });
-      const bestRhoIdx = rhoLosses.reduce((bi,v,i)=>v<rhoLosses[bi]?i:bi, 0);
-      let rhoFinal = rhoCands[bestRhoIdx];
-      const rhoImprovementPct = rhoLosses[0] > 1e-12 ? 100*(rhoLosses[0]-rhoLosses[bestRhoIdx])/rhoLosses[0] : 0;
-      if(rhoImprovementPct < rhoMin) rhoFinal = 0;
+      let alphaFinal = 0;
+      let loss0 = null, lossBest = null, nbImprovementPct = 0;
+      let alphaCandsUsed = 0;
+
+      // Step 1: grid search over alpha (rho=0) — only if enough matches for NB
+      if(allowAlpha){
+        const alphaLosses = alphaCands.map(alpha => {
+          let tot = 0, sw = 0;
+          const avgTot = Array(2*GM_MAX+1).fill(0);
+          for(const m of used){
+            const w = gmTrainWeight(m);
+            const {lh,la} = computeLhLa(m);
+            tot += w * matchLoss(m,lh,la,alpha,0);
+            sw += w;
+            const mat = gmJointScoreMatrix(lh,la,alpha,0,cfg.maxGoals||GM_MAX);
+            const tpmf = gmTotalGoalsPmf(mat);
+            for(let g=0;g<tpmf.length && g<avgTot.length;g++) avgTot[g]+=w*tpmf[g];
+          }
+          if(sw>0) for(let g=0;g<avgTot.length;g++) avgTot[g]/=sw;
+          const vppErr = gmVppError(gmVppFromPmf(avgTot), targetVpp);
+          return sw > 0 ? tot/sw + alphaPen*alpha*alpha + vppW*vppErr : 1e9;
+        });
+        const bestAlphaIdx = alphaLosses.reduce((bi,v,i)=>v<alphaLosses[bi]?i:bi, 0);
+        alphaFinal = alphaCands[bestAlphaIdx];
+        loss0 = alphaLosses[0]; lossBest = alphaLosses[bestAlphaIdx];
+        nbImprovementPct = loss0 > 1e-12 ? 100*(loss0-lossBest)/loss0 : 0;
+        if(nbImprovementPct < nbMin) alphaFinal = 0;
+        alphaCandsUsed = alphaCands.length;
+      }
+
+      // Step 2: grid search over rho with alphaFinal (α may be 0 when only ρ is unlocked)
+      let rhoFinal = 0;
+      let rhoLoss0 = null, rhoLossBest = null, rhoImprovementPct = 0;
+      let rhoCandsUsed = 0;
+      if(allowRho){
+        const rhoLosses = rhoCands.map(rho => {
+          let tot = 0, sw = 0;
+          for(const m of used){
+            if(m.p1 == null && m.pOver == null && m.pAhHome == null) continue;
+            const w = gmTrainWeight(m);
+            const {lh,la} = computeLhLa(m);
+            tot += w * matchLoss(m, lh, la, alphaFinal, rho);
+            sw += w;
+          }
+          return sw > 0 ? tot/sw : 1e9;
+        });
+        const bestRhoIdx = rhoLosses.reduce((bi,v,i)=>v<rhoLosses[bi]?i:bi, 0);
+        rhoFinal = rhoCands[bestRhoIdx];
+        rhoLoss0 = rhoLosses[0]; rhoLossBest = rhoLosses[bestRhoIdx];
+        rhoImprovementPct = rhoLoss0 > 1e-12 ? 100*(rhoLoss0-rhoLossBest)/rhoLoss0 : 0;
+        if(rhoImprovementPct < rhoMin) rhoFinal = 0;
+        rhoCandsUsed = rhoCands.length;
+      }
 
       // Final VPP diagnostic at chosen params
       const avgTotFinal = Array(2*GM_MAX+1).fill(0);
@@ -4804,16 +4829,22 @@ bash scripts/update_and_serve.sh --start</div>
       const finalVpp = gmVppFromPmf(avgTotFinal);
       const vppError = gmVppError(finalVpp, targetVpp);
 
+      let status = 'calibrated';
+      if(allowAlpha && !allowRho) status = `calibrated_alpha_only (n=${nMatches}<rho${minRhoN})`;
+      else if(!allowAlpha && allowRho) status = `calibrated_rho_only (n=${nMatches}<alpha${minAlphaN})`;
+
       model.alphaFinal = alphaFinal;
       model.rhoFinal = rhoFinal;
       model.selectedDistribution = alphaFinal > 1e-9 ? 'negbin' : 'poisson_like';
       model.nbImprovementPct = nbImprovementPct;
       model.vppProfile = finalVpp;
       model.matrixCalib = {
-        status: 'calibrated', nMatches, sumTrainW,
-        alphaCandidates: alphaCands.length, rhoCandidates: rhoCands.length,
+        status, nMatches, sumTrainW,
+        minMatchesForLeagueAlpha: minAlphaN, minMatchesForLeagueRho: minRhoN,
+        allowAlpha, allowRho,
+        alphaCandidates: alphaCandsUsed, rhoCandidates: rhoCandsUsed,
         alphaLoss0: loss0, alphaLossBest: lossBest, nbImprovementPct,
-        rhoLoss0: rhoLosses[0], rhoLossBest: rhoLosses[bestRhoIdx], rhoImprovementPct,
+        rhoLoss0, rhoLossBest, rhoImprovementPct,
         vppError, vpp: finalVpp,
         priority: prio ? { w1x2, wAh, wOu, drawLoss: dLoss } : null,
         weightedLoss: true,

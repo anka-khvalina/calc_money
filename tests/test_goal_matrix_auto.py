@@ -19,8 +19,26 @@ def test_config_loads_without_db():
     assert 0 in cfg["alphaCandidates"]
     assert cfg["nbMinImprovementPct"] >= 1
     assert cfg["minMatchesForLeagueAlpha"] == 200
+    assert cfg["minMatchesForLeagueRho"] == 100
+    assert cfg["minMatchesForLeagueRho"] < cfg["minMatchesForLeagueAlpha"]
     assert "legacy" in cfg and isinstance(cfg["legacy"], dict)
     assert "compare" in cfg
+
+
+def test_matrix_param_gates_split_thresholds():
+    # One extra match must not flip both α and ρ together.
+    allow_a, allow_r = gma.matrix_param_gates(199)
+    assert allow_a is False
+    assert allow_r is True
+    allow_a, allow_r = gma.matrix_param_gates(200)
+    assert allow_a is True
+    assert allow_r is True
+    allow_a, allow_r = gma.matrix_param_gates(99)
+    assert allow_a is False
+    assert allow_r is False
+    allow_a, allow_r = gma.matrix_param_gates(100)
+    assert allow_a is False
+    assert allow_r is True
 
 
 def test_alpha0_marginals_match_poisson():

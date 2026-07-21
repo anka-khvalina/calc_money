@@ -35,6 +35,7 @@ _DEFAULT_CFG = {
     "nbMinImprovementPct": 1.0,
     "rhoMinImprovementPct": 0.5,
     "minMatchesForLeagueAlpha": 200,
+    "minMatchesForLeagueRho": 100,
     "alphaPenalty": 0.5,
     "vppWeight": 0.15,
     "useDixonColes": False,
@@ -58,6 +59,10 @@ def _flatten_nested_model_config(data: Dict) -> Dict:
         "alphaCandidates": a.get("alphaCandidates", out["alphaCandidates"]),
         "nbMinImprovementPct": a.get("nbMinImprovementPct", out["nbMinImprovementPct"]),
         "minMatchesForLeagueAlpha": a.get("minMatchesForLeagueAlpha", out["minMatchesForLeagueAlpha"]),
+        "minMatchesForLeagueRho": c.get(
+            "minMatchesForLeagueRho",
+            a.get("minMatchesForLeagueRho", out["minMatchesForLeagueRho"]),
+        ),
         "alphaPenalty": a.get("alphaPenalty", out["alphaPenalty"]),
         "vppWeight": a.get("vppWeight", out["vppWeight"]),
         "rhoCandidates": c.get("rhoCandidates", out["rhoCandidates"]),
@@ -88,6 +93,21 @@ def load_goal_matrix_config(path: Optional[Path] = None) -> Dict:
             cfg.update(_flatten_nested_model_config(data))
             break
     return cfg
+
+
+def matrix_param_gates(
+    n_matches: int,
+    *,
+    min_matches_alpha: int = 200,
+    min_matches_rho: int = 100,
+) -> Tuple[bool, bool]:
+    """Separate sample-size gates for NB α and copula ρ.
+
+    Avoids a single binary flip where one extra match unlocks both params.
+    At n=199 (defaults): α gated, ρ allowed.
+    """
+    n = int(n_matches)
+    return n >= int(min_matches_alpha), n >= int(min_matches_rho)
 
 
 def log_gamma(z: float) -> float:

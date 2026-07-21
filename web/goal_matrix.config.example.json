@@ -9,6 +9,7 @@
   "nbMinImprovementPct": 1,
   "rhoMinImprovementPct": 0.5,
   "minMatchesForLeagueAlpha": 200,
+  "minMatchesForLeagueRho": 100,
   "alphaPenalty": 0.5,
   "vppWeight": 0.15,
   "useDixonColes": false,

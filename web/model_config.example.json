@@ -32,7 +32,8 @@
       0.08,
       0.1
     ],
-    "rhoMinImprovementPct": 0.5
+    "rhoMinImprovementPct": 0.5,
+    "minMatchesForLeagueRho": 100
   },
   "legacy": {
     "pipeline": "S/D -> Poisson -> Dixon-Coles -> markets",

@@ -293,7 +293,8 @@ S_cal = sA + sB · S_model
 P_draw = Σ_i P(i,i)   # без отдельной модели ничьи
 ```
 
-NB включается только если улучшение ≥ `nbMinImprovementPct` (default 1%) и матчей ≥ `minMatchesForLeagueAlpha` (default 200).
+NB (α) включается только если улучшение ≥ `nbMinImprovementPct` (default 1%) и матчей ≥ `minMatchesForLeagueAlpha` (default 200).
+Copula (ρ) имеет **отдельный** порог `minMatchesForLeagueRho` (default 100): при 199 матчах α=0, но ρ всё ещё калибруется. Оба параметра обнуляются только если `n` ниже обоих порогов.
 
 ---
 
