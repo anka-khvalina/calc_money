@@ -18,17 +18,31 @@
     "rhoMinImprovementPct": 0.5
   },
   "legacy": {
+    "pipeline": "S/D -> Poisson -> Dixon-Coles -> markets",
     "useDixonColes": true,
     "useDrawModel": false,
-    "fitGamma": true,
-    "dcGamma": 0.0,
-    "gammaMax": 0.20,
-    "drawMode": "residual_dc",
-    "drawQMin": 0.95,
-    "drawQMax": 1.05,
-    "drawQResMin": 0.98,
-    "drawQResMax": 1.03,
-    "drawLossWeight": 1.5,
+    "maxGoals": 10,
+    "handicapWeight": 0.25,
+    "totalWeight": 0.5,
+    "dCalMode": "soft",
+    "sCalMode": "off",
+    "dixonColes": {
+      "enabled": true,
+      "fitGamma": true,
+      "gammaFixed": 0.0,
+      "gamma": 0.0,
+      "gammaMin": -0.20,
+      "gammaMax": 0.20
+    },
+    "drawModel": {
+      "enabled": false
+    },
+    "copula": {
+      "enabled": false
+    },
+    "negativeBinomial": {
+      "enabled": false
+    },
     "matrix": {
       "maxGoals": 10,
       "tailEpsilon": 1e-6,
@@ -36,22 +50,6 @@
     },
     "poisson": {
       "lambdaMin": 0.05
-    },
-    "dixonColes": {
-      "enabled": true,
-      "fitGamma": true,
-      "gamma": 0.0,
-      "gammaMin": -0.20,
-      "gammaMax": 0.20
-    },
-    "drawModel": {
-      "enabled": false,
-      "mode": "residual_dc",
-      "qMin": 0.95,
-      "qMax": 1.05,
-      "qResMin": 0.98,
-      "qResMax": 1.03,
-      "drawLossWeight": 1.5
     },
     "calibration": {
       "sCalMode": "off",

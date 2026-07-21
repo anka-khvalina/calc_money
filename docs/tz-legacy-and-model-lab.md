@@ -66,14 +66,13 @@ Dixon–Coles (γ)
 
 **По умолчанию:**
 
-- **Dixon–Coles включён** (как в desktop / старой модели: `goal_use_dc_var=True`, fit γ)
-- **Draw Model выключен** (ничья = диагональ матрицы после DC)
+- **Dixon–Coles включён** (fit γ)
+- **Draw Model не используется** — PX = сумма диагонали после DC и нормализации
+- Copula / Negative Binomial выключены
 
-Draw можно включать только явно в `model_config.json` → `legacy.drawModel` или в компонент-recipe для эксперимента.
+Параметры `drawMode`, `qMin`/`qMax`, `drawLossWeight` и любая пост-калибровка PX **не входят** в исторический Legacy и не показываются в UI панели Legacy.
 
-Числовые коэффициенты Legacy (αAh/αT, regΛ, priorα, dCal, derbyH, клипы q при включённом draw и т.д.) совпадают с прежним baseline-пайплайном / `gmCfg()` train-параметрами.
-
-> Профиль «baseline» на вкладке «Линия» после перехода на Auto держит `useDc=false` — это **не** Legacy. Legacy-кандидат в лаборатории = старая модель **с DC**.
+> Legacy = Poisson + Dixon–Coles. Auto = Marginals + Copula. Обе считают ничью из диагонали матрицы.
 
 ### 2.2. Auto
 
@@ -144,10 +143,23 @@ calculateAutoModel(matchOrTrainSet, autoConfig)
 ```json
 {
   "legacy": {
-    "matrix": {},
-    "poisson": {},
-    "dixonColes": {},
-    "drawModel": {},
+    "pipeline": "S/D -> Poisson -> Dixon-Coles -> markets",
+    "dixonColes": {
+      "enabled": true,
+      "fitGamma": true,
+      "gammaFixed": 0,
+      "gammaMax": 0.2
+    },
+    "drawModel": {
+      "enabled": false
+    },
+    "maxGoals": 10,
+    "handicapWeight": 0.25,
+    "totalWeight": 0.5,
+    "dCalMode": "soft",
+    "sCalMode": "off",
+    "copula": { "enabled": false },
+    "negativeBinomial": { "enabled": false },
     "calibration": {},
     "train": {}
   },
@@ -160,6 +172,7 @@ calculateAutoModel(matchOrTrainSet, autoConfig)
 }
 ```
 
+При `drawModel.enabled = false` поля `drawMode` / `q*` / `drawLossWeight` **не читаются** расчётом и **не показываются** в UI Legacy.
 Значения — **реальные исторические** для Legacy (не заглушки). Источник: старый отчёт / старый код / `model_config` эпохи до Copula.
 
 Файлы: `web/model_config.json`, `config/model_config.json` (синхронно).
@@ -210,7 +223,7 @@ AH / Total main line: точное совпадение линии
 
 Автотест обязан падать, если текущий `calculateLegacyModel` расходится с fixture сверх допуска.
 
-Существующий `fixtures/legacy_reference.*` (синтетика Poisson+DC+draw) **не заменяет** historical report fixture — это smoke на изоляцию pipeline, не proof of history.
+Существующий `fixtures/legacy_reference.*` (синтетика Poisson+DC, опционально q) **не заменяет** historical report fixture — это smoke на изоляцию pipeline, не proof of history.
 
 ---
 
@@ -218,7 +231,7 @@ AH / Total main line: точное совпадение линии
 
 | ID | Критерий |
 |----|----------|
-| L-AC1 | При выборе Legacy выполняется полный legacy-pipeline (S/D → Poisson → independent → DC; draw выкл по умолчанию) |
+| L-AC1 | При выборе Legacy выполняется пайплайн S/D → Poisson → independent → DC → нормализация → рынки; PX = диагональ |
 | L-AC2 | В Legacy не вызываются Copula / NB / Auto α–ρ |
 | L-AC3 | В Auto не вызываются DC / Draw Model |
 | L-AC4 | Конфиги изолированы: правка `legacy.*` не меняет Auto и наоборот |
