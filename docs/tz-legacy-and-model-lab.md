@@ -69,6 +69,8 @@ Independent Probability Matrix
 
 Их можно включать только явно в `model_config.json` → `legacy.*` или в компонент-recipe для эксперимента.
 
+Числовые коэффициенты Legacy по умолчанию совпадают с `gmCfg()` (вкладка «Линия», профиль baseline), в том числе клипы draw (если когда‑либо включён): `qMin/qMax = 0.95/1.05`, `qResMin/qResMax = 0.98/1.03`.
+
 > Ранее в черновике ТЗ фигурировал полный путь «Poisson → DC → Draw». Это **не** baseline продукта: в baseline `useDixonColes=false`, `useDrawModel=false`.
 
 ### 2.2. Auto

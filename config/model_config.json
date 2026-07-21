@@ -25,9 +25,9 @@
     "gammaMax": 0.20,
     "drawMode": "residual_dc",
     "drawQMin": 0.95,
-    "drawQMax": 1.15,
-    "drawQResMin": 0.95,
-    "drawQResMax": 1.15,
+    "drawQMax": 1.05,
+    "drawQResMin": 0.98,
+    "drawQResMax": 1.03,
     "drawLossWeight": 1.5,
     "matrix": {
       "maxGoals": 10,
@@ -48,9 +48,9 @@
       "enabled": false,
       "mode": "residual_dc",
       "qMin": 0.95,
-      "qMax": 1.15,
-      "qResMin": 0.95,
-      "qResMax": 1.15,
+      "qMax": 1.05,
+      "qResMin": 0.98,
+      "qResMax": 1.03,
       "drawLossWeight": 1.5
     },
     "calibration": {

@@ -25,9 +25,9 @@
     "gammaMax": 0.20,
     "drawMode": "residual_dc",
     "drawQMin": 0.95,
-    "drawQMax": 1.15,
-    "drawQResMin": 0.95,
-    "drawQResMax": 1.15,
+    "drawQMax": 1.05,
+    "drawQResMin": 0.98,
+    "drawQResMax": 1.03,
     "drawLossWeight": 1.5
   },
   "train": {
