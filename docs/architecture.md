@@ -7,7 +7,7 @@
 | Клиент | Файл | Назначение |
 |--------|------|------------|
 | Desktop | `app/fair_odds_calc.py` | Tkinter, все вкладки |
-| Web / iOS | `web/FairOddsCalc_iOS.html` | Safari, вкладки Линия / Справочник / История / Справка |
+| Web / iOS | `web/FairOddsCalc_iOS.html` | Safari, вкладки Линия / Справочник / История / Отчет / Справка |
 | CLI | `app/goal_model_train.py` | обучение голевой модели из CSV (разработка) |
 | API | `app/history_api.py` | прокси userbet для кнопки «Получить данные» |
 
@@ -21,7 +21,9 @@ Supabase (leagues, team, v_season_summary, v_matches_full, matches)
         │
         ├─► Вкладка «История» — просмотр, редактирование кэфов, PATCH matches
         │
-        ├─► Вкладка «Линия» — загрузка матчей, обучение модели, прогноз
+        ├─► Вкладка «Линия» — загрузка матчей, обучение Legacy+Auto, комбинированный прогноз
+        │
+        ├─► Вкладка «Отчет» — calculated vs closing на inactive (1X2 Legacy, AH/OU Auto)
         │
         └─► Вкладка «Справочник» — лиги и команды
 
@@ -34,24 +36,27 @@ userbet.info ◄── History API ◄── «Получить данные» (
 
 | Вкладка | Источник данных | Действия |
 |---------|-----------------|----------|
-| **Линия** | `leagues`, `v_season_summary`, `v_matches_full` | загрузка сезонов, обучение, расчёт линии матча |
+| **Линия** | `leagues`, `v_season_summary`, `v_matches_full` | загрузка сезонов, обучение Legacy+Auto, комбинированная линия |
 | **Справочник** | `leagues`, `team` | список команд, логотипы (локально) |
 | **История** | `v_season_summary`, `v_matches_full`, `PATCH matches` | сезоны, правка кэфов и весов |
+| **Отчет** | `v_matches_full` (active train / inactive eval) | MAE комбинированной линии vs closing |
 | **Справка** | — | встроенная документация |
 
 Desktop дополнительно: Калькулятор A, Рейтинг 1X2, Счёт кэф (Shin), локальный CSV-импорт истории (legacy).
 
 ## Голевая модель (вкладка «Линия»)
 
+Итоговая линия — **комбинация двух независимых моделей** на одной active-выборке:
+
 ```text
-closing-линии → de-vig (Shin) → S_m, D_m → λ_h, λ_a
-       → Auto Marginals (α) + Gaussian Copula (ρ) → матрица P(i,j)
-       → 1X2, тоталы, форы, BTTS, ИТ, точный счёт
+closing → de-vig → S/D → общие веса (в т.ч. training_weight)
+       ├── Legacy: Poisson + Dixon–Coles → 1X2
+       └── Auto:   Marginals (α) + Copula (ρ) → AH, OU
 ```
 
-α/ρ калибруются автоматически (runtime-конфиг `model_config.json`). БД схему не меняем; расчётные параметры в БД не пишем.  
-Dixon–Coles и отдельная модель ничьи сняты с вкладки «Линия»; на вкладке **Сравнение моделей** доступны Legacy и Auto / Compare.  
-Подробные формулы: [calculation.md](calculation.md).
+α/ρ калибруются автоматически (`model_config.json`). Пользователь не выбирает модель-победителя.  
+Вкладка **«Отчет»** сравнивает комбинированную линию с closing (без Legacy-vs-Auto).  
+Подробные формулы: [calculation.md](calculation.md), [training-and-calculation.md](training-and-calculation.md).
 
 ### Вес матча при обучении
 

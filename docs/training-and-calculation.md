@@ -7,16 +7,26 @@
 
 ## 1. Идея
 
-Из **closing-коэффициентов** прошлых матчей модель учится оценивать силу команд, атаку/оборону и домашнее преимущество.  
-Для **нового матча** строится одна пуассоновская матрица счётов `P(i,j)` — из неё согласованно получаются 1X2, тоталы, форы, ИТ.
+Из **closing-коэффициентов** прошлых матчей программа учит две независимые модели на **одной** active-выборке (одинаковые `training_weight`):
+
+| Рынок | Модель | Матрица |
+|-------|--------|---------|
+| Home / Draw / Away | **Legacy** | Poisson + Dixon–Coles |
+| Asian Handicap | **Auto** | Marginals + Gaussian Copula |
+| Over / Under | **Auto** | Marginals + Gaussian Copula |
+
+Итоговая линия — **комбинация** двух score matrix. Пользователь не выбирает «победителя».
 
 ```text
-История матчей (Supabase)
-    → для каждого матча: Shin de-vig → скрытые S, D → λ_h, λ_a
-    → обучение: рейтинг r, атака A, оборона Df, калибровка, ничья
+История матчей (Supabase, active)
+    → Shin de-vig → market S/D → общие веса (сезон × quality × neutral × training_weight)
+    ├── Legacy: strength → A/D → cal D → Poisson+DC → 1X2
+    └── Auto:   strength → A/D → α/ρ → joint matrix → AH / OU
 Прогноз матча
-    → λ_h, λ_a из рейтингов → матрица → коррекция ничьи → все рынки
+    → 1X2 из Legacy matrix; AH и OU из Auto matrix
 ```
+
+Вкладка **«Отчет»** сравнивает рассчитанную комбинированную линию с closing на `active=false` (без Legacy-vs-Auto).
 
 ---
 
