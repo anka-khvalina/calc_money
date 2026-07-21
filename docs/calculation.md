@@ -64,6 +64,8 @@ S_final = c + d · S_model
 
 Подгонка под Shin 1X2. **Без** Dixon–Coles γ.
 
+В Auto после выбора α/ρ выполняется повторная калибровка S/D на joint matrix (см. `auto1x2Calib`); 1X2 по-прежнему только из матрицы.
+
 ---
 
 ## 7. Единая score matrix (Auto)

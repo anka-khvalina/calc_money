@@ -110,6 +110,18 @@
     "copula": {
       "enabled": true
     },
+    "auto1x2Calib": {
+      "enabled": true,
+      "recalibrateSdWithMatrix": true,
+      "refineAlphaRho": true,
+      "w1x2": 1.0,
+      "wAh": 0.35,
+      "wOu": 0.25,
+      "drawLoss": 2.0,
+      "ahOuDegradeMaxPct": 5.0,
+      "require1x2Improve": true,
+      "requireBiasReduce": true
+    },
     "train": {
       "alphaAh": 0.25,
       "alphaT": 0.5,
@@ -128,6 +140,18 @@
       "sCalMode": "off",
       "derbyHDefault": 0.7
     }
+  },
+  "auto1x2Calib": {
+    "enabled": true,
+    "recalibrateSdWithMatrix": true,
+    "refineAlphaRho": true,
+    "w1x2": 1.0,
+    "wAh": 0.35,
+    "wOu": 0.25,
+    "drawLoss": 2.0,
+    "ahOuDegradeMaxPct": 5.0,
+    "require1x2Improve": true,
+    "requireBiasReduce": true
   },
   "train": {
     "alphaAh": 0.25,
