@@ -12,6 +12,7 @@
 6. [glossary.md](glossary.md) — термины
 7. [ios-preview.md](ios-preview.md) — как открыть web-версию
 8. [scripts.md](scripts.md) — bash-скрипты (LAN, логи, API)
+9. **[tz-legacy-and-model-lab.md](tz-legacy-and-model-lab.md)** — **ТЗ: возврат Legacy + лаборатория сравнения моделей** (две независимые задачи)
 
 ## Примеры данных
 
