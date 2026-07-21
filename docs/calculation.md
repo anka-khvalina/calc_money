@@ -81,6 +81,7 @@ P_draw = Σ_i P(i,i)
 
 α и ρ калибруются автоматически по лиге (grid search).  
 Если `nb_improvement_pct < 1%` или матчей `< minMatchesForLeagueAlpha` → `α_final = 0`.  
+ρ имеет отдельный порог `minMatchesForLeagueRho` (default 100): при n ∈ [100, 199] допускается ρ при α=0.  
 При `ρ = 0`: `P(i,j) = P_h(i)·P_a(j)`.
 
 Конфиг (пример): см. `config/goal_matrix.example.json`.
