@@ -59,19 +59,21 @@ Poisson Marginals
         ↓
 Independent Probability Matrix
         ↓
+Dixon–Coles (γ)
+        ↓
 Расчёт рынков
 ```
 
-**По умолчанию выключены** (как в baseline):
+**По умолчанию:**
 
-- Dixon–Coles
-- Draw Model
+- **Dixon–Coles включён** (как в desktop / старой модели: `goal_use_dc_var=True`, fit γ)
+- **Draw Model выключен** (ничья = диагональ матрицы после DC)
 
-Их можно включать только явно в `model_config.json` → `legacy.*` или в компонент-recipe для эксперимента.
+Draw можно включать только явно в `model_config.json` → `legacy.drawModel` или в компонент-recipe для эксперимента.
 
-Числовые коэффициенты Legacy по умолчанию совпадают с `gmCfg()` (вкладка «Линия», профиль baseline), в том числе клипы draw (если когда‑либо включён): `qMin/qMax = 0.95/1.05`, `qResMin/qResMax = 0.98/1.03`.
+Числовые коэффициенты Legacy (αAh/αT, regΛ, priorα, dCal, derbyH, клипы q при включённом draw и т.д.) совпадают с прежним baseline-пайплайном / `gmCfg()` train-параметрами.
 
-> Ранее в черновике ТЗ фигурировал полный путь «Poisson → DC → Draw». Это **не** baseline продукта: в baseline `useDixonColes=false`, `useDrawModel=false`.
+> Профиль «baseline» на вкладке «Линия» после перехода на Auto держит `useDc=false` — это **не** Legacy. Legacy-кандидат в лаборатории = старая модель **с DC**.
 
 ### 2.2. Auto
 
@@ -216,7 +218,7 @@ AH / Total main line: точное совпадение линии
 
 | ID | Критерий |
 |----|----------|
-| L-AC1 | При выборе Legacy выполняется полный legacy-pipeline (S/D → Poisson → independent → DC → draw → legacy cal) |
+| L-AC1 | При выборе Legacy выполняется полный legacy-pipeline (S/D → Poisson → independent → DC; draw выкл по умолчанию) |
 | L-AC2 | В Legacy не вызываются Copula / NB / Auto α–ρ |
 | L-AC3 | В Auto не вызываются DC / Draw Model |
 | L-AC4 | Конфиги изолированы: правка `legacy.*` не меняет Auto и наоборот |

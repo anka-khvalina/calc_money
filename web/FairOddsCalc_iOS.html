@@ -1153,7 +1153,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <p class="ir-field-hint ir-mode-hint-row">Какой pipeline считать: только старый (Legacy candidate), только новый (Auto) или оба сразу для сравнения на одних матчах.</p>
             <div class="ir-mode-row" style="margin-bottom:0">
               <span style="font-weight:600;color:#10204a">Считать:</span>
-              <label><input type="checkbox" id="irUseLegacy" checked /> <span>Legacy candidate (baseline: Poisson, DC/draw выкл)</span></label>
+              <label><input type="checkbox" id="irUseLegacy" checked /> <span>Legacy candidate (baseline: Poisson + DC, draw выкл)</span></label>
               <label><input type="checkbox" id="irUseAuto" checked /> <span>Auto (Marginals + Copula)</span></label>
             </div>
             <p class="ir-field-hint" style="margin-top:6px;margin-bottom:0">В режиме «Сравнение» можно оставить одну модель. В режимах Legacy/Auto галки фиксируются автоматически.</p>
@@ -1281,7 +1281,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           </div>
           <div>
             <dt>Legacy (candidate)</dt>
-            <dd>Baseline до Auto: S/D → Poisson → независимая матрица. <b>Dixon–Coles и draw-model выключены</b> (как в baseline-профиле). Включить их можно только явно в конфиге / компонент-recipe для эксперимента.</dd>
+            <dd>Baseline до Auto: S/D → Poisson → независимая матрица → <b>Dixon–Coles (γ)</b>. Модель ничьи по умолчанию <b>выключена</b> (ничья = диагональ после DC). Draw можно включить явно в конфиге / компонент-recipe для эксперимента.</dd>
           </div>
           <div>
             <dt>Auto</dt>
@@ -6961,8 +6961,8 @@ bash scripts/update_and_serve.sh --start</div>
       const T = legacy ? Object.assign({}, Tshared, Ltr) : Object.assign({}, Tshared, Atr);
       const M = legacy ? Object.assign({}, Mshared, Lmx) : Object.assign({}, Mshared, Amx);
       const Cal = legacy ? Object.assign({}, Tshared, Lcal) : Object.assign({}, Tshared, Atr);
-      const useDc = legacy && (Ldc.enabled === true || L.useDixonColes === true);
-      const useDraw = legacy && (Ldraw.enabled === true || L.useDrawModel === true);
+      const useDc = legacy && (Ldc.enabled != null ? Ldc.enabled === true : L.useDixonColes !== false);
+      const useDraw = legacy && (Ldraw.enabled != null ? Ldraw.enabled === true : L.useDrawModel === true);
       const drawMode = irPickStr(Ldraw, 'mode', L.drawMode || 'residual_dc');
       return {
         maxGoals: irPickNum(M, 'maxGoals', GM_MAX),
@@ -7152,7 +7152,8 @@ bash scripts/update_and_serve.sh --start</div>
       };
     }
     function irTrainLegacy(raw,cfg){
-      const cfgL=Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw!==false, irEngine:'legacy'});
+      // Legacy defaults: DC on (desktop/old baseline), draw model off unless explicitly enabled.
+      const cfgL=Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw===true, irEngine:'legacy'});
       const ms=gmPrepare(raw,cfgL);
       const st=gmFitStrength(ms,cfgL,null);
       const gl=gmFitAD(ms,cfgL,null);
@@ -7169,9 +7170,9 @@ bash scripts/update_and_serve.sh --start</div>
       ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
       return model;
     }
-    /** Entry point: baseline Legacy pipeline (Poisson independent; DC/draw off by config). Isolated from Auto. */
+    /** Entry point: baseline Legacy pipeline (Poisson + DC; draw off unless enabled). Isolated from Auto. */
     function calculateLegacyModel(raw, cfg){
-      return irTrainLegacy(raw, Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw!==false, irEngine:'legacy'}));
+      return irTrainLegacy(raw, Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw===true, irEngine:'legacy'}));
     }
     /** Entry point: Auto Marginals + Gaussian Copula. Never uses DC/draw. */
     function calculateAutoModel(raw, cfg){
@@ -7826,10 +7827,10 @@ bash scripts/update_and_serve.sh --start</div>
       const num=(o,k,fb)=> (o && o[k]!=null ? o[k] : fb);
       const srcNote='<p class="ir-param-hint" style="margin:0 0 8px">Значения по умолчанию из <code>model_config.json</code>. Меняйте конфиг — здесь подставятся при следующем открытии вкладки.</p>';
       legEl.innerHTML = '<h5>Legacy (изолированный pipeline)</h5>' + srcNote + irParamsRowsHtml([
-        ['pipeline', 'S/D → Poisson (baseline)', 'Как до Auto: независимая матрица; DC/draw по умолчанию выкл'],
-        ['Dixon-Coles', !!(Ldc.enabled===true || L.useDixonColes===true), 'В baseline выкл; включать только для эксперимента'],
-        ['Модель ничьи', !!(Ldraw.enabled===true || L.useDrawModel===true), 'В baseline выкл; ничья = диагональ матрицы'],
-        ['fit γ', !!(Ldc.fitGamma===true || L.fitGamma===true), 'Подбор γ DC — только если DC включён'],
+        ['pipeline', 'S/D → Poisson → DC (baseline)', 'Как до Auto: независимая матрица + Dixon–Coles; draw-model выкл'],
+        ['Dixon-Coles', !!(Ldc.enabled != null ? Ldc.enabled === true : L.useDixonColes !== false), 'В baseline включён (как в desktop / старой модели)'],
+        ['Модель ничьи', !!(Ldraw.enabled != null ? Ldraw.enabled === true : L.useDrawModel === true), 'В baseline выкл; ничья = диагональ после DC'],
+        ['fit γ', !!(Ldc.fitGamma != null ? Ldc.fitGamma !== false : L.fitGamma !== false), 'Подбор γ DC — в baseline включён'],
         ['γ fixed / max', `${num(Ldc,'gamma', num(L,'dcGamma',0))} / ${num(Ldc,'gammaMax', num(L,'gammaMax',0.20))}`, 'Параметры DC, если DC включён в конфиге'],
         ['drawMode', Ldraw.mode || L.drawMode || 'residual_dc', 'Используется только при включённой draw-model'],
         ['qMin / qMax', `${num(Ldraw,'qMin', num(L,'drawQMin',0.95))} / ${num(Ldraw,'qMax', num(L,'drawQMax',1.05))}`, 'Клип q — как в gmCfg baseline; только если draw включён'],

@@ -18,9 +18,9 @@
     "rhoMinImprovementPct": 0.5
   },
   "legacy": {
-    "useDixonColes": false,
+    "useDixonColes": true,
     "useDrawModel": false,
-    "fitGamma": false,
+    "fitGamma": true,
     "dcGamma": 0.0,
     "gammaMax": 0.20,
     "drawMode": "residual_dc",
