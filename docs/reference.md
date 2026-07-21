@@ -154,8 +154,8 @@ CORS: `HISTORY_API_CORS` (default `*`).
 | Дерби | `derby` | `derby_weight` | да (флаг в **▼ Веса**; влияет на **H**, не на вес) |
 | Вес матча | `match_w` | `match_weight` | да |
 | Нейтр. вес | `neutr_w` | `neutral_weight` | да (только если нейтральное поле = да) |
-| Ротация хозяев | `home_rot` | `home_rotation_code` | да (в блоке **▼ Веса**; не влияет на модель) |
-| Ротация гостей | `away_rot` | `away_rotation_code` | да (в блоке **▼ Веса**; не влияет на модель) |
+| Ротация хозяев | `home_rot` | `home_rotation_code` | да (▼ Веса; влияет на **training_weight** при обучении) |
+| Ротация гостей | `away_rot` | `away_rotation_code` | да (▼ Веса; влияет на **training_weight** при обучении) |
 | Источник | `source` | `note` | да (в блоке **▼ Веса**; default `Pinnacle`) |
 | Мотивация | `motivation` | `motivation` | да (в блоке **▼ Веса**; boolean да/нет; не влияет на модель) |
 | Активен | `active` | `active` | да (в блоке **▼ Веса**; `true` → в обучении, `false` → только история) |
@@ -180,6 +180,16 @@ note, motivation, active
 Справочник уровней ротации: таблица `match_rotation_levels` (коды `none` / `middle` / `high`).
 Чтение: `v_matches_full.home_rotation_code` / `away_rotation_code`.
 Запись: PATCH в `matches` — только код; на UI — `name_ru` из справочника.
+
+**Обучение:** из кодов считается match-level `training_weight` (конфиг `rotationTrainingWeights`):
+
+| max(home, away) | weight |
+| --- | ---: |
+| `high` | `0.0` (исключён) |
+| `middle` | `0.7` |
+| `none` | `1.0` |
+
+Вес умножается на `wBase` до разделения Legacy/Auto. В отчётах: `training_weight`, `training_status` (`full`/`reduced`/`excluded`), `rotation_reason`.
 
 ### Валидация PATCH
 
