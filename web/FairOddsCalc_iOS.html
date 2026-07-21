@@ -335,6 +335,13 @@
     .ir-glossary dt{ font-weight:700; color:#10204a; margin:0 0 2px; }
     .ir-glossary dd{ margin:0; color:#475569; }
     .ir-glossary .ir-glossary-note{ margin:12px 0 0; font-size:12px; color:#64748b; }
+    .ir-field-hint{ display:block; font-size:10px; color:#8a93a0; margin-top:3px; line-height:1.3; max-width:220px; }
+    .ir-controls-card .ir-field-hint{ max-width:100%; margin:6px 0 0; }
+    .ir-mode-hint-row{ margin:0 0 10px; }
+    .ir-params-col .ir-param-hint{ display:block; font-size:10px; color:#94a3b8; margin:0 0 6px; line-height:1.3; font-weight:400; }
+    .ir-params-col .ir-sum-row{ align-items:flex-start; }
+    .ir-params-col .ir-sum-row > span:first-child{ flex:1; min-width:0; }
+    .ir-params-col .ir-sum-row .ir-param-hint{ margin-top:2px; }
     .ir-report-status{ margin:8px 0; padding:10px 12px; border-radius:8px; background:#f8fafc; border:1px solid var(--line); font-size:13px; }
     .ir-report-status.err{ background:#fef2f2; border-color:#fecaca; color:#991b1b; }
     .ir-report-table-wrap{ overflow:auto; max-height:70vh; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
@@ -1106,8 +1113,9 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <section id="tab-inactreport" class="panel">
       <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Сравнение моделей (Backtest)</h3>
       <p class="small" style="margin:0 0 10px">Лаборатория моделей на матчах <code>active=false</code>. Обучение — на активных матчах лиги; БД не меняется. Вкладки «Линия» и «История» не затрагиваются. Параметры — <code>model_config.json</code>.</p>
-      <details id="irParamsPanel" class="ir-params-panel">
+      <details id="irParamsPanel" class="ir-params-panel" open>
         <summary>Параметры моделей (из model_config.json)</summary>
+        <p class="ir-field-hint" style="margin:0 12px 8px;max-width:none">Коэффициенты подставляются из конфига по умолчанию. У каждого параметра — подпись, зачем он нужен. Правки вносятся в <code>model_config.json</code> (web/ и config/ синхронно).</p>
         <div class="ir-params-body" id="irParamsBody">
           <div class="ir-params-col" id="irParamsLegacy"><h5>Legacy</h5><div class="small" style="color:#94a3b8">Загрузка…</div></div>
           <div class="ir-params-col" id="irParamsAuto"><h5>Auto</h5><div class="small" style="color:#94a3b8">Загрузка…</div></div>
@@ -1122,36 +1130,42 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <label><input type="radio" name="irReportMode" value="auto" /> <span>Auto</span></label>
               <label><input type="radio" name="irReportMode" value="compare" checked /> <span>Сравнение</span></label>
             </div>
+            <p class="ir-field-hint ir-mode-hint-row">Какой pipeline считать: только старый (Legacy candidate), только новый (Auto) или оба сразу для сравнения на одних матчах.</p>
             <div class="ir-mode-row" style="margin-bottom:0">
               <span style="font-weight:600;color:#10204a">Считать:</span>
               <label><input type="checkbox" id="irUseLegacy" checked /> <span>Legacy candidate (Poisson + DC + Draw)</span></label>
               <label><input type="checkbox" id="irUseAuto" checked /> <span>Auto (Marginals + Copula)</span></label>
             </div>
+            <p class="ir-field-hint" style="margin-top:6px;margin-bottom:0">В режиме «Сравнение» можно оставить одну модель. В режимах Legacy/Auto галки фиксируются автоматически.</p>
           </div>
           <div class="ir-report-toolbar">
             <div class="field" style="min-width:160px">
               <label>Лига</label>
               <select id="irLeagueFilter"><option value="">Все лиги</option></select>
+              <span class="ir-field-hint">Фильтр inactive-матчей по лиге. Обучение всё равно идёт на active этой же лиги.</span>
             </div>
             <div class="field" style="min-width:140px">
               <label>Сезон</label>
               <select id="irSeasonFilter"><option value="">Все сезоны</option></select>
+              <span class="ir-field-hint">Ограничить отчёт сезоном. Пусто = все сезоны выбранной лиги.</span>
             </div>
             <div class="field" style="max-width:130px">
               <label>Дата от</label>
               <input id="irDateFrom" type="date" />
+              <span class="ir-field-hint">Нижняя граница даты матча (включительно).</span>
             </div>
             <div class="field" style="max-width:130px">
               <label>Дата до</label>
               <input id="irDateTo" type="date" />
+              <span class="ir-field-hint">Верхняя граница даты матча (включительно).</span>
             </div>
-            <label class="ir-mode-row" style="margin:0;padding-bottom:2px">
-              <input type="checkbox" id="irUseMargin" />
-              <span>Маржа %</span>
-            </label>
-            <div class="field" style="max-width:90px">
-              <label>%</label>
+            <div class="field" style="max-width:150px">
+              <label class="ir-mode-row" style="margin:0;gap:6px">
+                <input type="checkbox" id="irUseMargin" />
+                <span>Маржа %</span>
+              </label>
               <input id="irMarginPct" type="text" value="3" />
+              <span class="ir-field-hint">Выкл → модель и эталон fair (Shin de-vig). Вкл → эталон raw из БД, модель с этим % маржи. Дефолт из config.</span>
             </div>
             <button type="button" id="irRunReport" class="btn primary">Сформировать</button>
             <button type="button" id="irExportCsv" class="btn" disabled>Скачать CSV</button>
@@ -7400,9 +7414,14 @@ bash scripts/update_and_serve.sh --start</div>
       return String(v);
     }
     function irParamsRowsHtml(pairs){
-      return pairs.map(([k,v]) =>
-        `<div class="ir-sum-row"><span>${escapeHtml(k)}</span><span>${escapeHtml(irFmtParam(v))}</span></div>`
-      ).join('');
+      // pairs: [label, value, hint?]
+      return pairs.map(row => {
+        const k = row[0], v = row[1], hint = row[2];
+        const hintHtml = hint
+          ? `<span class="ir-param-hint">${escapeHtml(hint)}</span>`
+          : '';
+        return `<div class="ir-sum-row"><span>${escapeHtml(k)}${hintHtml}</span><span>${escapeHtml(irFmtParam(v))}</span></div>`;
+      }).join('');
     }
     function irRenderModelParams(){
       const legEl=document.getElementById('irParamsLegacy');
@@ -7423,32 +7442,33 @@ bash scripts/update_and_serve.sh --start</div>
       const T=irCfgPart('train', {})||{};
       const mx=GM_MATRIX_CFG||{};
       const num=(o,k,fb)=> (o && o[k]!=null ? o[k] : fb);
-      legEl.innerHTML = '<h5>Legacy (изолированный pipeline)</h5>' + irParamsRowsHtml([
-        ['pipeline', 'S/D → Poisson → DC → draw'],
-        ['Dixon-Coles', (Ldc.enabled!=null?Ldc.enabled:L.useDixonColes) !== false],
-        ['Модель ничьи', (Ldraw.enabled!=null?Ldraw.enabled:L.useDrawModel) !== false],
-        ['fit γ', (Ldc.fitGamma!=null?Ldc.fitGamma:L.fitGamma) !== false],
-        ['γ fixed / max', `${num(Ldc,'gamma', num(L,'dcGamma',0))} / ${num(Ldc,'gammaMax', num(L,'gammaMax',0.20))}`],
-        ['drawMode', Ldraw.mode || L.drawMode || 'residual_dc'],
-        ['qMin / qMax', `${num(Ldraw,'qMin', num(L,'drawQMin',0.95))} / ${num(Ldraw,'qMax', num(L,'drawQMax',1.15))}`],
-        ['drawLossWeight', num(Ldraw,'drawLossWeight', num(L,'drawLossWeight',1.5))],
-        ['maxGoals', num(Lmx,'maxGoals', num(M,'maxGoals', mx.maxGoals||10))],
-        ['α форы / тотала', `${num(Ltr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Ltr,'alphaT', num(T,'alphaT',0.5))}`],
-        ['dCalMode / sCalMode', `${Lcal.dCalMode||T.dCalMode||'soft'} / ${Lcal.sCalMode||T.sCalMode||'off'}`],
-        ['Copula / NB', 'запрещены'],
+      const srcNote='<p class="ir-param-hint" style="margin:0 0 8px">Значения по умолчанию из <code>model_config.json</code>. Меняйте конфиг — здесь подставятся при следующем открытии вкладки.</p>';
+      legEl.innerHTML = '<h5>Legacy (изолированный pipeline)</h5>' + srcNote + irParamsRowsHtml([
+        ['pipeline', 'S/D → Poisson → DC → draw', 'Полный исторический путь расчёта без Copula/NB'],
+        ['Dixon-Coles', (Ldc.enabled!=null?Ldc.enabled:L.useDixonColes) !== false, 'Поправка низких счетов 0:0 / 1:0 / 0:1 / 1:1'],
+        ['Модель ничьи', (Ldraw.enabled!=null?Ldraw.enabled:L.useDrawModel) !== false, 'Отдельная калибровка PX после матрицы'],
+        ['fit γ', (Ldc.fitGamma!=null?Ldc.fitGamma:L.fitGamma) !== false, 'Подбирать γ DC по 1X2; иначе брать fixed γ'],
+        ['γ fixed / max', `${num(Ldc,'gamma', num(L,'dcGamma',0))} / ${num(Ldc,'gammaMax', num(L,'gammaMax',0.20))}`, 'Стартовое/фиксированное γ и ограничение |γ|'],
+        ['drawMode', Ldraw.mode || L.drawMode || 'residual_dc', 'residual_dc = множитель q к PX матрицы; legacy = абсолютный target'],
+        ['qMin / qMax', `${num(Ldraw,'qMin', num(L,'drawQMin',0.95))} / ${num(Ldraw,'qMax', num(L,'drawQMax',1.15))}`, 'Клип множителя q при подгонке ничьи'],
+        ['drawLossWeight', num(Ldraw,'drawLossWeight', num(L,'drawLossWeight',1.5)), 'Вес ошибки PX в калибровке 1X2'],
+        ['maxGoals', num(Lmx,'maxGoals', num(M,'maxGoals', mx.maxGoals||10)), 'Размер матрицы счетов 0…N'],
+        ['α форы / тотала', `${num(Ltr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Ltr,'alphaT', num(T,'alphaT',0.5))}`, 'Веса рынков AH/OU при восстановлении S/D'],
+        ['dCalMode / sCalMode', `${Lcal.dCalMode||T.dCalMode||'soft'} / ${Lcal.sCalMode||T.sCalMode||'off'}`, 'Калибровка D и S после strength/AD'],
+        ['Copula / NB', 'запрещены', 'В Legacy эти компоненты Auto не вызываются'],
       ]);
-      autoEl.innerHTML = '<h5>Auto (изолированный pipeline)</h5>' + irParamsRowsHtml([
-        ['pipeline', 'S/D → Marginals → Copula'],
-        ['Auto Marginals', A.enabled !== false],
-        ['Gaussian Copula', C.enabled !== false],
-        ['alphaCandidates', A.alphaCandidates || mx.alphaCandidates || []],
-        ['rhoCandidates', C.rhoCandidates || mx.rhoCandidates || []],
-        ['nbMinImprovementPct', num(A,'nbMinImprovementPct', mx.nbMinImprovementPct||1)],
-        ['rhoMinImprovementPct', num(C,'rhoMinImprovementPct', mx.rhoMinImprovementPct||0.5)],
-        ['maxGoals', num(Amx,'maxGoals', num(M,'maxGoals', mx.maxGoals||10))],
-        ['Dixon-Coles / Draw', 'запрещены'],
-        ['α форы / тотала', `${num(Atr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Atr,'alphaT', num(T,'alphaT',0.5))}`],
-        ['dCalMode', Atr.dCalMode || T.dCalMode || 'soft'],
+      autoEl.innerHTML = '<h5>Auto (изолированный pipeline)</h5>' + srcNote + irParamsRowsHtml([
+        ['pipeline', 'S/D → Marginals → Copula', 'Актуальная модель вкладки «Линия»'],
+        ['Auto Marginals', A.enabled !== false, 'Выбор Poisson vs NB по α-сетке'],
+        ['Gaussian Copula', C.enabled !== false, 'Связь маргиналей через ρ'],
+        ['alphaCandidates', A.alphaCandidates || mx.alphaCandidates || [], 'Сетка α для NB; 0 = Poisson'],
+        ['rhoCandidates', C.rhoCandidates || mx.rhoCandidates || [], 'Сетка ρ для Copula'],
+        ['nbMinImprovementPct', num(A,'nbMinImprovementPct', mx.nbMinImprovementPct||1), 'Мин. улучшение %, чтобы выбрать NB вместо Poisson'],
+        ['rhoMinImprovementPct', num(C,'rhoMinImprovementPct', mx.rhoMinImprovementPct||0.5), 'Мин. улучшение %, чтобы взять ρ ≠ 0'],
+        ['maxGoals', num(Amx,'maxGoals', num(M,'maxGoals', mx.maxGoals||10)), 'Размер матрицы счетов 0…N'],
+        ['Dixon-Coles / Draw', 'запрещены', 'В Auto DC и draw-model не используются'],
+        ['α форы / тотала', `${num(Atr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Atr,'alphaT', num(T,'alphaT',0.5))}`, 'Веса рынков AH/OU при восстановлении S/D'],
+        ['dCalMode', Atr.dCalMode || T.dCalMode || 'soft', 'Калибровка D (S обычно off)'],
       ]);
     }
     function irRenderSummary(sum){
@@ -7637,11 +7657,12 @@ bash scripts/update_and_serve.sh --start</div>
         await loadSupabaseConfig();
         if(!window.__SB.leagues||!window.__SB.leagues.length) await sbFetchLeaguesList();
         if(!window.__SB.seasons||!window.__SB.seasons.length) await sbLoadSeasonSummary();
+        // Все дефолты UI — из model_config.compare (как раньше на «Линии» из конфига)
         const defMode=irCfgPart('compare.defaultMode','compare');
         const radio=document.querySelector(`input[name="irReportMode"][value="${defMode}"]`);
         if(radio) radio.checked=true;
         const mg=document.getElementById('irMarginPct');
-        if(mg && !(mg.value||'').trim()) mg.value=String(irCfgPart('compare.defaultMarginPct',3));
+        if(mg) mg.value=String(irCfgPart('compare.defaultMarginPct',3));
         const useMg=document.getElementById('irUseMargin');
         if(useMg) useMg.checked=!!irCfgPart('compare.defaultUseMargin', false);
         irSyncModeCheckboxes();
