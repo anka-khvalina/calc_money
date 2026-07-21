@@ -1258,7 +1258,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <dl>
           <div>
             <dt>Сравнение</dt>
-            <dd>Обе модели на одних inactive-матчах. <b>winner_AH / winner_OU / winner_row</b> считаются только по кэфам на рыночной линии (<code>*_at_market</code> / <code>*_d*_mkt</code>). Отклонение main line — отдельные колонки <code>AH_line_d*</code>, <code>Total_line_d*</code> и <code>winner_AH_line</code> / <code>winner_OU_line</code>.</dd>
+            <dd>Обе модели на одних inactive-матчах. Обучение — только на <b>выбранном сезоне</b> (по умолчанию 2025-26), не на всей истории лиги. <b>winner_AH / winner_OU / winner_row</b> считаются только по кэфам на рыночной линии (<code>*_at_market</code> / <code>*_d*_mkt</code>). Отклонение main line — отдельные колонки <code>AH_line_d*</code>, <code>Total_line_d*</code> и <code>winner_AH_line</code> / <code>winner_OU_line</code>.</dd>
           </div>
           <div>
             <dt>Legacy (candidate)</dt>
@@ -8057,12 +8057,13 @@ bash scripts/update_and_serve.sh --start</div>
       const recipeActive = !!(sum.recipe && sum.recipe!=='full_pipeline');
       const leftTitle = recipeActive ? 'Recipe (L)' : 'Legacy (candidate)';
       const rightTitle = recipeActive ? 'Auto (контраст)' : 'Auto';
-      el.innerHTML = `<div class="ir-sum-row"><span>Всего матчей</span><span><b>${sum.n}</b></span></div>`
+      el.innerHTML = `<div class="ir-sum-row"><span>Inactive (оценка)</span><span><b>${sum.n}</b></span></div>`
+        + `<div class="ir-sum-row"><span>Active (обучение)</span><span><b>${sum.nActive!=null?sum.nActive:'—'}</b>${sum.nActiveExcluded?` <span class="small" style="font-weight:400">(+${sum.nActiveExcluded} без полной линии)</span>`:''}</span></div>`
         + (sum.recipe?`<div class="ir-sum-row"><span>Recipe</span><span>${escapeHtml(sum.recipe)}</span></div>`:'')
         + block(leftTitle, sum.legacy)
         + block(rightTitle, sum.auto)
         + (sum.mode==='compare' ? `<div class="ir-winner">Победитель (1X2+AH@mkt+OU@mkt): ${escapeHtml(sum.winner)}</div>` : '')
-        + `<div class="small" style="margin-top:8px;color:#94a3b8">AH/OU MAE — только кэфы на рыночной линии. Line MAE — отдельно. Ротация → training_weight при обучении. Конфиг: ${escapeHtml((GM_MATRIX_CFG&&GM_MATRIX_CFG.configSource)||'model_config.json')}</div>`;
+        + `<div class="small" style="margin-top:8px;color:#94a3b8">Inactive — матчи отчёта. Active — выборка обучения выбранного сезона. AH/OU MAE — кэфы на рыночной линии. Ротация → training_weight. Конфиг: ${escapeHtml((GM_MATRIX_CFG&&GM_MATRIX_CFG.configSource)||'model_config.json')}</div>`;
     }
     function irSetReportStatus(msg,isErr){
       const el=document.getElementById('irReportStatus');
@@ -8171,6 +8172,7 @@ bash scripts/update_and_serve.sh --start</div>
         return String(na).localeCompare(String(nb));
       });
       const out=[]; let skipped=0;
+      let nActiveTrain=0, nActiveFetched=0, nActiveExcluded=0;
       for(let li=0; li<leagueIds.length; li++){
         const leagueId=leagueIds[li];
         const leagueName=byLeague[leagueId][0].league_name||leagueId;
@@ -8197,8 +8199,11 @@ bash scripts/update_and_serve.sh --start</div>
           continue;
         }
         const activeMatches=await irFetchActiveMatchesForLeague(leagueId, seasonIdForLeague);
+        nActiveFetched += (activeMatches&&activeMatches.length)||0;
         const ignoreRotation=!!(document.getElementById('irIgnoreRotation')||{}).checked;
         const parsed=goalMatchesToRaw(activeMatches, { ignoreRotation });
+        nActiveTrain += parsed.valid||0;
+        nActiveExcluded += parsed.excluded||0;
         let modelL=null, modelA=null;
         if(parsed.valid>=2){
           const seasonIds=[...new Set(parsed.raw.map(r=>r.seasonId).filter(s=>s!=null))];
@@ -8242,12 +8247,17 @@ bash scripts/update_and_serve.sh --start</div>
       } else if(irReportSummary && recipe){
         irReportSummary.recipe = irRecipeLabel(recipe);
       }
+      if(irReportSummary){
+        irReportSummary.nActive = nActiveTrain;
+        irReportSummary.nActiveFetched = nActiveFetched;
+        irReportSummary.nActiveExcluded = nActiveExcluded;
+      }
       irRenderSummary(irReportSummary);
       if(exportBtn) exportBtn.disabled=!irReportRows.length;
       const warn=skipped?`; ${skipped} лиг без обучения`:'';
       const sameNote=(engines.compare||recipe)?`; winner_AH/OU = odds @ market line`:'';
       const recipeNote=recipe?`; recipe ${irRecipeLabel(recipe)}; rotation weights in train`:'';
-      irSetReportStatus(`Готово: ${irReportRows.length} матч., режим ${modeTxt}; обучение на сезоне ${seasonLabel}; ${etalonTxt}; AH/OU кэфы на рыночной линии${sameNote}${recipeNote}${warn}`);
+      irSetReportStatus(`Готово: ${irReportRows.length} inactive / ${nActiveTrain} active (сезон ${seasonLabel}); режим ${modeTxt}; ${etalonTxt}; AH/OU кэфы на рыночной линии${sameNote}${recipeNote}${warn}`);
     }
     function irPopulateLeagueFilter(){
       const sel=document.getElementById('irLeagueFilter');
