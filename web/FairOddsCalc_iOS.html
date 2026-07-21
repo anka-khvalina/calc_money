@@ -346,6 +346,11 @@
     .ir-report-table td.num{ text-align:right; font-variant-numeric:tabular-nums; }
     .ir-report-table td.delta-pos{ color:#b45309; }
     .ir-report-table td.delta-neg{ color:#166534; }
+    .ir-report-table td.delta-hot{
+      background:#fee2e2;
+      color:#991b1b;
+      font-weight:700;
+    }
     .ir-report-table td.win-auto{ color:#0f766e; font-weight:600; }
     .ir-report-table td.win-legacy{ color:#1d4ed8; font-weight:600; }
     .ir-report-table tr:hover td{ background:#fafbff; }
@@ -8288,7 +8293,9 @@ bash scripts/update_and_serve.sh --start</div>
           const cls=[];
           if(!IR_TEXT_COLS.has(col)) cls.push('num');
           if((String(col).includes('_d')||String(col).includes('delta'))&&raw!=null&&isFinite(raw)){
-            if(raw>0) cls.push('delta-pos'); else if(raw<0) cls.push('delta-neg');
+            if(Math.abs(Number(raw)) > 0.3) cls.push('delta-hot');
+            else if(raw>0) cls.push('delta-pos');
+            else if(raw<0) cls.push('delta-neg');
           }
           if(IR_WIN_COLS.has(col)){
             if(raw==='Auto') cls.push('win-auto');
