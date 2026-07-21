@@ -180,5 +180,23 @@
     "defaultMode": "compare",
     "defaultMarginPct": 3,
     "defaultUseMargin": false
+  },
+  "calibrationNaming": {
+    "dCalibration": {
+      "intercept": "dA",
+      "slope": "dB",
+      "formula": "D_cal = dA + dB * D_model"
+    },
+    "sCalibration": {
+      "intercept": "sA",
+      "slope": "sB",
+      "formula": "S_cal = sA + sB * S_model"
+    },
+    "legacyAliases": {
+      "a": "dA",
+      "b": "dB",
+      "c": "sA",
+      "d": "sB"
+    }
   }
 }

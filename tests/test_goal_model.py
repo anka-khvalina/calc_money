@@ -388,8 +388,19 @@ def test_s_calibration_off_fixes_cd():
     raw = gmt.load_raw_matches(csv_path)
     cfg = gmt.ModelConfig(s_calibration_mode="off", use_dixon_coles=False, use_draw_model=False)
     model, _ = gmt.train_full_model(raw, cfg)
+    assert abs(model.calibration.s_a) < 1e-9
+    assert abs(model.calibration.s_b - 1.0) < 1e-9
+    # legacy aliases still mirror sA/sB
     assert abs(model.calibration.c) < 1e-9
     assert abs(model.calibration.d - 1.0) < 1e-9
+
+
+def test_calibration_legacy_kwargs():
+    cal = gmt.Calibration(a=0.1, b=1.2, c=-0.05, d=0.9)
+    assert cal.d_a == 0.1 and cal.d_b == 1.2
+    assert cal.s_a == -0.05 and cal.s_b == 0.9
+    assert cal.a == cal.d_a and cal.b == cal.d_b
+    assert cal.c == cal.s_a and cal.d == cal.s_b
 
 
 def test_dc_gamma_bounded():
@@ -486,12 +497,12 @@ def test_sd_1x2_market_matrix_covers_matches():
 
 
 def test_calibration_stability_unstable_example():
-    cal = gmt.Calibration(a=0.0, b=0.45, c=-0.9, d=1.8, n_1x2=50)
+    cal = gmt.Calibration(d_a=0.0, d_b=0.45, s_a=-0.9, s_b=1.8, n_1x2=50)
     diag = gmt.assess_calibration_stability(cal)
     assert not diag.stable
-    assert any("b=" in s for s in diag.deviations)
-    assert any("c=" in s for s in diag.deviations)
-    assert any("d=" in s for s in diag.deviations)
+    assert any("dB=" in s for s in diag.deviations)
+    assert any("sA=" in s for s in diag.deviations)
+    assert any("sB=" in s for s in diag.deviations)
 
 
 def test_calibration_stability_identity():

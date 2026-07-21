@@ -1204,7 +1204,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
                   <option value="legacy">Legacy</option>
                   <option value="auto">Auto</option>
                 </select>
-                <span class="ir-field-hint">Чью обученную силу/калибровку (r, A/Df, a/b/c/d) использовать. training_weight ротации уже в выборке.</span>
+                <span class="ir-field-hint">Чью обученную силу/калибровку (r, A/Df, dA/dB, sA/sB) использовать. training_weight ротации уже в выборке.</span>
               </div>
               <div class="field">
                 <label>Marginals</label>
@@ -1414,7 +1414,7 @@ w<sub>line тотал</sub> = clamp( 1 / (1 + α<sub>тотала</sub>·(S−S�
           <li>Берём рейтинги <b>r</b>, атаку/оборону <b>A, Df</b> обученной модели.</li>
           <li>Считаем <b>H<sub>eff</sub></b> (нейтраль → 0; дерби → shrink(H+δ); иначе H<sub>league</sub>).</li>
           <li>Считаем <b>D<sub>pred</sub> = r<sub>h</sub>−r<sub>a</sub> + H<sub>eff</sub></b>.</li>
-          <li>Считаем <b>S<sub>pred</sub></b> из log-модели голов + калибровка <b>a,b,c,d</b>.</li>
+          <li>Считаем <b>S<sub>pred</sub></b> из log-модели голов + калибровка <b>dA,dB / sA,sB</b>.</li>
           <li><b>λ<sub>h</sub>, λ<sub>a</sub></b> → Auto Marginals + Gaussian Copula → единая матрица P(i,j).</li>
           <li>Из <b>одной</b> матрицы: 1X2, тоталы, форы, BTTS, ИТ, exact score.</li>
         </ol>
@@ -3914,18 +3914,64 @@ bash scripts/update_and_serve.sh --start</div>
         else { const xc=cen.map((c,i)=>c+0.5*(simplex[n][i]-c)); const fc=f(xc); if(fc<fv[n]){simplex[n]=xc;fv[n]=fc;} else { for(let k=1;k<=n;k++){ simplex[k]=simplex[k].map((v,i)=>simplex[0][i]+0.5*(v-simplex[0][i])); fv[k]=f(simplex[k]); } } } }
       let best=0; for(let k=1;k<=n;k++) if(fv[k]<fv[best]) best=k; return simplex[best];
     }
+
+    /** S/D calibration params: D_cal = dA + dB·D_model; S_cal = sA + sB·S_model.
+     *  Legacy aliases a,b,c,d kept in sync (a=dA, b=dB, c=sA, d=sB). */
+    function gmEmptyCal(extra){
+      return gmMakeCal(0, 1, 0, 1, extra||{});
+    }
+    function gmMakeCal(dA, dB, sA, sB, extra){
+      const o = Object.assign({
+        dA: dA != null ? Number(dA) : 0,
+        dB: dB != null ? Number(dB) : 1,
+        sA: sA != null ? Number(sA) : 0,
+        sB: sB != null ? Number(sB) : 1,
+        gamma: 0,
+        n1x2: 0,
+      }, extra||{});
+      // aliases for older UI/debug code
+      o.a = o.dA; o.b = o.dB; o.c = o.sA; o.d = o.sB;
+      o.dCalibration = { intercept: o.dA, slope: o.dB };
+      o.sCalibration = { intercept: o.sA, slope: o.sB };
+      return o;
+    }
+    function gmNormalizeCal(cal){
+      if(!cal) return gmEmptyCal();
+      // Preferred flat: dA/dB/sA/sB; legacy a/b/c/d; optional nested dCalibration/sCalibration
+      const dNest = cal.dCalibration || {};
+      const sNest = cal.sCalibration || {};
+      const dA = cal.dA != null ? cal.dA
+        : (dNest.intercept != null ? dNest.intercept
+          : (cal.a != null ? cal.a : 0));
+      const dB = cal.dB != null ? cal.dB
+        : (dNest.slope != null ? dNest.slope
+          : (cal.b != null ? cal.b : 1));
+      const sA = cal.sA != null ? cal.sA
+        : (sNest.intercept != null ? sNest.intercept
+          : (cal.c != null ? cal.c : 0));
+      const sB = cal.sB != null ? cal.sB
+        : (sNest.slope != null ? sNest.slope
+          : (cal.d != null ? cal.d : 1));
+      return gmMakeCal(dA, dB, sA, sB, {
+        gamma: cal.gamma != null ? cal.gamma : 0,
+        n1x2: cal.n1x2 != null ? cal.n1x2 : (cal.n_1x2 != null ? cal.n_1x2 : 0),
+        loss: cal.loss,
+      });
+    }
+
     function gmAssessCalibration(cal, cfg){
+      cal = gmNormalizeCal(cal);
       const n1x2=cal.n1x2!=null?cal.n1x2:0;
       if(!n1x2) return { stable:true, deviations:[], n1x2:0, summary:'нет 1X2 в выборке (калибровка не выполнялась)' };
       const tolA=0.35,tolB=0.30,tolC=0.35,tolD=0.30,min1x2=30;
       const dev=[];
-      if(Math.abs(cal.a)>tolA) dev.push(`a=${cal.a.toFixed(3)} (ожид. ≈0)`);
+      if(Math.abs(cal.dA)>tolA) dev.push(`dA=${cal.dA.toFixed(3)} (ожид. ≈0)`);
       const skipB = cfg && cfg.dCalMode === 'off';
-      if(!skipB && Math.abs(cal.b-1)>tolB) dev.push(`b=${cal.b.toFixed(3)} (ожид. ≈1)`);
+      if(!skipB && Math.abs(cal.dB-1)>tolB) dev.push(`dB=${cal.dB.toFixed(3)} (ожид. ≈1)`);
       const skipCd=cfg&&cfg.sCalMode==='off';
       if(!skipCd){
-        if(Math.abs(cal.c)>tolC) dev.push(`c=${cal.c.toFixed(3)} (ожид. ≈0)`);
-        if(Math.abs(cal.d-1)>tolD) dev.push(`d=${cal.d.toFixed(3)} (ожид. ≈1)`);
+        if(Math.abs(cal.sA)>tolC) dev.push(`sA=${cal.sA.toFixed(3)} (ожид. ≈0)`);
+        if(Math.abs(cal.sB-1)>tolD) dev.push(`sB=${cal.sB.toFixed(3)} (ожид. ≈1)`);
       }
       if(cfg&&cfg.useDc){
         const gLim=cfg.gammaMax!=null?cfg.gammaMax:0.20;
@@ -3935,20 +3981,20 @@ bash scripts/update_and_serve.sh --start</div>
       const stable=dev.length===0;
       return { stable, deviations:dev, n1x2, summary: stable?`стабильна (${n1x2} матч. с 1X2)`:'нестабильна — '+dev.join('; ') };
     }
-    function gmApplySCal(sModel,c,d,cfg){
+    function gmApplySCal(sModel,sA,sB,cfg){
       if(cfg.sCalMode==='off') return sModel;
-      const sLin=c+d*sModel;
+      const sLin=sA+sB*sModel;
       if(cfg.sCalMode==='soft'&&cfg.sCalMaxDelta>0){
         const lo=sModel-cfg.sCalMaxDelta, hi=sModel+cfg.sCalMaxDelta;
         return Math.max(lo, Math.min(hi, sLin));
       }
       return sLin;
     }
-    function gmSCalPenalty(c,d,cfg){
+    function gmSCalPenalty(sA,sB,cfg){
       if(cfg.sCalMode!=='soft') return 0;
       const lc=cfg.sCalPenaltyC!=null?cfg.sCalPenaltyC:2;
       const ld=cfg.sCalPenaltyD!=null?cfg.sCalPenaltyD:2;
-      return lc*c*c+ld*(d-1)*(d-1);
+      return lc*sA*sA+ld*(sB-1)*(sB-1);
     }
     function gmBoundB(b,cfg){
       const rawMin=cfg.dCalBMin!=null?cfg.dCalBMin:0.90;
@@ -3957,10 +4003,10 @@ bash scripts/update_and_serve.sh --start</div>
       const bMax=Math.max(rawMin, rawMax);
       return Math.max(bMin, Math.min(bMax, b));
     }
-    function gmDCalPenalty(b,cfg){
+    function gmDCalPenalty(dB,cfg){
       if(cfg.dCalMode!=='soft') return 0;
       const lam=cfg.dCalBPenalty!=null?cfg.dCalBPenalty:2.0;
-      return lam*Math.pow(b-1,2);
+      return lam*Math.pow(dB-1,2);
     }
     function gmShrinkBigFav(d,cfg){
       const mode=cfg.dBigFavMode||'off';
@@ -3975,10 +4021,10 @@ bash scripts/update_and_serve.sh --start</div>
       const slope=Math.max(0, Math.min(1, cfg.dBigFavSlope!=null?cfg.dBigFavSlope:0.75));
       return Math.sign(d)*(thr+slope*(ad-thr));
     }
-    function gmApplyDCal(dm,a,b,cfg){
+    function gmApplyDCal(dm,dA,dB,cfg){
       const mode=cfg.dCalMode||'soft';
-      const bUse=mode==='off'?1:(mode==='free'?b:gmBoundB(b,cfg));
-      const dLin=a+bUse*dm;
+      const bUse=mode==='off'?1:(mode==='free'?dB:gmBoundB(dB,cfg));
+      const dLin=dA+bUse*dm;
       return { dRaw:dLin, dUsed:gmShrinkBigFav(dLin,cfg), bUsed:bUse };
     }
     function gmClipGamma(g,cfg){
@@ -3988,7 +4034,7 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function gmCalibrate(ms,st,gl,cfg,alpha,rho,drawLossOverride){
       const used=ms.filter(m=>m.p1!=null && gmTrainWeight(m)>0);
-      if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0,n1x2:0};
+      if(!used.length) return gmEmptyCal({gamma:0,n1x2:0});
       const aMat = alpha != null ? Number(alpha) : 0;
       const rMat = rho != null ? Number(rho) : 0;
       const dLoss = drawLossOverride != null ? Number(drawLossOverride) : (cfg.drawLoss != null ? cfg.drawLoss : 1.5);
@@ -4000,19 +4046,20 @@ bash scripts/update_and_serve.sh --start</div>
       const sumW = pre.reduce((s,row)=>s+row[3],0);
       const sOff=cfg.sCalMode==='off';
       const dOff=(cfg.dCalMode||'soft')==='off';
-      function lossCore(a,b,c,d){
-        if(d<=0 || !(sumW>0)) return 1e9;
+      // D_cal = dA + dB·D_model; S_cal = sA + sB·S_model
+      function lossCore(dA,dB,sA,sB){
+        if(sB<=0 || !(sumW>0)) return 1e9;
         let tot=0;
         for(const [m,dm,sm,w] of pre){
-          const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
-          const dc=gmApplyDCal(dm,a,b,cfg);
+          const sf=gmApplySCal(sm,sA,sB,cfg); if(sf<=0.2) return 1e9;
+          const dc=gmApplyDCal(dm,dA,dB,cfg);
           const df=gmClampD(dc.dUsed,sf); const lh=(sf+df)/2,la=(sf-df)/2; if(lh<=0||la<=0) return 1e9;
           const mat=gmJointScoreMatrix(lh,la,aMat,rMat,cfg.maxGoals);
           const [p1,px,p2]=gm1x2(mat);
           tot+=w*((p1-m.p1)**2+dLoss*(px-m.px)**2+(p2-m.p2)**2);
         }
         // Σ(w·loss)/Σ(w) + soft penalties (independent of sample size)
-        return tot/sumW + gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
+        return tot/sumW + gmSCalPenalty(sA,sB,cfg)+gmDCalPenalty(dB,cfg);
       }
       let full;
       if(sOff){
@@ -4032,8 +4079,8 @@ bash scripts/update_and_serve.sh --start</div>
           full=[x[0],x[1],x[2],x[3]];
         }
       }
-      const bOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
-      return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:0,n1x2:used.length};
+      const dBOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
+      return gmMakeCal(full[0], dBOut, full[2], full[3], {gamma:0, n1x2:used.length});
     }
     function gmEffectiveQBounds(cfg, drawMode){
       const mode=drawMode||cfg.drawMode||'residual_dc';
@@ -4103,6 +4150,7 @@ bash scripts/update_and_serve.sh --start</div>
       return Math.min(qmax, Math.max(qmin, q));
     }
     function gmCalibratedSdForMatch(m,st,gl,cal,cfg){
+      cal = gmNormalizeCal(cal);
       const derby=gmDerbyHome(m);
       const hEff=gmEffectiveH(st,cfg,m.iHome===0,derby);
       const dModel=(st.ratings[m.home]||0)-(st.ratings[m.away]||0)+hEff;
@@ -4110,8 +4158,8 @@ bash scripts/update_and_serve.sh --start</div>
       const lhAD=Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*m.iHome*kHg);
       const laAD=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0));
       const sModel=lhAD+laAD;
-      const sCal=gmApplySCal(sModel,cal.c,cal.d,cfg);
-      const dc=gmApplyDCal(dModel,cal.a,cal.b,cfg);
+      const sCal=gmApplySCal(sModel,cal.sA,cal.sB,cfg);
+      const dc=gmApplyDCal(dModel,cal.dA,cal.dB,cfg);
       const dCal=gmClampD(dc.dUsed,sCal);
       return {dModel,sModel,sCal,dCal};
     }
@@ -4175,7 +4223,7 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function gmPromoted(vals,n){ const arr=Object.values(vals); if(!arr.length) return 0; const w=arr.slice().sort((a,b)=>a-b).slice(0,Math.max(1,n)); return w.reduce((a,b)=>a+b,0)/w.length; }
     function gmPredict(model,homeId,awayId,opt){
-      const {st,gl,cal,cfg}=model; const iHome=opt.neutral?0:1;
+      const {st,gl,cfg}=model; const cal=gmNormalizeCal(model.cal); const iHome=opt.neutral?0:1;
       const names=model.teamNames||{};
       const homeName=names[homeId]||homeId, awayName=names[awayId]||awayId;
       const hEff=gmEffectiveH(st,cfg,opt.neutral,!!opt.derby);
@@ -4185,8 +4233,8 @@ bash scripts/update_and_serve.sh --start</div>
       const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
       const dm=R(homeId)-R(awayId)+hEff;
       const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(awayId)-Df(homeId)); const sm=lhAD+laAD;
-      const dc=gmApplyDCal(dm,cal.a,cal.b,cfg);
-      let sf=gmApplySCal(sm,cal.c,cal.d,cfg);
+      const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
+      let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
       let df=gmClampD(dc.dUsed,sf);
       const lh=(sf+df)/2, la=(sf-df)/2;
       const alpha=model.alphaFinal||0, rho=model.rhoFinal||0;
@@ -4335,7 +4383,8 @@ bash scripts/update_and_serve.sh --start</div>
       return out;
     }
     function gmSd1x2Diagnostics(model, ms, biasWarn=-0.015, sLineWarn=0.20){
-      const {st,gl,cal,cfg}=model;
+      const {st,gl,cfg}=model;
+      const cal=gmNormalizeCal(model.cal);
       const gamma=cfg.useDc?(cal.gamma||0):0;
       const rows=[];
       for(const m of ms){
@@ -4347,8 +4396,8 @@ bash scripts/update_and_serve.sh --start</div>
         const lhAD=Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*m.iHome*kHg);
         const laAD=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0));
         const sModel=lhAD+laAD;
-        const sCal=gmApplySCal(sModel,cal.c,cal.d,cfg);
-        const dCalObj=gmApplyDCal(dModel,cal.a,cal.b,cfg);
+        const sCal=gmApplySCal(sModel,cal.sA,cal.sB,cfg);
+        const dCalObj=gmApplyDCal(dModel,cal.dA,cal.dB,cfg);
         const dCalRaw=dCalObj.dRaw;
         const dCalUsed=gmClampD(dCalObj.dUsed,sCal);
         const [p1MktSd,pxMktSd,p2MktSd]=gmProb1x2FromSd(m.S,m.D,cfg,0);
@@ -4950,7 +4999,7 @@ bash scripts/update_and_serve.sh --start</div>
         enabled:true, status:'accepted',
         before, after, gate, opts,
         quality: after,
-        cal: { a: model.cal.a, b: model.cal.b, c: model.cal.c, d: model.cal.d },
+        cal: gmNormalizeCal(model.cal),
         alphaFinal: model.alphaFinal, rhoFinal: model.rhoFinal,
       };
       return model;
@@ -6349,8 +6398,8 @@ bash scripts/update_and_serve.sh --start</div>
         ['RMSE (сила D)', goalFmtTrainNum(st.rmse, 3), 'num'],
         ['μ (голы)', goalFmtTrainNum(gl.mu, 3), 'num'],
         ['H_g (голы)', goalFmtTrainNum(gl.hg, 3), 'num'],
-        ['Калибр. a, b', `${goalFmtTrainNum(cal.a, 3)}, ${goalFmtTrainNum(cal.b, 3)}`, 'num'],
-        ['Калибр. c, d', `${goalFmtTrainNum(cal.c, 3)}, ${goalFmtTrainNum(cal.d, 3)}`, 'num'],
+        ['Калибр. D (dA, dB)', `${goalFmtTrainNum(gmNormalizeCal(cal).dA, 3)}, ${goalFmtTrainNum(gmNormalizeCal(cal).dB, 3)}`, 'num'],
+        ['Калибр. S (sA, sB)', `${goalFmtTrainNum(gmNormalizeCal(cal).sA, 3)}, ${goalFmtTrainNum(gmNormalizeCal(cal).sB, 3)}`, 'num'],
         ['Калибровка 1X2', escapeHtml(calDiag ? calDiag.summary : '—'), calDiag && !calDiag.stable ? 'warn' : ''],
       ];
       if (gmModel.matrixCalib && gmModel.matrixCalib.status){
@@ -7339,7 +7388,7 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function irCalibrateLegacy(ms, st, gl, cfg){
       const used = ms.filter(m => m.p1 != null && gmTrainWeight(m)>0);
-      if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0,n1x2:0};
+      if(!used.length) return gmEmptyCal({gamma:0,n1x2:0});
       const pre = used.map(m => {
         const derby = gmDerbyHome(m);
         const hEff = gmEffectiveH(st, cfg, m.iHome === 0, derby);
@@ -7354,12 +7403,12 @@ bash scripts/update_and_serve.sh --start</div>
       const dOff = (cfg.dCalMode || 'soft') === 'off';
       if(cfg.useDc && cfg.fitGamma === false){
         const gFix = gmClipGamma(cfg.fixedDcGamma || 0, cfg);
-        function lossNoG(a,b,c,d){
-          if(d<=0 || !(sumW>0)) return 1e9;
+        function lossNoG(dA,dB,sA,sB){
+          if(sB<=0 || !(sumW>0)) return 1e9;
           let tot = 0;
           for(const [m,dm,sm,w] of pre){
-            const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
-            const dc=gmApplyDCal(dm,a,b,cfg);
+            const sf=gmApplySCal(sm,sA,sB,cfg); if(sf<=0.2) return 1e9;
+            const dc=gmApplyDCal(dm,dA,dB,cfg);
             const df=gmClampD(dc.dUsed,sf); const lh=(sf+df)/2,la=(sf-df)/2;
             if(lh<=0||la<=0) return 1e9;
             let mat=gmMatrix(lh,la,cfg.maxGoals);
@@ -7367,7 +7416,7 @@ bash scripts/update_and_serve.sh --start</div>
             const [p1,px,p2]=gm1x2(mat);
             tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
           }
-          return tot/sumW + gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
+          return tot/sumW + gmSCalPenalty(sA,sB,cfg)+gmDCalPenalty(dB,cfg);
         }
         let full;
         if(sOff){
@@ -7378,16 +7427,16 @@ bash scripts/update_and_serve.sh --start</div>
         } else {
           const x=gmNelder(p=>lossNoG(p[0],p[1],p[2],p[3]),[0,1,0,1]); full=[x[0],x[1],x[2],x[3]];
         }
-        const bOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
-        return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:gFix,n1x2:used.length};
+        const dBOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
+        return gmMakeCal(full[0], dBOut, full[2], full[3], {gamma:gFix, n1x2:used.length});
       }
-      function lossCore(a,b,c,d,g){
-        if(d<=0 || !(sumW>0)) return 1e9;
+      function lossCore(dA,dB,sA,sB,g){
+        if(sB<=0 || !(sumW>0)) return 1e9;
         const gc=gmClipGamma(g,cfg);
         let tot=0;
         for(const [m,dm,sm,w] of pre){
-          const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
-          const dc=gmApplyDCal(dm,a,b,cfg);
+          const sf=gmApplySCal(sm,sA,sB,cfg); if(sf<=0.2) return 1e9;
+          const dc=gmApplyDCal(dm,dA,dB,cfg);
           const df=gmClampD(dc.dUsed,sf); const lh=(sf+df)/2,la=(sf-df)/2;
           if(lh<=0||la<=0) return 1e9;
           let mat=gmMatrix(lh,la,cfg.maxGoals);
@@ -7395,7 +7444,7 @@ bash scripts/update_and_serve.sh --start</div>
           const [p1,px,p2]=gm1x2(mat);
           tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
         }
-        return tot/sumW + gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
+        return tot/sumW + gmSCalPenalty(sA,sB,cfg)+gmDCalPenalty(dB,cfg);
       }
       let full;
       if(sOff){
@@ -7413,8 +7462,8 @@ bash scripts/update_and_serve.sh --start</div>
         if(dOff){ const x=gmNelder(p=>lossCore(p[0],1,p[1],p[2],0),[0,0,1]); full=[x[0],1,x[1],x[2],0]; }
         else { const x=gmNelder(p=>lossCore(p[0],p[1],p[2],p[3],0),[0,1,0,1]); full=[x[0],x[1],x[2],x[3],0]; }
       }
-      const bOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
-      return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:full[4],n1x2:used.length};
+      const dBOut = dOff ? 1 : ((cfg.dCalMode||'soft')==='free' ? full[1] : gmBoundB(full[1],cfg));
+      return gmMakeCal(full[0], dBOut, full[2], full[3], {gamma:full[4], n1x2:used.length});
     }
     function irProb1x2Legacy(s,d,cfg,gamma){
       const df=gmClampD(d,s);
@@ -7450,7 +7499,8 @@ bash scripts/update_and_serve.sh --start</div>
       return dm;
     }
     function irPredictLegacy(model,homeId,awayId,opt){
-      const {st,gl,cal,draw,cfg}=model;
+      const {st,gl,draw,cfg}=model;
+      const cal=gmNormalizeCal(model.cal);
       const iHome=opt.neutral?0:1;
       const names=model.teamNames||{};
       const homeName=names[homeId]||homeId, awayName=names[awayId]||awayId;
@@ -7463,8 +7513,8 @@ bash scripts/update_and_serve.sh --start</div>
       const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
       const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
       const sm=lhAD+laAD;
-      const dc=gmApplyDCal(dm,cal.a,cal.b,cfg);
-      let sf=gmApplySCal(sm,cal.c,cal.d,cfg);
+      const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
+      let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
       let df=gmClampD(dc.dUsed,sf);
       const lh=(sf+df)/2, la=(sf-df)/2;
       let mat=gmMatrix(lh,la,cfg.maxGoals||GM_MAX);
@@ -7724,7 +7774,8 @@ bash scripts/update_and_serve.sh --start</div>
       return `calib=${r.calib};marg=${r.marginals};joint=${r.joint};draw=${r.draw}`;
     }
     function irLambdasFromModel(model, homeId, awayId, opt){
-      const {st,gl,cal,cfg}=model;
+      const {st,gl,cfg}=model;
+      const cal=gmNormalizeCal(model.cal);
       const iHome=opt.neutral?0:1;
       const hEff=gmEffectiveH(st,cfg,opt.neutral,!!opt.derby);
       const R=t=>t in st.ratings?st.ratings[t]:gmPromoted(st.ratings,cfg.promotedN);
@@ -7735,8 +7786,8 @@ bash scripts/update_and_serve.sh --start</div>
       const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
       const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
       const sm=lhAD+laAD;
-      const dc=gmApplyDCal(dm,cal.a,cal.b,cfg);
-      let sf=gmApplySCal(sm,cal.c,cal.d,cfg);
+      const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
+      let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
       let df=gmClampD(dc.dUsed,sf);
       const lh=(sf+df)/2, la=(sf-df)/2;
       return {lh,la,sf,df,cfg,cal};

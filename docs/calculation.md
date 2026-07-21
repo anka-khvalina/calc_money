@@ -58,10 +58,11 @@ log λ_a = μ + A_away − D_home
 ## 6. Калибровка S/D под 1X2
 
 ```text
-D_final = a + b · D_model
-S_final = c + d · S_model
+D_final = dA + dB · D_model
+S_final = sA + sB · S_model
 ```
 
+`sCalMode=off` → sA=0, sB=1 (S не калибруется). `dCalMode=soft` ограничивает dB.
 Подгонка под Shin 1X2. **Без** Dixon–Coles γ.
 
 В Auto после выбора α/ρ выполняется повторная калибровка S/D на joint matrix (см. `auto1x2Calib`); 1X2 по-прежнему только из матрицы.

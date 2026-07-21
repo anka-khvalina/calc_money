@@ -7,7 +7,7 @@ Pipeline (см. спецификацию):
   3. восстановление S_m, D_m → λ_h, λ_a;
   4. рейтинг силы r_i, H — robust WLS по D_m;
   5. attack/defense μ, A_i, Df_i, H_g — robust WLS по log λ;
-  6. калибровка a,b,c,d,γ по 1X2 (Shin) — Nelder–Mead;
+  6. калибровка dA,dB,sA,sB,γ по 1X2 (Shin) — Nelder–Mead;
   7. прогноз будущего матча → λ_h,λ_a → матрица → все рынки.
 """
 
@@ -86,10 +86,10 @@ class ModelConfig:
 
     # калибровка
     draw_loss_weight: float = 1.5
-    # S_cal = c + d·S_model: off=фикс c=0,d=1; soft=штраф+лимит ΔS; free=как раньше
+    # S_cal = sA + sB·S_model: off=фикс sA=0,sB=1; soft=штраф+лимит ΔS; free=как раньше
     s_calibration_mode: str = "off"  # off | soft | free
-    s_cal_penalty_c: float = 2.0
-    s_cal_penalty_d: float = 2.0
+    s_cal_penalty_c: float = 2.0  # штраф на sA (legacy key name)
+    s_cal_penalty_d: float = 2.0  # штраф на (sB−1)
     s_cal_max_delta: float = 0.15  # |S_cal−S_model| на матч (soft); free — без лимита
 
     # Dixon–Coles γ
@@ -887,23 +887,75 @@ def fit_attack_defense(
 
 
 # --------------------------------------------------------------------------- #
-# Этап 6: калибровка a,b,c,d,γ (Nelder–Mead по 1X2 Shin)
+# Этап 6: калибровка dA,dB,sA,sB,γ (Nelder–Mead по 1X2 Shin)
 # --------------------------------------------------------------------------- #
 
 @dataclass
 class Calibration:
-    a: float = 0.0
-    b: float = 1.0
-    c: float = 0.0
-    d: float = 1.0
+    """S/D calibration: D_cal = d_a + d_b·D_model; S_cal = s_a + s_b·S_model.
+
+    Legacy aliases a/b/c/d kept as properties (a=d_a, b=d_b, c=s_a, d=s_b).
+    Constructor also accepts legacy kwargs a/b/c/d.
+    """
+    d_a: float = 0.0  # D intercept (aka dA)
+    d_b: float = 1.0  # D slope (aka dB)
+    s_a: float = 0.0  # S intercept (aka sA)
+    s_b: float = 1.0  # S slope (aka sB)
     gamma: float = 0.0
     loss: float = 0.0
     n_1x2: int = 0
 
+    def __init__(
+        self,
+        d_a: float = 0.0,
+        d_b: float = 1.0,
+        s_a: float = 0.0,
+        s_b: float = 1.0,
+        gamma: float = 0.0,
+        loss: float = 0.0,
+        n_1x2: int = 0,
+        *,
+        a: Optional[float] = None,
+        b: Optional[float] = None,
+        c: Optional[float] = None,
+        d: Optional[float] = None,
+    ) -> None:
+        if a is not None:
+            d_a = a
+        if b is not None:
+            d_b = b
+        if c is not None:
+            s_a = c
+        if d is not None:
+            s_b = d
+        self.d_a = float(d_a)
+        self.d_b = float(d_b)
+        self.s_a = float(s_a)
+        self.s_b = float(s_b)
+        self.gamma = float(gamma)
+        self.loss = float(loss)
+        self.n_1x2 = int(n_1x2)
+
+    @property
+    def a(self) -> float:
+        return self.d_a
+
+    @property
+    def b(self) -> float:
+        return self.d_b
+
+    @property
+    def c(self) -> float:
+        return self.s_a
+
+    @property
+    def d(self) -> float:
+        return self.s_b
+
 
 @dataclass
 class CalibrationDiagnostics:
-    """Насколько a,b,c,d близки к идеалу (0,1,0,1) — сигнал качества базы S/D."""
+    """Насколько dA/dB/sA/sB близки к идеалу (0,1,0,1) — сигнал качества базы S/D."""
 
     stable: bool
     deviations: List[str]
@@ -921,23 +973,23 @@ def assess_calibration_stability(
     min_1x2_stable: int = 30,
     cfg: Optional[ModelConfig] = None,
 ) -> CalibrationDiagnostics:
-    """Калибровка стабильна, если a≈0, b≈1, c≈0, d≈1 в пределах допусков."""
+    """Калибровка стабильна, если dA≈0, dB≈1, sA≈0, sB≈1 в пределах допусков."""
     if cal.n_1x2 == 0:
         return CalibrationDiagnostics(
             stable=True, deviations=[], n_1x2=0,
             summary="нет 1X2 в выборке (калибровка не выполнялась)",
         )
     dev: List[str] = []
-    if abs(cal.a) > tol_a:
-        dev.append(f"a={cal.a:+.3f} (ожид. ≈0, допуск ±{tol_a})")
-    if abs(cal.b - 1.0) > tol_b:
-        dev.append(f"b={cal.b:.3f} (ожид. ≈1, допуск ±{tol_b})")
+    if abs(cal.d_a) > tol_a:
+        dev.append(f"dA={cal.d_a:+.3f} (ожид. ≈0, допуск ±{tol_a})")
+    if abs(cal.d_b - 1.0) > tol_b:
+        dev.append(f"dB={cal.d_b:.3f} (ожид. ≈1, допуск ±{tol_b})")
     skip_cd = cfg is not None and cfg.s_calibration_mode == S_CALIBRATION_OFF
     if not skip_cd:
-        if abs(cal.c) > tol_c:
-            dev.append(f"c={cal.c:+.3f} (ожид. ≈0, допуск ±{tol_c})")
-        if abs(cal.d - 1.0) > tol_d:
-            dev.append(f"d={cal.d:.3f} (ожид. ≈1, допуск ±{tol_d})")
+        if abs(cal.s_a) > tol_c:
+            dev.append(f"sA={cal.s_a:+.3f} (ожид. ≈0, допуск ±{tol_c})")
+        if abs(cal.s_b - 1.0) > tol_d:
+            dev.append(f"sB={cal.s_b:.3f} (ожид. ≈1, допуск ±{tol_d})")
     if cfg and cfg.use_dixon_coles:
         g_lim = max(abs(cfg.dc_gamma_min), abs(cfg.dc_gamma_max))
         if abs(cal.gamma) > g_lim + 1e-9:
@@ -982,14 +1034,14 @@ S_CALIBRATION_FREE = "free"
 
 def apply_s_calibration(
     s_model: float,
-    c: float,
-    d: float,
+    s_a: float,
+    s_b: float,
     cfg: ModelConfig,
 ) -> float:
-    """S после калибровки: off держит S_model; soft/free — c+d·S с опц. лимитом ΔS."""
+    """S после калибровки: off держит S_model; soft/free — sA+sB·S с опц. лимитом ΔS."""
     if cfg.s_calibration_mode == S_CALIBRATION_OFF:
         return s_model
-    s_lin = c + d * s_model
+    s_lin = s_a + s_b * s_model
     if cfg.s_calibration_mode == S_CALIBRATION_SOFT and cfg.s_cal_max_delta > 0:
         lo = s_model - cfg.s_cal_max_delta
         hi = s_model + cfg.s_cal_max_delta
@@ -997,10 +1049,10 @@ def apply_s_calibration(
     return s_lin
 
 
-def calibrate_s_penalty(c: float, d: float, cfg: ModelConfig) -> float:
+def calibrate_s_penalty(s_a: float, s_b: float, cfg: ModelConfig) -> float:
     if cfg.s_calibration_mode != S_CALIBRATION_SOFT:
         return 0.0
-    return cfg.s_cal_penalty_c * c * c + cfg.s_cal_penalty_d * (d - 1.0) ** 2
+    return cfg.s_cal_penalty_c * s_a * s_a + cfg.s_cal_penalty_d * (s_b - 1.0) ** 2
 
 
 def clip_dc_gamma(gamma: float, cfg: ModelConfig) -> float:
@@ -1068,16 +1120,16 @@ def calibrate(
     pre = [(m, *_model_d_s(m, strength, goals, cfg), m.w_base) for m in used]
     s_off = cfg.s_calibration_mode == S_CALIBRATION_OFF
 
-    def loss_core(a: float, b: float, c: float, d: float, gamma: float) -> float:
-        if d <= 0:
+    def loss_core(d_a: float, d_b: float, s_a: float, s_b: float, gamma: float) -> float:
+        if s_b <= 0:
             return 1e9
         g = clip_dc_gamma(gamma, cfg)
-        total = calibrate_s_penalty(c, d, cfg)
+        total = calibrate_s_penalty(s_a, s_b, cfg)
         for m, d_model, s_model, w in pre:
-            s_final = apply_s_calibration(s_model, c, d, cfg)
+            s_final = apply_s_calibration(s_model, s_a, s_b, cfg)
             if s_final <= 0.2:
                 return 1e9
-            d_final = gm.clamp_goal_diff(a + b * d_model, s_final, cfg.lambda_epsilon)
+            d_final = gm.clamp_goal_diff(d_a + d_b * d_model, s_final, cfg.lambda_epsilon)
             lh = (s_final + d_final) / 2.0
             la = (s_final - d_final) / 2.0
             if lh <= 0 or la <= 0:
@@ -1114,7 +1166,7 @@ def calibrate(
         full = [x4[0], x4[1], x4[2], x4[3], 0.0]
 
     return Calibration(
-        a=full[0], b=full[1], c=full[2], d=full[3], gamma=full[4],
+        d_a=full[0], d_b=full[1], s_a=full[2], s_b=full[3], gamma=full[4],
         loss=loss_core(full[0], full[1], full[2], full[3], full[4]),
         n_1x2=len(used),
     )
@@ -1234,8 +1286,8 @@ def _calibrated_sd_for_match(
 ) -> Tuple[float, float, float, float]:
     """d_model, s_model, s_cal, d_cal для матча при обучении."""
     d_model, s_model = _model_d_s(m, strength, goals, cfg)
-    s_cal = apply_s_calibration(s_model, cal.c, cal.d, cfg)
-    d_cal = gm.clamp_goal_diff(cal.a + cal.b * d_model, s_cal, cfg.lambda_epsilon)
+    s_cal = apply_s_calibration(s_model, cal.s_a, cal.s_b, cfg)
+    d_cal = gm.clamp_goal_diff(cal.d_a + cal.d_b * d_model, s_cal, cfg.lambda_epsilon)
     return d_model, s_model, s_cal, d_cal
 
 
@@ -1464,8 +1516,8 @@ def predict_match(
     la_ad = math.exp(g.mu + attack(away_id) - defense(home_id))
     s_model = lh_ad + la_ad
 
-    d_final = cal.a + cal.b * d_model
-    s_final = apply_s_calibration(s_model, cal.c, cal.d, cfg)
+    d_final = cal.d_a + cal.d_b * d_model
+    s_final = apply_s_calibration(s_model, cal.s_a, cal.s_b, cfg)
     d_final = gm.clamp_goal_diff(d_final, s_final, cfg.lambda_epsilon)
     lambda_home = (s_final + d_final) / 2.0
     lambda_away = (s_final - d_final) / 2.0
@@ -1922,8 +1974,8 @@ def sd_1x2_diagnostics(
         ):
             continue
         d_model, s_model = _model_d_s(m, strength, goals, cfg)
-        s_cal = apply_s_calibration(s_model, cal.c, cal.d, cfg)
-        d_cal = gm.clamp_goal_diff(cal.a + cal.b * d_model, s_cal, cfg.lambda_epsilon)
+        s_cal = apply_s_calibration(s_model, cal.s_a, cal.s_b, cfg)
+        d_cal = gm.clamp_goal_diff(cal.d_a + cal.d_b * d_model, s_cal, cfg.lambda_epsilon)
 
         p1_mkt_sd, px_mkt_sd, p2_mkt_sd = _prob_1x2_from_sd(
             m.sum_goals, m.diff_goals, cfg, gamma=0.0,
@@ -1932,7 +1984,7 @@ def sd_1x2_diagnostics(
             s_model, d_model, cfg, gamma=0.0,
         )
         p1_cal, px_cal, p2_cal = _prob_1x2_from_sd(
-            s_cal, cal.a + cal.b * d_model, cfg, gamma=gamma,
+            s_cal, cal.d_a + cal.d_b * d_model, cfg, gamma=gamma,
         )
 
         r = m.raw
@@ -2222,8 +2274,8 @@ def _cmd_train(args: argparse.Namespace) -> None:
           f"RMSE_logλ: {_fmt(model.goals.rmse,4)}")
     c = model.calibration
     cal_line = (
-        f"Калибровка: a={_fmt(c.a,3)} b={_fmt(c.b,3)} c={_fmt(c.c,3)} "
-        f"d={_fmt(c.d,3)}  loss={_fmt(c.loss,5)}"
+        f"Калибровка: dA={_fmt(c.d_a,3)} dB={_fmt(c.d_b,3)} "
+        f"sA={_fmt(c.s_a,3)} sB={_fmt(c.s_b,3)}  loss={_fmt(c.loss,5)}"
     )
     if model.config.use_dixon_coles:
         cal_line += f"  γ={_fmt(c.gamma,4)}"
