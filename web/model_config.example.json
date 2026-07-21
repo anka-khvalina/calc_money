@@ -35,17 +35,29 @@
     "rhoMinImprovementPct": 0.5
   },
   "legacy": {
+    "pipeline": "S/D -> Poisson -> Dixon-Coles -> markets",
     "useDixonColes": true,
-    "useDrawModel": true,
-    "fitGamma": true,
-    "dcGamma": 0.08,
-    "gammaMax": 0.2,
-    "drawMode": "residual_dc",
-    "drawQMin": 0.94,
-    "drawQMax": 1.08,
-    "drawQResMin": 0.94,
-    "drawQResMax": 1.08,
-    "drawLossWeight": 1.5
+    "useDrawModel": false,
+    "maxGoals": 10,
+    "handicapWeight": 0.25,
+    "totalWeight": 0.5,
+    "dCalMode": "soft",
+    "sCalMode": "off",
+    "dixonColes": {
+      "enabled": true,
+      "fitGamma": true,
+      "gammaFixed": 0.0,
+      "gammaMax": 0.2
+    },
+    "drawModel": {
+      "enabled": false
+    },
+    "copula": {
+      "enabled": false
+    },
+    "negativeBinomial": {
+      "enabled": false
+    }
   },
   "train": {
     "alphaAh": 0.25,

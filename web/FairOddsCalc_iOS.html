@@ -1142,7 +1142,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             </div>
             <div class="ir-mode-row" style="margin-bottom:0">
               <span style="font-weight:600;color:#10204a">Считать:</span>
-              <label><input type="checkbox" id="irUseLegacy" checked /> <span>Legacy candidate (Poisson + DC + Draw)</span></label>
+              <label><input type="checkbox" id="irUseLegacy" checked /> <span>Legacy candidate (Poisson + Dixon–Coles)</span></label>
               <label><input type="checkbox" id="irUseAuto" checked /> <span>Auto (Marginals + Copula)</span></label>
             </div>
           </div>
@@ -3275,8 +3275,8 @@ bash scripts/update_and_serve.sh --start</div>
         vppWeight: a.vppWeight != null ? a.vppWeight : GM_MATRIX_CFG.vppWeight,
         rhoCandidates: Array.isArray(c.rhoCandidates) ? c.rhoCandidates : GM_MATRIX_CFG.rhoCandidates,
         rhoMinImprovementPct: c.rhoMinImprovementPct != null ? c.rhoMinImprovementPct : GM_MATRIX_CFG.rhoMinImprovementPct,
-        useDixonColes: !!L.useDixonColes,
-        useDrawModel: !!L.useDrawModel,
+        useDixonColes: !!((L.dixonColes && L.dixonColes.enabled != null) ? L.dixonColes.enabled : L.useDixonColes),
+        useDrawModel: !!((L.drawModel && L.drawModel.enabled != null) ? L.drawModel.enabled : L.useDrawModel),
         legacy: L,
         train: t,
         rotationTrainingWeights: Object.assign(
@@ -6970,16 +6970,18 @@ bash scripts/update_and_serve.sh --start</div>
       const T = legacy ? Object.assign({}, Tshared, Ltr) : Object.assign({}, Tshared, Atr);
       const M = legacy ? Object.assign({}, Mshared, Lmx) : Object.assign({}, Mshared, Amx);
       const Cal = legacy ? Object.assign({}, Tshared, Lcal) : Object.assign({}, Tshared, Atr);
-      const useDc = legacy && (Ldc.enabled !== false) && (L.useDixonColes !== false);
-      const useDraw = legacy && (Ldraw.enabled !== false) && (L.useDrawModel !== false);
-      const drawMode = irPickStr(Ldraw, 'mode', L.drawMode || 'residual_dc');
-      return {
-        maxGoals: irPickNum(M, 'maxGoals', GM_MAX),
-        alphaAh: irPickNum(T, 'alphaAh', 0.25),
+      const useDc = legacy && (Ldc.enabled != null ? Ldc.enabled === true : L.useDixonColes !== false);
+      // Historical Legacy: draw-model off. PX = diagonal after DC.
+      const useDraw = legacy && (Ldraw.enabled === true || (Ldraw.enabled == null && L.useDrawModel === true));
+      const alphaAh = irPickNum(T, 'alphaAh', irPickNum(L, 'handicapWeight', 0.25));
+      const alphaT = irPickNum(T, 'alphaT', irPickNum(L, 'totalWeight', 0.5));
+      const cfgOut = {
+        maxGoals: irPickNum(M, 'maxGoals', irPickNum(L, 'maxGoals', GM_MAX)),
+        alphaAh,
         pAh: 2, minWAh: 0.15, maxWAh: 1,
-        alphaT: irPickNum(T, 'alphaT', 0.5),
+        alphaT,
         deltaAh: 0.5, deltaLam: 0.25, maxIter: 30, tol: 1e-4,
-        drawLoss: irPickNum(Ldraw, 'drawLossWeight', irPickNum(L, 'drawLossWeight', 1.5)),
+        drawLoss: useDraw ? irPickNum(Ldraw, 'drawLossWeight', irPickNum(L, 'drawLossWeight', 1.5)) : 1,
         seasonDefault: 1.0, seasonWeightsById: seasonWeightsById || {},
         priorAlpha: irPickNum(T, 'priorAlpha', 0.7), promotedN: 3,
         regLambda: irPickNum(T, 'regLambda', 0.10),
@@ -6989,7 +6991,7 @@ bash scripts/update_and_serve.sh --start</div>
         derbyShrinkTau: 30,
         derbyHDefault: irPickNum(T, 'derbyHDefault', 0.7),
         derbyMinMatches: 3,
-        dCalMode: irPickStr(Cal, 'dCalMode', 'soft'),
+        dCalMode: irPickStr(Cal, 'dCalMode', irPickStr(L, 'dCalMode', 'soft')),
         dCalBMin: irPickNum(Cal, 'dCalBMin', 0.90),
         dCalBMax: irPickNum(Cal, 'dCalBMax', 1.03),
         dCalBPenalty: irPickNum(Cal, 'dCalBPenalty', 2.0),
@@ -7000,19 +7002,24 @@ bash scripts/update_and_serve.sh --start</div>
         useDraw: !!useDraw,
         useDc: !!useDc,
         modelProfile: 'baseline',
-        drawMode,
-        qmin: irPickNum(Ldraw, 'qMin', irPickNum(L, 'drawQMin', 0.95)),
-        qmax: irPickNum(Ldraw, 'qMax', irPickNum(L, 'drawQMax', 1.15)),
-        qResMin: irPickNum(Ldraw, 'qResMin', irPickNum(L, 'drawQResMin', 0.95)),
-        qResMax: irPickNum(Ldraw, 'qResMax', irPickNum(L, 'drawQResMax', 1.15)),
-        sCalMode: irPickStr(Cal, 'sCalMode', 'off'),
+        sCalMode: irPickStr(Cal, 'sCalMode', irPickStr(L, 'sCalMode', 'off')),
         sCalMaxDelta: irPickNum(Cal, 'sCalMaxDelta', 0.15),
         gammaMax: irPickNum(Ldc, 'gammaMax', irPickNum(L, 'gammaMax', 0.20)),
         fitGamma: legacy ? ((Ldc.fitGamma != null ? Ldc.fitGamma : L.fitGamma) !== false) : false,
-        fixedDcGamma: irPickNum(Ldc, 'gamma', irPickNum(L, 'dcGamma', 0)),
+        fixedDcGamma: irPickNum(Ldc, 'gammaFixed', irPickNum(Ldc, 'gamma', irPickNum(L, 'dcGamma', 0))),
         irEngine: legacy ? 'legacy' : 'auto',
         rotationTrainingWeights: gmRotationTrainingWeights(Object.assign({}, GM_MATRIX_CFG||{}, Tshared, T)),
       };
+      if(useDraw){
+        cfgOut.drawMode = irPickStr(Ldraw, 'mode', L.drawMode || 'residual_dc');
+        cfgOut.qmin = irPickNum(Ldraw, 'qMin', irPickNum(L, 'drawQMin', 0.95));
+        cfgOut.qmax = irPickNum(Ldraw, 'qMax', irPickNum(L, 'drawQMax', 1.05));
+        cfgOut.qResMin = irPickNum(Ldraw, 'qResMin', irPickNum(L, 'drawQResMin', 0.98));
+        cfgOut.qResMax = irPickNum(Ldraw, 'qResMax', irPickNum(L, 'drawQResMax', 1.03));
+      } else {
+        cfgOut.drawMode = 'off';
+      }
+      return cfgOut;
     }
     function irCalibrateLegacy(ms, st, gl, cfg){
       const used = ms.filter(m => m.p1 != null);
@@ -7162,7 +7169,8 @@ bash scripts/update_and_serve.sh --start</div>
       };
     }
     function irTrainLegacy(raw,cfg){
-      const cfgL=Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw!==false, irEngine:'legacy'});
+      // Legacy defaults: DC on, draw model off unless explicitly enabled.
+      const cfgL=Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw===true, irEngine:'legacy'});
       const ms=gmPrepare(raw,cfgL);
       const st=gmFitStrength(ms,cfgL,null);
       const gl=gmFitAD(ms,cfgL,null);
@@ -7179,9 +7187,9 @@ bash scripts/update_and_serve.sh --start</div>
       ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
       return model;
     }
-    /** Entry point: historical Legacy pipeline (Poisson + DC + draw). Isolated from Auto. */
+    /** Entry point: historical Legacy pipeline (Poisson + DC; draw off). Isolated from Auto. */
     function calculateLegacyModel(raw, cfg){
-      return irTrainLegacy(raw, Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw!==false, irEngine:'legacy'}));
+      return irTrainLegacy(raw, Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw===true, irEngine:'legacy'}));
     }
     /** Entry point: Auto Marginals + Gaussian Copula. Never uses DC/draw. */
     function calculateAutoModel(raw, cfg){
@@ -7590,18 +7598,15 @@ bash scripts/update_and_serve.sh --start</div>
       const mx=GM_MATRIX_CFG||{};
       const num=(o,k,fb)=> (o && o[k]!=null ? o[k] : fb);
       legEl.innerHTML = '<h5>Legacy (изолированный pipeline)</h5>' + irParamsRowsHtml([
-        ['pipeline', 'S/D → Poisson → DC → draw'],
-        ['Dixon-Coles', (Ldc.enabled!=null?Ldc.enabled:L.useDixonColes) !== false],
-        ['Модель ничьи', (Ldraw.enabled!=null?Ldraw.enabled:L.useDrawModel) !== false],
-        ['fit γ', (Ldc.fitGamma!=null?Ldc.fitGamma:L.fitGamma) !== false],
-        ['γ fixed / max', `${num(Ldc,'gamma', num(L,'dcGamma',0))} / ${num(Ldc,'gammaMax', num(L,'gammaMax',0.20))}`],
-        ['drawMode', Ldraw.mode || L.drawMode || 'residual_dc'],
-        ['qMin / qMax', `${num(Ldraw,'qMin', num(L,'drawQMin',0.95))} / ${num(Ldraw,'qMax', num(L,'drawQMax',1.15))}`],
-        ['drawLossWeight', num(Ldraw,'drawLossWeight', num(L,'drawLossWeight',1.5))],
-        ['maxGoals', num(Lmx,'maxGoals', num(M,'maxGoals', mx.maxGoals||10))],
-        ['α форы / тотала', `${num(Ltr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Ltr,'alphaT', num(T,'alphaT',0.5))}`],
-        ['dCalMode / sCalMode', `${Lcal.dCalMode||T.dCalMode||'soft'} / ${Lcal.sCalMode||T.sCalMode||'off'}`],
-        ['Copula / NB', 'запрещены'],
+        ['pipeline', L.pipeline || 'S/D → Poisson → Dixon-Coles → markets'],
+        ['Dixon-Coles', !!(Ldc.enabled != null ? Ldc.enabled === true : L.useDixonColes !== false)],
+        ['Ничья (PX)', 'диагональ матрицы после DC'],
+        ['fit γ / γ fixed', `${!!(Ldc.fitGamma != null ? Ldc.fitGamma !== false : true)} / ${num(Ldc,'gammaFixed', num(Ldc,'gamma', num(L,'dcGamma',0)))}`],
+        ['γ max', num(Ldc,'gammaMax', num(L,'gammaMax',0.20))],
+        ['maxGoals', num(Lmx,'maxGoals', num(L,'maxGoals', num(M,'maxGoals', mx.maxGoals||10)))],
+        ['handicap / total weight', `${num(Ltr,'alphaAh', num(L,'handicapWeight', num(T,'alphaAh',0.25)))} / ${num(Ltr,'alphaT', num(L,'totalWeight', num(T,'alphaT',0.5)))}`],
+        ['dCalMode / sCalMode', `${Lcal.dCalMode||L.dCalMode||T.dCalMode||'soft'} / ${Lcal.sCalMode||L.sCalMode||T.sCalMode||'off'}`],
+        ['Copula / NB', 'выкл'],
       ]);
       autoEl.innerHTML = '<h5>Auto (изолированный pipeline)</h5>' + irParamsRowsHtml([
         ['pipeline', 'S/D → Marginals → Copula'],
