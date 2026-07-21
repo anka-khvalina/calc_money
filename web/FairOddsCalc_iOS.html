@@ -3807,8 +3807,13 @@ bash scripts/update_and_serve.sh --start</div>
       const w = st.derbyShrinkW != null ? st.derbyShrinkW : 0;
       return w * hObs + (1 - w) * h;
     }
+    function gmTrainWeight(m){
+      const w = m && m.wBase != null ? Number(m.wBase) : 0;
+      return isFinite(w) && w > 1e-12 ? w : 0;
+    }
     function gmFitStrength(ms,cfg,priorSt){
-      const used=ms.filter(m=>m.D!=null);
+      // wBase includes rotation training_weight — exclude weight-0 from fit entirely.
+      const used=ms.filter(m=>m.D!=null && gmTrainWeight(m)>0);
       if(used.length<2) throw new Error('Мало матчей с D');
       const teams=[...new Set(used.flatMap(m=>[m.home,m.away]))].sort();
       const idx=new Map(teams.map((t,i)=>[t,i]));
@@ -3840,8 +3845,8 @@ bash scripts/update_and_serve.sh --start</div>
         rows.push(...priorRows); rows.push(...regRows); rows.push([gauge,0,GM_GAUGE]);
         const sol=gmWls(rows,p);
         const res=used.map((m,i)=>{ let pr=0; for(let k=0;k<p;k++) pr+=coeffs[i][k]*sol[k]; return pr-tg[i]; }); return [sol,res]; }
-      let W=used.map(m=>m.wBase*m.wLineAh); let [sol,res]=run(W);
-      for(let it=0;it<cfg.maxIter;it++){ const nW=used.map((m,i)=>{ m.wRob=gmHuber(res[i],cfg.deltaAh); return m.wBase*m.wLineAh*m.wRob; });
+      let W=used.map(m=>gmTrainWeight(m)*m.wLineAh); let [sol,res]=run(W);
+      for(let it=0;it<cfg.maxIter;it++){ const nW=used.map((m,i)=>{ m.wRob=gmHuber(res[i],cfg.deltaAh); return gmTrainWeight(m)*m.wLineAh*m.wRob; });
         const dl=Math.max(...nW.map((w,i)=>Math.abs(w-W[i]))); W=nW; [sol,res]=run(W); if(dl<cfg.tol) break; }
       const ratings={}; teams.forEach(t=>ratings[t]=sol[idx.get(t)]); const mr=Object.values(ratings).reduce((a,b)=>a+b,0)/teams.length;
       teams.forEach(t=>ratings[t]-=mr);
@@ -3855,13 +3860,14 @@ bash scripts/update_and_serve.sh --start</div>
       return {ratings, H:hLeague, deltaDerby, derbyN, derbyShrinkW, hDerby, kDerby, rmse};
     }
     function gmFitAD(ms,cfg,priorGl){
-      const used=ms.filter(m=>m.lh>0&&m.la>0);
+      const used=ms.filter(m=>m.lh>0&&m.la>0 && gmTrainWeight(m)>0);
       if(used.length<2) throw new Error('Мало матчей с λ');
       const teams=[...new Set(used.flatMap(m=>[m.home,m.away]))].sort(); const nt=teams.length;
       const ai=new Map(teams.map((t,i)=>[t,i])), di=new Map(teams.map((t,i)=>[t,nt+i])); const mu=2*nt, hg=2*nt+1, p=2*nt+2;
       const rows=[],tg=[],bw=[];
-      used.forEach(m=>{ const rh=Array(p).fill(0); rh[ai.get(m.home)]+=1; rh[di.get(m.away)]-=1; rh[mu]=1; rh[hg]=m.iHome; rows.push(rh); tg.push(Math.log(m.lh)); bw.push(m.wBase*(m.wLineT||1));
-        const ra=Array(p).fill(0); ra[ai.get(m.away)]+=1; ra[di.get(m.home)]-=1; ra[mu]=1; rows.push(ra); tg.push(Math.log(m.la)); bw.push(m.wBase*(m.wLineT||1)); });
+      used.forEach(m=>{ const w=gmTrainWeight(m)*(m.wLineT||1);
+        const rh=Array(p).fill(0); rh[ai.get(m.home)]+=1; rh[di.get(m.away)]-=1; rh[mu]=1; rh[hg]=m.iHome; rows.push(rh); tg.push(Math.log(m.lh)); bw.push(w);
+        const ra=Array(p).fill(0); ra[ai.get(m.away)]+=1; ra[di.get(m.home)]-=1; ra[mu]=1; rows.push(ra); tg.push(Math.log(m.la)); bw.push(w); });
       const ga=Array(p).fill(0), gd=Array(p).fill(0); teams.forEach(t=>{ ga[ai.get(t)]=1; gd[di.get(t)]=1; });
       const priorRows=[];
       const pw=(cfg.priorAlpha>0&&priorGl)?cfg.priorAlpha:0;
@@ -3981,7 +3987,7 @@ bash scripts/update_and_serve.sh --start</div>
       return Math.max(-mx, Math.min(mx, g));
     }
     function gmCalibrate(ms,st,gl,cfg,alpha,rho,drawLossOverride){
-      const used=ms.filter(m=>m.p1!=null);
+      const used=ms.filter(m=>m.p1!=null && gmTrainWeight(m)>0);
       if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0,n1x2:0};
       const aMat = alpha != null ? Number(alpha) : 0;
       const rMat = rho != null ? Number(rho) : 0;
@@ -3990,12 +3996,13 @@ bash scripts/update_and_serve.sh --start</div>
         const dm=(st.ratings[m.home]||0)-(st.ratings[m.away]||0)+hEff;
         const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
         const lh=Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*m.iHome*kHg);
-        const la=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0)); return [m,dm,lh+la,m.wBase]; });
+        const la=Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0)); return [m,dm,lh+la,gmTrainWeight(m)]; });
+      const sumW = pre.reduce((s,row)=>s+row[3],0);
       const sOff=cfg.sCalMode==='off';
       const dOff=(cfg.dCalMode||'soft')==='off';
       function lossCore(a,b,c,d){
-        if(d<=0) return 1e9;
-        let tot=gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
+        if(d<=0 || !(sumW>0)) return 1e9;
+        let tot=0;
         for(const [m,dm,sm,w] of pre){
           const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
           const dc=gmApplyDCal(dm,a,b,cfg);
@@ -4004,7 +4011,8 @@ bash scripts/update_and_serve.sh --start</div>
           const [p1,px,p2]=gm1x2(mat);
           tot+=w*((p1-m.p1)**2+dLoss*(px-m.px)**2+(p2-m.p2)**2);
         }
-        return tot;
+        // Σ(w·loss)/Σ(w) + soft penalties (independent of sample size)
+        return tot/sumW + gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
       }
       let full;
       if(sOff){
@@ -4632,15 +4640,17 @@ bash scripts/update_and_serve.sh --start</div>
       const wAh = prio && prio.wAh != null ? Number(prio.wAh) : 0;
       const wOu = prio && prio.wOu != null ? Number(prio.wOu) : 1.0;
       const dLoss = prio && prio.drawLoss != null ? Number(prio.drawLoss) : 1.0;
-      const used = ms.filter(m => (m.pOver != null || m.p1 != null || m.pAhHome != null) && m.lh > 0 && m.la > 0);
+      // training_weight (in wBase) must apply here too — high→0 must not affect α/ρ.
+      const used = ms.filter(m => (m.pOver != null || m.p1 != null || m.pAhHome != null) && m.lh > 0 && m.la > 0 && gmTrainWeight(m)>0);
       const nMatches = used.length;
+      const sumTrainW = used.reduce((s,m)=>s+gmTrainWeight(m),0);
 
       // Shrink to 0 if too few matches (config, not DB)
       if(nMatches < minN){
         model.alphaFinal = 0; model.rhoFinal = 0;
         model.selectedDistribution = 'poisson_like';
         model.nbImprovementPct = 0;
-        model.matrixCalib = { status: `shrunk_to_0 (n=${nMatches}<${minN})`, nMatches, alphaCandidates: 0, rhoCandidates: 0, vppError: null };
+        model.matrixCalib = { status: `shrunk_to_0 (n=${nMatches}<${minN})`, nMatches, sumTrainW, alphaCandidates: 0, rhoCandidates: 0, vppError: null };
         return;
       }
 
@@ -4675,34 +4685,36 @@ bash scripts/update_and_serve.sh --start</div>
         return {lh, la, sCal};
       }
 
-      // Target VPP: mixture of Poisson(S_market) across matches (no FT scores in DB)
+      // Target VPP: mixture of Poisson(S_market), weighted by training weight
       const targetTot = Array(2*GM_MAX+1).fill(0);
       let tw = 0;
       for(const m of used){
         const S = m.S != null ? m.S : (m.lh+m.la);
         if(!(S>0)) continue;
-        for(let g=0;g<=2*GM_MAX;g++) targetTot[g]+=gmPois(g,S);
-        tw++;
+        const w = gmTrainWeight(m);
+        for(let g=0;g<=2*GM_MAX;g++) targetTot[g]+=w*gmPois(g,S);
+        tw += w;
       }
       if(tw>0) for(let g=0;g<targetTot.length;g++) targetTot[g]/=tw;
       const targetVpp = gmVppFromPmf(targetTot);
 
-      // Step 1: grid search over alpha (rho=0)
+      // Step 1: grid search over alpha (rho=0) — loss = Σ(w·ℓ)/Σ(w)
       const alphaCands = Array.isArray(mxCfg.alphaCandidates) ? mxCfg.alphaCandidates.slice() : [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.26,0.30];
       const alphaLosses = alphaCands.map(alpha => {
-        let tot = 0, n = 0;
+        let tot = 0, sw = 0;
         const avgTot = Array(2*GM_MAX+1).fill(0);
         for(const m of used){
+          const w = gmTrainWeight(m);
           const {lh,la} = computeLhLa(m);
-          tot += matchLoss(m,lh,la,alpha,0) + alphaPen*alpha*alpha;
+          tot += w * matchLoss(m,lh,la,alpha,0);
+          sw += w;
           const mat = gmJointScoreMatrix(lh,la,alpha,0,cfg.maxGoals||GM_MAX);
           const tpmf = gmTotalGoalsPmf(mat);
-          for(let g=0;g<tpmf.length && g<avgTot.length;g++) avgTot[g]+=tpmf[g];
-          n++;
+          for(let g=0;g<tpmf.length && g<avgTot.length;g++) avgTot[g]+=w*tpmf[g];
         }
-        if(n>0) for(let g=0;g<avgTot.length;g++) avgTot[g]/=n;
+        if(sw>0) for(let g=0;g<avgTot.length;g++) avgTot[g]/=sw;
         const vppErr = gmVppError(gmVppFromPmf(avgTot), targetVpp);
-        return n > 0 ? tot/n + vppW*vppErr : 1e9;
+        return sw > 0 ? tot/sw + alphaPen*alpha*alpha + vppW*vppErr : 1e9;
       });
       const bestAlphaIdx = alphaLosses.reduce((bi,v,i)=>v<alphaLosses[bi]?i:bi, 0);
       let alphaFinal = alphaCands[bestAlphaIdx];
@@ -4713,14 +4725,15 @@ bash scripts/update_and_serve.sh --start</div>
       // Step 2: grid search over rho with alphaFinal
       const rhoCands = Array.isArray(mxCfg.rhoCandidates) ? mxCfg.rhoCandidates.slice() : [0,0.02,0.04,0.06,0.08,0.10,0.12,0.15,0.18,0.22,0.25];
       const rhoLosses = rhoCands.map(rho => {
-        let tot = 0, n = 0;
+        let tot = 0, sw = 0;
         for(const m of used){
           if(m.p1 == null && m.pOver == null && m.pAhHome == null) continue;
+          const w = gmTrainWeight(m);
           const {lh,la} = computeLhLa(m);
-          tot += matchLoss(m, lh, la, alphaFinal, rho);
-          n++;
+          tot += w * matchLoss(m, lh, la, alphaFinal, rho);
+          sw += w;
         }
-        return n > 0 ? tot/n : 1e9;
+        return sw > 0 ? tot/sw : 1e9;
       });
       const bestRhoIdx = rhoLosses.reduce((bi,v,i)=>v<rhoLosses[bi]?i:bi, 0);
       let rhoFinal = rhoCands[bestRhoIdx];
@@ -4729,15 +4742,16 @@ bash scripts/update_and_serve.sh --start</div>
 
       // Final VPP diagnostic at chosen params
       const avgTotFinal = Array(2*GM_MAX+1).fill(0);
-      let nn=0;
+      let nnW=0;
       for(const m of used){
+        const w=gmTrainWeight(m);
         const {lh,la}=computeLhLa(m);
         const mat=gmJointScoreMatrix(lh,la,alphaFinal,rhoFinal,cfg.maxGoals||GM_MAX);
         const tpmf=gmTotalGoalsPmf(mat);
-        for(let g=0;g<tpmf.length&&g<avgTotFinal.length;g++) avgTotFinal[g]+=tpmf[g];
-        nn++;
+        for(let g=0;g<tpmf.length&&g<avgTotFinal.length;g++) avgTotFinal[g]+=w*tpmf[g];
+        nnW+=w;
       }
-      if(nn>0) for(let g=0;g<avgTotFinal.length;g++) avgTotFinal[g]/=nn;
+      if(nnW>0) for(let g=0;g<avgTotFinal.length;g++) avgTotFinal[g]/=nnW;
       const finalVpp = gmVppFromPmf(avgTotFinal);
       const vppError = gmVppError(finalVpp, targetVpp);
 
@@ -4747,12 +4761,13 @@ bash scripts/update_and_serve.sh --start</div>
       model.nbImprovementPct = nbImprovementPct;
       model.vppProfile = finalVpp;
       model.matrixCalib = {
-        status: 'calibrated', nMatches,
+        status: 'calibrated', nMatches, sumTrainW,
         alphaCandidates: alphaCands.length, rhoCandidates: rhoCands.length,
         alphaLoss0: loss0, alphaLossBest: lossBest, nbImprovementPct,
         rhoLoss0: rhoLosses[0], rhoLossBest: rhoLosses[bestRhoIdx], rhoImprovementPct,
         vppError, vpp: finalVpp,
         priority: prio ? { w1x2, wAh, wOu, drawLoss: dLoss } : null,
+        weightedLoss: true,
         configSource: (GM_MATRIX_CFG && GM_MATRIX_CFG.configSource) || 'model_config.json',
       };
     }
@@ -7323,7 +7338,7 @@ bash scripts/update_and_serve.sh --start</div>
       return cfgOut;
     }
     function irCalibrateLegacy(ms, st, gl, cfg){
-      const used = ms.filter(m => m.p1 != null);
+      const used = ms.filter(m => m.p1 != null && gmTrainWeight(m)>0);
       if(!used.length) return {a:0,b:1,c:0,d:1,gamma:0,n1x2:0};
       const pre = used.map(m => {
         const derby = gmDerbyHome(m);
@@ -7332,15 +7347,16 @@ bash scripts/update_and_serve.sh --start</div>
         const kHg = Math.abs(st.H) > 1e-9 ? hEff / st.H : 1;
         const lh = Math.exp(gl.mu + (gl.attack[m.home] || 0) - (gl.defense[m.away] || 0) + gl.hg * m.iHome * kHg);
         const la = Math.exp(gl.mu + (gl.attack[m.away] || 0) - (gl.defense[m.home] || 0));
-        return [m, dm, lh + la, m.wBase];
+        return [m, dm, lh + la, gmTrainWeight(m)];
       });
+      const sumW = pre.reduce((s,row)=>s+row[3],0);
       const sOff = cfg.sCalMode === 'off';
       const dOff = (cfg.dCalMode || 'soft') === 'off';
       if(cfg.useDc && cfg.fitGamma === false){
         const gFix = gmClipGamma(cfg.fixedDcGamma || 0, cfg);
         function lossNoG(a,b,c,d){
-          if(d<=0) return 1e9;
-          let tot = gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
+          if(d<=0 || !(sumW>0)) return 1e9;
+          let tot = 0;
           for(const [m,dm,sm,w] of pre){
             const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
             const dc=gmApplyDCal(dm,a,b,cfg);
@@ -7351,7 +7367,7 @@ bash scripts/update_and_serve.sh --start</div>
             const [p1,px,p2]=gm1x2(mat);
             tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
           }
-          return tot;
+          return tot/sumW + gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
         }
         let full;
         if(sOff){
@@ -7366,9 +7382,9 @@ bash scripts/update_and_serve.sh --start</div>
         return {a:full[0],b:bOut,c:full[2],d:full[3],gamma:gFix,n1x2:used.length};
       }
       function lossCore(a,b,c,d,g){
-        if(d<=0) return 1e9;
+        if(d<=0 || !(sumW>0)) return 1e9;
         const gc=gmClipGamma(g,cfg);
-        let tot=gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
+        let tot=0;
         for(const [m,dm,sm,w] of pre){
           const sf=gmApplySCal(sm,c,d,cfg); if(sf<=0.2) return 1e9;
           const dc=gmApplyDCal(dm,a,b,cfg);
@@ -7379,7 +7395,7 @@ bash scripts/update_and_serve.sh --start</div>
           const [p1,px,p2]=gm1x2(mat);
           tot+=w*((p1-m.p1)**2+cfg.drawLoss*(px-m.px)**2+(p2-m.p2)**2);
         }
-        return tot;
+        return tot/sumW + gmSCalPenalty(c,d,cfg)+gmDCalPenalty(b,cfg);
       }
       let full;
       if(sOff){
