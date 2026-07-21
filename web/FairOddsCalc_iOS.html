@@ -6577,16 +6577,17 @@ bash scripts/update_and_serve.sh --start</div>
       const box = document.getElementById('goalTrainRatingsBody');
       const card = document.getElementById('goalTrainRatingsCard');
       if (!box || !card) return;
-      if (!gmModel){
+      const src = gmModelAuto || gmModel || gmModelLegacy;
+      if (!src){
         card.style.display = 'none';
         box.innerHTML = '';
         return;
       }
-      const { st, gl } = gmModel;
+      const { st, gl } = src;
       const rows = Object.entries(st.ratings)
         .sort((a, b) => b[1] - a[1])
         .map(([tid, r]) => [
-          escapeHtml(gmTeamLabel(tid, gmModel.teamNames)),
+          escapeHtml(gmTeamLabel(tid, src.teamNames)),
           goalFmtTrainNum(r, 3),
           goalFmtTrainNum(gl.attack[tid] || 0, 3),
           goalFmtTrainNum(gl.defense[tid] || 0, 3),
