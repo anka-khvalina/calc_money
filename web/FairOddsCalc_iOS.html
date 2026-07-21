@@ -1214,14 +1214,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           </div>
           <div>
             <dt>Legacy (candidate)</dt>
-            <dd>Кандидат исторического pipeline: S/D → Poisson → DC → draw-model. Пока нет сверки с сохранённым historical Legacy reference — режим не называется гарантированно восстановленной Legacy.</dd>
+            <dd><b>Poisson + Dixon–Coles</b>: S/D → Poisson → независимая матрица → DC → рынки. Ничья = сумма диагонали после DC. Без отдельной draw-model.</dd>
           </div>
           <div>
             <dt>Auto</dt>
-            <dd>S/D → Marginals → Copula; ничья = диагональ. Без DC и draw-model.</dd>
+            <dd><b>Auto Marginals + Gaussian Copula</b>: S/D → Marginals → Copula → матрица → рынки. Ничья тоже = диагональ. Без DC и draw-model.</dd>
           </div>
         </dl>
-        <p class="ir-glossary-note"><b>AH/OU:</b> <code>AH1_L_at_market</code> — кэф Legacy на <code>AH_market</code>, даже если <code>AH_main_L</code> другая. <code>same_ah_L=yes</code> только значит, что main line совпала с рынком (для справки), на валидность <code>*_dL_mkt</code> не влияет.<br>
+        <p class="ir-glossary-note"><b>Ничья:</b> обе модели берут PX из диагонали матрицы — различается только способ построения матрицы.<br>
+        <b>AH/OU:</b> <code>AH1_L_at_market</code> — кэф Legacy на <code>AH_market</code>, даже если <code>AH_main_L</code> другая. <code>same_ah_L=yes</code> только значит, что main line совпала с рынком (для справки), на валидность <code>*_dL_mkt</code> не влияет.<br>
         <b>Маржа:</b> выкл → fair/de-vig; вкл → эталон raw БД + модель с %.</p>
       </div>
     </section>
