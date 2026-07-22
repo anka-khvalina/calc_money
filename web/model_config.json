@@ -199,5 +199,24 @@
       "c": "sA",
       "d": "sB"
     }
+  },
+  "momentum": {
+    "enabled": true,
+    "alpha": 0.3,
+    "k": 0.8,
+    "maxEma": 0.5,
+    "minMatches": 1,
+    "byLeague": {}
+  },
+  "dynamic_s_ema": {
+    "enabled": true,
+    "alpha": 0.3,
+    "k": 1.0,
+    "min_team_matches": 1,
+    "max_abs_team_ema": null,
+    "max_abs_correction": null,
+    "lambda_min": 0.05,
+    "reset_on_new_season": true,
+    "byLeague": {}
   }
 }

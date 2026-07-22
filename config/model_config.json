@@ -207,5 +207,16 @@
     "maxEma": 0.50,
     "minMatches": 1,
     "byLeague": {}
+  },
+  "dynamic_s_ema": {
+    "enabled": true,
+    "alpha": 0.30,
+    "k": 1.00,
+    "min_team_matches": 1,
+    "max_abs_team_ema": null,
+    "max_abs_correction": null,
+    "lambda_min": 0.05,
+    "reset_on_new_season": true,
+    "byLeague": {}
   }
 }
