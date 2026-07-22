@@ -3320,6 +3320,7 @@ bash scripts/update_and_serve.sh --start</div>
             : ((t.rotationTrainingWeights && typeof t.rotationTrainingWeights === 'object') ? t.rotationTrainingWeights : {})
         ),
         compare: raw.compare || {},
+        momentum: raw.momentum || {},
         configSource: 'model_config.json',
       });
     }
@@ -4194,7 +4195,9 @@ bash scripts/update_and_serve.sh --start</div>
       const A=t=>t in gl.attack?gl.attack[t]:gmPromoted(gl.attack,cfg.promotedN);
       const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
       const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
-      const dm=R(homeId)-R(awayId)+hEff;
+      const dmBase=R(homeId)-R(awayId)+hEff;
+      const mom=gmMomCorrectD(model, homeId, awayId, dmBase, opt||{});
+      const dm=mom.dModelDynamic;
       const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(awayId)-Df(homeId)); const sm=lhAD+laAD;
       const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
       let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
@@ -4206,6 +4209,7 @@ bash scripts/update_and_serve.sh --start</div>
       return {
         homeId,awayId,homeName,awayName,lh,la,df,sf,mat,matDiag,
         alphaFinal:alpha, rhoFinal:rho,
+        dModelBase: mom.dModelBase, dModelDynamic: mom.dModelDynamic, dynamicCorrection: mom.dynamicCorrection, momentum: mom,
         selectedDistribution: model.selectedDistribution || (alpha>1e-9?'negbin':'poisson_like'),
         markets:gmMarkets(mat),drawTarget:null,drawDiag:null
       };
@@ -5019,6 +5023,13 @@ bash scripts/update_and_serve.sh --start</div>
       model.inactiveDiag=gmInactiveDDiagnostics(model, inactiveRaw||[]);
       model.trainMargin1x2=gmTrainMargin1x2Diagnostics(raw, cfg);
       model.autoMarketQuality = (model.auto1x2Calib && model.auto1x2Calib.quality) || gmAutoMarketQuality(model, ms);
+      // Momentum EMA: walk-forward по train (+ inactive для истории, если переданы)
+      try{
+        const extra = Array.isArray(inactiveRaw) && inactiveRaw.length ? gmPrepare(inactiveRaw, cfg) : [];
+        const leagueId = (raw[0]&&raw[0].leagueId)!=null ? raw[0].leagueId : null;
+        const leagueName = (raw[0]&&raw[0].league)!=null ? raw[0].league : null;
+        gmBuildMomentumBook(model, ms.concat(extra), leagueId, leagueName);
+      }catch(e){ console.warn('momentum build', e); }
       return model;
     }
     let gmModel=null;          // Auto model (AH/OU); kept for ratings/compat
@@ -5044,7 +5055,128 @@ bash scripts/update_and_serve.sh --start</div>
         qResMin:0.98, qResMax:1.03,
         sCalMode:'off',
         sCalMaxDelta:0.15, gammaMax:0.20,
-        rotationTrainingWeights: gmRotationTrainingWeights(GM_MATRIX_CFG || GM_MODEL_CFG || {}) };
+        rotationTrainingWeights: gmRotationTrainingWeights(GM_MATRIX_CFG || GM_MODEL_CFG || {}),
+        momentum: null };
+    }
+    function gmMomentumCfgFromGlobal(leagueId, leagueName){
+      const raw = (GM_MATRIX_CFG && GM_MATRIX_CFG.momentum) || (GM_MODEL_CFG && GM_MODEL_CFG.momentum) || {};
+      let base = {
+        enabled: raw.enabled !== false,
+        alpha: raw.alpha != null ? Number(raw.alpha) : 0.30,
+        k: raw.k != null ? Number(raw.k) : 0.80,
+        maxEma: raw.maxEma != null ? Number(raw.maxEma) : (raw.max_ema != null ? Number(raw.max_ema) : 0.50),
+        minMatches: raw.minMatches != null ? Number(raw.minMatches) : (raw.min_matches != null ? Number(raw.min_matches) : 1),
+      };
+      const by = raw.byLeague || raw.by_league || {};
+      for(const key of [leagueId, leagueName, String(leagueId||''), String(leagueName||'')]){
+        if(key && by[key] && typeof by[key]==='object'){
+          const o=by[key];
+          base = Object.assign({}, base, {
+            enabled: o.enabled != null ? !!o.enabled : base.enabled,
+            alpha: o.alpha != null ? Number(o.alpha) : base.alpha,
+            k: o.k != null ? Number(o.k) : base.k,
+            maxEma: o.maxEma != null ? Number(o.maxEma) : (o.max_ema != null ? Number(o.max_ema) : base.maxEma),
+            minMatches: o.minMatches != null ? Number(o.minMatches) : (o.min_matches != null ? Number(o.min_matches) : base.minMatches),
+          });
+          break;
+        }
+      }
+      if(!(base.alpha>0 && base.alpha<=1)) base.alpha=0.30;
+      if(!(base.k>=0 && base.k<=1.5)) base.k=0.80;
+      if(!(base.maxEma>=0)) base.maxEma=0.50;
+      if(!(base.minMatches>=0)) base.minMatches=1;
+      return base;
+    }
+    function gmMomClamp(x,lo,hi){ return Math.max(lo, Math.min(hi, x)); }
+    function gmMomLimited(ema, maxEma){ return gmMomClamp(ema, -maxEma, maxEma); }
+    function gmMomUpdate(prev, resid, alpha){ return alpha*resid + (1-alpha)*prev; }
+    function gmMomMatchKey(dateStr, homeId, awayId){
+      const ds = dateStr ? String(dateStr).slice(0,10) : '';
+      return ds+'|'+homeId+'|'+awayId;
+    }
+    function gmMomApplyToD(dBase, emaH, emaA, cfg, nH, nA){
+      const ehLim = gmMomLimited(emaH, cfg.maxEma);
+      const eaLim = gmMomLimited(emaA, cfg.maxEma);
+      const ehUse = (nH >= cfg.minMatches) ? ehLim : 0;
+      const eaUse = (nA >= cfg.minMatches) ? eaLim : 0;
+      const corr = cfg.enabled ? cfg.k * (ehUse - eaUse) : 0;
+      return {
+        emaHomeBefore: emaH, emaAwayBefore: emaA,
+        homeMatches: nH||0, awayMatches: nA||0,
+        dynamicCorrection: corr,
+        dModelBase: dBase, dModelDynamic: dBase + corr,
+        momentumEnabled: !!cfg.enabled,
+        momentumAlpha: cfg.alpha, momentumK: cfg.k, momentumMaxEma: cfg.maxEma,
+        emaHomeLimited: ehLim, emaAwayLimited: eaLim,
+      };
+    }
+    function gmMomPeek(book, homeId, awayId, dBase){
+      if(!book) return gmMomApplyToD(dBase, 0, 0, {enabled:false,alpha:0.3,k:0.8,maxEma:0.5,minMatches:1}, 0, 0);
+      const ht = book.teams[homeId] || {ema:0, n:0};
+      const at = book.teams[awayId] || {ema:0, n:0};
+      return gmMomApplyToD(dBase, ht.ema, at.ema, book.cfg, ht.n, at.n);
+    }
+    function gmBuildMomentumBook(model, preparedMs, leagueId, leagueName){
+      const cfg = gmMomentumCfgFromGlobal(leagueId, leagueName);
+      const book = { cfg, teams:{}, records:{} };
+      const ensure = tid => {
+        if(!book.teams[tid]) book.teams[tid]={ema:0,n:0};
+        return book.teams[tid];
+      };
+      const st = model.st;
+      const rows = (preparedMs||[]).filter(m => m.D!=null && m.home && m.away && st.ratings && (m.home in st.ratings) && (m.away in st.ratings));
+      rows.sort((a,b)=>{
+        const da=(a.raw&&a.raw.date)||'', db=(b.raw&&b.raw.date)||'';
+        if(da!==db) return da<db?-1:1;
+        return String(a.home).localeCompare(String(b.home)) || String(a.away).localeCompare(String(b.away));
+      });
+      const buckets = new Map();
+      for(const m of rows){
+        const d = (m.raw&&m.raw.date) ? String(m.raw.date).slice(0,10) : '';
+        if(!buckets.has(d)) buckets.set(d, []);
+        buckets.get(d).push(m);
+      }
+      for(const [, group] of buckets){
+        const pending=[];
+        for(const m of group){
+          const dkey = (m.raw&&m.raw.date) ? String(m.raw.date).slice(0,10) : '';
+          const hEff = gmEffectiveH(st, model.cfg, m.iHome===0, gmDerbyHome(m));
+          const dBase = (st.ratings[m.home]||0)-(st.ratings[m.away]||0)+hEff;
+          const snap = gmMomPeek(book, m.home, m.away, dBase);
+          const key = gmMomMatchKey(dkey, m.home, m.away);
+          book.records[key] = Object.assign({ matchKey:key, date:dkey, home:m.home, away:m.away, dMarket:m.D, residual:null, updated:false }, snap);
+          pending.push({ m, resid: m.D - dBase, key });
+        }
+        for(const p of pending){
+          const ht=ensure(p.m.home), at=ensure(p.m.away);
+          ht.ema = gmMomUpdate(ht.ema, p.resid, cfg.alpha);
+          at.ema = gmMomUpdate(at.ema, -p.resid, cfg.alpha);
+          ht.n += 1; at.n += 1;
+          book.records[p.key] = Object.assign({}, book.records[p.key], {
+            residual: p.resid, updated: true,
+            emaHomeAfter: ht.ema, emaAwayAfter: at.ema,
+          });
+        }
+      }
+      model.momentum = book;
+      model.momentumCfg = cfg;
+      return book;
+    }
+    function gmMomCorrectD(model, homeId, awayId, dBase, opt){
+      const book = model && model.momentum;
+      const cfg = (model && model.momentumCfg) || gmMomentumCfgFromGlobal();
+      if(!book || (opt && opt.applyMomentum===false)){
+        return gmMomApplyToD(dBase, 0, 0, Object.assign({}, cfg, {enabled:false}), 0, 0);
+      }
+      const dateStr = opt && opt.matchDate ? String(opt.matchDate).slice(0,10) : null;
+      if(dateStr && opt && opt.useMomentumLookup!==false){
+        const key = gmMomMatchKey(dateStr, homeId, awayId);
+        const rec = book.records[key];
+        if(rec){
+          return gmMomApplyToD(dBase, rec.emaHomeBefore, rec.emaAwayBefore, cfg, rec.homeMatches, rec.awayMatches);
+        }
+      }
+      return gmMomPeek(book, homeId, awayId, dBase);
     }
     function gmSeasonWeight(rec, cfg){
       const def = cfg.seasonDefault != null ? cfg.seasonDefault : 1.0;
@@ -7613,7 +7745,9 @@ bash scripts/update_and_serve.sh --start</div>
       const A=t=>t in gl.attack?gl.attack[t]:gmPromoted(gl.attack,cfg.promotedN);
       const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
       const kHg=Math.abs(st.H)>1e-9?hEff/st.H:1;
-      const dm=R(homeId)-R(awayId)+hEff;
+      const dmBase=R(homeId)-R(awayId)+hEff;
+      const mom=gmMomCorrectD(model, homeId, awayId, dmBase, opt||{});
+      const dm=mom.dModelDynamic;
       const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
       const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
       const sm=lhAD+laAD;
@@ -7635,6 +7769,7 @@ bash scripts/update_and_serve.sh --start</div>
       return {
         homeId,awayId,homeName,awayName,lh,la,df,sf,mat,matDiag,
         alphaFinal:0, rhoFinal:0, dcGamma:cal.gamma||0,
+        dModelBase: mom.dModelBase, dModelDynamic: mom.dModelDynamic, dynamicCorrection: mom.dynamicCorrection, momentum: mom,
         selectedDistribution:'poisson_dc',
         markets:gmMarkets(mat), drawTarget:dtarget, drawDiag:diag,
       };
@@ -7656,6 +7791,11 @@ bash scripts/update_and_serve.sh --start</div>
         irEngine:'legacy',
       };
       ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
+      try{
+        const leagueId = (raw[0]&&raw[0].leagueId)!=null ? raw[0].leagueId : null;
+        const leagueName = (raw[0]&&raw[0].league)!=null ? raw[0].league : null;
+        gmBuildMomentumBook(model, ms, leagueId, leagueName);
+      }catch(e){ console.warn('legacy momentum build', e); }
       return model;
     }
     /** Entry point: historical Legacy pipeline (Poisson + DC; draw off). Isolated from Auto. */
@@ -7886,7 +8026,9 @@ bash scripts/update_and_serve.sh --start</div>
       const A=t=>t in gl.attack?gl.attack[t]:gmPromoted(gl.attack,cfg.promotedN);
       const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
       const kHg=Math.abs(st.H)>1e-9?hEff/st.H:1;
-      const dm=R(homeId)-R(awayId)+hEff;
+      const dmBase=R(homeId)-R(awayId)+hEff;
+      const mom=gmMomCorrectD(model, homeId, awayId, dmBase, opt||{});
+      const dm=mom.dModelDynamic;
       const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
       const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
       const sm=lhAD+laAD;
@@ -7894,7 +8036,7 @@ bash scripts/update_and_serve.sh --start</div>
       let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
       let df=gmClampD(dc.dUsed,sf);
       const lh=(sf+df)/2, la=(sf-df)/2;
-      return {lh,la,sf,df,cfg,cal};
+      return {lh,la,sf,df,cfg,cal,momentum:mom};
     }
     function irBuildMatrixRecipe(model, lh, la, recipe){
       const maxG=(model.cfg&&model.cfg.maxGoals)||GM_MAX;
@@ -7938,7 +8080,7 @@ bash scripts/update_and_serve.sh --start</div>
           mat=built.mat; dist=built.dist; alpha=built.alpha; rho=built.rho; dcGamma=built.dcGamma;
           const mk=gmMarkets(mat);
           const matDiag=gmMatrixDiagnostics(mat,lh,la,alpha);
-          pred={markets:mk, mat, matDiag, lh, la, sf, df, alphaFinal:alpha, rhoFinal:rho, dcGamma, selectedDistribution:dist};
+          pred={markets:mk, mat, matDiag, lh, la, sf, df, alphaFinal:alpha, rhoFinal:rho, dcGamma, selectedDistribution:dist, momentum:lam.momentum};
         } else if(engine==='legacy'){
           pred=irPredictLegacy(model,homeId,awayId,opt);
           lh=pred.lh; la=pred.la; sf=pred.sf; df=pred.df;
@@ -7957,6 +8099,35 @@ bash scripts/update_and_serve.sh --start</div>
         const ahAt = mktAh!=null ? gmAhMarket(mat, mktAh) : null;
         const totAt = mktTot!=null ? gmTotMarket(mat, mktTot) : null;
         const d=pred.matDiag||gmMatrixDiagnostics(mat,lh,la,alpha||0);
+        const mom = pred.momentum || (pred.dModelBase!=null ? {
+          dModelBase: pred.dModelBase,
+          dModelDynamic: pred.dModelDynamic,
+          dynamicCorrection: pred.dynamicCorrection,
+          emaHomeBefore: pred.emaHomeBefore,
+          emaAwayBefore: pred.emaAwayBefore,
+        } : null);
+        let dMarket = null;
+        try{
+          const dateStr = opt && opt.matchDate ? String(opt.matchDate).slice(0,10) : '';
+          const key = gmMomMatchKey(dateStr, homeId, awayId);
+          const rec = model.momentum && model.momentum.records && model.momentum.records[key];
+          if(rec && rec.dMarket!=null && isFinite(rec.dMarket)) dMarket = rec.dMarket;
+        }catch(_e){}
+        // Fallback: same AH→D as gmPrepare when book has no row for this match.
+        if(dMarket==null && mktAh!=null && Number.isFinite(mktAh)){
+          try{
+            const ah1 = marketLines && marketLines.AH1!=null ? Number(marketLines.AH1) : null;
+            const ah2 = marketLines && marketLines.AH2!=null ? Number(marketLines.AH2) : null;
+            let pAh = null;
+            if(ah1!=null && ah2!=null && ah1>1 && ah2>1){
+              const pr = gmDevig2(ah1, ah2);
+              pAh = pr[0];
+            }
+            const S = (lh!=null && la!=null) ? (lh+la) : null;
+            if(pAh!=null && S!=null && S>0.2) dMarket = gmInferD(mktAh, pAh, S);
+            else dMarket = -mktAh;
+          }catch(_e){}
+        }
         return {
           engine: recipe ? 'component' : (engine==='legacy' ? 'legacy_candidate' : 'auto'),
           recipe: irRecipeLabel(recipe),
@@ -7980,6 +8151,12 @@ bash scripts/update_and_serve.sh --start</div>
           matrix_sum:d.sum, matrix_tail:d.tail, p_00:d.p00, p_11:d.p11,
           p_btts_yes:d.pBtts!=null?d.pBtts:mk.bttsYes,
           model_total_mean:d.meanTotal, model_total_variance:d.varTotal, model_total_variance_ratio:d.varRatio,
+          D_market: dMarket,
+          D_model_base: mom ? mom.dModelBase : null,
+          EMA_home_before: mom ? mom.emaHomeBefore : null,
+          EMA_away_before: mom ? mom.emaAwayBefore : null,
+          dynamic_correction: mom ? mom.dynamicCorrection : null,
+          D_model_dynamic: mom ? mom.dModelDynamic : null,
         };
       }catch(_e){ console.warn('irPredictAtMarket', _e); return null; }
     }
@@ -8404,6 +8581,13 @@ bash scripts/update_and_serve.sh --start</div>
             modelL=irTrainModel(parsed.raw, irBaselineCfg(weights,'legacy'), 'legacy');
             modelA=irTrainModel(parsed.raw, irBaselineCfg(weights,'auto'), 'auto');
             try{
+              const inactiveParsed=goalMatchesToRaw(byLeague[leagueId], { ignoreRotation });
+              const msL=gmPrepare(parsed.raw.concat(inactiveParsed.raw||[]), modelL.cfg);
+              const msA=gmPrepare(parsed.raw.concat(inactiveParsed.raw||[]), modelA.cfg);
+              gmBuildMomentumBook(modelL, msL, leagueId, leagueName);
+              gmBuildMomentumBook(modelA, msA, leagueId, leagueName);
+            }catch(eMom){ console.warn('report momentum', eMom); }
+            try{
               const g = modelL && modelL.cal ? gmNormalizeCal(modelL.cal).gamma : null;
               const calL = modelL && modelL.cal ? gmNormalizeCal(modelL.cal) : null;
               const calA = modelA && modelA.cal ? gmNormalizeCal(modelA.cal) : null;
@@ -8426,8 +8610,11 @@ bash scripts/update_and_serve.sh --start</div>
         for(const m of byLeague[leagueId]){
           const homeId=gmTeamKey(m.home_team_id,m.home_team);
           const awayId=gmTeamKey(m.away_team_id,m.away_team);
-          const opt={neutral:!!m.is_neutral, derby:sbIsDerby(m)};
-          const marketLines={AH:gmF(m.closing_ah_home), Тот:gmF(m.closing_total_line)};
+          const opt={neutral:!!m.is_neutral, derby:sbIsDerby(m), matchDate:m.match_date};
+          const marketLines={
+            AH:gmF(m.closing_ah_home), Тот:gmF(m.closing_total_line),
+            AH1:gmF(m.ah_home_odds), AH2:gmF(m.ah_away_odds),
+          };
           const leg=(modelL&&homeId&&awayId)?irPredictBundle(modelL,homeId,awayId,opt,marginFrac,marketLines,null):null;
           const aut=(modelA&&homeId&&awayId)?irPredictBundle(modelA,homeId,awayId,opt,marginFrac,marketLines,null):null;
           out.push(irBuildCombinedRow(m,leg,aut,useMargin));

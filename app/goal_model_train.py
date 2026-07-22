@@ -25,6 +25,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 try:
     from . import goal_model as gm
+    from . import momentum as mom
     from . import team_ranking as tr
     from .rotation_training import (
         DEFAULT_ROTATION_TRAINING_WEIGHTS,
@@ -34,6 +35,7 @@ try:
     )
 except ImportError:  # pragma: no cover
     import goal_model as gm
+    import momentum as mom
     import team_ranking as tr
     from rotation_training import (
         DEFAULT_ROTATION_TRAINING_WEIGHTS,
@@ -132,6 +134,15 @@ class ModelConfig:
     rotation_training_weights: Dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_ROTATION_TRAINING_WEIGHTS)
     )
+
+    # momentum / market-drift EMA поверх D_model (не меняет WLS)
+    momentum_enabled: bool = True
+    momentum_alpha: float = 0.30
+    momentum_k: float = 0.80
+    momentum_max_ema: float = 0.50
+    momentum_min_matches: int = 1
+    # опционально: league_id / имя → overrides {enabled,alpha,k,max_ema,min_matches}
+    momentum_by_league: Dict[str, Dict[str, float]] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -1410,6 +1421,75 @@ class TrainedModel:
     draw_q_diag: Optional["DrawQDiagnostics"] = None
     sd_diag: Optional["Sd1x2Diagnostics"] = None
     draw_harm_diag: Optional["DrawHarmDiagnostics"] = None
+    momentum_book: Optional["mom.MomentumBook"] = None
+    momentum_cfg: Optional["mom.MomentumConfig"] = None
+
+
+def resolve_momentum_config(
+    cfg: ModelConfig,
+    *,
+    league_id: Optional[str] = None,
+    league_name: Optional[str] = None,
+) -> mom.MomentumConfig:
+    base = mom.MomentumConfig(
+        enabled=cfg.momentum_enabled,
+        alpha=cfg.momentum_alpha,
+        k=cfg.momentum_k,
+        max_ema=cfg.momentum_max_ema,
+        min_matches=cfg.momentum_min_matches,
+    )
+    overrides = cfg.momentum_by_league or {}
+    for key in (league_id, league_name, str(league_id or ""), str(league_name or "")):
+        if key and key in overrides and isinstance(overrides[key], dict):
+            o = overrides[key]
+            base = mom.MomentumConfig(
+                enabled=bool(o["enabled"]) if "enabled" in o else base.enabled,
+                alpha=float(o["alpha"]) if "alpha" in o else base.alpha,
+                k=float(o["k"]) if "k" in o else base.k,
+                max_ema=float(o.get("max_ema", o.get("maxEma", base.max_ema))),
+                min_matches=int(o.get("min_matches", o.get("minMatches", base.min_matches))),
+            )
+            break
+    return base.validated()
+
+
+def build_momentum_book_for_matches(
+    matches: Sequence[PreparedMatch],
+    strength: StrengthModel,
+    cfg: ModelConfig,
+    *,
+    league_id: Optional[str] = None,
+    league_name: Optional[str] = None,
+) -> mom.MomentumBook:
+    """Walk-forward EMA по подготовленным матчам; D_model из текущего strength (WLS без изменений)."""
+    mcfg = resolve_momentum_config(cfg, league_id=league_id, league_name=league_name)
+    walk: List[mom.MomentumWalkMatch] = []
+    for m in matches:
+        if m.home_id not in strength.ratings or m.away_id not in strength.ratings:
+            continue
+        # матч без D_market может участвовать только если есть дата — но в книгу для обновления
+        # попадают только с d_market; без AH пропускаем полностью (нечего считать)
+        if m.diff_goals is None:
+            continue
+        derby = _is_derby_match(m.raw) and m.i_home == 1
+        h_eff = effective_home_advantage(strength, cfg, neutral=m.i_home == 0, derby=derby)
+        d_base = (
+            strength.ratings.get(m.home_id, 0.0)
+            - strength.ratings.get(m.away_id, 0.0)
+            + h_eff
+        )
+        walk.append(
+            mom.MomentumWalkMatch(
+                match_date=m.raw.date,
+                home_id=m.home_id,
+                away_id=m.away_id,
+                d_model_base=d_base,
+                d_market=float(m.diff_goals),
+            )
+        )
+    # chronological order (build_momentum_walk also groups by date)
+    walk.sort(key=lambda w: (w.match_date is None, w.match_date or date.min, w.home_id, w.away_id))
+    return mom.build_momentum_walk(walk, mcfg)
 
 
 def _build_team_names(matches: Sequence[PreparedMatch]) -> Dict[str, str]:
@@ -1440,8 +1520,15 @@ def train_full_model(
     cal_diag = assess_calibration_stability(calibration, cfg=cfg)
     draw = fit_draw_for_config(matches, strength, goals, calibration, cfg)
     team_names = _build_team_names(matches)
+    league_name = next((m.raw.league for m in matches if m.raw.league), None)
+    league_id = next((m.raw.league_id for m in matches if m.raw.league_id), None)
+    mcfg = resolve_momentum_config(cfg, league_id=league_id, league_name=league_name)
+    momentum_book = build_momentum_book_for_matches(
+        matches, strength, cfg, league_id=league_id, league_name=league_name,
+    )
     model = TrainedModel(
         strength, goals, calibration, draw, cfg, team_names, d_clamp, cal_diag, None, None, None,
+        momentum_book=momentum_book, momentum_cfg=mcfg,
     )
     draw_q_diag = draw_q_diagnostics(model, matches)
     log_draw_q_diagnostics(draw_q_diag)
@@ -1452,6 +1539,7 @@ def train_full_model(
     return TrainedModel(
         strength, goals, calibration, draw, cfg, team_names,
         d_clamp, cal_diag, draw_q_diag, sd_diag, draw_harm_diag,
+        momentum_book=momentum_book, momentum_cfg=mcfg,
     ), matches
 
 
@@ -1470,6 +1558,10 @@ class Prediction:
     markets: gm.MatchMarkets
     draw_target: Optional[float] = None
     draw_diagnostics: Optional[Dict[str, float]] = None
+    d_model_base: Optional[float] = None
+    d_model_dynamic: Optional[float] = None
+    dynamic_correction: Optional[float] = None
+    momentum: Optional[mom.MomentumSnapshot] = None
 
 
 def _promoted_rating(values: Dict[str, float], n: int) -> float:
@@ -1487,6 +1579,9 @@ def predict_match(
     *,
     neutral: bool = False,
     derby: bool = False,
+    match_date: Optional[date] = None,
+    use_momentum_lookup: bool = True,
+    apply_momentum: bool = True,
 ) -> Prediction:
     cfg = model.config
     s, g, cal = model.strength, model.goals, model.calibration
@@ -1511,12 +1606,44 @@ def predict_match(
         return g.defense[t] if t in g.defense else _promoted_rating(g.defense, cfg.promoted_reference_n)
 
     k_hg = (h_eff / s.home_advantage) if s.home_advantage > 1e-9 else 1.0
-    d_model = rating(home_id) - rating(away_id) + h_eff
+    d_model_base = rating(home_id) - rating(away_id) + h_eff
     lh_ad = math.exp(g.mu + attack(home_id) - defense(away_id) + g.home_goal_adv * i_home * k_hg)
     la_ad = math.exp(g.mu + attack(away_id) - defense(home_id))
     s_model = lh_ad + la_ad
 
-    d_final = cal.d_a + cal.d_b * d_model
+    mom_snap: Optional[mom.MomentumSnapshot] = None
+    d_for_cal = d_model_base
+    book = model.momentum_book
+    mcfg = model.momentum_cfg or resolve_momentum_config(cfg)
+    if apply_momentum and book is not None:
+        key = mom.match_key(match_date, home_id, away_id) if match_date else None
+        rec = book.records.get(key) if (use_momentum_lookup and key) else None
+        if rec is not None:
+            mom_snap = mom.apply_momentum_to_d(
+                d_model_base,
+                rec.ema_home_before,
+                rec.ema_away_before,
+                mcfg,
+                home_matches=rec.home_matches_count,
+                away_matches=rec.away_matches_count,
+            )
+        else:
+            mom_snap = book.peek(
+                home_id=home_id, away_id=away_id, d_model_base=d_model_base, match_date=match_date,
+            )
+        d_for_cal = mom_snap.d_model_dynamic
+    elif not apply_momentum:
+        mom_snap = mom.MomentumSnapshot(
+            ema_home_before=0.0, ema_away_before=0.0,
+            home_matches_count=0, away_matches_count=0,
+            dynamic_correction=0.0,
+            d_model_base=d_model_base, d_model_dynamic=d_model_base,
+            momentum_enabled=False,
+            momentum_alpha=mcfg.alpha, momentum_k=mcfg.k, momentum_max_ema=mcfg.max_ema,
+            ema_home_limited=0.0, ema_away_limited=0.0,
+        )
+
+    d_final = cal.d_a + cal.d_b * d_for_cal
     s_final = apply_s_calibration(s_model, cal.s_a, cal.s_b, cfg)
     d_final = gm.clamp_goal_diff(d_final, s_final, cfg.lambda_epsilon)
     lambda_home = (s_final + d_final) / 2.0
@@ -1547,10 +1674,14 @@ def predict_match(
         home_team_id=home_id, away_team_id=away_id,
         home_team=home_name, away_team=away_name,
         lambda_home=lambda_home, lambda_away=lambda_away,
-        d_model=d_model, s_model=s_model, d_final=d_final, s_final=s_final,
+        d_model=d_for_cal, s_model=s_model, d_final=d_final, s_final=s_final,
         markets=markets,
         draw_target=draw_target,
         draw_diagnostics=draw_diag,
+        d_model_base=d_model_base,
+        d_model_dynamic=mom_snap.d_model_dynamic if mom_snap else d_model_base,
+        dynamic_correction=mom_snap.dynamic_correction if mom_snap else 0.0,
+        momentum=mom_snap,
     )
 
 
@@ -1609,6 +1740,7 @@ def draw_q_diagnostics(
             model, m.home_id, m.away_id,
             neutral=m.i_home == 0,
             derby=_is_derby_match(m.raw) and m.i_home == 1,
+            apply_momentum=False,
         )
         diag = pred.draw_diagnostics
         if not diag:
@@ -1715,6 +1847,7 @@ def _match_draw_px_stages(
         model, m.home_id, m.away_id,
         neutral=m.i_home == 0,
         derby=_is_derby_match(m.raw) and m.i_home == 1,
+        apply_momentum=False,
     )
     return px_poisson, px_after_dc, pred.markets.px
 
