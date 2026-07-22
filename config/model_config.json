@@ -199,5 +199,13 @@
       "c": "sA",
       "d": "sB"
     }
+  },
+  "momentum": {
+    "enabled": true,
+    "alpha": 0.30,
+    "k": 0.80,
+    "maxEma": 0.50,
+    "minMatches": 1,
+    "byLeague": {}
   }
 }
