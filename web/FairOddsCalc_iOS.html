@@ -7463,6 +7463,10 @@ bash scripts/update_and_serve.sh --start</div>
       'AH1','AH2','AH1_at_market','AH2_at_market','AH1_delta_mkt','AH2_delta_mkt',
       'Total_market','Total_main','Total_line_delta','same_tot',
       'O','U','O_at_market','U_at_market','O_delta_mkt','U_delta_mkt',
+      // momentum / market-drift (Legacy=1X2, Auto=AH/OU)
+      'D_market',
+      'D_model_base','EMA_home_before','EMA_away_before','dynamic_correction','D_model_dynamic',
+      'D_model_base_A','EMA_home_before_A','EMA_away_before_A','dynamic_correction_A','D_model_dynamic_A',
     ];
     const IR_COMPARE_COLS = [
       'Дата','Лига','Дома','Гости','etalon_layer','engine_L','engine_A','recipe',
@@ -8080,7 +8084,7 @@ bash scripts/update_and_serve.sh --start</div>
           mat=built.mat; dist=built.dist; alpha=built.alpha; rho=built.rho; dcGamma=built.dcGamma;
           const mk=gmMarkets(mat);
           const matDiag=gmMatrixDiagnostics(mat,lh,la,alpha);
-          pred={markets:mk, mat, matDiag, lh, la, sf, df, alphaFinal:alpha, rhoFinal:rho, dcGamma, selectedDistribution:dist};
+          pred={markets:mk, mat, matDiag, lh, la, sf, df, alphaFinal:alpha, rhoFinal:rho, dcGamma, selectedDistribution:dist, momentum:lam.momentum};
         } else if(engine==='legacy'){
           pred=irPredictLegacy(model,homeId,awayId,opt);
           lh=pred.lh; la=pred.la; sf=pred.sf; df=pred.df;
@@ -8099,6 +8103,35 @@ bash scripts/update_and_serve.sh --start</div>
         const ahAt = mktAh!=null ? gmAhMarket(mat, mktAh) : null;
         const totAt = mktTot!=null ? gmTotMarket(mat, mktTot) : null;
         const d=pred.matDiag||gmMatrixDiagnostics(mat,lh,la,alpha||0);
+        const mom = pred.momentum || (pred.dModelBase!=null ? {
+          dModelBase: pred.dModelBase,
+          dModelDynamic: pred.dModelDynamic,
+          dynamicCorrection: pred.dynamicCorrection,
+          emaHomeBefore: pred.emaHomeBefore,
+          emaAwayBefore: pred.emaAwayBefore,
+        } : null);
+        let dMarket = null;
+        try{
+          const dateStr = opt && opt.matchDate ? String(opt.matchDate).slice(0,10) : '';
+          const key = gmMomMatchKey(dateStr, homeId, awayId);
+          const rec = model.momentum && model.momentum.records && model.momentum.records[key];
+          if(rec && rec.dMarket!=null && isFinite(rec.dMarket)) dMarket = rec.dMarket;
+        }catch(_e){}
+        // Fallback: same AH→D as gmPrepare when book has no row for this match.
+        if(dMarket==null && mktAh!=null && Number.isFinite(mktAh)){
+          try{
+            const ah1 = marketLines && marketLines.AH1!=null ? Number(marketLines.AH1) : null;
+            const ah2 = marketLines && marketLines.AH2!=null ? Number(marketLines.AH2) : null;
+            let pAh = null;
+            if(ah1!=null && ah2!=null && ah1>1 && ah2>1){
+              const pr = gmDevig2(ah1, ah2);
+              pAh = pr[0];
+            }
+            const S = (lh!=null && la!=null) ? (lh+la) : null;
+            if(pAh!=null && S!=null && S>0.2) dMarket = gmInferD(mktAh, pAh, S);
+            else dMarket = -mktAh;
+          }catch(_e){}
+        }
         return {
           engine: recipe ? 'component' : (engine==='legacy' ? 'legacy_candidate' : 'auto'),
           recipe: irRecipeLabel(recipe),
@@ -8122,6 +8155,12 @@ bash scripts/update_and_serve.sh --start</div>
           matrix_sum:d.sum, matrix_tail:d.tail, p_00:d.p00, p_11:d.p11,
           p_btts_yes:d.pBtts!=null?d.pBtts:mk.bttsYes,
           model_total_mean:d.meanTotal, model_total_variance:d.varTotal, model_total_variance_ratio:d.varRatio,
+          D_market: dMarket,
+          D_model_base: mom ? mom.dModelBase : null,
+          EMA_home_before: mom ? mom.emaHomeBefore : null,
+          EMA_away_before: mom ? mom.emaAwayBefore : null,
+          dynamic_correction: mom ? mom.dynamicCorrection : null,
+          D_model_dynamic: mom ? mom.dModelDynamic : null,
         };
       }catch(_e){ console.warn('irPredictAtMarket', _e); return null; }
     }
@@ -8230,6 +8269,19 @@ bash scripts/update_and_serve.sh --start</div>
       row.U_at_market = aut ? aut.U_at_market : null;
       row.O_delta_mkt = irDelta(row.O_at_market, mkt.O);
       row.U_delta_mkt = irDelta(row.U_at_market, mkt.U);
+      // Momentum diagnostics: unsuffixed = Legacy (1X2); _A = Auto (AH/OU)
+      row.D_market = (leg && leg.D_market!=null) ? leg.D_market
+        : (aut && aut.D_market!=null ? aut.D_market : null);
+      row.D_model_base = leg ? leg.D_model_base : null;
+      row.EMA_home_before = leg ? leg.EMA_home_before : null;
+      row.EMA_away_before = leg ? leg.EMA_away_before : null;
+      row.dynamic_correction = leg ? leg.dynamic_correction : null;
+      row.D_model_dynamic = leg ? leg.D_model_dynamic : null;
+      row.D_model_base_A = aut ? aut.D_model_base : null;
+      row.EMA_home_before_A = aut ? aut.EMA_home_before : null;
+      row.EMA_away_before_A = aut ? aut.EMA_away_before : null;
+      row.dynamic_correction_A = aut ? aut.dynamic_correction : null;
+      row.D_model_dynamic_A = aut ? aut.D_model_dynamic : null;
       row._mae={
         mae1x2:irAbsMae([row['1_delta'],row.X_delta,row['2_delta']]),
         maeAh:irAbsMae([row.AH1_delta_mkt,row.AH2_delta_mkt]),
@@ -8576,7 +8628,10 @@ bash scripts/update_and_serve.sh --start</div>
           const homeId=gmTeamKey(m.home_team_id,m.home_team);
           const awayId=gmTeamKey(m.away_team_id,m.away_team);
           const opt={neutral:!!m.is_neutral, derby:sbIsDerby(m), matchDate:m.match_date};
-          const marketLines={AH:gmF(m.closing_ah_home), Тот:gmF(m.closing_total_line)};
+          const marketLines={
+            AH:gmF(m.closing_ah_home), Тот:gmF(m.closing_total_line),
+            AH1:gmF(m.ah_home_odds), AH2:gmF(m.ah_away_odds),
+          };
           const leg=(modelL&&homeId&&awayId)?irPredictBundle(modelL,homeId,awayId,opt,marginFrac,marketLines,null):null;
           const aut=(modelA&&homeId&&awayId)?irPredictBundle(modelA,homeId,awayId,opt,marginFrac,marketLines,null):null;
           out.push(irBuildCombinedRow(m,leg,aut,useMargin));
