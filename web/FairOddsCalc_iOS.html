@@ -3339,6 +3339,7 @@ bash scripts/update_and_serve.sh --start</div>
         compare: raw.compare || {},
         momentum: raw.momentum || {},
         dynamic_s_ema: raw.dynamic_s_ema || raw.sMomentum || {},
+        dynamic_dc_gamma: raw.dynamic_dc_gamma || raw.dynamicDcGamma || {},
         configSource: 'model_config.json',
       });
     }
@@ -5268,6 +5269,157 @@ bash scripts/update_and_serve.sh --start</div>
       if(base.maxAbsTeamEma!=null && !(base.maxAbsTeamEma>0)) throw new Error('dynamic_s_ema.max_abs_team_ema must be > 0');
       if(base.maxAbsCorrection!=null && !(base.maxAbsCorrection>0)) throw new Error('dynamic_s_ema.max_abs_correction must be > 0');
       return base;
+    }
+
+    const GM_DC_DEFAULT_SEGMENTS = [
+      { maxAbsD: 0.5, gamma: 0.11 },
+      { maxAbsD: 1.0, gamma: 0.07 },
+      { maxAbsD: 1.5, gamma: 0.02 },
+      { maxAbsD: null, gamma: 0.0 },
+    ];
+    function gmDcFmtBound(x){
+      return Number(x).toFixed(1).replace('.', '_');
+    }
+    function gmDcSegmentLabel(prev, cur){
+      if(cur == null){
+        if(prev == null) return 'ABS_D_ALL';
+        return 'ABS_D_GT_' + gmDcFmtBound(prev);
+      }
+      if(prev == null) return 'ABS_D_LE_' + gmDcFmtBound(cur);
+      return 'ABS_D_GT_' + gmDcFmtBound(prev) + '_LE_' + gmDcFmtBound(cur);
+    }
+    function gmDynamicDcCfgFromGlobal(leagueId, leagueName){
+      const raw = (GM_MATRIX_CFG && GM_MATRIX_CFG.dynamic_dc_gamma) || (GM_MODEL_CFG && GM_MODEL_CFG.dynamic_dc_gamma) || {};
+      let invalid = false, invalidReason = null;
+      let segments = Array.isArray(raw.segments) ? raw.segments.map(s => ({
+        maxAbsD: (s.max_abs_d !== undefined) ? s.max_abs_d : (s.maxAbsD !== undefined ? s.maxAbsD : null),
+        gamma: Number(s.gamma),
+      })) : GM_DC_DEFAULT_SEGMENTS.map(s => Object.assign({}, s));
+      try{
+        if(!segments.length) throw new Error('dynamic_dc_gamma.segments must contain at least one segment');
+        const finite = [];
+        for(let i=0;i<segments.length;i++){
+          const g = Number(segments[i].gamma);
+          if(!(g >= 0) || !isFinite(g)) throw new Error('dynamic_dc_gamma segment gamma must be >= 0');
+          segments[i].gamma = g;
+          if(segments[i].maxAbsD == null || segments[i].maxAbsD === '' || segments[i].maxAbsD === 'null'){
+            segments[i].maxAbsD = null;
+            if(i !== segments.length - 1) throw new Error('dynamic_dc_gamma: only the last segment may have max_abs_d=null');
+          } else {
+            const m = Number(segments[i].maxAbsD);
+            if(!(m >= 0) || !isFinite(m)) throw new Error('dynamic_dc_gamma max_abs_d must be >= 0');
+            segments[i].maxAbsD = m;
+            finite.push(m);
+          }
+        }
+        for(let i=1;i<finite.length;i++){
+          if(!(finite[i] > finite[i-1])) throw new Error('dynamic_dc_gamma segments must be sorted by ascending max_abs_d');
+        }
+        if(new Set(finite).size !== finite.length) throw new Error('dynamic_dc_gamma segment max_abs_d values must be unique');
+      }catch(e){
+        invalid = true;
+        invalidReason = String(e && e.message ? e.message : e);
+        console.error('dynamic_dc_gamma config invalid:', invalidReason);
+        segments = GM_DC_DEFAULT_SEGMENTS.map(s => Object.assign({}, s));
+      }
+      let base = {
+        enabled: !invalid && (raw.enabled === true || raw.enabled === 'true'),
+        source: raw.source || 'D_model_final',
+        defaultGamma: raw.default_gamma != null ? Number(raw.default_gamma)
+          : (raw.defaultGamma != null ? Number(raw.defaultGamma) : 0.09),
+        segments,
+        invalid,
+        invalidReason,
+      };
+      const by = raw.byLeague || raw.by_league || {};
+      for(const key of [leagueId, leagueName, String(leagueId||''), String(leagueName||'')]){
+        if(key && by[key] && typeof by[key]==='object'){
+          const o = by[key];
+          if(o.enabled != null) base.enabled = !invalid && !!o.enabled;
+          if(o.default_gamma != null) base.defaultGamma = Number(o.default_gamma);
+          if(o.defaultGamma != null) base.defaultGamma = Number(o.defaultGamma);
+          break;
+        }
+      }
+      if(!(isFinite(base.defaultGamma))) base.defaultGamma = 0.09;
+      return base;
+    }
+    function gmResolveDcGamma(dFinal, gammaSeason, cfg){
+      const absD = Math.abs(Number(dFinal) || 0);
+      const season = (gammaSeason != null && isFinite(Number(gammaSeason))) ? Number(gammaSeason) : Number(cfg.defaultGamma || 0);
+      if(cfg.invalid){
+        const g = isFinite(Number(cfg.defaultGamma)) ? Number(cfg.defaultGamma) : season;
+        return {
+          gammaSeason: season,
+          dynamicDcGammaEnabled: false,
+          dModelFinal: Number(dFinal) || 0,
+          absDModelFinal: absD,
+          gammaSegment: 'DEFAULT_FALLBACK',
+          gammaEffective: g,
+          dcApplied: Math.abs(g) > 1e-15,
+          dcFallbackUsed: true,
+          dcFallbackReason: cfg.invalidReason || 'invalid_config',
+        };
+      }
+      if(!cfg.enabled){
+        return {
+          gammaSeason: season,
+          dynamicDcGammaEnabled: false,
+          dModelFinal: Number(dFinal) || 0,
+          absDModelFinal: absD,
+          gammaSegment: 'DISABLED_USE_SEASON',
+          gammaEffective: season,
+          dcApplied: Math.abs(season) > 1e-15,
+          dcFallbackUsed: false,
+          dcFallbackReason: null,
+        };
+      }
+      const segs = cfg.segments || GM_DC_DEFAULT_SEGMENTS;
+      let prev = null;
+      for(const seg of segs){
+        if(seg.maxAbsD == null){
+          const g = Number(seg.gamma) || 0;
+          return {
+            gammaSeason: season,
+            dynamicDcGammaEnabled: true,
+            dModelFinal: Number(dFinal) || 0,
+            absDModelFinal: absD,
+            gammaSegment: gmDcSegmentLabel(prev, null),
+            gammaEffective: g,
+            dcApplied: Math.abs(g) > 1e-15,
+            dcFallbackUsed: false,
+            dcFallbackReason: null,
+          };
+        }
+        if(absD <= Number(seg.maxAbsD) + 1e-15){
+          const g = Number(seg.gamma) || 0;
+          return {
+            gammaSeason: season,
+            dynamicDcGammaEnabled: true,
+            dModelFinal: Number(dFinal) || 0,
+            absDModelFinal: absD,
+            gammaSegment: gmDcSegmentLabel(prev, Number(seg.maxAbsD)),
+            gammaEffective: g,
+            dcApplied: Math.abs(g) > 1e-15,
+            dcFallbackUsed: false,
+            dcFallbackReason: null,
+          };
+        }
+        prev = Number(seg.maxAbsD);
+      }
+      const g = isFinite(Number(cfg.defaultGamma)) ? Number(cfg.defaultGamma) : season;
+      console.error('dynamic_dc_gamma: no segment for abs_D=', absD, '— using default_gamma', g);
+      return {
+        gammaSeason: season,
+        dynamicDcGammaEnabled: true,
+        dModelFinal: Number(dFinal) || 0,
+        absDModelFinal: absD,
+        gammaSegment: 'DEFAULT_FALLBACK',
+        gammaEffective: g,
+        dcApplied: Math.abs(g) > 1e-15,
+        dcFallbackUsed: true,
+        dcFallbackReason: 'segment_not_found',
+      };
     }
     function gmSMomLimitEma(ema, maxAbs){
       if(maxAbs==null || !isFinite(maxAbs)) return {val:ema, clamped:false};
@@ -7691,6 +7843,10 @@ bash scripts/update_and_serve.sh --start</div>
       // S-EMA compact diagnostics (Auto path for OU)
       'S_model_base','S_model_final','S_dynamic_correction',
       'EMA_S_home_before','EMA_S_away_before','S_market','Residual_S_base','Residual_S_dynamic',
+      // Dynamic DC γ(|D|) diagnostics (Legacy 1X2 path)
+      'gamma_season','gamma_effective','gamma_segment','abs_D_model_final','dynamic_dc_gamma_enabled','dc_applied',
+      'draw_probability_poisson','draw_probability_final','dc_draw_probability_delta',
+      'score_00_poisson','score_11_poisson','score_00_final','score_11_final',
       'Total_main',
     ];
     const IR_COMPARE_COLS = [
@@ -7727,6 +7883,11 @@ bash scripts/update_and_serve.sh --start</div>
       '1_delta','X_delta','2_delta','AH1_delta_mkt','AH2_delta_mkt','O_delta_mkt','U_delta_mkt',
       'same_ah','same_tot',
       'selected_distribution','alpha_final','rho_final','dc_gamma','lambda_home','lambda_away',
+      'gamma_season','gamma_effective','gamma_segment','abs_D_model_final','dynamic_dc_gamma_enabled','dc_applied',
+      'home_probability_poisson','draw_probability_poisson','away_probability_poisson',
+      'home_probability_final','draw_probability_final','away_probability_final',
+      'dc_home_probability_delta','dc_draw_probability_delta','dc_away_probability_delta',
+      'score_00_poisson','score_11_poisson','score_00_final','score_11_final',
       'matrix_sum','matrix_tail','p_00','p_11','p_btts_yes',
       'model_total_mean','model_total_variance','model_total_variance_ratio',
     ];
@@ -7736,6 +7897,7 @@ bash scripts/update_and_serve.sh --start</div>
       'home_rotation_code','away_rotation_code','training_status','rotation_reason',
       'same_ah_L','same_ah_A','same_tot_L','same_tot_A','same_ah','same_tot',
       'winner_1x2','winner_AH','winner_OU','winner_AH_line','winner_OU_line','winner_row',
+      'gamma_segment','dynamic_dc_gamma_enabled','dc_applied',
     ]);
     const IR_LINE_COLS = new Set([
       'AH_market','Total_market','AH_main_L','AH_main_A','Total_main_L','Total_main_A',
@@ -7987,8 +8149,27 @@ bash scripts/update_and_serve.sh --start</div>
       let df=gmClampD(dc.dUsed,sf);
       const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
       const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
-      let mat=gmMatrix(lh,la,cfg.maxGoals||GM_MAX);
-      if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
+      let matPoisson=gmMatrix(lh,la,cfg.maxGoals||GM_MAX);
+      const pPois=gm1x2(matPoisson);
+      const p1Pois=pPois[0], pxPois=pPois[1], p2Pois=pPois[2];
+      const score00Pois = matPoisson[0] && matPoisson[0][0] != null ? matPoisson[0][0] : 0;
+      const score11Pois = matPoisson[1] && matPoisson[1][1] != null ? matPoisson[1][1] : 0;
+      const gammaSeason = (cfg.useDc && cal.gamma) ? Number(cal.gamma) : 0;
+      const ddcCfg = gmDynamicDcCfgFromGlobal(
+        (opt && opt.leagueId != null) ? opt.leagueId : null,
+        (opt && opt.leagueName != null) ? opt.leagueName : null
+      );
+      let dcRes = gmResolveDcGamma(df, gammaSeason, ddcCfg);
+      let gammaEff = cfg.useDc ? dcRes.gammaEffective : 0;
+      if(!cfg.useDc){
+        dcRes = Object.assign({}, dcRes, {
+          gammaSeason: 0, gammaEffective: 0, dcApplied: false,
+          dynamicDcGammaEnabled: false, gammaSegment: 'DISABLED_USE_SEASON',
+        });
+        gammaEff = 0;
+      }
+      let mat = matPoisson;
+      if(cfg.useDc && Math.abs(gammaEff) > 1e-15) mat = gmDC(matPoisson, lh, la, gammaEff);
       let dtarget=null, diag=null;
       if(cfg.useDraw&&draw){
         const pxMat=gmDrawProb(mat);
@@ -7997,10 +8178,39 @@ bash scripts/update_and_serve.sh --start</div>
         else dtarget=gmDrawTarget(draw,df,sf);
         [mat,diag]=gmAdjustDraw(mat,dtarget,qmin,qmax);
       }
+      let p1Fin=0, pxFin=0, p2Fin=0;
+      const n2=mat.length;
+      for(let i=0;i<n2;i++) for(let j=0;j<n2;j++){
+        const p=mat[i][j];
+        if(i>j) p1Fin+=p; else if(i===j) pxFin+=p; else p2Fin+=p;
+      }
+      const score00Fin = mat[0] && mat[0][0] != null ? mat[0][0] : 0;
+      const score11Fin = mat[1] && mat[1][1] != null ? mat[1][1] : 0;
       const matDiag=gmMatrixDiagnostics(mat,lh,la,0);
       return {
         homeId,awayId,homeName,awayName,lh,la,df,sf,mat,matDiag,
-        alphaFinal:0, rhoFinal:0, dcGamma:cal.gamma||0,
+        alphaFinal:0, rhoFinal:0, dcGamma:gammaEff,
+        gammaSeason: dcRes.gammaSeason,
+        gammaEffective: gammaEff,
+        gammaSegment: dcRes.gammaSegment,
+        absDModelFinal: dcRes.absDModelFinal,
+        dynamicDcGammaEnabled: dcRes.dynamicDcGammaEnabled,
+        dcApplied: !!(dcRes.dcApplied && cfg.useDc),
+        dcFallbackUsed: !!dcRes.dcFallbackUsed,
+        dcFallbackReason: dcRes.dcFallbackReason || null,
+        homeProbabilityPoisson: p1Pois,
+        drawProbabilityPoisson: pxPois,
+        awayProbabilityPoisson: p2Pois,
+        homeProbabilityFinal: p1Fin,
+        drawProbabilityFinal: pxFin,
+        awayProbabilityFinal: p2Fin,
+        dcHomeProbabilityDelta: p1Fin - p1Pois,
+        dcDrawProbabilityDelta: pxFin - pxPois,
+        dcAwayProbabilityDelta: p2Fin - p2Pois,
+        score00Poisson: score00Pois,
+        score11Poisson: score11Pois,
+        score00Final: score00Fin,
+        score11Final: score11Fin,
         dModelBase: mom.dModelBase, dModelDynamic: mom.dModelDynamic, dynamicCorrection: mom.dynamicCorrection, momentum: mom,
         sModelBase: smom.sModelBase, sModelDynamic: smom.sModelDynamic, sDynamicCorrection: smom.dynamicCorrection, sMomentum: smom,
         lambdaHomeRaw: lamPack.lhRaw, lambdaAwayRaw: lamPack.laRaw, lambdaClippingApplied: lamPack.clipped,
@@ -8281,10 +8491,11 @@ bash scripts/update_and_serve.sh --start</div>
       const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
       return {lh,la,sf,df,cfg,cal,momentum:mom,sMomentum:smom,lambdaClippingApplied:lamPack.clipped};
     }
-    function irBuildMatrixRecipe(model, lh, la, recipe){
+    function irBuildMatrixRecipe(model, lh, la, recipe, dFinal){
       const maxG=(model.cfg&&model.cfg.maxGoals)||GM_MAX;
       const r=recipe||{marginals:'poisson',joint:'independent',draw:'off'};
       let mat, dist, alpha=0, rho=0, dcGamma=0;
+      let dcMeta=null;
       if(r.joint==='copula'){
         alpha = r.marginals==='auto' ? (model.alphaFinal||0) : 0;
         rho = model.rhoFinal||0;
@@ -8292,10 +8503,14 @@ bash scripts/update_and_serve.sh --start</div>
         dist = alpha>1e-9 ? 'negbin_copula' : 'poisson_copula';
       } else {
         mat = gmMatrix(lh,la,maxG);
-        // DC on independent Poisson when calib has gamma (Legacy path)
-        if(model.cfg && model.cfg.useDc && model.cal && model.cal.gamma && r.joint==='independent' && r.marginals==='poisson'){
-          dcGamma = model.cal.gamma;
-          mat = gmDC(mat,lh,la,dcGamma);
+        // DC on independent Poisson: dynamic γ(|D|) when enabled
+        if(model.cfg && model.cfg.useDc && r.joint==='independent' && r.marginals==='poisson'){
+          const gammaSeason = (model.cal && model.cal.gamma) ? Number(model.cal.gamma) : 0;
+          const dUse = (dFinal != null && isFinite(Number(dFinal))) ? Number(dFinal) : (lh - la);
+          const ddcCfg = gmDynamicDcCfgFromGlobal(null, null);
+          dcMeta = gmResolveDcGamma(dUse, gammaSeason, ddcCfg);
+          dcGamma = dcMeta.gammaEffective;
+          if(Math.abs(dcGamma) > 1e-15) mat = gmDC(mat,lh,la,dcGamma);
         }
         dist = 'poisson_indep';
         if(r.draw==='legacy' && model.draw && model.cfg && model.cfg.useDraw!==false){
@@ -8309,7 +8524,7 @@ bash scripts/update_and_serve.sh --start</div>
           dist='poisson_dc_draw';
         }
       }
-      return {mat, dist, alpha, rho, dcGamma};
+      return {mat, dist, alpha, rho, dcGamma, dcMeta};
     }
     function irPredictAtMarket(model, homeId, awayId, opt, marginFrac, marketLines, recipe){
       if(!model) return null;
@@ -8319,11 +8534,25 @@ bash scripts/update_and_serve.sh --start</div>
         if(recipe){
           const lam=irLambdasFromModel(model,homeId,awayId,opt);
           lh=lam.lh; la=lam.la; sf=lam.sf; df=lam.df;
-          const built=irBuildMatrixRecipe(model,lh,la,recipe);
+          const built=irBuildMatrixRecipe(model,lh,la,recipe,df);
           mat=built.mat; dist=built.dist; alpha=built.alpha; rho=built.rho; dcGamma=built.dcGamma;
           const mk=gmMarkets(mat);
           const matDiag=gmMatrixDiagnostics(mat,lh,la,alpha);
-          pred={markets:mk, mat, matDiag, lh, la, sf, df, alphaFinal:alpha, rhoFinal:rho, dcGamma, selectedDistribution:dist, momentum:lam.momentum, sMomentum:lam.sMomentum, sModelBase:lam.sMomentum&&lam.sMomentum.sModelBase, sModelDynamic:lam.sMomentum&&lam.sMomentum.sModelDynamic, sDynamicCorrection:lam.sMomentum&&lam.sMomentum.dynamicCorrection};
+          const pPois = gm1x2(gmMatrix(lh,la,(model.cfg&&model.cfg.maxGoals)||GM_MAX));
+          const pFin = gm1x2(mat);
+          const dcMeta = built.dcMeta || {};
+          pred={
+            markets:mk, mat, matDiag, lh, la, sf, df, alphaFinal:alpha, rhoFinal:rho, dcGamma, selectedDistribution:dist,
+            momentum:lam.momentum, sMomentum:lam.sMomentum,
+            sModelBase:lam.sMomentum&&lam.sMomentum.sModelBase, sModelDynamic:lam.sMomentum&&lam.sMomentum.sModelDynamic,
+            sDynamicCorrection:lam.sMomentum&&lam.sMomentum.dynamicCorrection,
+            gammaSeason: dcMeta.gammaSeason, gammaEffective: dcGamma, gammaSegment: dcMeta.gammaSegment,
+            absDModelFinal: dcMeta.absDModelFinal, dynamicDcGammaEnabled: dcMeta.dynamicDcGammaEnabled,
+            dcApplied: dcMeta.dcApplied, dcFallbackUsed: dcMeta.dcFallbackUsed, dcFallbackReason: dcMeta.dcFallbackReason,
+            homeProbabilityPoisson: pPois[0], drawProbabilityPoisson: pPois[1], awayProbabilityPoisson: pPois[2],
+            homeProbabilityFinal: pFin[0], drawProbabilityFinal: pFin[1], awayProbabilityFinal: pFin[2],
+            dcHomeProbabilityDelta: pFin[0]-pPois[0], dcDrawProbabilityDelta: pFin[1]-pPois[1], dcAwayProbabilityDelta: pFin[2]-pPois[2],
+          };
         } else if(engine==='legacy'){
           pred=irPredictLegacy(model,homeId,awayId,opt);
           lh=pred.lh; la=pred.la; sf=pred.sf; df=pred.df;
@@ -8402,6 +8631,27 @@ bash scripts/update_and_serve.sh --start</div>
           alpha_final: alpha!=null?alpha:(model.alphaFinal||0),
           rho_final: rho!=null?rho:(model.rhoFinal||0),
           dc_gamma: dcGamma,
+          gamma_season: pred.gammaSeason != null ? pred.gammaSeason : (model.cal && model.cal.gamma != null ? model.cal.gamma : null),
+          gamma_effective: pred.gammaEffective != null ? pred.gammaEffective : dcGamma,
+          gamma_segment: pred.gammaSegment != null ? pred.gammaSegment : null,
+          abs_D_model_final: pred.absDModelFinal != null ? pred.absDModelFinal : (df != null ? Math.abs(df) : null),
+          dynamic_dc_gamma_enabled: pred.dynamicDcGammaEnabled != null ? pred.dynamicDcGammaEnabled : null,
+          dc_applied: pred.dcApplied != null ? pred.dcApplied : (dcGamma != null && Math.abs(dcGamma) > 1e-15),
+          dc_fallback_used: pred.dcFallbackUsed != null ? pred.dcFallbackUsed : null,
+          dc_fallback_reason: pred.dcFallbackReason != null ? pred.dcFallbackReason : null,
+          home_probability_poisson: pred.homeProbabilityPoisson != null ? pred.homeProbabilityPoisson : null,
+          draw_probability_poisson: pred.drawProbabilityPoisson != null ? pred.drawProbabilityPoisson : null,
+          away_probability_poisson: pred.awayProbabilityPoisson != null ? pred.awayProbabilityPoisson : null,
+          home_probability_final: pred.homeProbabilityFinal != null ? pred.homeProbabilityFinal : mk.p1,
+          draw_probability_final: pred.drawProbabilityFinal != null ? pred.drawProbabilityFinal : mk.px,
+          away_probability_final: pred.awayProbabilityFinal != null ? pred.awayProbabilityFinal : mk.p2,
+          dc_home_probability_delta: pred.dcHomeProbabilityDelta != null ? pred.dcHomeProbabilityDelta : null,
+          dc_draw_probability_delta: pred.dcDrawProbabilityDelta != null ? pred.dcDrawProbabilityDelta : null,
+          dc_away_probability_delta: pred.dcAwayProbabilityDelta != null ? pred.dcAwayProbabilityDelta : null,
+          score_00_poisson: pred.score00Poisson != null ? pred.score00Poisson : null,
+          score_11_poisson: pred.score11Poisson != null ? pred.score11Poisson : null,
+          score_00_final: pred.score00Final != null ? pred.score00Final : d.p00,
+          score_11_final: pred.score11Final != null ? pred.score11Final : d.p11,
           lambda_home: lh, lambda_away: la, sf, df,
           matrix_sum:d.sum, matrix_tail:d.tail, p_00:d.p00, p_11:d.p11,
           p_btts_yes:d.pBtts!=null?d.pBtts:mk.bttsYes,
@@ -8538,6 +8788,20 @@ bash scripts/update_and_serve.sh --start</div>
       row.S_market = sSrc ? sSrc.S_market : null;
       row.Residual_S_base = sSrc ? sSrc.Residual_S_base : null;
       row.Residual_S_dynamic = sSrc ? sSrc.Residual_S_dynamic : null;
+      const dcSrc = leg || aut;
+      row.gamma_season = dcSrc ? dcSrc.gamma_season : null;
+      row.gamma_effective = dcSrc ? dcSrc.gamma_effective : null;
+      row.gamma_segment = dcSrc ? dcSrc.gamma_segment : null;
+      row.abs_D_model_final = dcSrc ? dcSrc.abs_D_model_final : null;
+      row.dynamic_dc_gamma_enabled = dcSrc ? dcSrc.dynamic_dc_gamma_enabled : null;
+      row.dc_applied = dcSrc ? dcSrc.dc_applied : null;
+      row.draw_probability_poisson = dcSrc ? dcSrc.draw_probability_poisson : null;
+      row.draw_probability_final = dcSrc ? dcSrc.draw_probability_final : null;
+      row.dc_draw_probability_delta = dcSrc ? dcSrc.dc_draw_probability_delta : null;
+      row.score_00_poisson = dcSrc ? dcSrc.score_00_poisson : null;
+      row.score_11_poisson = dcSrc ? dcSrc.score_11_poisson : null;
+      row.score_00_final = dcSrc ? dcSrc.score_00_final : null;
+      row.score_11_final = dcSrc ? dcSrc.score_11_final : null;
       row._mae={
         mae1x2:irAbsMae([row['1_delta'],row.X_delta,row['2_delta']]),
         maeAh:irAbsMae([row.AH1_delta_mkt,row.AH2_delta_mkt]),
@@ -8594,6 +8858,13 @@ bash scripts/update_and_serve.sh --start</div>
       row.model_total_mean=pr.model_total_mean!=null?pr.model_total_mean:null;
       row.model_total_variance=pr.model_total_variance!=null?pr.model_total_variance:null;
       row.model_total_variance_ratio=pr.model_total_variance_ratio!=null?pr.model_total_variance_ratio:null;
+      [
+        'gamma_season','gamma_effective','gamma_segment','abs_D_model_final','dynamic_dc_gamma_enabled','dc_applied',
+        'home_probability_poisson','draw_probability_poisson','away_probability_poisson',
+        'home_probability_final','draw_probability_final','away_probability_final',
+        'dc_home_probability_delta','dc_draw_probability_delta','dc_away_probability_delta',
+        'score_00_poisson','score_11_poisson','score_00_final','score_11_final',
+      ].forEach(k=>{ row[k]=pr[k]!=null?pr[k]:null; });
       row._mae={
         mae1x2:irAbsMae([row['1_delta'],row.X_delta,row['2_delta']]),
         maeAh:irAbsMae([row.AH1_delta_mkt,row.AH2_delta_mkt]),

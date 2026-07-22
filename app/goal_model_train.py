@@ -21,9 +21,10 @@ import math
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 try:
+    from . import dynamic_dc_gamma as ddc
     from . import goal_model as gm
     from . import momentum as mom
     from . import s_momentum as smom
@@ -35,6 +36,7 @@ try:
         training_weight_for_rotation,
     )
 except ImportError:  # pragma: no cover
+    import dynamic_dc_gamma as ddc
     import goal_model as gm
     import momentum as mom
     import s_momentum as smom
@@ -156,6 +158,14 @@ class ModelConfig:
     s_momentum_lambda_min: float = 0.05
     s_momentum_reset_on_new_season: bool = True
     s_momentum_by_league: Dict[str, Dict[str, float]] = field(default_factory=dict)
+
+    # Dixon–Coles γ(|D_model_final|) — сезонное обучение gamma не меняет
+    # Default False for Python backward-compat; web model_config.json sets enabled:true
+    dynamic_dc_gamma_enabled: bool = False
+    dynamic_dc_gamma_source: str = "D_model_final"
+    dynamic_dc_default_gamma: float = 0.09
+    # None → встроенная таблица abs_D ≤0.5/1.0/1.5/>1.5
+    dynamic_dc_segments: Optional[List[Dict[str, Any]]] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -1681,6 +1691,37 @@ class Prediction:
     lambda_home_raw: Optional[float] = None
     lambda_away_raw: Optional[float] = None
     lambda_clipping_applied: bool = False
+    # Dixon–Coles dynamic γ diagnostics
+    gamma_season: Optional[float] = None
+    gamma_effective: Optional[float] = None
+    gamma_segment: Optional[str] = None
+    abs_d_model_final: Optional[float] = None
+    dynamic_dc_gamma_enabled: Optional[bool] = None
+    dc_applied: Optional[bool] = None
+    dc_fallback_used: Optional[bool] = None
+    dc_fallback_reason: Optional[str] = None
+    home_probability_poisson: Optional[float] = None
+    draw_probability_poisson: Optional[float] = None
+    away_probability_poisson: Optional[float] = None
+    home_probability_final: Optional[float] = None
+    draw_probability_final: Optional[float] = None
+    away_probability_final: Optional[float] = None
+    dc_home_probability_delta: Optional[float] = None
+    dc_draw_probability_delta: Optional[float] = None
+    dc_away_probability_delta: Optional[float] = None
+    score_00_poisson: Optional[float] = None
+    score_11_poisson: Optional[float] = None
+    score_00_final: Optional[float] = None
+    score_11_final: Optional[float] = None
+
+
+def resolve_dynamic_dc_config(cfg: ModelConfig) -> ddc.DynamicDcGammaConfig:
+    return ddc.config_from_model_fields(
+        enabled=cfg.dynamic_dc_gamma_enabled,
+        source=cfg.dynamic_dc_gamma_source,
+        default_gamma=cfg.dynamic_dc_default_gamma,
+        segments=cfg.dynamic_dc_segments,
+    )
 
 
 def _promoted_rating(values: Dict[str, float], n: int) -> float:
@@ -1809,9 +1850,35 @@ def predict_match(
         s_final = lambda_home + lambda_away
         d_final = lambda_home - lambda_away
 
-    matrix = gm.build_score_matrix(lambda_home, lambda_away, cfg.max_goals)
-    if cfg.use_dixon_coles and cal.gamma:
-        matrix = gm.apply_dixon_coles(matrix, lambda_home, lambda_away, cal.gamma)
+    matrix_poisson = gm.build_score_matrix(lambda_home, lambda_away, cfg.max_goals)
+    p1_pois, px_pois, p2_pois = gm.compute_1x2(matrix_poisson)
+    score_00_pois = matrix_poisson[0][0] if matrix_poisson else 0.0
+    score_11_pois = matrix_poisson[1][1] if len(matrix_poisson) > 1 else 0.0
+
+    gamma_season = float(cal.gamma or 0.0) if cfg.use_dixon_coles else 0.0
+    ddc_cfg = resolve_dynamic_dc_config(cfg)
+    dc_res = ddc.resolve_gamma_effective(
+        d_final, gamma_season=gamma_season, cfg=ddc_cfg,
+    )
+    gamma_eff = float(dc_res.gamma_effective) if cfg.use_dixon_coles else 0.0
+    # if DC globally off, force zero
+    if not cfg.use_dixon_coles:
+        gamma_eff = 0.0
+        dc_res = ddc.DcGammaResolution(
+            gamma_season=0.0,
+            dynamic_dc_gamma_enabled=False,
+            d_model_final=d_final,
+            abs_d_model_final=abs(d_final),
+            gamma_segment=ddc.SEGMENT_DISABLED,
+            gamma_effective=0.0,
+            dc_applied=False,
+            dc_fallback_used=False,
+            dc_fallback_reason=None,
+        )
+
+    matrix = matrix_poisson
+    if cfg.use_dixon_coles and abs(gamma_eff) > 1e-15:
+        matrix = gm.apply_dixon_coles(matrix_poisson, lambda_home, lambda_away, gamma_eff)
 
     draw_target = None
     draw_diag = None
@@ -1828,6 +1895,10 @@ def predict_match(
             q_min=q_min,
             q_max=q_max,
         )
+
+    p1_fin, px_fin, p2_fin = gm.compute_1x2(matrix)
+    score_00_fin = matrix[0][0] if matrix else 0.0
+    score_11_fin = matrix[1][1] if len(matrix) > 1 else 0.0
 
     markets = gm.markets_from_matrix(matrix)
     return Prediction(
@@ -1849,6 +1920,27 @@ def predict_match(
         lambda_home_raw=lh_raw,
         lambda_away_raw=la_raw,
         lambda_clipping_applied=clipped,
+        gamma_season=dc_res.gamma_season,
+        gamma_effective=gamma_eff,
+        gamma_segment=dc_res.gamma_segment,
+        abs_d_model_final=dc_res.abs_d_model_final,
+        dynamic_dc_gamma_enabled=dc_res.dynamic_dc_gamma_enabled,
+        dc_applied=bool(dc_res.dc_applied and cfg.use_dixon_coles),
+        dc_fallback_used=dc_res.dc_fallback_used,
+        dc_fallback_reason=dc_res.dc_fallback_reason,
+        home_probability_poisson=p1_pois,
+        draw_probability_poisson=px_pois,
+        away_probability_poisson=p2_pois,
+        home_probability_final=p1_fin,
+        draw_probability_final=px_fin,
+        away_probability_final=p2_fin,
+        dc_home_probability_delta=p1_fin - p1_pois,
+        dc_draw_probability_delta=px_fin - px_pois,
+        dc_away_probability_delta=p2_fin - p2_pois,
+        score_00_poisson=score_00_pois,
+        score_11_poisson=score_11_pois,
+        score_00_final=score_00_fin,
+        score_11_final=score_11_fin,
     )
 
 
@@ -2005,12 +2097,17 @@ def _match_draw_px_stages(
         return None
     cfg = model.config
     cal = model.calibration
-    gamma = cal.gamma if cfg.use_dixon_coles else 0.0
+    gamma_season = float(cal.gamma or 0.0) if cfg.use_dixon_coles else 0.0
     _, _, s_cal, d_cal = _calibrated_sd_for_match(
         m, model.strength, model.goals, cal, cfg,
     )
+    ddc_cfg = resolve_dynamic_dc_config(cfg)
+    dc_res = ddc.resolve_gamma_effective(
+        d_cal, gamma_season=gamma_season, cfg=ddc_cfg,
+    )
+    gamma_eff = float(dc_res.gamma_effective) if cfg.use_dixon_coles else 0.0
     _, px_poisson, _ = _prob_1x2_from_sd(s_cal, d_cal, cfg, gamma=0.0)
-    _, px_after_dc, _ = _prob_1x2_from_sd(s_cal, d_cal, cfg, gamma=gamma)
+    _, px_after_dc, _ = _prob_1x2_from_sd(s_cal, d_cal, cfg, gamma=gamma_eff)
     pred = predict_match(
         model, m.home_id, m.away_id,
         neutral=m.i_home == 0,
