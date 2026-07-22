@@ -7463,10 +7463,6 @@ bash scripts/update_and_serve.sh --start</div>
       'AH1','AH2','AH1_at_market','AH2_at_market','AH1_delta_mkt','AH2_delta_mkt',
       'Total_market','Total_main','Total_line_delta','same_tot',
       'O','U','O_at_market','U_at_market','O_delta_mkt','U_delta_mkt',
-      // momentum / market-drift (Legacy=1X2, Auto=AH/OU)
-      'D_market',
-      'D_model_base','EMA_home_before','EMA_away_before','dynamic_correction','D_model_dynamic',
-      'D_model_base_A','EMA_home_before_A','EMA_away_before_A','dynamic_correction_A','D_model_dynamic_A',
     ];
     const IR_COMPARE_COLS = [
       'Дата','Лига','Дома','Гости','etalon_layer','engine_L','engine_A','recipe',
@@ -8269,19 +8265,6 @@ bash scripts/update_and_serve.sh --start</div>
       row.U_at_market = aut ? aut.U_at_market : null;
       row.O_delta_mkt = irDelta(row.O_at_market, mkt.O);
       row.U_delta_mkt = irDelta(row.U_at_market, mkt.U);
-      // Momentum diagnostics: unsuffixed = Legacy (1X2); _A = Auto (AH/OU)
-      row.D_market = (leg && leg.D_market!=null) ? leg.D_market
-        : (aut && aut.D_market!=null ? aut.D_market : null);
-      row.D_model_base = leg ? leg.D_model_base : null;
-      row.EMA_home_before = leg ? leg.EMA_home_before : null;
-      row.EMA_away_before = leg ? leg.EMA_away_before : null;
-      row.dynamic_correction = leg ? leg.dynamic_correction : null;
-      row.D_model_dynamic = leg ? leg.D_model_dynamic : null;
-      row.D_model_base_A = aut ? aut.D_model_base : null;
-      row.EMA_home_before_A = aut ? aut.EMA_home_before : null;
-      row.EMA_away_before_A = aut ? aut.EMA_away_before : null;
-      row.dynamic_correction_A = aut ? aut.dynamic_correction : null;
-      row.D_model_dynamic_A = aut ? aut.D_model_dynamic : null;
       row._mae={
         mae1x2:irAbsMae([row['1_delta'],row.X_delta,row['2_delta']]),
         maeAh:irAbsMae([row.AH1_delta_mkt,row.AH2_delta_mkt]),
