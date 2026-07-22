@@ -346,6 +346,11 @@
     .ir-report-table td.num{ text-align:right; font-variant-numeric:tabular-nums; }
     .ir-report-table td.delta-pos{ color:#b45309; }
     .ir-report-table td.delta-neg{ color:#166534; }
+    .ir-report-table td.delta-hot{
+      background:#fee2e2;
+      color:#991b1b;
+      font-weight:700;
+    }
     .ir-report-table td.win-auto{ color:#0f766e; font-weight:600; }
     .ir-report-table td.win-legacy{ color:#1d4ed8; font-weight:600; }
     .ir-report-table tr:hover td{ background:#fafbff; }
@@ -595,7 +600,7 @@
       <button type="button" class="tab-btn active" data-tab="goal"><span class="tab-ico" aria-hidden="true">📈</span> Линия</button>
       <button type="button" class="tab-btn" data-tab="teams"><span class="tab-ico" aria-hidden="true">📋</span> Справочник</button>
       <button type="button" class="tab-btn" data-tab="hist"><span class="tab-ico" aria-hidden="true">🕓</span> История</button>
-      <button type="button" class="tab-btn" data-tab="inactreport"><span class="tab-ico" aria-hidden="true">📊</span> Сравнение моделей</button>
+      <button type="button" class="tab-btn" data-tab="inactreport"><span class="tab-ico" aria-hidden="true">📊</span> Отчет</button>
       <button type="button" class="tab-btn" data-tab="help"><span class="tab-ico" aria-hidden="true">❓</span> Справка</button>
     </div>
 
@@ -872,13 +877,14 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <div class="goal-config-card">
             <div class="block-label" style="margin-bottom:6px">Модель расчета</div>
             <div class="goal-model-auto-status" style="margin:0 0 8px;font-size:0.9em;line-height:1.55;color:#334155">
-              <div>Режим модели: <b>Auto</b></div>
+              <div>Режим: <b>комбинированный</b></div>
+              <div>1X2 → <b>Legacy</b> · AH/OU → <b>Auto</b></div>
               <div>Калибровка: <span id="goalModelCalibStatus">требуется</span></div>
-              <div>Дата последней калибровки: <span id="goalModelCalibDate">—</span></div>
+              <div>Дата обучения: <span id="goalModelCalibDate">—</span></div>
               <div>Матчей в выборке: <span id="goalModelCalibN">—</span></div>
             </div>
             <details id="goalExperimentalPanel" class="goal-exp-panel">
-              <summary>Диагностика</summary>
+              <summary>Диагностика (debug)</summary>
               <div class="goal-exp-body" style="font-size:0.85em;line-height:1.55;color:#334155">
                 <div id="goalModelAutoStatus">Обучите модель для отображения диагностики.</div>
               </div>
@@ -1122,32 +1128,19 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="clhMeta" class="meta"></div>
     </section>
 
-    <!-- TAB MODEL COMPARISON / BACKTEST (inactive matches; isolated from Line/History) -->
+    <!-- TAB REPORT: combined Legacy 1X2 + Auto AH/OU vs market -->
     <section id="tab-inactreport" class="panel">
-      <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Сравнение моделей (Backtest)</h3>
-      <p class="small" style="margin:0 0 10px">Лаборатория моделей на матчах <code>active=false</code>. Обучение — на активных матчах лиги; БД не меняется. Вкладки «Линия» и «История» не затрагиваются. Параметры — <code>model_config.json</code>.</p>
+      <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Отчет</h3>
+      <p class="small" style="margin:0 0 10px">Сравнение рассчитанной линии с closing-рынком на матчах <code>active=false</code>. Обучение — на active выбранного сезона. <b>1X2 = Legacy</b>, <b>AH/OU = Auto</b>. БД не меняется.</p>
       <details id="irParamsPanel" class="ir-params-panel">
-        <summary>Параметры моделей (из model_config.json)</summary>
+        <summary>Параметры моделей (debug, model_config.json)</summary>
         <div class="ir-params-body" id="irParamsBody">
-          <div class="ir-params-col" id="irParamsLegacy"><h5>Legacy</h5><div class="small" style="color:#94a3b8">Загрузка…</div></div>
-          <div class="ir-params-col" id="irParamsAuto"><h5>Auto</h5><div class="small" style="color:#94a3b8">Загрузка…</div></div>
+          <div class="ir-params-col" id="irParamsLegacy"><h5>Legacy → 1X2</h5><div class="small" style="color:#94a3b8">Загрузка…</div></div>
+          <div class="ir-params-col" id="irParamsAuto"><h5>Auto → AH/OU</h5><div class="small" style="color:#94a3b8">Загрузка…</div></div>
         </div>
       </details>
       <div class="ir-lab-layout">
         <div class="ir-lab-main">
-          <div class="ir-controls-card">
-            <div class="ir-mode-row">
-              <span style="font-weight:600;color:#10204a">Отчёт:</span>
-              <label><input type="radio" name="irReportMode" value="legacy" /> <span>Legacy (candidate)</span></label>
-              <label><input type="radio" name="irReportMode" value="auto" /> <span>Auto</span></label>
-              <label><input type="radio" name="irReportMode" value="compare" checked /> <span>Сравнение</span></label>
-            </div>
-            <div class="ir-mode-row" style="margin-bottom:0">
-              <span style="font-weight:600;color:#10204a">Считать:</span>
-              <label><input type="checkbox" id="irUseLegacy" checked /> <span>Legacy candidate (Poisson + Dixon–Coles)</span></label>
-              <label><input type="checkbox" id="irUseAuto" checked /> <span>Auto (Marginals + Copula)</span></label>
-            </div>
-          </div>
           <div class="ir-report-toolbar">
             <div class="field" style="min-width:160px">
               <label>Лига</label>
@@ -1193,50 +1186,17 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <button type="button" id="irRunReport" class="btn primary">Сформировать</button>
             <button type="button" id="irExportCsv" class="btn" disabled>Скачать CSV</button>
           </div>
-
-          <details id="irComponentPanel" class="ir-params-panel">
-            <summary>Сравнение компонентов (лаборатория)</summary>
-            <p class="ir-field-hint" style="margin:0 12px 8px;max-width:none">Включайте/выключайте блоки модели, чтобы понять, <b>что именно</b> улучшает результат. Обучение (в т.ч. веса ротации) берётся из выбранной калибровки; матрица и ничья — по переключателям ниже.</p>
-            <div class="ir-comp-grid">
-              <div class="field">
-                <label>S/D + калибровка</label>
-                <select id="irCompCalib">
-                  <option value="legacy">Legacy</option>
-                  <option value="auto">Auto</option>
-                </select>
-                <span class="ir-field-hint">Чью обученную силу/калибровку (r, A/Df, dA/dB, sA/sB) использовать. training_weight ротации уже в выборке.</span>
-              </div>
-              <div class="field">
-                <label>Marginals</label>
-                <select id="irCompMarginals">
-                  <option value="poisson">Legacy Poisson</option>
-                  <option value="auto">Auto (Pois/NB α)</option>
-                </select>
-                <span class="ir-field-hint">Пуассон (α=0) или α из Auto-калибровки лиги.</span>
-              </div>
-              <div class="field">
-                <label>Joint matrix</label>
-                <select id="irCompJoint">
-                  <option value="independent">Independent (+ DC если Legacy)</option>
-                  <option value="copula">Gaussian Copula</option>
-                </select>
-                <span class="ir-field-hint">Независимая матрица или Copula с ρ из Auto.</span>
-              </div>
-              <div class="field">
-                <label>Draw</label>
-                <select id="irCompDraw">
-                  <option value="off" selected>Off (диагональ матрицы)</option>
-                  <option value="legacy">Draw-model (эксперимент, не baseline)</option>
-                </select>
-                <span class="ir-field-hint">В Legacy/Auto baseline draw-model нет. PX = диагональ. Опция — только A/B эксперимент.</span>
-              </div>
-            </div>
-            <p class="ir-field-hint" style="margin:0 12px 12px;max-width:none">Компоненты применяются только если включена галка ниже. Иначе считаются полные pipeline Legacy и Auto. Ротация влияет на обучение одинаково в обоих случаях.</p>
-            <label class="ir-mode-row" style="margin:0 12px 12px">
-              <input type="checkbox" id="irUseComponents" />
-              <span>Включить компонентный recipe вместо полных pipeline</span>
-            </label>
-          </details>
+          <!-- hidden legacy controls kept for JS compat defaults -->
+          <div style="display:none" aria-hidden="true">
+            <input type="radio" name="irReportMode" value="combined" checked />
+            <input type="checkbox" id="irUseLegacy" checked />
+            <input type="checkbox" id="irUseAuto" checked />
+            <input type="checkbox" id="irUseComponents" />
+            <select id="irCompCalib"><option value="legacy" selected>Legacy</option><option value="auto">Auto</option></select>
+            <select id="irCompMarginals"><option value="poisson" selected>Legacy Poisson</option></select>
+            <select id="irCompJoint"><option value="dc" selected>DC</option></select>
+            <select id="irCompDraw"><option value="off" selected>off</option></select>
+          </div>
 
           <div id="irReportStatus" class="ir-report-status" style="display:none"></div>
           <div id="irReportTableWrap" class="ir-report-table-wrap" style="display:none">
@@ -1248,51 +1208,51 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </div>
         <aside class="ir-summary-card" id="irSummaryCard">
           <details open>
-            <summary>Диагностика</summary>
-            <div id="irSummaryBody" class="small" style="color:#64748b;margin-top:8px">Сформируйте отчёт — здесь появятся MAE и победитель.</div>
+            <summary>Сводка</summary>
+            <div id="irSummaryBody" class="small" style="color:#64748b;margin-top:8px">Сформируйте отчёт — здесь появятся MAE комбинированной линии vs рынок.</div>
           </details>
         </aside>
       </div>
       <div class="ir-glossary" id="irGlossary">
-        <h4>Что означают режимы и колонки</h4>
+        <h4>Комбинированная линия</h4>
         <dl>
           <div>
-            <dt>Сравнение</dt>
-            <dd>Обе модели на одних inactive-матчах. Обучение — только на <b>выбранном сезоне</b> (по умолчанию 2025-26), не на всей истории лиги. <b>winner_AH / winner_OU / winner_row</b> считаются только по кэфам на рыночной линии (<code>*_at_market</code> / <code>*_d*_mkt</code>). Отклонение main line — отдельные колонки <code>AH_line_d*</code>, <code>Total_line_d*</code> и <code>winner_AH_line</code> / <code>winner_OU_line</code>.</dd>
+            <dt>1X2</dt>
+            <dd>Считается <b>Legacy</b> (Poisson + Dixon–Coles). PX = сумма диагонали после DC.</dd>
           </div>
           <div>
-            <dt>Legacy (candidate)</dt>
-            <dd><b>Poisson + Dixon–Coles</b>: S/D → Poisson → независимая матрица → DC → рынки. Ничья = сумма диагонали после DC. Без отдельной draw-model.</dd>
+            <dt>AH / OU</dt>
+            <dd>Считаются <b>Auto</b> (Marginals + Gaussian Copula). Кэфы в отчёте — на рыночной линии; отклонение main line — отдельно.</dd>
           </div>
           <div>
-            <dt>Auto</dt>
-            <dd><b>Auto Marginals + Gaussian Copula</b>: S/D → Marginals → Copula → матрица → рынки. Ничья тоже = диагональ. Без DC и draw-model.</dd>
+            <dt>Эталон</dt>
+            <dd>Галка «Маржа» выкл → fair (de-vig). Вкл → raw closing из БД. Один отчёт не смешивает fair и raw.</dd>
+          </div>
+          <div>
+            <dt>Выборка</dt>
+            <dd>Обучение — active выбранного сезона; оценка — inactive того же сезона (с фильтрами).</dd>
           </div>
         </dl>
-        <p class="ir-glossary-note"><b>Ничья:</b> обе модели берут PX из диагонали матрицы — различается только способ построения матрицы.<br>
-        <b>Компоненты:</b> галка «Включить компонентный recipe» — колонка L = выбранная сборка (на обучении с training_weight ротации), колонка A = полный Auto для контраста.<br>
-        <b>AH/OU:</b> <code>AH1_L_at_market</code> — кэф Legacy на <code>AH_market</code>, даже если <code>AH_main_L</code> другая. <code>same_ah_L=yes</code> только значит, что main line совпала с рынком (для справки), на валидность <code>*_dL_mkt</code> не влияет.<br>
-        <b>Маржа:</b> выкл → fair/de-vig; вкл → эталон raw БД + модель с %.</p>
       </div>
     </section>
 
     <!-- TAB HELP -->
     <section id="tab-help" class="panel help">
       <h2>FairOddsCalc — что это</h2>
-      <p>Приложение строит футбольную линию (1X2, азиатские форы, тоталы, индивидуальные тоталы, точный счёт)
-      из <b>исторических закрывающих (closing) коэффициентов</b>. Всё считается из <b>одной матрицы счетов</b>,
-      поэтому рынки согласованы между собой.</p>
+      <p>Приложение строит футбольную линию из <b>исторических closing-коэффициентов</b>.
+      Итог — <b>комбинация двух моделей</b>: <b>1X2 = Legacy</b> (Poisson + Dixon–Coles),
+      <b>AH/OU = Auto</b> (Marginals + Gaussian Copula).</p>
       <div class="help-flow">
-        история closing-линий → скрытые <b>S, D</b> → <b>λ<sub>h</sub>, λ<sub>a</sub></b> → Auto Marginals + Gaussian Copula → матрица <b>P(i,j)</b> → <b>вся линия</b>
+        active closing → общие веса → Legacy (1X2) + Auto (AH/OU) → <b>одна итоговая линия</b>
       </div>
-      <p class="small">λ<sub>h</sub>, λ<sub>a</sub> — ожидаемые голы хозяев/гостей; S = λ<sub>h</sub>+λ<sub>a</sub>; D = λ<sub>h</sub>−λ<sub>a</sub>; i, j — голы хозяев и гостей.</p>
+      <p class="small">λ<sub>h</sub>, λ<sub>a</sub> — ожидаемые голы хозяев/гостей; S = λ<sub>h</sub>+λ<sub>a</sub>; D = λ<sub>h</sub>−λ<sub>a</sub>.</p>
 
       <h2>Вкладки</h2>
       <ul>
-        <li><b>Линия</b> — обучение модели и расчёт линии матча (главная вкладка).</li>
-        <li><b>Справочник</b> — команды по лигам (и логотипы). Списки команд в «Линии» берутся отсюда.</li>
-        <li><b>История</b> — просмотр сохранённых сезонов и матчей из Supabase. Отсюда данные можно загрузить в «Линию».</li>
-        <li><b>Сравнение моделей</b> — два независимых pipeline на inactive-матчах: <b>Legacy</b> (Poisson + Dixon–Coles) и <b>Auto</b> (Marginals + Copula). Обе считают ничью из диагонали матрицы. AH/OU сравниваются на рыночной линии; main line — отдельно. Галка «Маржа»: выкл → эталон fair (de-vig), вкл → эталон raw из БД. Параметры в <code>model_config.json</code>.</li>
+        <li><b>Линия</b> — обучение обеих моделей и расчёт комбинированной линии матча.</li>
+        <li><b>Справочник</b> — команды по лигам (и логотипы).</li>
+        <li><b>История</b> — сезоны и матчи Supabase.</li>
+        <li><b>Отчет</b> — calculated vs closing на inactive: 1X2 Legacy, AH/OU Auto. Без сравнения моделей.</li>
         <li><b>Справка</b> — этот раздел.</li>
       </ul>
 
@@ -5061,7 +5021,10 @@ bash scripts/update_and_serve.sh --start</div>
       model.autoMarketQuality = (model.auto1x2Calib && model.auto1x2Calib.quality) || gmAutoMarketQuality(model, ms);
       return model;
     }
-    let gmModel=null;
+    let gmModel=null;          // Auto model (AH/OU); kept for ratings/compat
+    let gmModelLegacy=null;    // Legacy model (1X2)
+    let gmModelAuto=null;      // alias of gmModel after combined train
+    function gmHasCombined(){ return !!(gmModelLegacy && gmModelAuto); }
     function gmCfg(){
       return { maxGoals:GM_MAX, alphaAh:0.25, pAh:2, minWAh:0.15, maxWAh:1,
         alphaT:0.5, deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
@@ -6504,21 +6467,25 @@ bash scripts/update_and_serve.sh --start</div>
         el.innerHTML=chips.join('');
         return;
       }
-      const dist = gmModel.selectedDistribution || 'poisson_like';
-      chips.push(`<span class="goal-chip ok">Auto</span>`);
-      chips.push(`<span class="goal-chip">${dist==='negbin'?'Negative Binomial':'Poisson-like'}</span>`);
-      if(gmModel.calDiag && !gmModel.calDiag.stable){
+      if(gmHasCombined()) chips.push(`<span class="goal-chip ok">Combined</span>`);
+      else chips.push(`<span class="goal-chip warn">частично</span>`);
+      if(gmModelLegacy) chips.push(`<span class="goal-chip">1X2 Legacy</span>`);
+      if(gmModelAuto||gmModel) chips.push(`<span class="goal-chip">AH/OU Auto</span>`);
+      const src = gmModelAuto||gmModel;
+      const dist = (src||{}).selectedDistribution || 'poisson_like';
+      if(src) chips.push(`<span class="goal-chip">${dist==='negbin'?'NB':'Pois'}+Copula</span>`);
+      if(src && src.calDiag && !src.calDiag.stable){
         chips.push('<span class="goal-chip warn">калибр. 1X2</span>');
       }
-      if(gmModel.trainMargin1x2 && gmModel.trainMargin1x2.avgPct != null){
-        chips.push(`<span class="goal-chip">маржа ${goalFmtTrainNum(gmModel.trainMargin1x2.avgPct,1)}%</span>`);
+      if(src && src.trainMargin1x2 && src.trainMargin1x2.avgPct != null){
+        chips.push(`<span class="goal-chip">маржа ${goalFmtTrainNum(src.trainMargin1x2.avgPct,1)}%</span>`);
       }
       el.innerHTML=chips.join('');
     }
     function goalUpdateTrainUI(){
       const banner = document.getElementById('goalTrainBanner');
       const hasData = !!(goalLoadedRaw && goalLoadedRaw.length);
-      const hasModel = !!gmModel;
+      const hasModel = gmHasCombined() || !!gmModelLegacy || !!gmModelAuto || !!gmModel;
       const n = hasData ? goalLoadedRaw.length : 0;
       const qual = hasData ? goalTrainQuality(n) : null;
       goalRenderTrainChips(n, hasData, hasModel, qual);
@@ -6547,17 +6514,27 @@ bash scripts/update_and_serve.sh --start</div>
           const autoEl = document.getElementById('goalModelAutoStatus');
           if(autoEl) autoEl.textContent = 'Обучите модель для отображения диагностики.';
         } else {
-          const calDiag = gmModel.calDiag;
+          const calDiag = (gmModelAuto||gmModel||{}).calDiag;
           const calWarn = calDiag && !calDiag.stable;
-          const calib = gmModel.matrixCalib;
+          const calib = (gmModelAuto||gmModel||{}).matrixCalib;
           const calibOk = calib && String(calib.status||'').indexOf('calibrated') === 0;
           const calibErr = calib && String(calib.status||'').indexOf('error') >= 0;
-          banner.classList.add((qual.tier === 'warn' || calWarn || calibErr) ? 'warn' : 'ok');
+          const partial = !gmHasCombined();
+          banner.classList.add((qual.tier === 'warn' || calWarn || calibErr || partial) ? 'warn' : 'ok');
           const trained=goalFmtTrainDt(goalTrainState.trainedAt);
-          const dist = gmModel.selectedDistribution || 'poisson_like';
-          banner.textContent = calWarn
-            ? `Обучено ${trained}. Калибровка 1X2 нестабильна.`
-            : `Обучено ${trained}. Модель: Auto · калибровка ${calibOk ? 'актуальна' : (calib ? calib.status : 'выполнена')}.`;
+          const g = gmModelLegacy && gmNormalizeCal(gmModelLegacy.cal||{}).gamma;
+          const aFin = (gmModelAuto||gmModel||{}).alphaFinal||0;
+          const rFin = (gmModelAuto||gmModel||{}).rhoFinal||0;
+          if(partial){
+            const miss=[];
+            if(!gmModelLegacy) miss.push('Legacy 1X2');
+            if(!gmModelAuto) miss.push('Auto AH/OU');
+            banner.textContent = `Обучено частично ${trained}. Нет: ${miss.join(', ')}. Без fallback.`;
+          } else {
+            banner.textContent = calWarn
+              ? `Обучено ${trained}. Калибровка нестабильна (см. debug).`
+              : `Обучено ${trained}. Combined: Legacy 1X2 (γ=${Number(g||0).toFixed(3)}) + Auto AH/OU (α=${Number(aFin).toFixed(3)}, ρ=${Number(rFin).toFixed(3)}).`;
+          }
           const calibEl = document.getElementById('goalModelCalibStatus');
           if(calibEl){
             calibEl.textContent = calibErr ? 'ошибка' : (calibOk ? 'выполнена' : (calib ? String(calib.status) : 'выполнена'));
@@ -6565,21 +6542,24 @@ bash scripts/update_and_serve.sh --start</div>
           const dateEl = document.getElementById('goalModelCalibDate');
           if(dateEl) dateEl.textContent = trained || '—';
           const nEl = document.getElementById('goalModelCalibN');
-          if(nEl) nEl.textContent = String((calib && calib.nMatches != null) ? calib.nMatches : (gmModel.nMatches || n));
+          const nSrc = gmModelAuto||gmModel||gmModelLegacy;
+          if(nEl) nEl.textContent = String((calib && calib.nMatches != null) ? calib.nMatches : ((nSrc && nSrc.nMatches) || n));
           const autoEl = document.getElementById('goalModelAutoStatus');
           if(autoEl){
             const league = (goalLoadedMeta && goalLoadedMeta.leagueName) || '—';
-            const alphaFin = gmModel.alphaFinal != null ? gmModel.alphaFinal : 0;
-            const rhoFin = gmModel.rhoFinal != null ? gmModel.rhoFinal : 0;
-            const nbImpr = gmModel.nbImprovementPct != null ? gmModel.nbImprovementPct : 0;
-            const sd = gmModel.sdDiag;
+            const alphaFin = (gmModelAuto||gmModel||{}).alphaFinal != null ? (gmModelAuto||gmModel).alphaFinal : 0;
+            const rhoFin = (gmModelAuto||gmModel||{}).rhoFinal != null ? (gmModelAuto||gmModel).rhoFinal : 0;
+            const nbImpr = (gmModelAuto||gmModel||{}).nbImprovementPct != null ? (gmModelAuto||gmModel).nbImprovementPct : 0;
+            const calL = gmModelLegacy ? gmNormalizeCal(gmModelLegacy.cal||{}) : null;
+            const sd = (gmModelAuto||gmModel||{}).sdDiag;
             const lines = [
               `<div>Лига: ${escapeHtml(league)}</div>`,
-              `<div>Распределение: ${dist==='negbin'?'Negative Binomial':'Poisson-like'}</div>`,
-              `<div>Alpha final: ${alphaFin.toFixed(4)}</div>`,
-              `<div>Rho final: ${rhoFin.toFixed(4)}</div>`,
-              `<div>NB improvement %: ${nbImpr.toFixed(2)}%</div>`,
-              `<div>Матчей: ${(calib && calib.nMatches != null) ? calib.nMatches : (gmModel.nMatches || n)}</div>`,
+              `<div>Режим: Combined (1X2 Legacy + AH/OU Auto)</div>`,
+              `<div>Legacy γ: ${calL ? Number(calL.gamma||0).toFixed(4) : '—'}</div>`,
+              `<div>Legacy dA/dB: ${calL ? `${Number(calL.dA).toFixed(3)} / ${Number(calL.dB).toFixed(3)}` : '—'}</div>`,
+              `<div>Auto α / ρ: ${Number(alphaFin).toFixed(4)} / ${Number(rhoFin).toFixed(4)}</div>`,
+              `<div>Auto dist: ${dist==='negbin'?'Negative Binomial':'Poisson-like'} (NB +${nbImpr.toFixed(2)}%)</div>`,
+              `<div>Матчей: ${(calib && calib.nMatches != null) ? calib.nMatches : ((gmModelAuto||gmModel||{}).nMatches || n)}</div>`,
             ];
             if(sd && sd.nEval > 0){
               lines.push(`<div>1X2 MAE / PX: ${escapeHtml(sd.summary || '—')}</div>`);
@@ -6602,16 +6582,17 @@ bash scripts/update_and_serve.sh --start</div>
       const box = document.getElementById('goalTrainRatingsBody');
       const card = document.getElementById('goalTrainRatingsCard');
       if (!box || !card) return;
-      if (!gmModel){
+      const src = gmModelAuto || gmModel || gmModelLegacy;
+      if (!src){
         card.style.display = 'none';
         box.innerHTML = '';
         return;
       }
-      const { st, gl } = gmModel;
+      const { st, gl } = src;
       const rows = Object.entries(st.ratings)
         .sort((a, b) => b[1] - a[1])
         .map(([tid, r]) => [
-          escapeHtml(gmTeamLabel(tid, gmModel.teamNames)),
+          escapeHtml(gmTeamLabel(tid, src.teamNames)),
           goalFmtTrainNum(r, 3),
           goalFmtTrainNum(gl.attack[tid] || 0, 3),
           goalFmtTrainNum(gl.defense[tid] || 0, 3),
@@ -6629,20 +6610,44 @@ bash scripts/update_and_serve.sh --start</div>
       if (goalLoadedRaw.length < 2) throw new Error('Недостаточно матчей с полной линией для обучения модели');
       goalReadSeasonWeightsFromUI();
       const cfg = gmCfg();
-      const prior = (cfg.priorAlpha > 0 && gmModel) ? gmModel : null;
-      gmModel = gmTrain(goalLoadedRaw, cfg, prior, goalLoadedInactiveRaw);
+      const seasonIds=[...new Set(goalLoadedRaw.map(r=>r.seasonId).filter(s=>s!=null))];
+      const leagueId = goalLoadedMeta && goalLoadedMeta.leagueId;
+      const weights = (typeof irBuildSeasonWeights==='function' && leagueId)
+        ? irBuildSeasonWeights(leagueId, seasonIds)
+        : (goalSeasonWeightById||{});
+      // Independent pipelines on the same active sample + training_weight
+      let errL=null, errA=null;
+      try{
+        gmModelLegacy = calculateLegacyModel(goalLoadedRaw, irBaselineCfg(weights, 'legacy'));
+      }catch(e){ errL=e; gmModelLegacy=null; console.error('Legacy train', e); }
+      try{
+        const prior = (cfg.priorAlpha > 0 && gmModelAuto) ? gmModelAuto : null;
+        gmModelAuto = calculateAutoModel(goalLoadedRaw, irBaselineCfg(weights, 'auto'));
+        // optional inactive diag on Auto only
+        if(goalLoadedInactiveRaw && goalLoadedInactiveRaw.length){
+          try{ gmModelAuto.inactiveDiag = gmInactiveDDiagnostics(gmModelAuto, goalLoadedInactiveRaw); }catch(_e){}
+        }
+        if(prior && cfg.priorAlpha>0) gmModelAuto.priorUsed = true;
+      }catch(e){ errA=e; gmModelAuto=null; console.error('Auto train', e); }
+      gmModel = gmModelAuto; // ratings/UI compat
+      if(!gmModelLegacy && !gmModelAuto){
+        throw new Error('Не удалось обучить ни Legacy, ни Auto'+(errL?': '+(errL.message||errL):''));
+      }
       goalTrainState.trainedAt = new Date().toISOString();
-      goalTrainState.priorUsed = !!(prior && cfg.priorAlpha > 0);
-      if (goalLoadedMeta && goalLoadedMeta.leagueId && gmModel.trainMargin1x2 && gmModel.trainMargin1x2.avgPct != null){
-        goalSaveLeagueMargin(goalLoadedMeta.leagueId, gmModel.trainMargin1x2);
+      goalTrainState.priorUsed = !!(gmModelAuto && gmModelAuto.priorUsed);
+      const marginSrc = gmModelAuto || gmModelLegacy;
+      if (goalLoadedMeta && goalLoadedMeta.leagueId && marginSrc && marginSrc.trainMargin1x2 && marginSrc.trainMargin1x2.avgPct != null){
+        goalSaveLeagueMargin(goalLoadedMeta.leagueId, marginSrc.trainMargin1x2);
         if (document.getElementById('goalPredLeague')?.value === goalLoadedMeta.leagueId){
-          goalApplyLeagueMarginPct(gmModel.trainMargin1x2.avgPct);
+          goalApplyLeagueMarginPct(marginSrc.trainMargin1x2.avgPct);
         }
       }
       goalRenderRatings();
       goalUpdateTrainUI();
       goalUpdateMarginLeagueUi();
-      return gmModel;
+      if(errL) console.warn('Legacy train failed', errL);
+      if(errA) console.warn('Auto train failed', errA);
+      return { legacy: gmModelLegacy, auto: gmModelAuto };
     }
 
     function goalDefaultSeasonWeight(index){
@@ -6990,14 +6995,33 @@ bash scripts/update_and_serve.sh --start</div>
 
     window.goalInitTab = goalInitTab;
     bindClick('goalPredict', async ()=>{
-      if(!gmModel){ alert('Сначала обучите модель.'); return; }
+      if(!gmModelLegacy && !gmModelAuto){ alert('Сначала обучите модель.'); return; }
       const picked = goalPredSelectedTeams();
       if(!picked){ alert('Выберите лигу и две разные команды.'); return; }
       const { leagueId, homeId, awayId } = picked;
       try{
         const neutral=document.getElementById('goalNeutral').checked, derby=document.getElementById('goalDerby').checked;
-        const pred=gmPredict(gmModel,homeId,awayId,{neutral,derby});
-        const home=pred.homeName, away=pred.awayName;
+        const opt={neutral,derby};
+        let predL=null, predA=null, errL=null, errA=null;
+        if(gmModelLegacy){
+          try{ predL = irPredictLegacy(gmModelLegacy, homeId, awayId, opt); }
+          catch(e){ errL=e; console.error(e); }
+        } else {
+          errL = new Error('Legacy не обучен');
+        }
+        if(gmModelAuto){
+          try{ predA = gmPredict(gmModelAuto, homeId, awayId, opt); }
+          catch(e){ errA=e; console.error(e); }
+        } else {
+          errA = new Error('Auto не обучен');
+        }
+        if(!predL && !predA){
+          throw new Error('Не удалось рассчитать ни 1X2, ни AH/OU'
+            +(errL?': Legacy '+(errL.message||errL):'')
+            +(errA?'; Auto '+(errA.message||errA):''));
+        }
+        const homeName = (predA&&predA.homeName) || (predL&&predL.homeName) || homeId;
+        const awayName = (predA&&predA.awayName) || (predL&&predL.awayName) || awayId;
         const useM=document.getElementById('goalMargin').checked;
         const mg=(parseFloat((document.getElementById('goalMarginPct').value||'3').replace(',','.'))||0)/100;
         let compareMatch = null;
@@ -7013,14 +7037,20 @@ bash scripts/update_and_serve.sh --start</div>
         if (homeRot === 'high' || awayRot === 'high'){
           rotationWarn = 'У одной из команд указана сильная ротация. Модель не применяет отдельную поправку на текущий состав. Надежность расчета снижена.';
         }
-        const {html,summary}=gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch,rotationWarn);
+        let html, summary;
+        if(predL && predA){
+          const pred=gmCombinePredictions(predL, predA);
+          ({html,summary}=gmFormatPredict(pred,homeName,awayName,neutral,useM,mg,compareMatch,rotationWarn));
+        } else {
+          ({html,summary}=gmFormatPartialPredict(predL, predA, errL, errA, homeName, awayName, neutral, useM, mg, compareMatch, rotationWarn));
+        }
         const outEl=document.getElementById('goalOut');
         outEl.classList.remove('goal-predict-out--empty');
         outEl.innerHTML=html;
         gmAddPredHist({
           at:gmFormatDt(),
           league:sbLeagueName(leagueId),
-          match:`${home} — ${away}`,
+          match:`${homeName} — ${awayName}`,
           summary,
         });
       }catch(e){ alert(e.message||e); }
@@ -7155,31 +7185,46 @@ bash scripts/update_and_serve.sh --start</div>
           ${marginRows}
         </div>`;
     }
-    function gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch=null,rotationWarn=null){
-      const mk=pred.markets;
-      const k1x2=()=> useM&&mg>0?[1/(mk.p1*(1+mg)),1/(mk.px*(1+mg)),1/(mk.p2*(1+mg))]:[1/mk.p1,1/mk.px,1/mk.p2];
-      const k2=(pa,pb,ka,kb)=> useM&&mg>0?[1/(pa*(1+mg)),1/(pb*(1+mg))]:[ka,kb];
-      const [kk1,kkx,kk2]=k1x2();
-      const tag=useM&&mg>0?'с маржой':'честные';
-      const t=mk.mainTotal, [ot,ut]=k2(1/t.over,1/t.under,t.over,t.under);
-      const a=mk.mainAh, [ah,aa]=k2(1/a.home,1/a.away,a.home,a.away);
-      const ahLine=`${a.line>=0?'+':''}${a.line}`;
-      const title=`${escapeHtml(home)} — ${escapeHtml(away)}${neutral?' <span class="goal-predict-tag">нейтраль</span>':''}`;
-      const warnHtml = rotationWarn
-        ? `<div class="goal-predict-compare-note" style="margin:8px 0;padding:8px 10px;border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:8px">${escapeHtml(rotationWarn)}</div>`
-        : '';
-      const meta=[
-        `<span>λ<sub>h</sub> ${pred.lh.toFixed(3)}</span>`,
-        `<span>λ<sub>a</sub> ${pred.la.toFixed(3)}</span>`,
-        `<span>D ${pred.df.toFixed(3)}</span>`,
-        `<span>S ${pred.sf.toFixed(3)}</span>`,
-      ].join('');
-      const drawLine=pred.drawTarget!=null
-        ? `<div class="goal-predict-draw">Ничья: модель ${(pred.drawTarget*100).toFixed(1)}% · матрица ${(pred.drawDiag.drawMatrix*100).toFixed(1)}%→${(pred.drawDiag.drawAfter*100).toFixed(1)}% · q=${pred.drawDiag.q.toFixed(3)}</div>`
-        : '';
-      const x1x2=`
-        <div class="goal-predict-block">
-          <h5>1X2 · ${tag}</h5>
+    function gmCombinePredictions(predLegacy, predAuto){
+      if(!predLegacy) throw new Error('Legacy (1X2) не обучен');
+      if(!predAuto) throw new Error('Auto (AH/OU) не обучен');
+      const mkL = predLegacy.markets || {};
+      const mkA = predAuto.markets || {};
+      return {
+        source: 'combined',
+        legacy: predLegacy,
+        auto: predAuto,
+        homeId: predAuto.homeId || predLegacy.homeId,
+        awayId: predAuto.awayId || predLegacy.awayId,
+        homeName: predAuto.homeName || predLegacy.homeName,
+        awayName: predAuto.awayName || predLegacy.awayName,
+        lh: predAuto.lh, la: predAuto.la, df: predAuto.df, sf: predAuto.sf,
+        lhLegacy: predLegacy.lh, laLegacy: predLegacy.la,
+        lhAuto: predAuto.lh, laAuto: predAuto.la,
+        alphaFinal: predAuto.alphaFinal || 0,
+        rhoFinal: predAuto.rhoFinal || 0,
+        dcGamma: predLegacy.dcGamma != null ? predLegacy.dcGamma : (predLegacy.cal && predLegacy.cal.gamma) || 0,
+        markets: {
+          p1: mkL.p1, px: mkL.px, p2: mkL.p2,
+          mainAh: mkA.mainAh, mainTotal: mkA.mainTotal,
+          totals: mkA.totals || [],
+          ttH: mkA.ttH || [], ttA: mkA.ttA || [],
+          top: mkA.top || [],
+        },
+      };
+    }
+    function gmPredictErrBlock(title, err){
+      const msg = err && (err.message || err) ? String(err.message || err) : 'ошибка расчёта';
+      return `<div class="goal-predict-block"><h5>${escapeHtml(title)}</h5>
+        <div class="goal-predict-compare-note" style="padding:8px 10px;border:1px solid #fca5a5;background:#fef2f2;color:#991b1b;border-radius:8px">${escapeHtml(msg)}</div></div>`;
+    }
+    function gmFormat1x2Block(mk, home, away, tag, useM, mg){
+      const [kk1,kkx,kk2]= useM&&mg>0
+        ? [1/(mk.p1*(1+mg)),1/(mk.px*(1+mg)),1/(mk.p2*(1+mg))]
+        : [1/mk.p1,1/mk.px,1/mk.p2];
+      return {
+        html: `<div class="goal-predict-block">
+          <h5>1X2 — Legacy · ${tag}</h5>
           <table class="goal-predict-table goal-predict-table--1x2">
             <thead><tr><th class="lbl"></th><th>П1 (${escapeHtml(home)})</th><th>X</th><th>П2 (${escapeHtml(away)})</th></tr></thead>
             <tbody>
@@ -7187,70 +7232,90 @@ bash scripts/update_and_serve.sh --start</div>
               <tr><td class="lbl">Вероятность</td><td class="prob">${(mk.p1*100).toFixed(1)}%</td><td class="prob">${(mk.px*100).toFixed(1)}%</td><td class="prob">${(mk.p2*100).toFixed(1)}%</td></tr>
             </tbody>
           </table>
-        </div>`;
-      const mainMarkets=`
-        <div class="goal-predict-block">
-          <h5>Основные рынки · ${tag}</h5>
+        </div>`,
+        kk1, kkx, kk2,
+      };
+    }
+    function gmFormatAhOuBlocks(mk, tag, useM, mg){
+      const k2=(pa,pb,ka,kb)=> useM&&mg>0?[1/(pa*(1+mg)),1/(pb*(1+mg))]:[ka,kb];
+      const t=mk.mainTotal, [ot,ut]=k2(1/t.over,1/t.under,t.over,t.under);
+      const a=mk.mainAh, [ah,aa]=k2(1/a.home,1/a.away,a.home,a.away);
+      const ahLine=`${a.line>=0?'+':''}${a.line}`;
+      return {
+        html: `<div class="goal-predict-block">
+          <h5>Asian Handicap — Auto · ${tag}</h5>
           <table class="goal-predict-table">
-            <thead><tr><th class="lbl">Рынок</th><th>Линия</th><th>Over / Хозяева</th><th>Under / Гости</th></tr></thead>
-            <tbody>
-              <tr><td class="lbl">Тотал</td><td>${t.line}</td><td>${ot.toFixed(2)}</td><td>${ut.toFixed(2)}</td></tr>
-              <tr><td class="lbl">Фора хозяев</td><td>${ahLine}</td><td>${ah.toFixed(2)}</td><td>${aa.toFixed(2)}</td></tr>
-            </tbody>
+            <thead><tr><th class="lbl">Линия</th><th>Хозяева</th><th>Гости</th></tr></thead>
+            <tbody><tr><td>${ahLine}</td><td class="odds">${ah.toFixed(2)}</td><td class="odds">${aa.toFixed(2)}</td></tr></tbody>
           </table>
-        </div>`;
-      const ttRows=[].concat(
-        mk.ttH.map(r=>`<tr><td class="lbl">${escapeHtml(home)}</td><td>${r[0]}</td><td>${r[1].toFixed(2)}</td><td>${r[2].toFixed(2)}</td></tr>`),
-        mk.ttA.map(r=>`<tr><td class="lbl">${escapeHtml(away)}</td><td>${r[0]}</td><td>${r[1].toFixed(2)}</td><td>${r[2].toFixed(2)}</td></tr>`)
-      ).join('');
-      const teamTotals=`
+        </div>
         <div class="goal-predict-block">
-          <h5>Индивидуальные тоталы · честные</h5>
+          <h5>Total — Auto · ${tag}</h5>
           <table class="goal-predict-table">
-            <thead><tr><th class="lbl">Команда</th><th>Линия</th><th>Over</th><th>Under</th></tr></thead>
-            <tbody>${ttRows}</tbody>
+            <thead><tr><th class="lbl">Линия</th><th>Over</th><th>Under</th></tr></thead>
+            <tbody><tr><td>${t.line}</td><td class="odds">${ot.toFixed(2)}</td><td class="odds">${ut.toFixed(2)}</td></tr></tbody>
           </table>
-        </div>`;
-      const totRows=mk.totals.filter(x=>x.line>=1&&x.line<=4.5)
-        .map(x=>`<tr><td class="lbl">Тотал</td><td>${x.line}</td><td>${x.over.toFixed(2)}</td><td>${x.under.toFixed(2)}</td></tr>`)
-        .join('');
-      const matchTotals=`
-        <div class="goal-predict-block">
-          <h5>Тоталы матча · честные</h5>
-          <table class="goal-predict-table">
-            <thead><tr><th class="lbl">Рынок</th><th>Линия</th><th>Over</th><th>Under</th></tr></thead>
-            <tbody>${totRows}</tbody>
-          </table>
-        </div>`;
-      const scoreCards=mk.top.map(([i,j,p])=>
-        `<div class="goal-predict-score"><strong>${i}:${j}</strong><span>${(p*100).toFixed(1)}%</span></div>`
-      ).join('');
-      const topScores=`
-        <div class="goal-predict-block">
-          <h5>Топ счетов</h5>
-          <div class="goal-predict-scores">${scoreCards}</div>
-        </div>`;
+        </div>`,
+        t, a, ot, ut, ah, aa, ahLine,
+      };
+    }
+    function gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch=null,rotationWarn=null){
+      const mk=pred.markets;
+      const tag=useM&&mg>0?'с маржой':'честные';
+      const x1x2=gmFormat1x2Block(mk, home, away, tag, useM, mg);
+      const ahOu=gmFormatAhOuBlocks(mk, tag, useM, mg);
+      const title=`${escapeHtml(home)} — ${escapeHtml(away)}${neutral?' <span class="goal-predict-tag">нейтраль</span>':''}`;
+      const warnHtml = rotationWarn
+        ? `<div class="goal-predict-compare-note" style="margin:8px 0;padding:8px 10px;border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:8px">${escapeHtml(rotationWarn)}</div>`
+        : '';
+      const srcBadge = '<div class="goal-predict-compare-note" style="margin:0 0 8px;color:#334155">Комбинация: <b>1X2 — Legacy</b> · <b>AH/OU — Auto</b></div>';
       const compareBlock=gmBuildInactiveCompareBlock(compareMatch, {
-        k1: kk1, kx: kkx, k2: kk2,
+        k1: x1x2.kk1, kx: x1x2.kkx, k2: x1x2.kk2,
         p1: mk.p1, px: mk.px, p2: mk.p2,
-        totLine: t.line, totOver: ot, totUnder: ut,
-        ahLine: a.line, ahHome: ah, ahAway: aa,
+        totLine: ahOu.t.line, totOver: ahOu.ot, totUnder: ahOu.ut,
+        ahLine: ahOu.a.line, ahHome: ahOu.ah, ahAway: ahOu.aa,
       });
       const html=`
-        <div class="goal-predict-header">
-          <h4>${title}</h4>
-          <div class="goal-predict-meta">${meta}</div>
-          ${drawLine}
-        </div>
-        ${warnHtml}
-        ${compareBlock}
-        ${x1x2}
-        ${mainMarkets}
-        ${teamTotals}
-        ${matchTotals}
-        ${topScores}`;
-      const summary=`1X2 ${kk1.toFixed(2)}/${kkx.toFixed(2)}/${kk2.toFixed(2)} · Тотал ${t.line} ${ot.toFixed(2)}/${ut.toFixed(2)} · Фора ${ahLine} ${ah.toFixed(2)}/${aa.toFixed(2)}`;
+        <div class="goal-predict-header"><h4>${title}</h4></div>
+        ${srcBadge}${warnHtml}${compareBlock}${x1x2.html}${ahOu.html}`;
+      const summary=`1X2(L) ${x1x2.kk1.toFixed(2)}/${x1x2.kkx.toFixed(2)}/${x1x2.kk2.toFixed(2)} · AH(A) ${ahOu.ahLine} ${ahOu.ah.toFixed(2)}/${ahOu.aa.toFixed(2)} · Tot(A) ${ahOu.t.line} ${ahOu.ot.toFixed(2)}/${ahOu.ut.toFixed(2)}`;
       return {html, summary};
+    }
+    function gmFormatPartialPredict(predL, predA, errL, errA, home, away, neutral, useM, mg, compareMatch, rotationWarn){
+      const tag=useM&&mg>0?'с маржой':'честные';
+      const title=`${escapeHtml(home)} — ${escapeHtml(away)}${neutral?' <span class="goal-predict-tag">нейтраль</span>':''}`;
+      const warnHtml = rotationWarn
+        ? `<div class="goal-predict-compare-note" style="margin:8px 0;padding:8px 10px;border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:8px">${escapeHtml(rotationWarn)}</div>`
+        : '';
+      const parts=[];
+      const sumParts=[];
+      let cmpModel=null;
+      if(predL){
+        const b=gmFormat1x2Block(predL.markets||{}, home, away, tag, useM, mg);
+        parts.push(b.html);
+        sumParts.push(`1X2(L) ${b.kk1.toFixed(2)}/${b.kkx.toFixed(2)}/${b.kk2.toFixed(2)}`);
+        cmpModel={ k1:b.kk1, kx:b.kkx, k2:b.kk2, p1:predL.markets.p1, px:predL.markets.px, p2:predL.markets.p2 };
+      } else {
+        parts.push(gmPredictErrBlock('1X2 — Legacy', errL));
+        sumParts.push('1X2(L) err');
+      }
+      if(predA){
+        const b=gmFormatAhOuBlocks(predA.markets||{}, tag, useM, mg);
+        parts.push(b.html);
+        sumParts.push(`AH(A) ${b.ahLine} ${b.ah.toFixed(2)}/${b.aa.toFixed(2)} · Tot(A) ${b.t.line} ${b.ot.toFixed(2)}/${b.ut.toFixed(2)}`);
+        cmpModel=Object.assign(cmpModel||{}, {
+          totLine:b.t.line, totOver:b.ot, totUnder:b.ut,
+          ahLine:b.a.line, ahHome:b.ah, ahAway:b.aa,
+        });
+      } else {
+        parts.push(gmPredictErrBlock('Asian Handicap / Total — Auto', errA));
+        sumParts.push('AH/OU(A) err');
+      }
+      const compareBlock = cmpModel ? gmBuildInactiveCompareBlock(compareMatch, cmpModel) : '';
+      const html=`<div class="goal-predict-header"><h4>${title}</h4></div>
+        <div class="goal-predict-compare-note" style="margin:0 0 8px;color:#334155">Частичный результат (без fallback между моделями)</div>
+        ${warnHtml}${compareBlock}${parts.join('')}`;
+      return { html, summary: sumParts.join(' · ') };
     }
 
     // ========== INACTIVE REPORT / MODEL COMPARISON LAB ==========
@@ -7259,6 +7324,14 @@ bash scripts/update_and_serve.sh --start</div>
     let irActiveCols = [];
     let irReportSummary = null;
 
+    const IR_COMBINED_COLS = [
+      'Дата','Лига','Дома','Гости',
+      '1','X','2','1_calc','X_calc','2_calc','1_delta','X_delta','2_delta',
+      'AH_market','AH_main','AH_line_delta','same_ah',
+      'AH1','AH2','AH1_at_market','AH2_at_market','AH1_delta_mkt','AH2_delta_mkt',
+      'Total_market','Total_main','Total_line_delta','same_tot',
+      'O','U','O_at_market','U_at_market','O_delta_mkt','U_delta_mkt',
+    ];
     const IR_COMPARE_COLS = [
       'Дата','Лига','Дома','Гости','etalon_layer','engine_L','engine_A','recipe',
       'home_rotation_code','away_rotation_code','training_weight','training_status','rotation_reason',
@@ -7992,6 +8065,42 @@ bash scripts/update_and_serve.sh --start</div>
       };
       return row;
     }
+    function irBuildCombinedRow(match, leg, aut, useMargin){
+      const mkt=irEtalonFromMatch(match, !!useMargin);
+      const row=Object.assign({}, mkt);
+      row.calc_model = 'combined (1X2 Legacy + AH/OU Auto)';
+      row.recipe = 'combined';
+      ['1','X','2'].forEach(k=>{
+        row[`${k}_calc`]=leg && leg[k]!=null ? leg[k] : null;
+        row[`${k}_delta`]=irDelta(row[`${k}_calc`], mkt[k]);
+      });
+      row.AH_main = aut && aut.AH_main!=null ? aut.AH_main : null;
+      row.AH_line_delta = irDelta(row.AH_main, mkt.AH_market);
+      row.same_ah = irSameLine(row.AH_main, mkt.AH_market) ? 'yes' : 'no';
+      row.AH1_at_market = aut ? aut.AH1_at_market : null;
+      row.AH2_at_market = aut ? aut.AH2_at_market : null;
+      row.AH1_delta_mkt = irDelta(row.AH1_at_market, mkt.AH1);
+      row.AH2_delta_mkt = irDelta(row.AH2_at_market, mkt.AH2);
+      row.Total_main = aut && aut.Total_main!=null ? aut.Total_main : null;
+      row.Total_line_delta = irDelta(row.Total_main, mkt.Total_market);
+      row.same_tot = irSameLine(row.Total_main, mkt.Total_market) ? 'yes' : 'no';
+      row.O_at_market = aut ? aut.O_at_market : null;
+      row.U_at_market = aut ? aut.U_at_market : null;
+      row.O_delta_mkt = irDelta(row.O_at_market, mkt.O);
+      row.U_delta_mkt = irDelta(row.U_at_market, mkt.U);
+      row._mae={
+        mae1x2:irAbsMae([row['1_delta'],row.X_delta,row['2_delta']]),
+        maeAh:irAbsMae([row.AH1_delta_mkt,row.AH2_delta_mkt]),
+        maeOu:irAbsMae([row.O_delta_mkt,row.U_delta_mkt]),
+        maeDraw:irAbsMae([row.X_delta]),
+        maeAhLine:irAbsMae([row.AH_line_delta]),
+        maeOuLine:irAbsMae([row.Total_line_delta]),
+        sameAh: row.same_ah==='yes', sameTot: row.same_tot==='yes',
+        maeHome: irAbsMae([row['1_delta']]),
+        maeAway: irAbsMae([row['2_delta']]),
+      };
+      return row;
+    }
     function irBuildSingleRow(match, prices, engine, useMargin){
       const row=irEtalonFromMatch(match, !!useMargin);
       const pr=prices||{};
@@ -8137,33 +8246,32 @@ bash scripts/update_and_serve.sh --start</div>
     function irRenderSummary(sum){
       const el=document.getElementById('irSummaryBody');
       if(!el) return;
-      if(!sum){ el.innerHTML='Сформируйте отчёт — здесь появятся MAE и победитель.'; return; }
+      if(!sum){ el.innerHTML='Сформируйте отчёт — здесь появятся MAE комбинированной линии vs рынок.'; return; }
       const pct=(v)=> v==null||!isFinite(v)?'—':(100*v).toFixed(0)+'%';
-      const block=(title,o)=>{
-        if(!o) return '';
-        return `<div class="ir-sum-block"><div style="font-weight:600;margin-bottom:4px">${title}</div>
-          <div class="ir-sum-row"><span>1X2 MAE (odds)</span><span>${irFmtMae(o.mae1x2)}</span></div>
-          <div class="ir-sum-row"><span>AH MAE @ market line</span><span>${irFmtMae(o.maeAh)}</span></div>
-          <div class="ir-sum-row"><span>OU MAE @ market total</span><span>${irFmtMae(o.maeOu)}</span></div>
-          <div class="ir-sum-row"><span>Draw MAE</span><span>${irFmtMae(o.maeDraw)}</span></div>
-          <div class="ir-sum-row"><span>AH line MAE</span><span>${irFmtMae(o.maeAhLine)}</span></div>
-          <div class="ir-sum-row"><span>Total line MAE</span><span>${irFmtMae(o.maeOuLine)}</span></div>
-          <div class="ir-sum-row"><span>same AH main</span><span>${pct(o.sameAhRate)}</span></div>
-          <div class="ir-sum-row"><span>same Total main</span><span>${pct(o.sameTotRate)}</span></div>
-        </div>`;
-      };
-      const recipeActive = !!(sum.recipe && sum.recipe!=='full_pipeline');
-      const leftTitle = recipeActive ? 'Recipe (L)' : 'Legacy (candidate)';
-      const rightTitle = recipeActive ? 'Auto (контраст)' : 'Auto';
+      const c = sum.combined || {};
+      const eff = sum.effectiveTrain != null ? Number(sum.effectiveTrain).toFixed(1) : '—';
       el.innerHTML = `<div class="ir-sum-row"><span>Inactive (оценка)</span><span><b>${sum.n}</b></span></div>`
         + `<div class="ir-sum-row"><span>Active (обучение)</span><span><b>${sum.nActive!=null?sum.nActive:'—'}</b>${sum.nActiveExcluded?` <span class="small" style="font-weight:400">(+${sum.nActiveExcluded} без полной линии)</span>`:''}</span></div>`
-        + (sum.recipe?`<div class="ir-sum-row"><span>Recipe</span><span>${escapeHtml(sum.recipe)}</span></div>`:'')
-        + block(leftTitle, sum.legacy)
-        + block(rightTitle, sum.auto)
-        + (sum.mode==='compare' ? `<div class="ir-winner">Победитель (1X2+AH@mkt+OU@mkt): ${escapeHtml(sum.winner)}</div>` : '')
-        + `<div class="small" style="margin-top:8px;color:#94a3b8">Inactive — матчи отчёта. Active — выборка обучения выбранного сезона. AH/OU MAE — кэфы на рыночной линии. Ротация → training_weight. Конфиг: ${escapeHtml((GM_MATRIX_CFG&&GM_MATRIX_CFG.configSource)||'model_config.json')}</div>`;
+        + `<div class="ir-sum-row"><span>Effective training sample</span><span><b>${escapeHtml(eff)}</b></span></div>`
+        + `<div class="ir-sum-block"><div style="font-weight:600;margin-bottom:4px">1X2 — Legacy</div>
+          <div class="ir-sum-row"><span>1X2 MAE odds</span><span>${irFmtMae(c.mae1x2)}</span></div>
+          <div class="ir-sum-row"><span>Home MAE</span><span>${irFmtMae(c.maeHome)}</span></div>
+          <div class="ir-sum-row"><span>Draw MAE</span><span>${irFmtMae(c.maeDraw)}</span></div>
+          <div class="ir-sum-row"><span>Away MAE</span><span>${irFmtMae(c.maeAway)}</span></div>
+        </div>`
+        + `<div class="ir-sum-block"><div style="font-weight:600;margin-bottom:4px">AH — Auto</div>
+          <div class="ir-sum-row"><span>AH MAE @ market line</span><span>${irFmtMae(c.maeAh)}</span></div>
+          <div class="ir-sum-row"><span>AH line MAE</span><span>${irFmtMae(c.maeAhLine)}</span></div>
+          <div class="ir-sum-row"><span>same AH main</span><span>${pct(c.sameAhRate)}</span></div>
+        </div>`
+        + `<div class="ir-sum-block"><div style="font-weight:600;margin-bottom:4px">OU — Auto</div>
+          <div class="ir-sum-row"><span>OU MAE @ market total</span><span>${irFmtMae(c.maeOu)}</span></div>
+          <div class="ir-sum-row"><span>Total line MAE</span><span>${irFmtMae(c.maeOuLine)}</span></div>
+          <div class="ir-sum-row"><span>same Total main</span><span>${pct(c.sameTotRate)}</span></div>
+        </div>`
+        + `<div class="small" style="margin-top:8px;color:#94a3b8">Одна рассчитанная линия: 1X2 Legacy + AH/OU Auto vs closing. Конфиг: ${escapeHtml((GM_MATRIX_CFG&&GM_MATRIX_CFG.configSource)||'model_config.json')}</div>`;
     }
-    function irSetReportStatus(msg,isErr){
+        function irSetReportStatus(msg,isErr){
       const el=document.getElementById('irReportStatus');
       if(!el) return;
       el.style.display=msg?'block':'none';
@@ -8183,7 +8291,9 @@ bash scripts/update_and_serve.sh --start</div>
           const cls=[];
           if(!IR_TEXT_COLS.has(col)) cls.push('num');
           if((String(col).includes('_d')||String(col).includes('delta'))&&raw!=null&&isFinite(raw)){
-            if(raw>0) cls.push('delta-pos'); else if(raw<0) cls.push('delta-neg');
+            if(Math.abs(Number(raw)) > 0.3) cls.push('delta-hot');
+            else if(raw>0) cls.push('delta-pos');
+            else if(raw<0) cls.push('delta-neg');
           }
           if(IR_WIN_COLS.has(col)){
             if(raw==='Auto') cls.push('win-auto');
@@ -8212,24 +8322,11 @@ bash scripts/update_and_serve.sh --start</div>
       const blob=new Blob(['\uFEFF'+head+'\n'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
       const a=document.createElement('a');
       a.href=URL.createObjectURL(blob);
-      const mode=irReportMode();
-      a.download=`model_${mode}_${new Date().toISOString().slice(0,10)}.csv`;
+      a.download=`model_combined_${new Date().toISOString().slice(0,10)}.csv`;
       a.click(); URL.revokeObjectURL(a.href);
     }
     async function irRunReport(){
       await loadGoalMatrixConfig();
-      irSyncModeCheckboxes();
-      const engines=irEnginesSelected();
-      const recipe=irComponentRecipe();
-      if(!engines.legacy && !engines.auto && !recipe){
-        irSetReportStatus('Выберите хотя бы одну модель: Legacy или Auto.', true);
-        return;
-      }
-      if(recipe){
-        if(recipe.calib==='legacy') engines.legacy=true;
-        else engines.auto=true;
-        if(irReportMode()==='compare'){ engines.legacy=true; engines.auto=true; engines.compare=true; }
-      }
       const leagueFilter=(document.getElementById('irLeagueFilter')||{}).value||'';
       const seasonFilter=irEnsureSeasonSelected();
       const useMargin=irUseMarginOn();
@@ -8238,7 +8335,6 @@ bash scripts/update_and_serve.sh --start</div>
       irReportRows=[]; irReportSummary=null;
       if(exportBtn) exportBtn.disabled=true;
       irRenderSummary(null);
-      const modeTxt=recipe?'Компоненты':(engines.compare?'Сравнение':(engines.legacy?'Legacy':'Auto'));
       const etalonTxt=useMargin?`эталон raw БД, маржа ${(marginFrac*100).toFixed(1)}%`:'эталон fair (de-vig), модель без маржи';
       const seasonOpt=document.getElementById('irSeasonFilter');
       const seasonLabel=seasonFilter && seasonOpt
@@ -8248,8 +8344,8 @@ bash scripts/update_and_serve.sh --start</div>
         irSetReportStatus('Выберите сезон для обучения (по умолчанию 2025-26).', true);
         return;
       }
-      irSetReportStatus(`Загрузка неактивных матчей… (${modeTxt}; сезон ${seasonLabel}; ${etalonTxt})`);
-      irRenderReportTable([], (engines.compare||(engines.legacy&&engines.auto)||recipe)?IR_COMPARE_COLS:IR_SINGLE_COLS);
+      irSetReportStatus(`Загрузка неактивных матчей… (комбинированный отчёт; сезон ${seasonLabel}; ${etalonTxt})`);
+      irRenderReportTable([], IR_COMBINED_COLS);
       await loadSupabaseConfig();
       if(!window.__SB.leagues||!window.__SB.leagues.length) await sbFetchLeaguesList();
       if(!window.__SB.seasons||!window.__SB.seasons.length) await sbLoadSeasonSummary();
@@ -8270,15 +8366,13 @@ bash scripts/update_and_serve.sh --start</div>
         return String(na).localeCompare(String(nb));
       });
       const out=[]; let skipped=0;
-      let nActiveTrain=0, nActiveFetched=0, nActiveExcluded=0;
+      let nActiveTrain=0, nActiveFetched=0, nActiveExcluded=0, sumTrainW=0;
       for(let li=0; li<leagueIds.length; li++){
         const leagueId=leagueIds[li];
         const leagueName=byLeague[leagueId][0].league_name||leagueId;
-        irSetReportStatus(`Лига ${li+1}/${leagueIds.length}: ${leagueName} — обучение на сезоне ${seasonLabel}…`);
-        // Train ONLY on active matches of the selected season (not all league history).
+        irSetReportStatus(`Лига ${li+1}/${leagueIds.length}: ${leagueName} — обучение Legacy+Auto на сезоне ${seasonLabel}…`);
         const seasonIdForLeague = (()=>{
           const wantLabel = String(seasonLabel||'').trim();
-          // Prefer this league's catalog entry with the same season_label (multi-league safe).
           const cat=(window.__SB.seasons||[]).find(s=>
             String(s.league_id)===String(leagueId) && String(s.season_label||'')===wantLabel);
           if(cat) return String(cat.season_id);
@@ -8292,70 +8386,72 @@ bash scripts/update_and_serve.sh --start</div>
           if(byDefault) return String(byDefault.season_id);
           return seasonFilter || '';
         })();
-        if(!seasonIdForLeague){
-          skipped++;
-          continue;
-        }
+        if(!seasonIdForLeague){ skipped++; continue; }
         const activeMatches=await irFetchActiveMatchesForLeague(leagueId, seasonIdForLeague);
         nActiveFetched += (activeMatches&&activeMatches.length)||0;
         const ignoreRotation=!!(document.getElementById('irIgnoreRotation')||{}).checked;
         const parsed=goalMatchesToRaw(activeMatches, { ignoreRotation });
         nActiveTrain += parsed.valid||0;
         nActiveExcluded += parsed.excluded||0;
+        sumTrainW += (parsed.raw||[]).reduce((s,r)=>s+(r.trainingWeight!=null?Number(r.trainingWeight):1),0);
+        const nExRot = (parsed.raw||[]).filter(r=>Number(r.trainingWeight||0)<=0).length;
+        const nRedRot = (parsed.raw||[]).filter(r=>{ const w=Number(r.trainingWeight); return w>0 && w<1-1e-9; }).length;
         let modelL=null, modelA=null;
         if(parsed.valid>=2){
           const seasonIds=[...new Set(parsed.raw.map(r=>r.seasonId).filter(s=>s!=null))];
           const weights=irBuildSeasonWeights(leagueId, seasonIds);
           try{
-            if(engines.legacy || (recipe&&recipe.calib==='legacy')) modelL=irTrainModel(parsed.raw, irBaselineCfg(weights,'legacy'), 'legacy');
-            if(engines.auto || (recipe&&recipe.calib==='auto')) modelA=irTrainModel(parsed.raw, irBaselineCfg(weights,'auto'), 'auto');
+            modelL=irTrainModel(parsed.raw, irBaselineCfg(weights,'legacy'), 'legacy');
+            modelA=irTrainModel(parsed.raw, irBaselineCfg(weights,'auto'), 'auto');
+            try{
+              const g = modelL && modelL.cal ? gmNormalizeCal(modelL.cal).gamma : null;
+              const calL = modelL && modelL.cal ? gmNormalizeCal(modelL.cal) : null;
+              const calA = modelA && modelA.cal ? gmNormalizeCal(modelA.cal) : null;
+              const a = modelA ? modelA.alphaFinal : null;
+              const rho = modelA ? modelA.rhoFinal : null;
+              console.info('[report train]', leagueName, {
+                trainingMatches: parsed.valid,
+                effectiveSample: (parsed.raw||[]).reduce((s,r)=>s+(r.trainingWeight!=null?Number(r.trainingWeight):1),0),
+                excludedRotation: nExRot,
+                reducedRotation: nRedRot,
+                legacyGamma: g,
+                legacyDCal: calL ? {dA:calL.dA, dB:calL.dB} : null,
+                autoAlpha: a, autoRho: rho,
+                autoDCal: calA ? {dA:calA.dA, dB:calA.dB} : null,
+                autoGate: modelA && modelA.auto1x2Calib && modelA.auto1x2Calib.status,
+              });
+            }catch(_e){}
           }catch(e){ console.warn('ir train', leagueId, e); }
         } else skipped++;
-        const compareMode=!!(engines.compare || (engines.legacy&&engines.auto) || recipe);
         for(const m of byLeague[leagueId]){
           const homeId=gmTeamKey(m.home_team_id,m.home_team);
           const awayId=gmTeamKey(m.away_team_id,m.away_team);
           const opt={neutral:!!m.is_neutral, derby:sbIsDerby(m)};
           const marketLines={AH:gmF(m.closing_ah_home), Тот:gmF(m.closing_total_line)};
-          if(recipe){
-            const base = recipe.calib==='legacy' ? modelL : modelA;
-            const leg=(base&&homeId&&awayId)?irPredictBundle(base,homeId,awayId,opt,marginFrac,marketLines,recipe):null;
-            const aut=(modelA&&homeId&&awayId)?irPredictBundle(modelA,homeId,awayId,opt,marginFrac,marketLines,null):null;
-            if(compareMode) out.push(irBuildCompareRow(m,leg,aut,useMargin));
-            else out.push(irBuildSingleRow(m,leg,'legacy',useMargin));
-          } else {
-            const leg=(modelL&&homeId&&awayId)?irPredictBundle(modelL,homeId,awayId,opt,marginFrac,marketLines,null):null;
-            const aut=(modelA&&homeId&&awayId)?irPredictBundle(modelA,homeId,awayId,opt,marginFrac,marketLines,null):null;
-            if(engines.compare || (engines.legacy&&engines.auto)) out.push(irBuildCompareRow(m,leg,aut,useMargin));
-            else if(engines.legacy) out.push(irBuildSingleRow(m,leg,'legacy',useMargin));
-            else out.push(irBuildSingleRow(m,aut,'auto',useMargin));
-          }
+          const leg=(modelL&&homeId&&awayId)?irPredictBundle(modelL,homeId,awayId,opt,marginFrac,marketLines,null):null;
+          const aut=(modelA&&homeId&&awayId)?irPredictBundle(modelA,homeId,awayId,opt,marginFrac,marketLines,null):null;
+          out.push(irBuildCombinedRow(m,leg,aut,useMargin));
         }
       }
       irReportRows=out;
-      const isCompare=!!(engines.compare||(engines.legacy&&engines.auto)||recipe);
-      const cols=isCompare?IR_COMPARE_COLS:IR_SINGLE_COLS;
-      irRenderReportTable(irReportRows, cols);
-      irReportSummary=irComputeSummary(irReportRows, {legacy:!!engines.legacy||!!recipe, auto:!!engines.auto||!!recipe, compare:isCompare});
-      if(!isCompare){
-        const xs=irReportRows.map(r=>r._mae).filter(Boolean);
-        const avg=k=>{ const a=xs.map(o=>o[k]).filter(v=>v!=null&&isFinite(v)); return a.length?a.reduce((x,y)=>x+y,0)/a.length:null; };
-        const block={mae1x2:avg('mae1x2'),maeAh:avg('maeAh'),maeOu:avg('maeOu'),maeDraw:avg('maeDraw'),maeAhLine:avg('maeAhLine'),maeOuLine:avg('maeOuLine')};
-        irReportSummary={n:out.length, mode:engines.legacy||(recipe&&recipe.calib==='legacy')?'legacy':'auto', legacy:(engines.legacy||(recipe&&recipe.calib==='legacy'))?block:null, auto:(engines.auto&&!recipe)||(recipe&&recipe.calib==='auto')?block:null, winner:'—', recipe:recipe?irRecipeLabel(recipe):'full_pipeline'};
-      } else if(irReportSummary && recipe){
-        irReportSummary.recipe = irRecipeLabel(recipe);
-      }
-      if(irReportSummary){
-        irReportSummary.nActive = nActiveTrain;
-        irReportSummary.nActiveFetched = nActiveFetched;
-        irReportSummary.nActiveExcluded = nActiveExcluded;
-      }
+      irRenderReportTable(irReportRows, IR_COMBINED_COLS);
+      const xs=irReportRows.map(r=>r._mae).filter(Boolean);
+      const avg=k=>{ const a=xs.map(o=>o[k]).filter(v=>v!=null&&isFinite(v)); return a.length?a.reduce((x,y)=>x+y,0)/a.length:null; };
+      const rate=k=>{ const a=xs.map(o=>o[k]).filter(v=>v!=null); return a.length?a.filter(Boolean).length/a.length:null; };
+      irReportSummary={
+        n:out.length, mode:'combined',
+        combined:{
+          mae1x2:avg('mae1x2'), maeHome:avg('maeHome'), maeDraw:avg('maeDraw'), maeAway:avg('maeAway'),
+          maeAh:avg('maeAh'), maeAhLine:avg('maeAhLine'), sameAhRate:rate('sameAh'),
+          maeOu:avg('maeOu'), maeOuLine:avg('maeOuLine'), sameTotRate:rate('sameTot'),
+        },
+        nActive:nActiveTrain, nActiveFetched, nActiveExcluded,
+        effectiveTrain:sumTrainW,
+      };
       irRenderSummary(irReportSummary);
       if(exportBtn) exportBtn.disabled=!irReportRows.length;
       const warn=skipped?`; ${skipped} лиг без обучения`:'';
-      const sameNote=(engines.compare||recipe)?`; winner_AH/OU = odds @ market line`:'';
-      const recipeNote=recipe?`; recipe ${irRecipeLabel(recipe)}; rotation weights in train`:'';
-      irSetReportStatus(`Готово: ${irReportRows.length} inactive / ${nActiveTrain} active (сезон ${seasonLabel}); режим ${modeTxt}; ${etalonTxt}; AH/OU кэфы на рыночной линии${sameNote}${recipeNote}${warn}`);
+      irSetReportStatus(`Готово: ${irReportRows.length} inactive / ${nActiveTrain} active (сезон ${seasonLabel}); combined 1X2=Legacy AH/OU=Auto; ${etalonTxt}${warn}`);
     }
     function irPopulateLeagueFilter(){
       const sel=document.getElementById('irLeagueFilter');
