@@ -1186,6 +1186,23 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <button type="button" id="irRunReport" class="btn primary">Сформировать</button>
             <button type="button" id="irExportCsv" class="btn" disabled>Скачать CSV</button>
           </div>
+
+          <details class="ir-dyn-panel" id="irDynPanel" style="margin:8px 0 4px">
+            <summary>Динамическая корректировка модели (D-EMA / S-EMA)</summary>
+            <div class="ir-report-toolbar" style="flex-wrap:wrap;gap:10px;padding:8px 0">
+              <label class="ir-mode-row" style="margin:0"><input type="checkbox" id="irUseDEma" checked /><span>D-EMA</span></label>
+              <div class="field" style="max-width:80px"><label>α_D</label><input id="irAlphaD" type="text" value="0.30" /></div>
+              <div class="field" style="max-width:80px"><label>k_D</label><input id="irKD" type="text" value="0.80" /></div>
+              <label class="ir-mode-row" style="margin:0"><input type="checkbox" id="irUseSEma" checked /><span>S-EMA</span></label>
+              <div class="field" style="max-width:80px"><label>α_S</label><input id="irAlphaS" type="text" value="0.30" /></div>
+              <div class="field" style="max-width:80px"><label>k_S</label><input id="irKS" type="text" value="1.00" /></div>
+              <div class="field" style="max-width:90px"><label>min матчей</label><input id="irSMinMatches" type="text" value="1" /></div>
+              <div class="field" style="max-width:90px"><label>max |EMA_S|</label><input id="irSMaxEma" type="text" placeholder="—" /></div>
+              <div class="field" style="max-width:90px"><label>max |ΔS|</label><input id="irSMaxCorr" type="text" placeholder="—" /></div>
+              <div class="field" style="max-width:90px"><label>λ_min</label><input id="irSLambdaMin" type="text" value="0.05" /></div>
+            </div>
+            <div class="small" style="color:#64748b">Параметры для текущего запуска отчёта (не пишутся в model_config.json). S-EMA: Residual_S/2 обеим, сигнал = сумма EMA.</div>
+          </details>
           <!-- hidden legacy controls kept for JS compat defaults -->
           <div style="display:none" aria-hidden="true">
             <input type="radio" name="irReportMode" value="combined" checked />
@@ -3321,6 +3338,7 @@ bash scripts/update_and_serve.sh --start</div>
         ),
         compare: raw.compare || {},
         momentum: raw.momentum || {},
+        dynamic_s_ema: raw.dynamic_s_ema || raw.sMomentum || {},
         configSource: 'model_config.json',
       });
     }
@@ -4198,11 +4216,15 @@ bash scripts/update_and_serve.sh --start</div>
       const dmBase=R(homeId)-R(awayId)+hEff;
       const mom=gmMomCorrectD(model, homeId, awayId, dmBase, opt||{});
       const dm=mom.dModelDynamic;
-      const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(awayId)-Df(homeId)); const sm=lhAD+laAD;
+      const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
+      const smBase=lhAD+laAD;
+      const smom=gmMomCorrectS(model, homeId, awayId, smBase, opt||{});
+      const sm=smom.sModelDynamic;
       const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
       let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
       let df=gmClampD(dc.dUsed,sf);
-      const lh=(sf+df)/2, la=(sf-df)/2;
+      const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
+      const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
       const alpha=model.alphaFinal||0, rho=model.rhoFinal||0;
       const mat=gmJointScoreMatrix(lh,la,alpha,rho,cfg.maxGoals||GM_MAX);
       const matDiag=gmMatrixDiagnostics(mat,lh,la,alpha);
@@ -4210,6 +4232,8 @@ bash scripts/update_and_serve.sh --start</div>
         homeId,awayId,homeName,awayName,lh,la,df,sf,mat,matDiag,
         alphaFinal:alpha, rhoFinal:rho,
         dModelBase: mom.dModelBase, dModelDynamic: mom.dModelDynamic, dynamicCorrection: mom.dynamicCorrection, momentum: mom,
+        sModelBase: smom.sModelBase, sModelDynamic: smom.sModelDynamic, sDynamicCorrection: smom.dynamicCorrection, sMomentum: smom,
+        lambdaHomeRaw: lamPack.lhRaw, lambdaAwayRaw: lamPack.laRaw, lambdaClippingApplied: lamPack.clipped,
         selectedDistribution: model.selectedDistribution || (alpha>1e-9?'negbin':'poisson_like'),
         markets:gmMarkets(mat),drawTarget:null,drawDiag:null
       };
@@ -5029,6 +5053,7 @@ bash scripts/update_and_serve.sh --start</div>
         const leagueId = (raw[0]&&raw[0].leagueId)!=null ? raw[0].leagueId : null;
         const leagueName = (raw[0]&&raw[0].league)!=null ? raw[0].league : null;
         gmBuildMomentumBook(model, ms.concat(extra), leagueId, leagueName);
+        gmBuildSMomentumBook(model, ms.concat(extra), leagueId, leagueName);
       }catch(e){ console.warn('momentum build', e); }
       return model;
     }
@@ -5056,10 +5081,12 @@ bash scripts/update_and_serve.sh --start</div>
         sCalMode:'off',
         sCalMaxDelta:0.15, gammaMax:0.20,
         rotationTrainingWeights: gmRotationTrainingWeights(GM_MATRIX_CFG || GM_MODEL_CFG || {}),
-        momentum: null };
+        momentum: null,
+        dynamic_s_ema: null };
     }
     function gmMomentumCfgFromGlobal(leagueId, leagueName){
       const raw = (GM_MATRIX_CFG && GM_MATRIX_CFG.momentum) || (GM_MODEL_CFG && GM_MODEL_CFG.momentum) || {};
+      const dov = (typeof window !== 'undefined' && window.__IR_D_EMA_OVERRIDE) ? window.__IR_D_EMA_OVERRIDE : null;
       let base = {
         enabled: raw.enabled !== false,
         alpha: raw.alpha != null ? Number(raw.alpha) : 0.30,
@@ -5085,6 +5112,11 @@ bash scripts/update_and_serve.sh --start</div>
       if(!(base.k>=0 && base.k<=1.5)) base.k=0.80;
       if(!(base.maxEma>=0)) base.maxEma=0.50;
       if(!(base.minMatches>=0)) base.minMatches=1;
+      if(dov && typeof dov==='object'){
+        if(dov.enabled!=null) base.enabled=!!dov.enabled;
+        if(dov.alpha!=null && isFinite(Number(dov.alpha))) base.alpha=Number(dov.alpha);
+        if(dov.k!=null && isFinite(Number(dov.k))) base.k=Number(dov.k);
+      }
       return base;
     }
     function gmMomClamp(x,lo,hi){ return Math.max(lo, Math.min(hi, x)); }
@@ -5178,6 +5210,199 @@ bash scripts/update_and_serve.sh --start</div>
       }
       return gmMomPeek(book, homeId, awayId, dBase);
     }
+
+    function gmSMomentumCfgFromGlobal(leagueId, leagueName){
+      const raw = (GM_MATRIX_CFG && GM_MATRIX_CFG.dynamic_s_ema) || (GM_MODEL_CFG && GM_MODEL_CFG.dynamic_s_ema) || {};
+      const ov = (typeof window !== 'undefined' && window.__IR_S_EMA_OVERRIDE) ? window.__IR_S_EMA_OVERRIDE : null;
+      let base = {
+        enabled: raw.enabled === true || raw.enabled === 'true',
+        alpha: raw.alpha != null ? Number(raw.alpha) : 0.30,
+        k: raw.k != null ? Number(raw.k) : 1.00,
+        minMatches: raw.min_team_matches != null ? Number(raw.min_team_matches)
+          : (raw.minTeamMatches != null ? Number(raw.minTeamMatches)
+          : (raw.minMatches != null ? Number(raw.minMatches) : 1)),
+        maxAbsTeamEma: (raw.max_abs_team_ema != null ? Number(raw.max_abs_team_ema)
+          : (raw.maxAbsTeamEma != null ? Number(raw.maxAbsTeamEma) : null)),
+        maxAbsCorrection: (raw.max_abs_correction != null ? Number(raw.max_abs_correction)
+          : (raw.maxAbsCorrection != null ? Number(raw.maxAbsCorrection) : null)),
+        lambdaMin: raw.lambda_min != null ? Number(raw.lambda_min)
+          : (raw.lambdaMin != null ? Number(raw.lambdaMin) : 0.05),
+        resetOnNewSeason: raw.reset_on_new_season != null ? !!raw.reset_on_new_season
+          : (raw.resetOnNewSeason != null ? !!raw.resetOnNewSeason : true),
+      };
+      if(ov && typeof ov === 'object'){
+        if(ov.enabled != null) base.enabled = !!ov.enabled;
+        if(ov.alpha != null && isFinite(Number(ov.alpha))) base.alpha = Number(ov.alpha);
+        if(ov.k != null && isFinite(Number(ov.k))) base.k = Number(ov.k);
+        if(ov.minMatches != null && isFinite(Number(ov.minMatches))) base.minMatches = Number(ov.minMatches);
+        if(ov.maxAbsTeamEma !== undefined) base.maxAbsTeamEma = (ov.maxAbsTeamEma==null||ov.maxAbsTeamEma==='') ? null : Number(ov.maxAbsTeamEma);
+        if(ov.maxAbsCorrection !== undefined) base.maxAbsCorrection = (ov.maxAbsCorrection==null||ov.maxAbsCorrection==='') ? null : Number(ov.maxAbsCorrection);
+        if(ov.lambdaMin != null && isFinite(Number(ov.lambdaMin))) base.lambdaMin = Number(ov.lambdaMin);
+      }
+      // D-EMA report override for enabled/alpha/k (independent)
+      // (handled in gmMomentumCfgFromGlobal via __IR_D_EMA_OVERRIDE if set)
+      const by = raw.byLeague || raw.by_league || {};
+      for(const key of [leagueId, leagueName, String(leagueId||''), String(leagueName||'')]){
+        if(key && by[key] && typeof by[key]==='object'){
+          const o=by[key];
+          base = Object.assign({}, base, {
+            enabled: o.enabled != null ? !!o.enabled : base.enabled,
+            alpha: o.alpha != null ? Number(o.alpha) : base.alpha,
+            k: o.k != null ? Number(o.k) : base.k,
+            minMatches: o.min_team_matches != null ? Number(o.min_team_matches)
+              : (o.minTeamMatches != null ? Number(o.minTeamMatches)
+              : (o.minMatches != null ? Number(o.minMatches) : base.minMatches)),
+            maxAbsTeamEma: o.max_abs_team_ema !== undefined ? (o.max_abs_team_ema==null?null:Number(o.max_abs_team_ema))
+              : (o.maxAbsTeamEma !== undefined ? (o.maxAbsTeamEma==null?null:Number(o.maxAbsTeamEma)) : base.maxAbsTeamEma),
+            maxAbsCorrection: o.max_abs_correction !== undefined ? (o.max_abs_correction==null?null:Number(o.max_abs_correction))
+              : (o.maxAbsCorrection !== undefined ? (o.maxAbsCorrection==null?null:Number(o.maxAbsCorrection)) : base.maxAbsCorrection),
+            lambdaMin: o.lambda_min != null ? Number(o.lambda_min) : (o.lambdaMin != null ? Number(o.lambdaMin) : base.lambdaMin),
+          });
+          break;
+        }
+      }
+      if(!(base.alpha>0 && base.alpha<=1)) throw new Error('dynamic_s_ema.alpha must be in (0,1]');
+      if(!(base.k>=0)) throw new Error('dynamic_s_ema.k must be >= 0');
+      if(!(base.minMatches>=0)) throw new Error('dynamic_s_ema.min_team_matches must be >= 0');
+      if(!(base.lambdaMin>0)) throw new Error('dynamic_s_ema.lambda_min must be > 0');
+      if(base.maxAbsTeamEma!=null && !(base.maxAbsTeamEma>0)) throw new Error('dynamic_s_ema.max_abs_team_ema must be > 0');
+      if(base.maxAbsCorrection!=null && !(base.maxAbsCorrection>0)) throw new Error('dynamic_s_ema.max_abs_correction must be > 0');
+      return base;
+    }
+    function gmSMomLimitEma(ema, maxAbs){
+      if(maxAbs==null || !isFinite(maxAbs)) return {val:ema, clamped:false};
+      const v = gmMomClamp(ema, -maxAbs, maxAbs);
+      return {val:v, clamped: Math.abs(v-ema)>1e-15};
+    }
+    function gmSMomApplyToS(sBase, emaH, emaA, cfg, nH, nA){
+      const hLim = gmSMomLimitEma(emaH, cfg.maxAbsTeamEma);
+      const aLim = gmSMomLimitEma(emaA, cfg.maxAbsTeamEma);
+      const ehEff = (nH >= cfg.minMatches) ? hLim.val : 0;
+      const eaEff = (nA >= cfg.minMatches) ? aLim.val : 0;
+      const momentum = ehEff + eaEff;
+      let corrRaw = cfg.enabled ? cfg.k * momentum : 0;
+      let corr = corrRaw;
+      let corrClamped = false;
+      if(cfg.enabled && cfg.maxAbsCorrection!=null && isFinite(cfg.maxAbsCorrection)){
+        const c2 = gmMomClamp(corrRaw, -cfg.maxAbsCorrection, cfg.maxAbsCorrection);
+        corrClamped = Math.abs(c2-corrRaw)>1e-15;
+        corr = c2;
+      }
+      if(!cfg.enabled){ corr=0; corrRaw=0; }
+      return {
+        emaHomeBefore: emaH, emaAwayBefore: emaA,
+        emaHomeEffective: cfg.enabled ? ehEff : 0,
+        emaAwayEffective: cfg.enabled ? eaEff : 0,
+        homeMatches: nH||0, awayMatches: nA||0,
+        sMomentum: cfg.enabled ? momentum : 0,
+        dynamicCorrectionRaw: corrRaw,
+        dynamicCorrection: corr,
+        sModelBase: sBase,
+        sModelDynamic: cfg.enabled ? (sBase + corr) : sBase,
+        correctionClamped: corrClamped,
+        emaHomeClamped: hLim.clamped, emaAwayClamped: aLim.clamped,
+        enabled: !!cfg.enabled,
+        alpha: cfg.alpha, k: cfg.k, lambdaMin: cfg.lambdaMin,
+        maxAbsTeamEma: cfg.maxAbsTeamEma, maxAbsCorrection: cfg.maxAbsCorrection,
+      };
+    }
+    function gmSMomPeek(book, homeId, awayId, sBase){
+      if(!book) return gmSMomApplyToS(sBase, 0, 0, {enabled:false,alpha:0.3,k:1,minMatches:1,maxAbsTeamEma:null,maxAbsCorrection:null,lambdaMin:0.05}, 0, 0);
+      const ht = book.teams[homeId] || {ema:0, n:0};
+      const at = book.teams[awayId] || {ema:0, n:0};
+      return gmSMomApplyToS(sBase, ht.ema, at.ema, book.cfg, ht.n, at.n);
+    }
+    function gmBuildSMomentumBook(model, preparedMs, leagueId, leagueName){
+      const cfg = gmSMomentumCfgFromGlobal(leagueId, leagueName);
+      const book = { cfg, teams:{}, records:{} };
+      const ensure = tid => {
+        if(!book.teams[tid]) book.teams[tid]={ema:0,n:0};
+        return book.teams[tid];
+      };
+      const st = model.st, gl = model.gl;
+      const rows = (preparedMs||[]).filter(m => m.S!=null && m.home && m.away
+        && gl && gl.attack && gl.defense
+        && (m.home in gl.attack) && (m.away in gl.attack)
+        && (m.home in gl.defense) && (m.away in gl.defense));
+      rows.sort((a,b)=>{
+        const da=(a.raw&&a.raw.date)||'', db=(b.raw&&b.raw.date)||'';
+        if(da!==db) return da<db?-1:1;
+        return String(a.home).localeCompare(String(b.home)) || String(a.away).localeCompare(String(b.away));
+      });
+      const buckets = new Map();
+      for(const m of rows){
+        const d = (m.raw&&m.raw.date) ? String(m.raw.date).slice(0,10) : '';
+        if(!buckets.has(d)) buckets.set(d, []);
+        buckets.get(d).push(m);
+      }
+      for(const [, group] of buckets){
+        const pending=[];
+        for(const m of group){
+          const dkey = (m.raw&&m.raw.date) ? String(m.raw.date).slice(0,10) : '';
+          const hEff = gmEffectiveH(st, model.cfg, m.iHome===0, gmDerbyHome(m));
+          const kHg = Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
+          const iHome = m.iHome||0;
+          const lhAD = Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*iHome*kHg);
+          const laAD = Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0));
+          const sBase = lhAD + laAD;
+          const snap = gmSMomPeek(book, m.home, m.away, sBase);
+          const key = gmMomMatchKey(dkey, m.home, m.away);
+          const w = (typeof gmTrainWeight==='function') ? gmTrainWeight(m) : (m.wBase!=null?Number(m.wBase):1);
+          book.records[key] = Object.assign({
+            matchKey:key, date:dkey, home:m.home, away:m.away,
+            sMarket:m.S, residual:null, teamResidual:null, updated:false,
+            matchWeight:w, updateSkipReason:null,
+          }, snap);
+          pending.push({ m, resid: m.S - sBase, half: 0.5*(m.S - sBase), key, w });
+        }
+        for(const p of pending){
+          const aEff = gmMomClamp(cfg.alpha * Math.max(0, p.w||0), 0, 1);
+          if(aEff<=0){
+            book.records[p.key] = Object.assign({}, book.records[p.key], {
+              residual:p.resid, teamResidual:p.half, updated:false, updateSkipReason:'match_weight_zero',
+            });
+            continue;
+          }
+          const ht=ensure(p.m.home), at=ensure(p.m.away);
+          ht.ema = gmMomUpdate(ht.ema, p.half, aEff);
+          at.ema = gmMomUpdate(at.ema, p.half, aEff);
+          ht.n += 1; at.n += 1;
+          book.records[p.key] = Object.assign({}, book.records[p.key], {
+            residual:p.resid, teamResidual:p.half, updated:true,
+            emaHomeAfter: ht.ema, emaAwayAfter: at.ema,
+          });
+        }
+      }
+      model.sMomentum = book;
+      model.sMomentumCfg = cfg;
+      return book;
+    }
+    function gmMomCorrectS(model, homeId, awayId, sBase, opt){
+      const book = model && model.sMomentum;
+      const cfg = (model && model.sMomentumCfg) || gmSMomentumCfgFromGlobal();
+      if(!book || (opt && opt.applySMomentum===false)){
+        return gmSMomApplyToS(sBase, 0, 0, Object.assign({}, cfg, {enabled:false}), 0, 0);
+      }
+      const dateStr = opt && opt.matchDate ? String(opt.matchDate).slice(0,10) : null;
+      if(dateStr && opt && opt.useMomentumLookup!==false){
+        const key = gmMomMatchKey(dateStr, homeId, awayId);
+        const rec = book.records[key];
+        if(rec){
+          return gmSMomApplyToS(sBase, rec.emaHomeBefore, rec.emaAwayBefore, cfg, rec.homeMatches, rec.awayMatches);
+        }
+      }
+      return gmSMomPeek(book, homeId, awayId, sBase);
+    }
+    function gmApplyLambdaMin(sf, df, lambdaMin){
+      let lh=(sf+df)/2, la=(sf-df)/2;
+      const lhR=lh, laR=la;
+      const lim = (lambdaMin!=null && isFinite(lambdaMin) && lambdaMin>0) ? lambdaMin : 0.05;
+      lh = Math.max(lim, lh); la = Math.max(lim, la);
+      const clipped = (lh!==lhR) || (la!==laR);
+      if(clipped){ sf = lh+la; df = lh-la; }
+      return {lh, la, sf, df, lhRaw:lhR, laRaw:laR, clipped};
+    }
+
     function gmSeasonWeight(rec, cfg){
       const def = cfg.seasonDefault != null ? cfg.seasonDefault : 1.0;
       const sid = rec.seasonId;
@@ -7463,6 +7688,10 @@ bash scripts/update_and_serve.sh --start</div>
       'AH1','AH2','AH1_at_market','AH2_at_market','AH1_delta_mkt','AH2_delta_mkt',
       'Total_market','Total_main','Total_line_delta','same_tot',
       'O','U','O_at_market','U_at_market','O_delta_mkt','U_delta_mkt',
+      // S-EMA compact diagnostics (Auto path for OU)
+      'S_model_base','S_model_final','S_dynamic_correction',
+      'EMA_S_home_before','EMA_S_away_before','S_market','Residual_S_base','Residual_S_dynamic',
+      'Total_main',
     ];
     const IR_COMPARE_COLS = [
       'Дата','Лига','Дома','Гости','etalon_layer','engine_L','engine_A','recipe',
@@ -7750,11 +7979,14 @@ bash scripts/update_and_serve.sh --start</div>
       const dm=mom.dModelDynamic;
       const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
       const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
-      const sm=lhAD+laAD;
+      const smBase=lhAD+laAD;
+      const smom=gmMomCorrectS(model, homeId, awayId, smBase, opt||{});
+      const sm=smom.sModelDynamic;
       const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
       let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
       let df=gmClampD(dc.dUsed,sf);
-      const lh=(sf+df)/2, la=(sf-df)/2;
+      const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
+      const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
       let mat=gmMatrix(lh,la,cfg.maxGoals||GM_MAX);
       if(cfg.useDc&&cal.gamma) mat=gmDC(mat,lh,la,cal.gamma);
       let dtarget=null, diag=null;
@@ -7770,6 +8002,8 @@ bash scripts/update_and_serve.sh --start</div>
         homeId,awayId,homeName,awayName,lh,la,df,sf,mat,matDiag,
         alphaFinal:0, rhoFinal:0, dcGamma:cal.gamma||0,
         dModelBase: mom.dModelBase, dModelDynamic: mom.dModelDynamic, dynamicCorrection: mom.dynamicCorrection, momentum: mom,
+        sModelBase: smom.sModelBase, sModelDynamic: smom.sModelDynamic, sDynamicCorrection: smom.dynamicCorrection, sMomentum: smom,
+        lambdaHomeRaw: lamPack.lhRaw, lambdaAwayRaw: lamPack.laRaw, lambdaClippingApplied: lamPack.clipped,
         selectedDistribution:'poisson_dc',
         markets:gmMarkets(mat), drawTarget:dtarget, drawDiag:diag,
       };
@@ -7795,6 +8029,7 @@ bash scripts/update_and_serve.sh --start</div>
         const leagueId = (raw[0]&&raw[0].leagueId)!=null ? raw[0].leagueId : null;
         const leagueName = (raw[0]&&raw[0].league)!=null ? raw[0].league : null;
         gmBuildMomentumBook(model, ms, leagueId, leagueName);
+        gmBuildSMomentumBook(model, ms, leagueId, leagueName);
       }catch(e){ console.warn('legacy momentum build', e); }
       return model;
     }
@@ -7827,6 +8062,11 @@ bash scripts/update_and_serve.sh --start</div>
       if(!isFinite(val)) return '';
       if(IR_LINE_COLS.has(col)) return Number(val).toFixed(2);
       if(String(col).includes('alpha')||String(col).includes('rho')||col==='dc_gamma') return Number(val).toFixed(4);
+      if(/^S_model_|^S_dynamic_|^EMA_S_|^Residual_S_|^S_market$|^S_momentum$/.test(String(col))) {
+        const n=Number(val);
+        if(String(col)==='S_dynamic_correction') return (n>=0?'+':'')+n.toFixed(4);
+        return n.toFixed(4);
+      }
       if(String(col).startsWith('p_')||col==='matrix_sum'||col==='matrix_tail') return Number(val).toFixed(6);
       if(String(col).includes('model_total')) return Number(val).toFixed(4);
       return Number(val).toFixed(3);
@@ -8031,12 +8271,15 @@ bash scripts/update_and_serve.sh --start</div>
       const dm=mom.dModelDynamic;
       const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
       const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
-      const sm=lhAD+laAD;
+      const smBase=lhAD+laAD;
+      const smom=gmMomCorrectS(model, homeId, awayId, smBase, opt||{});
+      const sm=smom.sModelDynamic;
       const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
       let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
       let df=gmClampD(dc.dUsed,sf);
-      const lh=(sf+df)/2, la=(sf-df)/2;
-      return {lh,la,sf,df,cfg,cal,momentum:mom};
+      const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
+      const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
+      return {lh,la,sf,df,cfg,cal,momentum:mom,sMomentum:smom,lambdaClippingApplied:lamPack.clipped};
     }
     function irBuildMatrixRecipe(model, lh, la, recipe){
       const maxG=(model.cfg&&model.cfg.maxGoals)||GM_MAX;
@@ -8080,7 +8323,7 @@ bash scripts/update_and_serve.sh --start</div>
           mat=built.mat; dist=built.dist; alpha=built.alpha; rho=built.rho; dcGamma=built.dcGamma;
           const mk=gmMarkets(mat);
           const matDiag=gmMatrixDiagnostics(mat,lh,la,alpha);
-          pred={markets:mk, mat, matDiag, lh, la, sf, df, alphaFinal:alpha, rhoFinal:rho, dcGamma, selectedDistribution:dist, momentum:lam.momentum};
+          pred={markets:mk, mat, matDiag, lh, la, sf, df, alphaFinal:alpha, rhoFinal:rho, dcGamma, selectedDistribution:dist, momentum:lam.momentum, sMomentum:lam.sMomentum, sModelBase:lam.sMomentum&&lam.sMomentum.sModelBase, sModelDynamic:lam.sMomentum&&lam.sMomentum.sModelDynamic, sDynamicCorrection:lam.sMomentum&&lam.sMomentum.dynamicCorrection};
         } else if(engine==='legacy'){
           pred=irPredictLegacy(model,homeId,awayId,opt);
           lh=pred.lh; la=pred.la; sf=pred.sf; df=pred.df;
@@ -8106,13 +8349,25 @@ bash scripts/update_and_serve.sh --start</div>
           emaHomeBefore: pred.emaHomeBefore,
           emaAwayBefore: pred.emaAwayBefore,
         } : null);
+        const smom = pred.sMomentum || (pred.sModelBase!=null ? {
+          sModelBase: pred.sModelBase,
+          sModelDynamic: pred.sModelDynamic,
+          dynamicCorrection: pred.sDynamicCorrection,
+          emaHomeBefore: pred.sMomentum ? pred.sMomentum.emaHomeBefore : null,
+          emaAwayBefore: pred.sMomentum ? pred.sMomentum.emaAwayBefore : null,
+          sMomentum: pred.sMomentum ? pred.sMomentum.sMomentum : null,
+        } : null);
         let dMarket = null;
+        let sMarket = null;
         try{
           const dateStr = opt && opt.matchDate ? String(opt.matchDate).slice(0,10) : '';
           const key = gmMomMatchKey(dateStr, homeId, awayId);
           const rec = model.momentum && model.momentum.records && model.momentum.records[key];
           if(rec && rec.dMarket!=null && isFinite(rec.dMarket)) dMarket = rec.dMarket;
+          const recS = model.sMomentum && model.sMomentum.records && model.sMomentum.records[key];
+          if(recS && recS.sMarket!=null && isFinite(recS.sMarket)) sMarket = recS.sMarket;
         }catch(_e){}
+        if(sMarket==null && marketLines && marketLines.S!=null && isFinite(Number(marketLines.S))) sMarket = Number(marketLines.S);
         // Fallback: same AH→D as gmPrepare when book has no row for this match.
         if(dMarket==null && mktAh!=null && Number.isFinite(mktAh)){
           try{
@@ -8157,6 +8412,15 @@ bash scripts/update_and_serve.sh --start</div>
           EMA_away_before: mom ? mom.emaAwayBefore : null,
           dynamic_correction: mom ? mom.dynamicCorrection : null,
           D_model_dynamic: mom ? mom.dModelDynamic : null,
+          S_model_base: (smom && smom.sModelBase!=null) ? smom.sModelBase : (pred.sModelBase!=null?pred.sModelBase:null),
+          S_model_final: (smom && smom.sModelDynamic!=null) ? smom.sModelDynamic : (pred.sModelDynamic!=null?pred.sModelDynamic:null),
+          S_dynamic_correction: (smom && smom.dynamicCorrection!=null) ? smom.dynamicCorrection : (pred.sDynamicCorrection!=null?pred.sDynamicCorrection:null),
+          EMA_S_home_before: smom ? smom.emaHomeBefore : null,
+          EMA_S_away_before: smom ? smom.emaAwayBefore : null,
+          S_momentum: smom ? smom.sMomentum : null,
+          S_market: sMarket,
+          Residual_S_base: (sMarket!=null && smom && smom.sModelBase!=null) ? (sMarket - smom.sModelBase) : null,
+          Residual_S_dynamic: (sMarket!=null && smom && smom.sModelDynamic!=null) ? (sMarket - smom.sModelDynamic) : null,
         };
       }catch(_e){ console.warn('irPredictAtMarket', _e); return null; }
     }
@@ -8265,6 +8529,15 @@ bash scripts/update_and_serve.sh --start</div>
       row.U_at_market = aut ? aut.U_at_market : null;
       row.O_delta_mkt = irDelta(row.O_at_market, mkt.O);
       row.U_delta_mkt = irDelta(row.U_at_market, mkt.U);
+      const sSrc = aut || leg;
+      row.S_model_base = sSrc ? sSrc.S_model_base : null;
+      row.S_model_final = sSrc ? sSrc.S_model_final : null;
+      row.S_dynamic_correction = sSrc ? sSrc.S_dynamic_correction : null;
+      row.EMA_S_home_before = sSrc ? sSrc.EMA_S_home_before : null;
+      row.EMA_S_away_before = sSrc ? sSrc.EMA_S_away_before : null;
+      row.S_market = sSrc ? sSrc.S_market : null;
+      row.Residual_S_base = sSrc ? sSrc.Residual_S_base : null;
+      row.Residual_S_dynamic = sSrc ? sSrc.Residual_S_dynamic : null;
       row._mae={
         mae1x2:irAbsMae([row['1_delta'],row.X_delta,row['2_delta']]),
         maeAh:irAbsMae([row.AH1_delta_mkt,row.AH2_delta_mkt]),
@@ -8275,6 +8548,12 @@ bash scripts/update_and_serve.sh --start</div>
         sameAh: row.same_ah==='yes', sameTot: row.same_tot==='yes',
         maeHome: irAbsMae([row['1_delta']]),
         maeAway: irAbsMae([row['2_delta']]),
+        maeSBase: (row.Residual_S_base!=null && isFinite(row.Residual_S_base)) ? Math.abs(row.Residual_S_base) : null,
+        maeSDyn: (row.Residual_S_dynamic!=null && isFinite(row.Residual_S_dynamic)) ? Math.abs(row.Residual_S_dynamic) : null,
+        sImproved: (row.Residual_S_base!=null && row.Residual_S_dynamic!=null)
+          ? (Math.abs(row.Residual_S_dynamic) < Math.abs(row.Residual_S_base) - 1e-12) : null,
+        sWorsened: (row.Residual_S_base!=null && row.Residual_S_dynamic!=null)
+          ? (Math.abs(row.Residual_S_dynamic) > Math.abs(row.Residual_S_base) + 1e-12) : null,
       };
       return row;
     }
@@ -8446,6 +8725,13 @@ bash scripts/update_and_serve.sh --start</div>
           <div class="ir-sum-row"><span>Total line MAE</span><span>${irFmtMae(c.maeOuLine)}</span></div>
           <div class="ir-sum-row"><span>same Total main</span><span>${pct(c.sameTotRate)}</span></div>
         </div>`
+        + `<div class="ir-sum-block"><div style="font-weight:600;margin-bottom:4px">Качество S-EMA</div>
+          <div class="ir-sum-row"><span>MAE_S_base</span><span>${irFmtMae(c.maeSBase)}</span></div>
+          <div class="ir-sum-row"><span>MAE_S_dynamic</span><span>${irFmtMae(c.maeSDyn)}</span></div>
+          <div class="ir-sum-row"><span>Δ MAE_S</span><span>${(c.maeSBase!=null&&c.maeSDyn!=null&&isFinite(c.maeSBase)&&isFinite(c.maeSDyn))?irFmtMae(c.maeSDyn-c.maeSBase):'—'}</span></div>
+          <div class="ir-sum-row"><span>S improved share</span><span>${pct(c.sImproveShare)}</span></div>
+          <div class="ir-sum-row"><span>params</span><span class="small">D ${sum.dEma&&sum.dEma.enabled?'ON':'OFF'} α=${escapeHtml(String((sum.dEma&&sum.dEma.alpha)!=null?sum.dEma.alpha:'—'))} k=${escapeHtml(String((sum.dEma&&sum.dEma.k)!=null?sum.dEma.k:'—'))}; S ${sum.sEma&&sum.sEma.enabled?'ON':'OFF'} α=${escapeHtml(String((sum.sEma&&sum.sEma.alpha)!=null?sum.sEma.alpha:'—'))} k=${escapeHtml(String((sum.sEma&&sum.sEma.k)!=null?sum.sEma.k:'—'))}</span></div>
+        </div>`
         + `<div class="small" style="margin-top:8px;color:#94a3b8">Одна рассчитанная линия: 1X2 Legacy + AH/OU Auto vs closing. Конфиг: ${escapeHtml((GM_MATRIX_CFG&&GM_MATRIX_CFG.configSource)||'model_config.json')}</div>`;
     }
         function irSetReportStatus(msg,isErr){
@@ -8502,8 +8788,62 @@ bash scripts/update_and_serve.sh --start</div>
       a.download=`model_combined_${new Date().toISOString().slice(0,10)}.csv`;
       a.click(); URL.revokeObjectURL(a.href);
     }
+
+    function irNumOrNull(id){
+      const el=document.getElementById(id);
+      if(!el) return null;
+      const v=String(el.value||'').trim().replace(',','.');
+      if(v==='') return null;
+      const n=Number(v);
+      return isFinite(n) ? n : null;
+    }
+    function irSyncDynPanelFromConfig(){
+      try{
+        const d = gmMomentumCfgFromGlobal();
+        const s = gmSMomentumCfgFromGlobal();
+        const set = (id,v)=>{ const el=document.getElementById(id); if(el) el.value = (v==null||v==='') ? '' : String(v); };
+        const chk = (id,v)=>{ const el=document.getElementById(id); if(el) el.checked = !!v; };
+        chk('irUseDEma', d.enabled);
+        set('irAlphaD', d.alpha);
+        set('irKD', d.k);
+        chk('irUseSEma', s.enabled);
+        set('irAlphaS', s.alpha);
+        set('irKS', s.k);
+        set('irSMinMatches', s.minMatches);
+        set('irSMaxEma', s.maxAbsTeamEma);
+        set('irSMaxCorr', s.maxAbsCorrection);
+        set('irSLambdaMin', s.lambdaMin);
+        irToggleSEmaFields();
+      }catch(e){ console.warn('irSyncDynPanelFromConfig', e); }
+    }
+    function irToggleSEmaFields(){
+      const on = !!(document.getElementById('irUseSEma')||{}).checked;
+      ['irAlphaS','irKS','irSMinMatches','irSMaxEma','irSMaxCorr','irSLambdaMin'].forEach(id=>{
+        const el=document.getElementById(id); if(el) el.disabled = !on;
+      });
+    }
+    function irApplyDynOverrides(){
+      window.__IR_D_EMA_OVERRIDE = {
+        enabled: !!(document.getElementById('irUseDEma')||{}).checked,
+        alpha: irNumOrNull('irAlphaD'),
+        k: irNumOrNull('irKD'),
+      };
+      const maxEma = irNumOrNull('irSMaxEma');
+      const maxCorr = irNumOrNull('irSMaxCorr');
+      window.__IR_S_EMA_OVERRIDE = {
+        enabled: !!(document.getElementById('irUseSEma')||{}).checked,
+        alpha: irNumOrNull('irAlphaS'),
+        k: irNumOrNull('irKS'),
+        minMatches: irNumOrNull('irSMinMatches'),
+        maxAbsTeamEma: maxEma,
+        maxAbsCorrection: maxCorr,
+        lambdaMin: irNumOrNull('irSLambdaMin'),
+      };
+    }
+
     async function irRunReport(){
       await loadGoalMatrixConfig();
+      irApplyDynOverrides();
       const leagueFilter=(document.getElementById('irLeagueFilter')||{}).value||'';
       const seasonFilter=irEnsureSeasonSelected();
       const useMargin=irUseMarginOn();
@@ -8586,6 +8926,8 @@ bash scripts/update_and_serve.sh --start</div>
               const msA=gmPrepare(parsed.raw.concat(inactiveParsed.raw||[]), modelA.cfg);
               gmBuildMomentumBook(modelL, msL, leagueId, leagueName);
               gmBuildMomentumBook(modelA, msA, leagueId, leagueName);
+              gmBuildSMomentumBook(modelL, msL, leagueId, leagueName);
+              gmBuildSMomentumBook(modelA, msA, leagueId, leagueName);
             }catch(eMom){ console.warn('report momentum', eMom); }
             try{
               const g = modelL && modelL.cal ? gmNormalizeCal(modelL.cal).gamma : null;
@@ -8631,7 +8973,11 @@ bash scripts/update_and_serve.sh --start</div>
           mae1x2:avg('mae1x2'), maeHome:avg('maeHome'), maeDraw:avg('maeDraw'), maeAway:avg('maeAway'),
           maeAh:avg('maeAh'), maeAhLine:avg('maeAhLine'), sameAhRate:rate('sameAh'),
           maeOu:avg('maeOu'), maeOuLine:avg('maeOuLine'), sameTotRate:rate('sameTot'),
+          maeSBase:avg('maeSBase'), maeSDyn:avg('maeSDyn'),
+          sImproveShare:rate('sImproved'),
         },
+        sEma: (window.__IR_S_EMA_OVERRIDE||{}),
+        dEma: (window.__IR_D_EMA_OVERRIDE||{}),
         nActive:nActiveTrain, nActiveFetched, nActiveExcluded,
         effectiveTrain:sumTrainW,
       };
@@ -8693,6 +9039,8 @@ bash scripts/update_and_serve.sh --start</div>
         if(useMg) useMg.checked=!!irCfgPart('compare.defaultUseMargin', false);
         irSyncModeCheckboxes();
         irPopulateLeagueFilter();
+        irSyncDynPanelFromConfig();
+        document.getElementById('irUseSEma')?.addEventListener('change', irToggleSEmaFields);
       }catch(e){
         console.error('irInitReportTab', e);
         irSetReportStatus('Ошибка загрузки: '+(e.message||e), true);
