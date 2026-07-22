@@ -220,7 +220,7 @@
     "byLeague": {}
   },
   "dynamic_dc_gamma": {
-    "enabled": false,
+    "enabled": true,
     "source": "D_model_final",
     "default_gamma": 0.09,
     "segments": [
