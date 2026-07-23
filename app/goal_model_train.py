@@ -170,7 +170,7 @@ class ModelConfig:
     dynamic_dc_segments: Optional[List[Dict[str, Any]]] = None
 
     # D correction architecture: legacy_ema | slow_fast | disabled
-    d_correction_mode: str = dcorr.MODE_LEGACY_EMA
+    d_correction_mode: str = dcorr.MODE_SLOW_FAST
     d_correction_slow_enabled: bool = True
     d_correction_slow_alpha: float = 0.12
     d_correction_slow_shrink_k: float = 12.0

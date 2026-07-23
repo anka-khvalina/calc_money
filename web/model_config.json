@@ -244,7 +244,7 @@
     "byLeague": {}
   },
   "d_correction": {
-    "mode": "legacy_ema",
+    "mode": "slow_fast",
     "slow": {
       "enabled": true,
       "method": "causal_ema",

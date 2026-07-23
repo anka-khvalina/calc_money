@@ -1,8 +1,8 @@
 """Slow / fast D correction поверх WLS (отдельно от legacy D-EMA).
 
 Режимы (d_correction_mode):
+  slow_fast  — D_final = D_base + (slow_h−slow_a) + (fast_h−fast_a)  [default]
   legacy_ema — текущая D-EMA (обрабатывается в goal_model_train / momentum)
-  slow_fast  — D_final = D_base + (slow_h−slow_a) + (fast_h−fast_a)
   disabled   — D_final = D_base (без динамических поправок D)
 
 Slow: устойчивый team placement bias (causal EMA + shrinkage).
@@ -124,14 +124,14 @@ class DCorrectionCacheConfig:
 
 @dataclass(frozen=True)
 class DCorrectionConfig:
-    mode: str = MODE_LEGACY_EMA
+    mode: str = MODE_SLOW_FAST
     slow: SlowLayerConfig = field(default_factory=SlowLayerConfig)
     fast: FastLayerConfig = field(default_factory=FastLayerConfig)
     total_max_abs_correction: float = 0.60
     cache: DCorrectionCacheConfig = field(default_factory=DCorrectionCacheConfig)
 
     def validated(self) -> "DCorrectionConfig":
-        mode = str(self.mode or MODE_LEGACY_EMA).strip().lower()
+        mode = str(self.mode or MODE_SLOW_FAST).strip().lower()
         if mode not in VALID_MODES:
             raise ValueError(
                 f"d_correction.mode must be one of {sorted(VALID_MODES)}, got {mode!r}"
@@ -211,7 +211,7 @@ def d_correction_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> DCorre
         root_dir=_f(cache_raw, "root_dir", "rootDir", default=None),
     )
     return DCorrectionConfig(
-        mode=str(block.get("mode", MODE_LEGACY_EMA)),
+        mode=str(block.get("mode", MODE_SLOW_FAST)),
         slow=slow,
         fast=fast,
         total_max_abs_correction=float(
@@ -680,7 +680,7 @@ class DModelCachePayload:
             league_id=raw.get("league_id"),
             league_name=raw.get("league_name"),
             trained_at=str(raw.get("trained_at", "")),
-            d_correction_mode=str(raw.get("d_correction_mode", MODE_LEGACY_EMA)),
+            d_correction_mode=str(raw.get("d_correction_mode", MODE_SLOW_FAST)),
             home_advantage=float(raw.get("home_advantage", 0.0)),
             params=dict(raw.get("params") or {}),
             teams=teams,

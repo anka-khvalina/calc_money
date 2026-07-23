@@ -165,9 +165,9 @@ def test_cache_atomic_publish_and_load(tmp_path: Path):
     assert loaded2.model_version == "2026-01-01T00:00:00Z"
 
 
-def test_config_from_mapping_defaults_legacy():
+def test_config_from_mapping_defaults_slow_fast():
     cfg = dcorr.d_correction_config_from_mapping({})
-    assert cfg.mode == dcorr.MODE_LEGACY_EMA
+    assert cfg.mode == dcorr.MODE_SLOW_FAST
 
 
 def test_train_predict_slow_fast_integration():

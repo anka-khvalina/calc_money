@@ -4235,7 +4235,7 @@ bash scripts/update_and_serve.sh --start</div>
         homeId,awayId,homeName,awayName,lh,la,df,sf,mat,matDiag,
         alphaFinal:alpha, rhoFinal:rho,
         dModelBase: mom.dModelBase, dModelDynamic: mom.dModelDynamic, dynamicCorrection: mom.dynamicCorrection, momentum: mom,
-        dCorrectionMode: mom.mode || 'legacy_ema', dCorrection: dcorr || null,
+        dCorrectionMode: mom.mode || 'slow_fast', dCorrection: dcorr || null,
         sModelBase: smom.sModelBase, sModelDynamic: smom.sModelDynamic, sDynamicCorrection: smom.dynamicCorrection, sMomentum: smom,
         lambdaHomeRaw: lamPack.lhRaw, lambdaAwayRaw: lamPack.laRaw, lambdaClippingApplied: lamPack.clipped,
         selectedDistribution: model.selectedDistribution || (alpha>1e-9?'negbin':'poisson_like'),
@@ -5223,7 +5223,7 @@ bash scripts/update_and_serve.sh --start</div>
       const fast = raw.fast || {};
       const total = raw.total || {};
       return {
-        mode: String(raw.mode || 'legacy_ema').toLowerCase(),
+        mode: String(raw.mode || 'slow_fast').toLowerCase(),
         slow: {
           enabled: slow.enabled !== false,
           alpha: slow.alpha != null ? Number(slow.alpha) : 0.12,
@@ -5357,10 +5357,10 @@ bash scripts/update_and_serve.sh --start</div>
       const at = book.teams[awayId] || {emaS:0,nS:0,emaF:0,nF:0};
       return gmDCorrApply(dBase, ht, at, cfg);
     }
-    /** Resolve D by d_correction.mode: slow_fast | disabled | legacy_ema (default). */
+    /** Resolve D by d_correction.mode: slow_fast (default) | disabled | legacy_ema. */
     function gmResolveCorrectedD(model, homeId, awayId, dBase, opt){
       const cfg = (model && model.dCorrectionCfg) || gmDCorrCfgFromGlobal();
-      const mode = String(cfg.mode || 'legacy_ema').toLowerCase();
+      const mode = String(cfg.mode || 'slow_fast').toLowerCase();
       if(mode === 'slow_fast'){
         const sf = gmDCorrCorrectD(model, homeId, awayId, dBase, opt||{}) || gmDCorrApply(dBase, null, null, cfg);
         return {
@@ -8385,7 +8385,7 @@ bash scripts/update_and_serve.sh --start</div>
         score00Final: score00Fin,
         score11Final: score11Fin,
         dModelBase: mom.dModelBase, dModelDynamic: mom.dModelDynamic, dynamicCorrection: mom.dynamicCorrection, momentum: mom,
-        dCorrectionMode: mom.mode || 'legacy_ema', dCorrection: dcorr || null,
+        dCorrectionMode: mom.mode || 'slow_fast', dCorrection: dcorr || null,
         sModelBase: smom.sModelBase, sModelDynamic: smom.sModelDynamic, sDynamicCorrection: smom.dynamicCorrection, sMomentum: smom,
         lambdaHomeRaw: lamPack.lhRaw, lambdaAwayRaw: lamPack.laRaw, lambdaClippingApplied: lamPack.clipped,
         selectedDistribution:'poisson_dc',
@@ -8666,7 +8666,7 @@ bash scripts/update_and_serve.sh --start</div>
       const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
       return {
         lh,la,sf,df,cfg,cal,momentum:mom,sMomentum:smom,lambdaClippingApplied:lamPack.clipped,
-        dCorrectionMode: mom.mode || 'legacy_ema', dCorrection: mom.dCorrection || null,
+        dCorrectionMode: mom.mode || 'slow_fast', dCorrection: mom.dCorrection || null,
       };
     }
     function irBuildMatrixRecipe(model, lh, la, recipe, dFinal){
