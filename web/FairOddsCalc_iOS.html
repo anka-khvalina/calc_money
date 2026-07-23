@@ -5867,10 +5867,45 @@ bash scripts/update_and_serve.sh --start</div>
       'closing_ah_home','closing_total_line','ah_home_odds','ah_away_odds',
       'over_odds','under_odds','home_odds','draw_odds','away_odds',
       'is_neutral','match_weight','derby_weight','neutral_weight',
-      'home_rotation_code','away_rotation_code',
       'motivation','active','note',
     ].join(',');
     const SB_MATCH_SELECT = SB_MATCH_VIEW_SELECT;
+    const SB_ROTATION_ENRICH_CHUNK = 150;
+
+    /** Rotation lives on matches; v_matches_full may omit those columns (HTTP 400 if selected). */
+    async function sbEnrichMatchesRotation(matches){
+      if (!Array.isArray(matches) || !matches.length) return matches;
+      const ids = [...new Set(matches.map(m => Number(m.match_id)).filter(n => Number.isFinite(n)))];
+      const rotById = {};
+      for (let i = 0; i < ids.length; i += SB_ROTATION_ENRICH_CHUNK){
+        const chunk = ids.slice(i, i + SB_ROTATION_ENRICH_CHUNK);
+        const idList = chunk.map(n => encodeURIComponent(String(n))).join(',');
+        try {
+          const q = `select=id,home_rotation_code,away_rotation_code&id=in.(${idList})`;
+          const rows = await sbFetch(`/matches?${q}`);
+          if (!Array.isArray(rows)) continue;
+          rows.forEach(r => {
+            const mid = Number(r.id);
+            if (!Number.isFinite(mid)) return;
+            const home = sbNormalizeRotationCode(r.home_rotation_code);
+            const away = sbNormalizeRotationCode(r.away_rotation_code);
+            rotById[mid] = {
+              home_rotation_code: home,
+              home_rotation_name: sbRotationLabel(home),
+              away_rotation_code: away,
+              away_rotation_name: sbRotationLabel(away),
+            };
+          });
+        } catch (e){
+          console.warn('rotation enrich', e);
+        }
+      }
+      matches.forEach(m => {
+        const rot = rotById[Number(m.match_id)];
+        if (rot) Object.assign(m, rot);
+      });
+      return matches;
+    }
 
     const SB_SOURCE_DEFAULT = 'Pinnacle';
 
@@ -5936,6 +5971,7 @@ bash scripts/update_and_serve.sh --start</div>
       const q = `select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=eq.${encodeURIComponent(seasonId)}&order=match_date.asc`;
       const rows = await sbFetch(`/v_matches_full?${q}`);
       const list = Array.isArray(rows) ? rows : [];
+      await sbEnrichMatchesRotation(list);
       sbApplyRotationFromView(list);
       const key = sbSeasonKey(leagueId, seasonId);
       window.__SB.matchesBySeason[key] = list;
@@ -6268,6 +6304,7 @@ bash scripts/update_and_serve.sh --start</div>
       const q = `select=${SB_MATCH_VIEW_SELECT}&match_id=eq.${encodeURIComponent(mid)}`;
       const rows = await sbFetch(`/v_matches_full?${q}`);
       if (!Array.isArray(rows) || !rows.length) throw new Error('match not found');
+      await sbEnrichMatchesRotation(rows);
       sbApplyRotationFromView(rows);
       return rows[0];
     }
@@ -7437,6 +7474,7 @@ bash scripts/update_and_serve.sh --start</div>
       const q = `select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=in.(${ids})&active=eq.true&order=match_date.asc`;
       const rows = await sbFetch(`/v_matches_full?${q}`);
       const list = Array.isArray(rows) ? rows : [];
+      await sbEnrichMatchesRotation(list);
       sbApplyRotationFromView(list);
       return list;
     }
@@ -8495,6 +8533,7 @@ bash scripts/update_and_serve.sh --start</div>
         const q=`${extraQuery}&limit=${pageSize}&offset=${offset}`;
         const batch=await sbFetch(`/v_matches_full?${q}`);
         if(!Array.isArray(batch)||!batch.length) break;
+        await sbEnrichMatchesRotation(batch);
         sbApplyRotationFromView(batch);
         all.push(...batch);
         if(batch.length<pageSize) break;
