@@ -18,12 +18,13 @@ import csv
 import io
 import logging
 import math
-from dataclasses import dataclass, field, replace
-from datetime import date, datetime
+from dataclasses import asdict, dataclass, field, replace
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 try:
+    from . import d_correction as dcorr
     from . import dynamic_dc_gamma as ddc
     from . import goal_model as gm
     from . import momentum as mom
@@ -36,6 +37,7 @@ try:
         training_weight_for_rotation,
     )
 except ImportError:  # pragma: no cover
+    import d_correction as dcorr
     import dynamic_dc_gamma as ddc
     import goal_model as gm
     import momentum as mom
@@ -166,6 +168,23 @@ class ModelConfig:
     dynamic_dc_default_gamma: float = 0.09
     # None → встроенная таблица abs_D ≤0.5/1.0/1.5/>1.5
     dynamic_dc_segments: Optional[List[Dict[str, Any]]] = None
+
+    # D correction architecture: legacy_ema | slow_fast | disabled
+    d_correction_mode: str = dcorr.MODE_SLOW_FAST
+    d_correction_slow_enabled: bool = True
+    d_correction_slow_alpha: float = 0.12
+    d_correction_slow_shrink_k: float = 12.0
+    d_correction_slow_min_observations: int = 5
+    d_correction_slow_max_abs: float = 0.35
+    d_correction_fast_enabled: bool = True
+    d_correction_fast_alpha: float = 0.40
+    d_correction_fast_shrink_k: float = 6.0
+    d_correction_fast_min_observations: int = 2
+    d_correction_fast_max_abs: float = 0.40
+    d_correction_total_max_abs: float = 0.60
+    d_correction_cache_fallback: str = dcorr.FALLBACK_LAST_LOCAL
+    d_correction_cache_versions_to_keep: int = 2
+    d_correction_publish_cache: bool = False  # opt-in filesystem publish after train
 
 
 # --------------------------------------------------------------------------- #
@@ -1448,6 +1467,93 @@ class TrainedModel:
     momentum_cfg: Optional["mom.MomentumConfig"] = None
     s_momentum_book: Optional["smom.SMomentumBook"] = None
     s_momentum_cfg: Optional["smom.SMomentumConfig"] = None
+    d_correction_book: Optional["dcorr.DCorrectionBook"] = None
+    d_correction_cfg: Optional["dcorr.DCorrectionConfig"] = None
+    d_model_version: Optional[str] = None
+
+
+def resolve_d_correction_config(cfg: ModelConfig) -> dcorr.DCorrectionConfig:
+    return dcorr.DCorrectionConfig(
+        mode=cfg.d_correction_mode,
+        slow=dcorr.SlowLayerConfig(
+            enabled=cfg.d_correction_slow_enabled,
+            alpha=cfg.d_correction_slow_alpha,
+            shrink_k=cfg.d_correction_slow_shrink_k,
+            min_observations=cfg.d_correction_slow_min_observations,
+            max_abs_correction=cfg.d_correction_slow_max_abs,
+        ),
+        fast=dcorr.FastLayerConfig(
+            enabled=cfg.d_correction_fast_enabled,
+            alpha=cfg.d_correction_fast_alpha,
+            shrink_k=cfg.d_correction_fast_shrink_k,
+            min_observations=cfg.d_correction_fast_min_observations,
+            max_abs_correction=cfg.d_correction_fast_max_abs,
+        ),
+        total_max_abs_correction=cfg.d_correction_total_max_abs,
+        cache=dcorr.DCorrectionCacheConfig(
+            fallback=cfg.d_correction_cache_fallback,
+            versions_to_keep=cfg.d_correction_cache_versions_to_keep,
+        ),
+    ).validated()
+
+
+def apply_d_correction_config_from_mapping(
+    cfg: ModelConfig,
+    raw: Optional[Dict[str, Any]],
+) -> ModelConfig:
+    """Наложить блок d_correction из model_config.json на ModelConfig."""
+    if not raw:
+        return cfg
+    parsed = dcorr.d_correction_config_from_mapping(raw)
+    return replace(
+        cfg,
+        d_correction_mode=parsed.mode,
+        d_correction_slow_enabled=parsed.slow.enabled,
+        d_correction_slow_alpha=parsed.slow.alpha,
+        d_correction_slow_shrink_k=parsed.slow.shrink_k,
+        d_correction_slow_min_observations=parsed.slow.min_observations,
+        d_correction_slow_max_abs=parsed.slow.max_abs_correction,
+        d_correction_fast_enabled=parsed.fast.enabled,
+        d_correction_fast_alpha=parsed.fast.alpha,
+        d_correction_fast_shrink_k=parsed.fast.shrink_k,
+        d_correction_fast_min_observations=parsed.fast.min_observations,
+        d_correction_fast_max_abs=parsed.fast.max_abs_correction,
+        d_correction_total_max_abs=parsed.total_max_abs_correction,
+        d_correction_cache_fallback=parsed.cache.fallback,
+        d_correction_cache_versions_to_keep=parsed.cache.versions_to_keep,
+    )
+
+
+def build_d_correction_book_for_matches(
+    matches: Sequence[PreparedMatch],
+    strength: StrengthModel,
+    cfg: ModelConfig,
+) -> dcorr.DCorrectionBook:
+    dcfg = resolve_d_correction_config(cfg)
+    walk: List[dcorr.DCorrectionWalkMatch] = []
+    for m in matches:
+        if m.home_id not in strength.ratings or m.away_id not in strength.ratings:
+            continue
+        if m.diff_goals is None:
+            continue
+        derby = _is_derby_match(m.raw) and m.i_home == 1
+        h_eff = effective_home_advantage(strength, cfg, neutral=m.i_home == 0, derby=derby)
+        d_base = (
+            strength.ratings.get(m.home_id, 0.0)
+            - strength.ratings.get(m.away_id, 0.0)
+            + h_eff
+        )
+        walk.append(
+            dcorr.DCorrectionWalkMatch(
+                match_date=m.raw.date,
+                home_id=m.home_id,
+                away_id=m.away_id,
+                d_model_base=d_base,
+                d_market=float(m.diff_goals),
+            )
+        )
+    walk.sort(key=lambda w: (w.match_date is None, w.match_date or date.min, w.home_id, w.away_id))
+    return dcorr.build_d_correction_walk(walk, dcfg)
 
 
 def resolve_momentum_config(
@@ -1646,10 +1752,32 @@ def train_full_model(
     s_momentum_book = build_s_momentum_book_for_matches(
         matches, strength, goals, cfg, league_id=league_id, league_name=league_name,
     )
+    dcorr_cfg = resolve_d_correction_config(cfg)
+    d_correction_book = build_d_correction_book_for_matches(matches, strength, cfg)
+    model_version = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if cfg.d_correction_publish_cache and dcorr_cfg.mode == dcorr.MODE_SLOW_FAST:
+        try:
+            payload = dcorr.build_cache_payload(
+                strength_ratings=strength.ratings,
+                home_advantage=strength.home_advantage,
+                book=d_correction_book,
+                cfg=dcorr_cfg,
+                league_id=str(league_id) if league_id is not None else None,
+                league_name=league_name,
+                model_version=model_version,
+            )
+            dcorr.publish_d_model_cache(payload, dcorr_cfg)
+            log_d_correction_monitor(d_correction_book, model_version)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "D model cache publish failed — keeping previous active version"
+            )
     model = TrainedModel(
         strength, goals, calibration, draw, cfg, team_names, d_clamp, cal_diag, None, None, None,
         momentum_book=momentum_book, momentum_cfg=mcfg,
         s_momentum_book=s_momentum_book, s_momentum_cfg=scfg,
+        d_correction_book=d_correction_book, d_correction_cfg=dcorr_cfg,
+        d_model_version=model_version,
     )
     draw_q_diag = draw_q_diagnostics(model, matches)
     log_draw_q_diagnostics(draw_q_diag)
@@ -1662,7 +1790,27 @@ def train_full_model(
         d_clamp, cal_diag, draw_q_diag, sd_diag, draw_harm_diag,
         momentum_book=momentum_book, momentum_cfg=mcfg,
         s_momentum_book=s_momentum_book, s_momentum_cfg=scfg,
+        d_correction_book=d_correction_book, d_correction_cfg=dcorr_cfg,
+        d_model_version=model_version,
     ), matches
+
+
+def log_d_correction_monitor(book: dcorr.DCorrectionBook, model_version: str) -> None:
+    mon = book.monitor or {}
+    logging.getLogger(__name__).info(
+        "d_correction monitor version=%s mode=%s teams=%s slow=%s fast=%s "
+        "mean|slow|=%.3f max|slow|=%.3f mean|fast|=%.3f max|fast|=%.3f clamp_hits=%s",
+        model_version,
+        mon.get("mode"),
+        mon.get("n_teams"),
+        mon.get("n_teams_with_slow"),
+        mon.get("n_teams_with_fast"),
+        float(mon.get("mean_abs_slow") or 0.0),
+        float(mon.get("max_abs_slow") or 0.0),
+        float(mon.get("mean_abs_fast") or 0.0),
+        float(mon.get("max_abs_fast") or 0.0),
+        mon.get("clamp_hits"),
+    )
 
 
 @dataclass
@@ -1713,6 +1861,22 @@ class Prediction:
     score_11_poisson: Optional[float] = None
     score_00_final: Optional[float] = None
     score_11_final: Optional[float] = None
+    # slow/fast D correction diagnostics (AC10)
+    d_correction_mode: Optional[str] = None
+    model_version: Optional[str] = None
+    d_slow: Optional[float] = None
+    slow_bias_home: Optional[float] = None
+    slow_bias_away: Optional[float] = None
+    fast_bias_home: Optional[float] = None
+    fast_bias_away: Optional[float] = None
+    d_fast_correction: Optional[float] = None
+    slow_observations_home: Optional[int] = None
+    slow_observations_away: Optional[int] = None
+    fast_observations_home: Optional[int] = None
+    fast_observations_away: Optional[int] = None
+    slow_shrink_factor_home: Optional[float] = None
+    slow_shrink_factor_away: Optional[float] = None
+    d_correction: Optional[dcorr.DCorrectionSnapshot] = None
 
 
 def resolve_dynamic_dc_config(cfg: ModelConfig) -> ddc.DynamicDcGammaConfig:
@@ -1773,36 +1937,143 @@ def predict_match(
     s_model_base = lh_ad + la_ad
 
     mom_snap: Optional[mom.MomentumSnapshot] = None
+    dcorr_snap: Optional[dcorr.DCorrectionSnapshot] = None
     d_for_cal = d_model_base
-    book = model.momentum_book
-    mcfg = model.momentum_cfg or resolve_momentum_config(cfg)
-    if apply_momentum and book is not None:
-        key = mom.match_key(match_date, home_id, away_id) if match_date else None
-        rec = book.records.get(key) if (use_momentum_lookup and key) else None
-        if rec is not None:
-            mom_snap = mom.apply_momentum_to_d(
-                d_model_base,
-                rec.ema_home_before,
-                rec.ema_away_before,
-                mcfg,
-                home_matches=rec.home_matches_count,
-                away_matches=rec.away_matches_count,
+    dcorr_cfg = model.d_correction_cfg or resolve_d_correction_config(cfg)
+    mode = dcorr_cfg.mode
+
+    # --- D correction architecture ---
+    if mode == dcorr.MODE_DISABLED or not apply_momentum:
+        # disabled: plain base; also honor apply_momentum=False as "no dynamic D"
+        if mode == dcorr.MODE_DISABLED or (
+            mode == dcorr.MODE_SLOW_FAST and not apply_momentum
+        ):
+            dcorr_snap = dcorr.DCorrectionSnapshot(
+                d_model_base=d_model_base,
+                slow_bias_home=0.0, slow_bias_away=0.0, d_slow=d_model_base,
+                fast_bias_home=0.0, fast_bias_away=0.0, d_fast_correction=0.0,
+                d_model_dynamic=d_model_base, total_correction=0.0, mode=mode,
+                slow_observations_home=0, slow_observations_away=0,
+                fast_observations_home=0, fast_observations_away=0,
+                slow_shrink_factor_home=0.0, slow_shrink_factor_away=0.0,
+                fast_shrink_factor_home=0.0, fast_shrink_factor_away=0.0,
             )
+            d_for_cal = d_model_base
+            mom_snap = mom.MomentumSnapshot(
+                ema_home_before=0.0, ema_away_before=0.0,
+                home_matches_count=0, away_matches_count=0,
+                dynamic_correction=0.0,
+                d_model_base=d_model_base, d_model_dynamic=d_model_base,
+                momentum_enabled=False,
+                momentum_alpha=0.0, momentum_k=0.0, momentum_max_ema=0.0,
+                ema_home_limited=0.0, ema_away_limited=0.0,
+            )
+        elif mode == dcorr.MODE_LEGACY_EMA and not apply_momentum:
+            mom_snap = mom.MomentumSnapshot(
+                ema_home_before=0.0, ema_away_before=0.0,
+                home_matches_count=0, away_matches_count=0,
+                dynamic_correction=0.0,
+                d_model_base=d_model_base, d_model_dynamic=d_model_base,
+                momentum_enabled=False,
+                momentum_alpha=(model.momentum_cfg or resolve_momentum_config(cfg)).alpha,
+                momentum_k=(model.momentum_cfg or resolve_momentum_config(cfg)).k,
+                momentum_max_ema=(model.momentum_cfg or resolve_momentum_config(cfg)).max_ema,
+                ema_home_limited=0.0, ema_away_limited=0.0,
+            )
+            d_for_cal = d_model_base
+
+    if mode == dcorr.MODE_SLOW_FAST and apply_momentum:
+        book_sf = model.d_correction_book
+        if book_sf is not None:
+            key = dcorr.match_key(match_date, home_id, away_id) if match_date else None
+            rec = book_sf.records.get(key) if (use_momentum_lookup and key) else None
+            if rec is not None:
+                dcorr_snap = dcorr.DCorrectionSnapshot(
+                    d_model_base=d_model_base,
+                    slow_bias_home=rec.slow_bias_home,
+                    slow_bias_away=rec.slow_bias_away,
+                    d_slow=d_model_base + rec.slow_bias_home - rec.slow_bias_away,
+                    fast_bias_home=rec.fast_bias_home,
+                    fast_bias_away=rec.fast_bias_away,
+                    d_fast_correction=rec.d_fast_correction,
+                    d_model_dynamic=d_model_base + rec.total_correction,
+                    total_correction=rec.total_correction,
+                    mode=rec.mode,
+                    slow_observations_home=rec.slow_observations_home,
+                    slow_observations_away=rec.slow_observations_away,
+                    fast_observations_home=rec.fast_observations_home,
+                    fast_observations_away=rec.fast_observations_away,
+                    slow_shrink_factor_home=rec.slow_shrink_factor_home,
+                    slow_shrink_factor_away=rec.slow_shrink_factor_away,
+                    fast_shrink_factor_home=rec.fast_shrink_factor_home,
+                    fast_shrink_factor_away=rec.fast_shrink_factor_away,
+                    clamped_total=rec.clamped_total,
+                )
+            else:
+                dcorr_snap = book_sf.peek(
+                    home_id=home_id, away_id=away_id, d_model_base=d_model_base,
+                )
+            d_for_cal = dcorr_snap.d_model_dynamic
         else:
-            mom_snap = book.peek(
-                home_id=home_id, away_id=away_id, d_model_base=d_model_base, match_date=match_date,
+            dcorr_snap = dcorr.apply_slow_fast_to_d(
+                d_model_base,
+                dcorr.TeamCorrectionState(),
+                dcorr.TeamCorrectionState(),
+                dcorr_cfg,
             )
-        d_for_cal = mom_snap.d_model_dynamic
-    elif not apply_momentum:
+            d_for_cal = d_model_base
+        # legacy momentum snapshot left empty / zero for compatibility
         mom_snap = mom.MomentumSnapshot(
             ema_home_before=0.0, ema_away_before=0.0,
             home_matches_count=0, away_matches_count=0,
-            dynamic_correction=0.0,
-            d_model_base=d_model_base, d_model_dynamic=d_model_base,
+            dynamic_correction=dcorr_snap.total_correction,
+            d_model_base=d_model_base, d_model_dynamic=d_for_cal,
             momentum_enabled=False,
-            momentum_alpha=mcfg.alpha, momentum_k=mcfg.k, momentum_max_ema=mcfg.max_ema,
+            momentum_alpha=0.0, momentum_k=0.0, momentum_max_ema=0.0,
             ema_home_limited=0.0, ema_away_limited=0.0,
         )
+    elif mode == dcorr.MODE_LEGACY_EMA and apply_momentum:
+        book = model.momentum_book
+        mcfg = model.momentum_cfg or resolve_momentum_config(cfg)
+        if book is not None:
+            key = mom.match_key(match_date, home_id, away_id) if match_date else None
+            rec = book.records.get(key) if (use_momentum_lookup and key) else None
+            if rec is not None:
+                mom_snap = mom.apply_momentum_to_d(
+                    d_model_base,
+                    rec.ema_home_before,
+                    rec.ema_away_before,
+                    mcfg,
+                    home_matches=rec.home_matches_count,
+                    away_matches=rec.away_matches_count,
+                )
+            else:
+                mom_snap = book.peek(
+                    home_id=home_id, away_id=away_id, d_model_base=d_model_base, match_date=match_date,
+                )
+            d_for_cal = mom_snap.d_model_dynamic
+        elif mom_snap is None:
+            mom_snap = mom.MomentumSnapshot(
+                ema_home_before=0.0, ema_away_before=0.0,
+                home_matches_count=0, away_matches_count=0,
+                dynamic_correction=0.0,
+                d_model_base=d_model_base, d_model_dynamic=d_model_base,
+                momentum_enabled=False,
+                momentum_alpha=mcfg.alpha, momentum_k=mcfg.k, momentum_max_ema=mcfg.max_ema,
+                ema_home_limited=0.0, ema_away_limited=0.0,
+            )
+    elif mode == dcorr.MODE_DISABLED:
+        d_for_cal = d_model_base
+        if mom_snap is None:
+            mom_snap = mom.MomentumSnapshot(
+                ema_home_before=0.0, ema_away_before=0.0,
+                home_matches_count=0, away_matches_count=0,
+                dynamic_correction=0.0,
+                d_model_base=d_model_base, d_model_dynamic=d_model_base,
+                momentum_enabled=False,
+                momentum_alpha=0.0, momentum_k=0.0, momentum_max_ema=0.0,
+                ema_home_limited=0.0, ema_away_limited=0.0,
+            )
 
     s_mom_snap: Optional[smom.SMomentumSnapshot] = None
     s_for_cal = s_model_base
@@ -1910,8 +2181,14 @@ def predict_match(
         draw_target=draw_target,
         draw_diagnostics=draw_diag,
         d_model_base=d_model_base,
-        d_model_dynamic=mom_snap.d_model_dynamic if mom_snap else d_model_base,
-        dynamic_correction=mom_snap.dynamic_correction if mom_snap else 0.0,
+        d_model_dynamic=(
+            dcorr_snap.d_model_dynamic if dcorr_snap is not None
+            else (mom_snap.d_model_dynamic if mom_snap else d_model_base)
+        ),
+        dynamic_correction=(
+            dcorr_snap.total_correction if dcorr_snap is not None
+            else (mom_snap.dynamic_correction if mom_snap else 0.0)
+        ),
         momentum=mom_snap,
         s_model_base=s_model_base,
         s_model_dynamic=s_mom_snap.s_model_dynamic if s_mom_snap else s_model_base,
@@ -1941,6 +2218,21 @@ def predict_match(
         score_11_poisson=score_11_pois,
         score_00_final=score_00_fin,
         score_11_final=score_11_fin,
+        d_correction_mode=mode,
+        model_version=model.d_model_version,
+        d_slow=dcorr_snap.d_slow if dcorr_snap else None,
+        slow_bias_home=dcorr_snap.slow_bias_home if dcorr_snap else None,
+        slow_bias_away=dcorr_snap.slow_bias_away if dcorr_snap else None,
+        fast_bias_home=dcorr_snap.fast_bias_home if dcorr_snap else None,
+        fast_bias_away=dcorr_snap.fast_bias_away if dcorr_snap else None,
+        d_fast_correction=dcorr_snap.d_fast_correction if dcorr_snap else None,
+        slow_observations_home=dcorr_snap.slow_observations_home if dcorr_snap else None,
+        slow_observations_away=dcorr_snap.slow_observations_away if dcorr_snap else None,
+        fast_observations_home=dcorr_snap.fast_observations_home if dcorr_snap else None,
+        fast_observations_away=dcorr_snap.fast_observations_away if dcorr_snap else None,
+        slow_shrink_factor_home=dcorr_snap.slow_shrink_factor_home if dcorr_snap else None,
+        slow_shrink_factor_away=dcorr_snap.slow_shrink_factor_away if dcorr_snap else None,
+        d_correction=dcorr_snap,
     )
 
 
