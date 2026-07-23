@@ -268,5 +268,37 @@
       "fallback": "last_local",
       "versions_to_keep": 2
     }
+  },
+  "rating": {
+    "mode": "standard_wls",
+    "confidence_k": 8.0,
+    "lambda_mode": "confidence",
+    "lambda_min": 0.02,
+    "lambda_max": 0.5,
+    "lambda_base": 0.1,
+    "n_floor": 1.0,
+    "effective_n_iters": 2,
+    "prior": {
+      "mode": "league_mean",
+      "prior_reliability": 0.7,
+      "promoted_team_prior": null,
+      "promoted_reference_n": 3,
+      "fallback_to_league_mean": true
+    },
+    "time_decay": {
+      "enabled": false,
+      "half_life_days": 120,
+      "suppress_season_weight": true,
+      "byLeague": {}
+    },
+    "volatility": {
+      "enabled": false,
+      "volatility_scale": 1.0
+    },
+    "publish_cache": false,
+    "cache": {
+      "fallback": "last_local",
+      "versions_to_keep": 2
+    }
   }
 }
