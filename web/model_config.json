@@ -270,7 +270,7 @@
     }
   },
   "rating": {
-    "mode": "standard_wls",
+    "mode": "hierarchical_wls",
     "confidence_k": 8.0,
     "lambda_mode": "confidence",
     "lambda_min": 0.02,
@@ -286,7 +286,7 @@
       "fallback_to_league_mean": true
     },
     "time_decay": {
-      "enabled": false,
+      "enabled": true,
       "half_life_days": 120,
       "suppress_season_weight": true,
       "byLeague": {}
@@ -295,7 +295,7 @@
       "enabled": false,
       "volatility_scale": 1.0
     },
-    "publish_cache": false,
+    "publish_cache": true,
     "cache": {
       "fallback": "last_local",
       "versions_to_keep": 2

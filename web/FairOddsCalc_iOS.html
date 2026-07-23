@@ -3809,7 +3809,7 @@ bash scripts/update_and_serve.sh --start</div>
       const td = (raw.time_decay || raw.timeDecay || {});
       const vol = (raw.volatility || {});
       return {
-        mode: String(raw.mode || 'standard_wls').toLowerCase(),
+        mode: String(raw.mode || 'hierarchical_wls').toLowerCase(),
         confidenceK: raw.confidence_k != null ? Number(raw.confidence_k) : (raw.confidenceK != null ? Number(raw.confidenceK) : 8),
         lambdaMode: String(raw.lambda_mode || raw.lambdaMode || 'confidence').toLowerCase(),
         lambdaMin: raw.lambda_min != null ? Number(raw.lambda_min) : (raw.lambdaMin != null ? Number(raw.lambdaMin) : 0.02),
@@ -3823,7 +3823,7 @@ bash scripts/update_and_serve.sh --start</div>
           : (prior.promotedTeamPrior != null ? Number(prior.promotedTeamPrior) : null),
         promotedN: prior.promoted_reference_n != null ? Number(prior.promoted_reference_n)
           : (prior.promotedReferenceN != null ? Number(prior.promotedReferenceN) : 3),
-        timeDecayEnabled: !!(td.enabled),
+        timeDecayEnabled: td.enabled != null ? !!td.enabled : true,
         halfLifeDays: td.half_life_days != null ? Number(td.half_life_days) : (td.halfLifeDays != null ? Number(td.halfLifeDays) : 120),
         suppressSeasonWeight: td.suppress_season_weight != null ? !!td.suppress_season_weight
           : (td.suppressSeasonWeight != null ? !!td.suppressSeasonWeight : true),

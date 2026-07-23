@@ -188,8 +188,8 @@ class ModelConfig:
     d_correction_cache_versions_to_keep: int = 2
     d_correction_publish_cache: bool = False  # opt-in filesystem publish after train
 
-    # Regularized hierarchical WLS (rating.mode); default keeps current WLS
-    rating_mode: str = hwls.MODE_STANDARD
+    # Regularized hierarchical WLS (rating.mode); production default
+    rating_mode: str = hwls.MODE_HIERARCHICAL
     rating_confidence_k: float = 8.0
     rating_lambda_mode: str = hwls.LAMBDA_MODE_CONFIDENCE
     rating_lambda_min: float = 0.02
@@ -200,12 +200,12 @@ class ModelConfig:
     rating_prior_mode: str = hwls.PRIOR_LEAGUE_MEAN
     rating_prior_reliability: float = 0.70
     rating_promoted_team_prior: Optional[float] = None
-    rating_time_decay_enabled: bool = False
+    rating_time_decay_enabled: bool = True
     rating_half_life_days: float = 120.0
     rating_suppress_season_weight: bool = True
     rating_volatility_enabled: bool = False
     rating_volatility_scale: float = 1.0
-    rating_publish_cache: bool = False
+    rating_publish_cache: bool = True
     rating_cache_versions_to_keep: int = 2
     rating_cache_fallback: str = hwls.FALLBACK_LAST_LOCAL
 
