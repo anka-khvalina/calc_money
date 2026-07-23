@@ -3338,6 +3338,7 @@ bash scripts/update_and_serve.sh --start</div>
         ),
         compare: raw.compare || {},
         momentum: raw.momentum || {},
+        d_correction: raw.d_correction || raw.dCorrection || {},
         dynamic_s_ema: raw.dynamic_s_ema || raw.sMomentum || {},
         dynamic_dc_gamma: raw.dynamic_dc_gamma || raw.dynamicDcGamma || {},
         configSource: 'model_config.json',
@@ -4215,8 +4216,9 @@ bash scripts/update_and_serve.sh --start</div>
       const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
       const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
       const dmBase=R(homeId)-R(awayId)+hEff;
-      const mom=gmMomCorrectD(model, homeId, awayId, dmBase, opt||{});
+      const mom=gmResolveCorrectedD(model, homeId, awayId, dmBase, opt||{});
       const dm=mom.dModelDynamic;
+      const dcorr=mom.dCorrection;
       const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
       const smBase=lhAD+laAD;
       const smom=gmMomCorrectS(model, homeId, awayId, smBase, opt||{});
@@ -4233,6 +4235,7 @@ bash scripts/update_and_serve.sh --start</div>
         homeId,awayId,homeName,awayName,lh,la,df,sf,mat,matDiag,
         alphaFinal:alpha, rhoFinal:rho,
         dModelBase: mom.dModelBase, dModelDynamic: mom.dModelDynamic, dynamicCorrection: mom.dynamicCorrection, momentum: mom,
+        dCorrectionMode: mom.mode || 'legacy_ema', dCorrection: dcorr || null,
         sModelBase: smom.sModelBase, sModelDynamic: smom.sModelDynamic, sDynamicCorrection: smom.dynamicCorrection, sMomentum: smom,
         lambdaHomeRaw: lamPack.lhRaw, lambdaAwayRaw: lamPack.laRaw, lambdaClippingApplied: lamPack.clipped,
         selectedDistribution: model.selectedDistribution || (alpha>1e-9?'negbin':'poisson_like'),
@@ -5055,6 +5058,7 @@ bash scripts/update_and_serve.sh --start</div>
         const leagueName = (raw[0]&&raw[0].league)!=null ? raw[0].league : null;
         gmBuildMomentumBook(model, ms.concat(extra), leagueId, leagueName);
         gmBuildSMomentumBook(model, ms.concat(extra), leagueId, leagueName);
+        gmBuildDCorrectionBook(model, ms.concat(extra));
       }catch(e){ console.warn('momentum build', e); }
       return model;
     }
@@ -5210,6 +5214,174 @@ bash scripts/update_and_serve.sh --start</div>
         }
       }
       return gmMomPeek(book, homeId, awayId, dBase);
+    }
+
+    /* ---- Slow / fast D correction (feature: d_correction.mode) ---- */
+    function gmDCorrCfgFromGlobal(){
+      const raw = (GM_MODEL_CFG && GM_MODEL_CFG.d_correction) || (GM_MATRIX_CFG && GM_MATRIX_CFG.d_correction) || {};
+      const slow = raw.slow || {};
+      const fast = raw.fast || {};
+      const total = raw.total || {};
+      return {
+        mode: String(raw.mode || 'legacy_ema').toLowerCase(),
+        slow: {
+          enabled: slow.enabled !== false,
+          alpha: slow.alpha != null ? Number(slow.alpha) : 0.12,
+          shrinkK: slow.shrink_k != null ? Number(slow.shrink_k) : (slow.shrinkK != null ? Number(slow.shrinkK) : 12),
+          minObs: slow.min_observations != null ? Number(slow.min_observations) : (slow.minObservations != null ? Number(slow.minObservations) : 5),
+          maxAbs: slow.max_abs_correction != null ? Number(slow.max_abs_correction) : (slow.maxAbsCorrection != null ? Number(slow.maxAbsCorrection) : 0.35),
+        },
+        fast: {
+          enabled: fast.enabled !== false,
+          alpha: fast.alpha != null ? Number(fast.alpha) : 0.40,
+          shrinkK: fast.shrink_k != null ? Number(fast.shrink_k) : (fast.shrinkK != null ? Number(fast.shrinkK) : 6),
+          minObs: fast.min_observations != null ? Number(fast.min_observations) : (fast.minObservations != null ? Number(fast.minObservations) : 2),
+          maxAbs: fast.max_abs_correction != null ? Number(fast.max_abs_correction) : (fast.maxAbsCorrection != null ? Number(fast.maxAbsCorrection) : 0.40),
+        },
+        totalMaxAbs: total.max_abs_correction != null ? Number(total.max_abs_correction)
+          : (raw.total_max_abs_correction != null ? Number(raw.total_max_abs_correction) : 0.60),
+      };
+    }
+    function gmDCorrShrink(n, k){ return n > 0 ? n / (n + k) : 0; }
+    function gmDCorrBias(st, layer, cfg){
+      const L = cfg[layer];
+      if(!L.enabled) return {bias:0, shrink:0, n: st ? (layer==='slow'?st.nS:st.nF) : 0};
+      const n = st ? (layer==='slow' ? st.nS : st.nF) : 0;
+      const ema = st ? (layer==='slow' ? st.emaS : st.emaF) : 0;
+      if(n < L.minObs) return {bias:0, shrink:0, n};
+      const sh = gmDCorrShrink(n, L.shrinkK);
+      const raw = ema * sh;
+      return {bias: gmMomClamp(raw, -L.maxAbs, L.maxAbs), shrink: sh, n};
+    }
+    function gmDCorrApply(dBase, homeSt, awaySt, cfg){
+      if(cfg.mode !== 'slow_fast'){
+        return {
+          dModelBase:dBase, slowBiasHome:0, slowBiasAway:0, dSlow:dBase,
+          fastBiasHome:0, fastBiasAway:0, dFastCorrection:0,
+          dModelDynamic:dBase, totalCorrection:0, mode:cfg.mode,
+          slowObsHome:0, slowObsAway:0, fastObsHome:0, fastObsAway:0,
+        };
+      }
+      const sh = gmDCorrBias(homeSt, 'slow', cfg);
+      const sa = gmDCorrBias(awaySt, 'slow', cfg);
+      const dSlow = dBase + sh.bias - sa.bias;
+      const fh = gmDCorrBias(homeSt, 'fast', cfg);
+      const fa = gmDCorrBias(awaySt, 'fast', cfg);
+      let dFast = fh.bias - fa.bias;
+      let total = (sh.bias - sa.bias) + dFast;
+      if(Math.abs(total) > cfg.totalMaxAbs){
+        const scale = cfg.totalMaxAbs / Math.abs(total);
+        total *= scale; dFast = total - (sh.bias - sa.bias);
+      }
+      return {
+        dModelBase:dBase, slowBiasHome:sh.bias, slowBiasAway:sa.bias, dSlow,
+        fastBiasHome:fh.bias, fastBiasAway:fa.bias, dFastCorrection:dFast,
+        dModelDynamic:dBase + total, totalCorrection:total, mode:cfg.mode,
+        slowObsHome:sh.n, slowObsAway:sa.n, fastObsHome:fh.n, fastObsAway:fa.n,
+        slowShrinkHome:sh.shrink, slowShrinkAway:sa.shrink,
+      };
+    }
+    function gmBuildDCorrectionBook(model, preparedMs){
+      const cfg = gmDCorrCfgFromGlobal();
+      const book = { cfg, teams:{}, records:{} };
+      model.dCorrectionCfg = cfg;
+      model.dCorrectionMode = cfg.mode;
+      if(cfg.mode !== 'slow_fast'){
+        model.dCorrection = book;
+        return book;
+      }
+      const ensure = tid => {
+        if(!book.teams[tid]) book.teams[tid]={emaS:0,nS:0,emaF:0,nF:0};
+        return book.teams[tid];
+      };
+      const st = model.st;
+      const rows = (preparedMs||[]).filter(m => m.D!=null && m.home && m.away && st.ratings && (m.home in st.ratings) && (m.away in st.ratings));
+      rows.sort((a,b)=>{
+        const da=(a.raw&&a.raw.date)||'', db=(b.raw&&b.raw.date)||'';
+        if(da!==db) return da<db?-1:1;
+        return String(a.home).localeCompare(String(b.home)) || String(a.away).localeCompare(String(b.away));
+      });
+      const buckets = new Map();
+      for(const m of rows){
+        const d = (m.raw&&m.raw.date) ? String(m.raw.date).slice(0,10) : '';
+        if(!buckets.has(d)) buckets.set(d, []);
+        buckets.get(d).push(m);
+      }
+      for(const [, group] of buckets){
+        const pending = [];
+        for(const m of group){
+          const hEff = gmEffectiveH(st, model.cfg || {}, !!(m.raw&&m.raw.neutral), !!(m.raw&&m.raw.derby));
+          const dBase = st.ratings[m.home] - st.ratings[m.away] + hEff;
+          const ht = ensure(m.home), at = ensure(m.away);
+          const snap = gmDCorrApply(dBase, ht, at, cfg);
+          const key = gmMomMatchKey((m.raw&&m.raw.date)||'', m.home, m.away);
+          book.records[key] = Object.assign({matchKey:key, homeId:m.home, awayId:m.away, dMarket:m.D}, snap);
+          pending.push({m, snap, dBase});
+        }
+        for(const {m, snap, dBase} of pending){
+          const ht = ensure(m.home), at = ensure(m.away);
+          const residH = m.D - dBase;
+          const residA = -residH;
+          const residSlowH = m.D - snap.dSlow;
+          const residSlowA = -residSlowH;
+          if(cfg.slow.enabled){
+            ht.emaS = gmMomUpdate(ht.emaS, residH, cfg.slow.alpha); ht.nS += 1;
+            at.emaS = gmMomUpdate(at.emaS, residA, cfg.slow.alpha); at.nS += 1;
+          }
+          if(cfg.fast.enabled){
+            ht.emaF = gmMomUpdate(ht.emaF, residSlowH, cfg.fast.alpha); ht.nF += 1;
+            at.emaF = gmMomUpdate(at.emaF, residSlowA, cfg.fast.alpha); at.nF += 1;
+          }
+        }
+      }
+      model.dCorrection = book;
+      return book;
+    }
+    function gmDCorrCorrectD(model, homeId, awayId, dBase, opt){
+      const cfg = (model && model.dCorrectionCfg) || gmDCorrCfgFromGlobal();
+      if(cfg.mode === 'disabled' || (opt && opt.applyMomentum===false)){
+        return gmDCorrApply(dBase, null, null, Object.assign({}, cfg, {mode:'disabled'}));
+      }
+      if(cfg.mode !== 'slow_fast'){
+        // legacy_ema handled by caller via gmMomCorrectD
+        return null;
+      }
+      const book = model && model.dCorrection;
+      if(!book) return gmDCorrApply(dBase, null, null, cfg);
+      const dateStr = opt && opt.matchDate ? String(opt.matchDate).slice(0,10) : null;
+      if(dateStr && opt && opt.useMomentumLookup!==false){
+        const rec = book.records[gmMomMatchKey(dateStr, homeId, awayId)];
+        if(rec) return rec;
+      }
+      const ht = book.teams[homeId] || {emaS:0,nS:0,emaF:0,nF:0};
+      const at = book.teams[awayId] || {emaS:0,nS:0,emaF:0,nF:0};
+      return gmDCorrApply(dBase, ht, at, cfg);
+    }
+    /** Resolve D by d_correction.mode: slow_fast | disabled | legacy_ema (default). */
+    function gmResolveCorrectedD(model, homeId, awayId, dBase, opt){
+      const cfg = (model && model.dCorrectionCfg) || gmDCorrCfgFromGlobal();
+      const mode = String(cfg.mode || 'legacy_ema').toLowerCase();
+      if(mode === 'slow_fast'){
+        const sf = gmDCorrCorrectD(model, homeId, awayId, dBase, opt||{}) || gmDCorrApply(dBase, null, null, cfg);
+        return {
+          dModelBase: sf.dModelBase, dModelDynamic: sf.dModelDynamic,
+          dynamicCorrection: sf.totalCorrection != null ? sf.totalCorrection : 0,
+          momentumEnabled: false, mode: 'slow_fast', dCorrection: sf,
+          emaHomeBefore: 0, emaAwayBefore: 0,
+          homeMatches: sf.slowObsHome || 0, awayMatches: sf.slowObsAway || 0,
+        };
+      }
+      if(mode === 'disabled'){
+        const mcfg = (model && model.momentumCfg) || gmMomentumCfgFromGlobal();
+        const empty = gmMomApplyToD(dBase, 0, 0, Object.assign({}, mcfg, {enabled:false}), 0, 0);
+        empty.mode = 'disabled';
+        empty.dCorrection = gmDCorrApply(dBase, null, null, Object.assign({}, cfg, {mode:'disabled'}));
+        return empty;
+      }
+      const mom = gmMomCorrectD(model, homeId, awayId, dBase, opt||{});
+      mom.mode = 'legacy_ema';
+      mom.dCorrection = null;
+      return mom;
     }
 
     function gmSMomentumCfgFromGlobal(leagueId, leagueName){
@@ -8137,8 +8309,9 @@ bash scripts/update_and_serve.sh --start</div>
       const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
       const kHg=Math.abs(st.H)>1e-9?hEff/st.H:1;
       const dmBase=R(homeId)-R(awayId)+hEff;
-      const mom=gmMomCorrectD(model, homeId, awayId, dmBase, opt||{});
+      const mom=gmResolveCorrectedD(model, homeId, awayId, dmBase, opt||{});
       const dm=mom.dModelDynamic;
+      const dcorr=mom.dCorrection;
       const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
       const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
       const smBase=lhAD+laAD;
@@ -8212,6 +8385,7 @@ bash scripts/update_and_serve.sh --start</div>
         score00Final: score00Fin,
         score11Final: score11Fin,
         dModelBase: mom.dModelBase, dModelDynamic: mom.dModelDynamic, dynamicCorrection: mom.dynamicCorrection, momentum: mom,
+        dCorrectionMode: mom.mode || 'legacy_ema', dCorrection: dcorr || null,
         sModelBase: smom.sModelBase, sModelDynamic: smom.sModelDynamic, sDynamicCorrection: smom.dynamicCorrection, sMomentum: smom,
         lambdaHomeRaw: lamPack.lhRaw, lambdaAwayRaw: lamPack.laRaw, lambdaClippingApplied: lamPack.clipped,
         selectedDistribution:'poisson_dc',
@@ -8240,6 +8414,7 @@ bash scripts/update_and_serve.sh --start</div>
         const leagueName = (raw[0]&&raw[0].league)!=null ? raw[0].league : null;
         gmBuildMomentumBook(model, ms, leagueId, leagueName);
         gmBuildSMomentumBook(model, ms, leagueId, leagueName);
+        gmBuildDCorrectionBook(model, ms);
       }catch(e){ console.warn('legacy momentum build', e); }
       return model;
     }
@@ -8477,7 +8652,7 @@ bash scripts/update_and_serve.sh --start</div>
       const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
       const kHg=Math.abs(st.H)>1e-9?hEff/st.H:1;
       const dmBase=R(homeId)-R(awayId)+hEff;
-      const mom=gmMomCorrectD(model, homeId, awayId, dmBase, opt||{});
+      const mom=gmResolveCorrectedD(model, homeId, awayId, dmBase, opt||{});
       const dm=mom.dModelDynamic;
       const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
       const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
@@ -8489,7 +8664,10 @@ bash scripts/update_and_serve.sh --start</div>
       let df=gmClampD(dc.dUsed,sf);
       const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
       const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
-      return {lh,la,sf,df,cfg,cal,momentum:mom,sMomentum:smom,lambdaClippingApplied:lamPack.clipped};
+      return {
+        lh,la,sf,df,cfg,cal,momentum:mom,sMomentum:smom,lambdaClippingApplied:lamPack.clipped,
+        dCorrectionMode: mom.mode || 'legacy_ema', dCorrection: mom.dCorrection || null,
+      };
     }
     function irBuildMatrixRecipe(model, lh, la, recipe, dFinal){
       const maxG=(model.cfg&&model.cfg.maxGoals)||GM_MAX;
@@ -9199,6 +9377,8 @@ bash scripts/update_and_serve.sh --start</div>
               gmBuildMomentumBook(modelA, msA, leagueId, leagueName);
               gmBuildSMomentumBook(modelL, msL, leagueId, leagueName);
               gmBuildSMomentumBook(modelA, msA, leagueId, leagueName);
+              gmBuildDCorrectionBook(modelL, msL);
+              gmBuildDCorrectionBook(modelA, msA);
             }catch(eMom){ console.warn('report momentum', eMom); }
             try{
               const g = modelL && modelL.cal ? gmNormalizeCal(modelL.cal).gamma : null;

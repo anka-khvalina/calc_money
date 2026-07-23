@@ -224,11 +224,49 @@
     "source": "D_model_final",
     "default_gamma": 0.09,
     "segments": [
-      { "max_abs_d": 0.5, "gamma": 0.11 },
-      { "max_abs_d": 1.0, "gamma": 0.07 },
-      { "max_abs_d": 1.5, "gamma": 0.02 },
-      { "max_abs_d": null, "gamma": 0.00 }
+      {
+        "max_abs_d": 0.5,
+        "gamma": 0.11
+      },
+      {
+        "max_abs_d": 1.0,
+        "gamma": 0.07
+      },
+      {
+        "max_abs_d": 1.5,
+        "gamma": 0.02
+      },
+      {
+        "max_abs_d": null,
+        "gamma": 0.0
+      }
     ],
     "byLeague": {}
+  },
+  "d_correction": {
+    "mode": "legacy_ema",
+    "slow": {
+      "enabled": true,
+      "method": "causal_ema",
+      "alpha": 0.12,
+      "shrink_k": 12,
+      "min_observations": 5,
+      "max_abs_correction": 0.35
+    },
+    "fast": {
+      "enabled": true,
+      "method": "residual_ema",
+      "alpha": 0.4,
+      "shrink_k": 6,
+      "min_observations": 2,
+      "max_abs_correction": 0.4
+    },
+    "total": {
+      "max_abs_correction": 0.6
+    },
+    "cache": {
+      "fallback": "last_local",
+      "versions_to_keep": 2
+    }
   }
 }
