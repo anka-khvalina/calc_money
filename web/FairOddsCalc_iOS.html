@@ -7840,14 +7840,6 @@ bash scripts/update_and_serve.sh --start</div>
       'AH1','AH2','AH1_at_market','AH2_at_market','AH1_delta_mkt','AH2_delta_mkt',
       'Total_market','Total_main','Total_line_delta','same_tot',
       'O','U','O_at_market','U_at_market','O_delta_mkt','U_delta_mkt',
-      // S-EMA compact diagnostics (Auto path for OU)
-      'S_model_base','S_model_final','S_dynamic_correction',
-      'EMA_S_home_before','EMA_S_away_before','S_market','Residual_S_base','Residual_S_dynamic',
-      // Dynamic DC γ(|D|) diagnostics (Legacy 1X2 path)
-      'gamma_season','gamma_effective','gamma_segment','abs_D_model_final','dynamic_dc_gamma_enabled','dc_applied',
-      'draw_probability_poisson','draw_probability_final','dc_draw_probability_delta',
-      'score_00_poisson','score_11_poisson','score_00_final','score_11_final',
-      'Total_main',
     ];
     const IR_COMPARE_COLS = [
       'Дата','Лига','Дома','Гости','etalon_layer','engine_L','engine_A','recipe',
@@ -8272,11 +8264,6 @@ bash scripts/update_and_serve.sh --start</div>
       if(!isFinite(val)) return '';
       if(IR_LINE_COLS.has(col)) return Number(val).toFixed(2);
       if(String(col).includes('alpha')||String(col).includes('rho')||col==='dc_gamma') return Number(val).toFixed(4);
-      if(/^S_model_|^S_dynamic_|^EMA_S_|^Residual_S_|^S_market$|^S_momentum$/.test(String(col))) {
-        const n=Number(val);
-        if(String(col)==='S_dynamic_correction') return (n>=0?'+':'')+n.toFixed(4);
-        return n.toFixed(4);
-      }
       if(String(col).startsWith('p_')||col==='matrix_sum'||col==='matrix_tail') return Number(val).toFixed(6);
       if(String(col).includes('model_total')) return Number(val).toFixed(4);
       return Number(val).toFixed(3);
@@ -8779,29 +8766,6 @@ bash scripts/update_and_serve.sh --start</div>
       row.U_at_market = aut ? aut.U_at_market : null;
       row.O_delta_mkt = irDelta(row.O_at_market, mkt.O);
       row.U_delta_mkt = irDelta(row.U_at_market, mkt.U);
-      const sSrc = aut || leg;
-      row.S_model_base = sSrc ? sSrc.S_model_base : null;
-      row.S_model_final = sSrc ? sSrc.S_model_final : null;
-      row.S_dynamic_correction = sSrc ? sSrc.S_dynamic_correction : null;
-      row.EMA_S_home_before = sSrc ? sSrc.EMA_S_home_before : null;
-      row.EMA_S_away_before = sSrc ? sSrc.EMA_S_away_before : null;
-      row.S_market = sSrc ? sSrc.S_market : null;
-      row.Residual_S_base = sSrc ? sSrc.Residual_S_base : null;
-      row.Residual_S_dynamic = sSrc ? sSrc.Residual_S_dynamic : null;
-      const dcSrc = leg || aut;
-      row.gamma_season = dcSrc ? dcSrc.gamma_season : null;
-      row.gamma_effective = dcSrc ? dcSrc.gamma_effective : null;
-      row.gamma_segment = dcSrc ? dcSrc.gamma_segment : null;
-      row.abs_D_model_final = dcSrc ? dcSrc.abs_D_model_final : null;
-      row.dynamic_dc_gamma_enabled = dcSrc ? dcSrc.dynamic_dc_gamma_enabled : null;
-      row.dc_applied = dcSrc ? dcSrc.dc_applied : null;
-      row.draw_probability_poisson = dcSrc ? dcSrc.draw_probability_poisson : null;
-      row.draw_probability_final = dcSrc ? dcSrc.draw_probability_final : null;
-      row.dc_draw_probability_delta = dcSrc ? dcSrc.dc_draw_probability_delta : null;
-      row.score_00_poisson = dcSrc ? dcSrc.score_00_poisson : null;
-      row.score_11_poisson = dcSrc ? dcSrc.score_11_poisson : null;
-      row.score_00_final = dcSrc ? dcSrc.score_00_final : null;
-      row.score_11_final = dcSrc ? dcSrc.score_11_final : null;
       row._mae={
         mae1x2:irAbsMae([row['1_delta'],row.X_delta,row['2_delta']]),
         maeAh:irAbsMae([row.AH1_delta_mkt,row.AH2_delta_mkt]),
@@ -8812,12 +8776,6 @@ bash scripts/update_and_serve.sh --start</div>
         sameAh: row.same_ah==='yes', sameTot: row.same_tot==='yes',
         maeHome: irAbsMae([row['1_delta']]),
         maeAway: irAbsMae([row['2_delta']]),
-        maeSBase: (row.Residual_S_base!=null && isFinite(row.Residual_S_base)) ? Math.abs(row.Residual_S_base) : null,
-        maeSDyn: (row.Residual_S_dynamic!=null && isFinite(row.Residual_S_dynamic)) ? Math.abs(row.Residual_S_dynamic) : null,
-        sImproved: (row.Residual_S_base!=null && row.Residual_S_dynamic!=null)
-          ? (Math.abs(row.Residual_S_dynamic) < Math.abs(row.Residual_S_base) - 1e-12) : null,
-        sWorsened: (row.Residual_S_base!=null && row.Residual_S_dynamic!=null)
-          ? (Math.abs(row.Residual_S_dynamic) > Math.abs(row.Residual_S_base) + 1e-12) : null,
       };
       return row;
     }
@@ -8995,13 +8953,6 @@ bash scripts/update_and_serve.sh --start</div>
           <div class="ir-sum-row"><span>OU MAE @ market total</span><span>${irFmtMae(c.maeOu)}</span></div>
           <div class="ir-sum-row"><span>Total line MAE</span><span>${irFmtMae(c.maeOuLine)}</span></div>
           <div class="ir-sum-row"><span>same Total main</span><span>${pct(c.sameTotRate)}</span></div>
-        </div>`
-        + `<div class="ir-sum-block"><div style="font-weight:600;margin-bottom:4px">Качество S-EMA</div>
-          <div class="ir-sum-row"><span>MAE_S_base</span><span>${irFmtMae(c.maeSBase)}</span></div>
-          <div class="ir-sum-row"><span>MAE_S_dynamic</span><span>${irFmtMae(c.maeSDyn)}</span></div>
-          <div class="ir-sum-row"><span>Δ MAE_S</span><span>${(c.maeSBase!=null&&c.maeSDyn!=null&&isFinite(c.maeSBase)&&isFinite(c.maeSDyn))?irFmtMae(c.maeSDyn-c.maeSBase):'—'}</span></div>
-          <div class="ir-sum-row"><span>S improved share</span><span>${pct(c.sImproveShare)}</span></div>
-          <div class="ir-sum-row"><span>params</span><span class="small">D ${sum.dEma&&sum.dEma.enabled?'ON':'OFF'} α=${escapeHtml(String((sum.dEma&&sum.dEma.alpha)!=null?sum.dEma.alpha:'—'))} k=${escapeHtml(String((sum.dEma&&sum.dEma.k)!=null?sum.dEma.k:'—'))}; S ${sum.sEma&&sum.sEma.enabled?'ON':'OFF'} α=${escapeHtml(String((sum.sEma&&sum.sEma.alpha)!=null?sum.sEma.alpha:'—'))} k=${escapeHtml(String((sum.sEma&&sum.sEma.k)!=null?sum.sEma.k:'—'))}</span></div>
         </div>`
         + `<div class="small" style="margin-top:8px;color:#94a3b8">Одна рассчитанная линия: 1X2 Legacy + AH/OU Auto vs closing. Конфиг: ${escapeHtml((GM_MATRIX_CFG&&GM_MATRIX_CFG.configSource)||'model_config.json')}</div>`;
     }
@@ -9244,11 +9195,7 @@ bash scripts/update_and_serve.sh --start</div>
           mae1x2:avg('mae1x2'), maeHome:avg('maeHome'), maeDraw:avg('maeDraw'), maeAway:avg('maeAway'),
           maeAh:avg('maeAh'), maeAhLine:avg('maeAhLine'), sameAhRate:rate('sameAh'),
           maeOu:avg('maeOu'), maeOuLine:avg('maeOuLine'), sameTotRate:rate('sameTot'),
-          maeSBase:avg('maeSBase'), maeSDyn:avg('maeSDyn'),
-          sImproveShare:rate('sImproved'),
         },
-        sEma: (window.__IR_S_EMA_OVERRIDE||{}),
-        dEma: (window.__IR_D_EMA_OVERRIDE||{}),
         nActive:nActiveTrain, nActiveFetched, nActiveExcluded,
         effectiveTrain:sumTrainW,
       };
