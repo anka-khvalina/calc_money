@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>FairOddsCalc iOS</title>
-  <!-- build: cursor/goal-model-17b5 goal-model-v1 -->
+  <!-- build: cursor/slow-fast-d-17b5 report-tab-v2 -->
   <style>
     :root{
       --bg:#f4f5f7; --card:#fff; --text:#121212; --muted:#626b78; --line:#d9dde3;
@@ -600,7 +600,7 @@
       <button type="button" class="tab-btn active" data-tab="goal"><span class="tab-ico" aria-hidden="true">📈</span> Линия</button>
       <button type="button" class="tab-btn" data-tab="teams"><span class="tab-ico" aria-hidden="true">📋</span> Справочник</button>
       <button type="button" class="tab-btn" data-tab="hist"><span class="tab-ico" aria-hidden="true">🕓</span> История</button>
-      <button type="button" class="tab-btn" data-tab="inactreport"><span class="tab-ico" aria-hidden="true">📊</span> Отчет</button>
+      <button type="button" class="tab-btn" data-tab="inactreport"><span class="tab-ico" aria-hidden="true">📊</span> Отчёты</button>
       <button type="button" class="tab-btn" data-tab="help"><span class="tab-ico" aria-hidden="true">❓</span> Справка</button>
     </div>
 
@@ -1130,7 +1130,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 
     <!-- TAB REPORT: combined Legacy 1X2 + Auto AH/OU vs market -->
     <section id="tab-inactreport" class="panel">
-      <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Отчет</h3>
+      <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Отчёты</h3>
       <p class="small" style="margin:0 0 10px">Сравнение рассчитанной линии с closing-рынком на матчах <code>active=false</code>. Обучение — на active выбранного сезона. <b>1X2 = Legacy</b>, <b>AH/OU = Auto</b>. БД не меняется.</p>
       <details id="irParamsPanel" class="ir-params-panel">
         <summary>Параметры моделей (debug, model_config.json)</summary>
@@ -1269,7 +1269,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <li><b>Линия</b> — обучение обеих моделей и расчёт комбинированной линии матча.</li>
         <li><b>Справочник</b> — команды по лигам (и логотипы).</li>
         <li><b>История</b> — сезоны и матчи Supabase.</li>
-        <li><b>Отчет</b> — calculated vs closing на inactive: 1X2 Legacy, AH/OU Auto. Без сравнения моделей.</li>
+        <li><b>Отчёты</b> — calculated vs closing на inactive: 1X2 Legacy, AH/OU Auto. Без сравнения моделей.</li>
         <li><b>Справка</b> — этот раздел.</li>
       </ul>
 
