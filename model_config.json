@@ -1,0 +1,272 @@
+{
+  "matrix": {
+    "maxGoals": 10,
+    "tailEpsilon": 1e-06,
+    "lambdaMin": 0.05
+  },
+  "autoMarginal": {
+    "enabled": true,
+    "alphaCandidates": [
+      0,
+      0.02,
+      0.04,
+      0.06,
+      0.08,
+      0.1,
+      0.12,
+      0.15,
+      0.18,
+      0.22,
+      0.26,
+      0.3
+    ],
+    "nbMinImprovementPct": 1,
+    "minMatchesForLeagueAlpha": 200,
+    "alphaPenalty": 0.5,
+    "vppWeight": 0.15
+  },
+  "copula": {
+    "enabled": true,
+    "rhoCandidates": [
+      0,
+      0.02,
+      0.04,
+      0.06,
+      0.08,
+      0.1,
+      0.12,
+      0.15,
+      0.18,
+      0.22,
+      0.25
+    ],
+    "rhoMinImprovementPct": 0.5,
+    "minMatchesForLeagueRho": 100
+  },
+  "legacy": {
+    "pipeline": "S/D -> Poisson -> Dixon-Coles -> markets",
+    "useDixonColes": true,
+    "useDrawModel": false,
+    "maxGoals": 10,
+    "handicapWeight": 0.25,
+    "totalWeight": 0.5,
+    "dCalMode": "soft",
+    "sCalMode": "off",
+    "dixonColes": {
+      "enabled": true,
+      "fitGamma": true,
+      "gammaFixed": 0.0,
+      "gamma": 0.0,
+      "gammaMin": -0.2,
+      "gammaMax": 0.2
+    },
+    "drawModel": {
+      "enabled": false
+    },
+    "copula": {
+      "enabled": false
+    },
+    "negativeBinomial": {
+      "enabled": false
+    },
+    "matrix": {
+      "maxGoals": 10,
+      "tailEpsilon": 1e-06,
+      "lambdaMin": 0.05
+    },
+    "poisson": {
+      "lambdaMin": 0.05
+    },
+    "calibration": {
+      "sCalMode": "off",
+      "sCalMaxDelta": 0.15,
+      "dCalMode": "soft",
+      "dCalBMin": 0.9,
+      "dCalBMax": 1.03,
+      "dCalBPenalty": 2.0,
+      "dBigFavMode": "linear",
+      "dBigFavThreshold": 1.25,
+      "dBigFavSlope": 0.75,
+      "dBigFavCap": 2.0
+    },
+    "train": {
+      "alphaAh": 0.25,
+      "alphaT": 0.5,
+      "regLambda": 0.1,
+      "regLambdaAttack": 0.1,
+      "regLambdaDefense": 0.1,
+      "priorAlpha": 0.7,
+      "derbyHDefault": 0.7
+    }
+  },
+  "auto": {
+    "matrix": {
+      "maxGoals": 10,
+      "tailEpsilon": 1e-06,
+      "lambdaMin": 0.05
+    },
+    "marginals": {
+      "mode": "auto"
+    },
+    "copula": {
+      "enabled": true
+    },
+    "auto1x2Calib": {
+      "enabled": true,
+      "recalibrateSdWithMatrix": true,
+      "refineAlphaRho": true,
+      "w1x2": 1.0,
+      "wAh": 0.35,
+      "wOu": 0.25,
+      "drawLoss": 2.0,
+      "ahOuDegradeMaxPct": 5.0,
+      "require1x2Improve": true,
+      "requireBiasReduce": true
+    },
+    "train": {
+      "alphaAh": 0.25,
+      "alphaT": 0.5,
+      "regLambda": 0.1,
+      "regLambdaAttack": 0.1,
+      "regLambdaDefense": 0.1,
+      "priorAlpha": 0.7,
+      "dCalMode": "soft",
+      "dCalBMin": 0.9,
+      "dCalBMax": 1.03,
+      "dCalBPenalty": 2.0,
+      "dBigFavMode": "linear",
+      "dBigFavThreshold": 1.25,
+      "dBigFavSlope": 0.75,
+      "dBigFavCap": 2.0,
+      "sCalMode": "off",
+      "derbyHDefault": 0.7
+    }
+  },
+  "auto1x2Calib": {
+    "enabled": true,
+    "recalibrateSdWithMatrix": true,
+    "refineAlphaRho": true,
+    "w1x2": 1.0,
+    "wAh": 0.35,
+    "wOu": 0.25,
+    "drawLoss": 2.0,
+    "ahOuDegradeMaxPct": 5.0,
+    "require1x2Improve": true,
+    "requireBiasReduce": true
+  },
+  "train": {
+    "alphaAh": 0.25,
+    "alphaT": 0.5,
+    "regLambda": 0.1,
+    "regLambdaAttack": 0.1,
+    "regLambdaDefense": 0.1,
+    "priorAlpha": 0.7,
+    "dCalMode": "soft",
+    "dCalBMin": 0.9,
+    "dCalBMax": 1.03,
+    "dCalBPenalty": 2.0,
+    "dBigFavMode": "linear",
+    "dBigFavThreshold": 1.25,
+    "dBigFavSlope": 0.75,
+    "dBigFavCap": 2.0,
+    "sCalMode": "off",
+    "derbyHDefault": 0.7
+  },
+  "rotationTrainingWeights": {
+    "none": 1.0,
+    "middle": 0.7,
+    "high": 0.0
+  },
+  "compare": {
+    "defaultMode": "compare",
+    "defaultMarginPct": 3,
+    "defaultUseMargin": false
+  },
+  "calibrationNaming": {
+    "dCalibration": {
+      "intercept": "dA",
+      "slope": "dB",
+      "formula": "D_cal = dA + dB * D_model"
+    },
+    "sCalibration": {
+      "intercept": "sA",
+      "slope": "sB",
+      "formula": "S_cal = sA + sB * S_model"
+    },
+    "legacyAliases": {
+      "a": "dA",
+      "b": "dB",
+      "c": "sA",
+      "d": "sB"
+    }
+  },
+  "momentum": {
+    "enabled": true,
+    "alpha": 0.3,
+    "k": 0.8,
+    "maxEma": 0.5,
+    "minMatches": 1,
+    "byLeague": {}
+  },
+  "dynamic_s_ema": {
+    "enabled": true,
+    "alpha": 0.3,
+    "k": 1.0,
+    "min_team_matches": 1,
+    "max_abs_team_ema": null,
+    "max_abs_correction": null,
+    "lambda_min": 0.05,
+    "reset_on_new_season": true,
+    "byLeague": {}
+  },
+  "dynamic_dc_gamma": {
+    "enabled": true,
+    "source": "D_model_final",
+    "default_gamma": 0.09,
+    "segments": [
+      {
+        "max_abs_d": 0.5,
+        "gamma": 0.11
+      },
+      {
+        "max_abs_d": 1.0,
+        "gamma": 0.07
+      },
+      {
+        "max_abs_d": 1.5,
+        "gamma": 0.02
+      },
+      {
+        "max_abs_d": null,
+        "gamma": 0.0
+      }
+    ],
+    "byLeague": {}
+  },
+  "d_correction": {
+    "mode": "slow_fast",
+    "slow": {
+      "enabled": true,
+      "method": "causal_ema",
+      "alpha": 0.12,
+      "shrink_k": 12,
+      "min_observations": 5,
+      "max_abs_correction": 0.35
+    },
+    "fast": {
+      "enabled": true,
+      "method": "residual_ema",
+      "alpha": 0.4,
+      "shrink_k": 6,
+      "min_observations": 2,
+      "max_abs_correction": 0.4
+    },
+    "total": {
+      "max_abs_correction": 0.6
+    },
+    "cache": {
+      "fallback": "last_local",
+      "versions_to_keep": 2
+    }
+  }
+}

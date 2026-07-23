@@ -1,0 +1,17 @@
+{
+  "modelMode": "auto",
+  "jointMatrixMode": "gaussian_copula",
+  "maxGoals": 10,
+  "tailEpsilon": 1e-6,
+  "lambdaMin": 0.05,
+  "alphaCandidates": [0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20, 0.22, 0.24, 0.26, 0.28, 0.30],
+  "rhoCandidates": [0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20, 0.22, 0.24],
+  "nbMinImprovementPct": 1,
+  "rhoMinImprovementPct": 0.5,
+  "minMatchesForLeagueAlpha": 200,
+  "minMatchesForLeagueRho": 100,
+  "alphaPenalty": 0.5,
+  "vppWeight": 0.15,
+  "useDixonColes": false,
+  "useDrawModel": false
+}
