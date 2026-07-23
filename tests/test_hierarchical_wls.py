@@ -266,3 +266,46 @@ def test_apply_rating_config_from_mapping():
     assert cfg.rating_prior_mode == hwls.PRIOR_BLENDED
     assert cfg.rating_time_decay_enabled is True
     assert cfg.rating_half_life_days == 90
+
+
+def test_by_league_mode_override():
+    parsed = hwls.rating_config_from_mapping(
+        {
+            "rating": {
+                "mode": "standard_wls",
+                "byLeague": {
+                    "Bundesliga": {"mode": "hierarchical_wls"},
+                    "Serie A": {"mode": "hierarchical_wls"},
+                    "Ligue 1": {"mode": "hierarchical_wls"},
+                    "bundesliga": {"mode": "hierarchical_wls"},
+                },
+            }
+        }
+    )
+    assert parsed.mode == hwls.MODE_STANDARD
+    bl = hwls.apply_league_overrides(parsed, league_name="Bundesliga")
+    assert bl.mode == hwls.MODE_HIERARCHICAL
+    sa = hwls.apply_league_overrides(parsed, league_name="Serie A")
+    assert sa.mode == hwls.MODE_HIERARCHICAL
+    l1 = hwls.apply_league_overrides(parsed, league_name="Ligue 1")
+    assert l1.mode == hwls.MODE_HIERARCHICAL
+    pl = hwls.apply_league_overrides(parsed, league_name="Premier League")
+    assert pl.mode == hwls.MODE_STANDARD
+    by_id = hwls.apply_league_overrides(parsed, league_id="bundesliga")
+    assert by_id.mode == hwls.MODE_HIERARCHICAL
+
+    cfg = gmt.apply_rating_config_from_mapping(
+        gmt.ModelConfig(),
+        {
+            "rating": {
+                "mode": "standard_wls",
+                "byLeague": {"La Liga": {"mode": "hierarchical_wls"}},
+            }
+        },
+    )
+    assert cfg.rating_mode == hwls.MODE_STANDARD
+    assert "La Liga" in cfg.rating_by_league
+    r_ll = gmt.resolve_rating_config(cfg, league_name="La Liga")
+    assert r_ll.mode == hwls.MODE_HIERARCHICAL
+    r_pl = gmt.resolve_rating_config(cfg, league_name="Premier League")
+    assert r_pl.mode == hwls.MODE_STANDARD

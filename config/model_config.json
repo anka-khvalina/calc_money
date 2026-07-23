@@ -243,6 +243,14 @@
     "lambda_base": 0.1,
     "n_floor": 1.0,
     "effective_n_iters": 2,
+    "byLeague": {
+      "Bundesliga": { "mode": "hierarchical_wls" },
+      "Serie A": { "mode": "hierarchical_wls" },
+      "Ligue 1": { "mode": "hierarchical_wls" },
+      "bundesliga": { "mode": "hierarchical_wls" },
+      "serie_a": { "mode": "hierarchical_wls" },
+      "ligue_1": { "mode": "hierarchical_wls" }
+    },
     "prior": {
       "mode": "league_mean",
       "prior_reliability": 0.7,

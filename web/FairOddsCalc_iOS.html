@@ -3803,11 +3803,23 @@ bash scripts/update_and_serve.sh --start</div>
       const w = m && m.wBase != null ? Number(m.wBase) : 0;
       return isFinite(w) && w > 1e-12 ? w : 0;
     }
-    function gmRatingCfg(){
-      const raw = (GM_MODEL_CFG && GM_MODEL_CFG.rating) || (GM_MATRIX_CFG && GM_MATRIX_CFG.rating) || {};
-      const prior = (raw.prior && typeof raw.prior === 'object') ? raw.prior : {};
-      const td = (raw.time_decay || raw.timeDecay || {});
-      const vol = (raw.volatility || {});
+    function gmRatingCfg(leagueId, leagueName){
+      const raw0 = (GM_MODEL_CFG && GM_MODEL_CFG.rating) || (GM_MATRIX_CFG && GM_MATRIX_CFG.rating) || {};
+      let raw = raw0;
+      const by = raw0.byLeague || raw0.by_league || {};
+      const resolvedName = leagueName
+        || (leagueId && window.__SB && window.__SB.leagueNameById && window.__SB.leagueNameById[leagueId])
+        || null;
+      for(const key of [leagueId, leagueName, resolvedName, String(leagueId||''), String(leagueName||''), String(resolvedName||'')]){
+        if(key && by[key] && typeof by[key] === 'object'){
+          raw = Object.assign({}, raw0, by[key]);
+          break;
+        }
+      }
+      const prior = (raw.prior && typeof raw.prior === 'object') ? raw.prior
+        : ((raw0.prior && typeof raw0.prior === 'object') ? raw0.prior : {});
+      const td = (raw.time_decay || raw.timeDecay || raw0.time_decay || raw0.timeDecay || {});
+      const vol = (raw.volatility || raw0.volatility || {});
       return {
         mode: String(raw.mode || 'standard_wls').toLowerCase(),
         confidenceK: raw.confidence_k != null ? Number(raw.confidence_k) : (raw.confidenceK != null ? Number(raw.confidenceK) : 8),
@@ -3877,7 +3889,7 @@ bash scripts/update_and_serve.sh --start</div>
       }
       return out;
     }
-    function gmFitStrength(ms,cfg,priorSt){
+    function gmFitStrength(ms,cfg,priorSt,leagueId,leagueName){
       // wBase includes rotation training_weight — exclude weight-0 from fit entirely.
       const used=ms.filter(m=>m.D!=null && gmTrainWeight(m)>0);
       if(used.length<2) throw new Error('Мало матчей с D');
@@ -3893,7 +3905,9 @@ bash scripts/update_and_serve.sh --start</div>
         if(dCol!=null) c[dCol]=gmDerbyHome(m)?1:0; coeffs.push(c); tg.push(m.D);
         m.wLineAh=Math.min(cfg.maxWAh,Math.max(cfg.minWAh,1/(1+cfg.alphaAh*Math.pow(Math.abs(m.D),cfg.pAh)))); m.wRob=1; m.wTime=1; });
       const gauge=[...Array(teams.length).fill(1),...Array(p-teams.length).fill(0)];
-      const rcfg = gmRatingCfg();
+      const lid = leagueId != null ? leagueId : (used[0] && used[0].leagueId != null ? used[0].leagueId : null);
+      const lname = leagueName != null ? leagueName : (used[0] && used[0].league != null ? used[0].league : null);
+      const rcfg = gmRatingCfg(lid, lname);
       const useHier = rcfg.mode === 'hierarchical_wls'; // shadow keeps production on standard_wls
       if(useHier){
         if(rcfg.timeDecayEnabled){
@@ -5199,7 +5213,9 @@ bash scripts/update_and_serve.sh --start</div>
       });
       const ms=gmPrepare(raw,cfg);
       const dClamp=gmDClampDiagnostics(ms, cfg);
-      const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
+      const leagueId = (raw[0]&&raw[0].leagueId)!=null ? raw[0].leagueId : null;
+      const leagueName = (raw[0]&&raw[0].league)!=null ? raw[0].league : null;
+      const st=gmFitStrength(ms,cfg,prior&&prior.st,leagueId,leagueName), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
       const draw={alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'disabled',mode:'legacy'};
       const calDiag=gmAssessCalibration(cal,cfg);
       const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag,teamNames:{},
@@ -7515,6 +7531,7 @@ bash scripts/update_and_serve.sh --start</div>
         homeName,
         awayName,
         leagueId: m.league_id != null ? String(m.league_id) : '',
+        league: (m.league_name != null ? String(m.league_name) : '') || (m.league_id != null ? sbLeagueName(m.league_id) : ''),
         ah: gmF(m.closing_ah_home),
         tot: gmF(m.closing_total_line),
         aho: gmF(m.ah_home_odds),
@@ -8561,7 +8578,9 @@ bash scripts/update_and_serve.sh --start</div>
       // Legacy defaults: DC on, draw model off unless explicitly enabled.
       const cfgL=Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw===true, irEngine:'legacy'});
       const ms=gmPrepare(raw,cfgL);
-      const st=gmFitStrength(ms,cfgL,null);
+      const leagueId = (raw[0]&&raw[0].leagueId)!=null ? raw[0].leagueId : null;
+      const leagueName = (raw[0]&&raw[0].league)!=null ? raw[0].league : null;
+      const st=gmFitStrength(ms,cfgL,null,leagueId,leagueName);
       const gl=gmFitAD(ms,cfgL,null);
       const cal=irCalibrateLegacy(ms,st,gl,cfgL);
       const draw=cfgL.useDraw

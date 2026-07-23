@@ -208,6 +208,8 @@ class ModelConfig:
     rating_publish_cache: bool = False  # opt-in; model_config.json can enable for publish
     rating_cache_versions_to_keep: int = 2
     rating_cache_fallback: str = hwls.FALLBACK_LAST_LOCAL
+    # league_id / league_name → partial rating overrides (e.g. mode)
+    rating_by_league: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -738,8 +740,13 @@ def _huber_weight(e: float, delta: float) -> float:
     return 1.0 if ae <= delta else delta / ae
 
 
-def resolve_rating_config(cfg: ModelConfig) -> hwls.HierarchicalWlsConfig:
-    return hwls.HierarchicalWlsConfig(
+def resolve_rating_config(
+    cfg: ModelConfig,
+    *,
+    league_id: Optional[str] = None,
+    league_name: Optional[str] = None,
+) -> hwls.HierarchicalWlsConfig:
+    base = hwls.HierarchicalWlsConfig(
         mode=cfg.rating_mode,
         confidence_k=cfg.rating_confidence_k,
         lambda_mode=cfg.rating_lambda_mode,
@@ -768,7 +775,11 @@ def resolve_rating_config(cfg: ModelConfig) -> hwls.HierarchicalWlsConfig:
             versions_to_keep=cfg.rating_cache_versions_to_keep,
         ),
         publish_cache=cfg.rating_publish_cache,
+        by_league=dict(cfg.rating_by_league or {}),
     ).validated()
+    return hwls.apply_league_overrides(
+        base, league_id=league_id, league_name=league_name
+    )
 
 
 def apply_rating_config_from_mapping(
@@ -801,6 +812,7 @@ def apply_rating_config_from_mapping(
         rating_publish_cache=parsed.publish_cache,
         rating_cache_versions_to_keep=parsed.cache.versions_to_keep,
         rating_cache_fallback=parsed.cache.fallback,
+        rating_by_league=dict(parsed.by_league or {}),
     )
 
 
@@ -1060,7 +1072,7 @@ def fit_strength_ratings(
     league_id: Optional[str] = None,
     league_name: Optional[str] = None,
 ) -> StrengthModel:
-    rcfg = resolve_rating_config(cfg)
+    rcfg = resolve_rating_config(cfg, league_id=league_id, league_name=league_name)
     mode = (force_mode or rcfg.mode or hwls.MODE_STANDARD).strip().lower()
 
     # Production hierarchical, or forced hierarchical (e.g. shadow side-fit).
@@ -2184,7 +2196,7 @@ def train_full_model(
 
     league_name = next((m.raw.league for m in matches if m.raw.league), None)
     league_id = next((m.raw.league_id for m in matches if m.raw.league_id), None)
-    rcfg = resolve_rating_config(cfg)
+    rcfg = resolve_rating_config(cfg, league_id=league_id, league_name=league_name)
 
     # --- Strength fit(s): WLS remains the solver; hierarchical adds team λ ---
     shadow_strength: Optional[StrengthModel] = None

@@ -9,6 +9,8 @@ Modes (rating.mode):
   standard_wls            — current production WLS (caller path)
   hierarchical_wls        — this fit drives production ratings
   hierarchical_wls_shadow — fit + cache + compare; production stays standard
+
+Per-league overrides via rating.byLeague / by_league (mode and other knobs).
 """
 
 from __future__ import annotations
@@ -130,6 +132,8 @@ class HierarchicalWlsConfig:
     volatility: VolatilityConfig = field(default_factory=VolatilityConfig)
     cache: RatingCacheConfig = field(default_factory=RatingCacheConfig)
     publish_cache: bool = False
+    # league_id / league_name → partial overrides (typically {"mode": "hierarchical_wls"})
+    by_league: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     def validated(self) -> "HierarchicalWlsConfig":
         mode = str(self.mode or MODE_STANDARD).strip().lower()
@@ -147,6 +151,10 @@ class HierarchicalWlsConfig:
         if self.n_floor <= 0:
             raise ValueError("rating.n_floor must be > 0")
         iters = max(1, int(self.effective_n_iters))
+        by_league: Dict[str, Dict[str, Any]] = {}
+        for k, v in (self.by_league or {}).items():
+            if isinstance(v, Mapping):
+                by_league[str(k)] = dict(v)
         return HierarchicalWlsConfig(
             mode=mode,
             confidence_k=float(self.confidence_k),
@@ -161,6 +169,7 @@ class HierarchicalWlsConfig:
             volatility=self.volatility.validated(),
             cache=self.cache.validated(),
             publish_cache=bool(self.publish_cache),
+            by_league=by_league,
         )
 
     @property
@@ -170,6 +179,61 @@ class HierarchicalWlsConfig:
     @property
     def production_is_hierarchical(self) -> bool:
         return self.mode == MODE_HIERARCHICAL
+
+
+def _league_override_block(
+    by_league: Mapping[str, Any],
+    *,
+    league_id: Optional[str] = None,
+    league_name: Optional[str] = None,
+) -> Optional[Mapping[str, Any]]:
+    if not by_league:
+        return None
+    for key in (league_id, league_name, str(league_id or ""), str(league_name or "")):
+        if key and key in by_league and isinstance(by_league[key], Mapping):
+            return by_league[key]  # type: ignore[return-value]
+    return None
+
+
+def apply_league_overrides(
+    cfg: HierarchicalWlsConfig,
+    *,
+    league_id: Optional[str] = None,
+    league_name: Optional[str] = None,
+) -> HierarchicalWlsConfig:
+    """Merge rating.byLeague overrides for one league (mode and optional knobs)."""
+    base = cfg.validated()
+    ov = _league_override_block(
+        base.by_league, league_id=league_id, league_name=league_name
+    )
+    if not ov:
+        return base
+    mode = ov.get("mode", base.mode)
+    confidence_k = ov.get("confidence_k", ov.get("confidenceK", base.confidence_k))
+    lambda_mode = ov.get("lambda_mode", ov.get("lambdaMode", base.lambda_mode))
+    lambda_min = ov.get("lambda_min", ov.get("lambdaMin", base.lambda_min))
+    lambda_max = ov.get("lambda_max", ov.get("lambdaMax", base.lambda_max))
+    lambda_base = ov.get("lambda_base", ov.get("lambdaBase", base.lambda_base))
+    n_floor = ov.get("n_floor", ov.get("nFloor", base.n_floor))
+    effective_n_iters = ov.get(
+        "effective_n_iters", ov.get("effectiveNIters", base.effective_n_iters)
+    )
+    return HierarchicalWlsConfig(
+        mode=str(mode),
+        confidence_k=float(confidence_k),
+        lambda_mode=str(lambda_mode),
+        lambda_min=float(lambda_min),
+        lambda_max=float(lambda_max),
+        lambda_base=float(lambda_base),
+        n_floor=float(n_floor),
+        effective_n_iters=int(effective_n_iters),
+        prior=base.prior,
+        time_decay=base.time_decay,
+        volatility=base.volatility,
+        cache=base.cache,
+        publish_cache=base.publish_cache,
+        by_league=base.by_league,
+    ).validated()
 
 
 def rating_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> HierarchicalWlsConfig:
@@ -186,14 +250,21 @@ def rating_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> Hierarchical
     vol_raw = block.get("volatility") if isinstance(block.get("volatility"), Mapping) else {}
     cache_raw = block.get("cache") if isinstance(block.get("cache"), Mapping) else {}
 
-    by_league: Dict[str, float] = {}
+    td_by_league: Dict[str, float] = {}
     bl = td_raw.get("by_league") or td_raw.get("byLeague") or {}
     if isinstance(bl, Mapping):
         for k, v in bl.items():
             try:
-                by_league[str(k)] = float(v)
+                td_by_league[str(k)] = float(v)
             except (TypeError, ValueError):
                 continue
+
+    rating_by_league: Dict[str, Dict[str, Any]] = {}
+    rbl = block.get("by_league") or block.get("byLeague") or {}
+    if isinstance(rbl, Mapping):
+        for k, v in rbl.items():
+            if isinstance(v, Mapping):
+                rating_by_league[str(k)] = dict(v)
 
     cfg = HierarchicalWlsConfig(
         mode=str(block.get("mode", MODE_STANDARD)),
@@ -231,7 +302,7 @@ def rating_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> Hierarchical
             suppress_season_weight=bool(
                 td_raw.get("suppress_season_weight", td_raw.get("suppressSeasonWeight", True))
             ),
-            by_league=by_league,
+            by_league=td_by_league,
         ),
         volatility=VolatilityConfig(
             enabled=bool(vol_raw.get("enabled", False)),
@@ -245,6 +316,7 @@ def rating_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> Hierarchical
             root_dir=cache_raw.get("root_dir") or cache_raw.get("rootDir"),
         ),
         publish_cache=bool(block.get("publish_cache", block.get("publishCache", False))),
+        by_league=rating_by_league,
     )
     return cfg.validated()
 
