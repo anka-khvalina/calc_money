@@ -8264,11 +8264,6 @@ bash scripts/update_and_serve.sh --start</div>
       if(!isFinite(val)) return '';
       if(IR_LINE_COLS.has(col)) return Number(val).toFixed(2);
       if(String(col).includes('alpha')||String(col).includes('rho')||col==='dc_gamma') return Number(val).toFixed(4);
-      if(/^S_model_|^S_dynamic_|^EMA_S_|^Residual_S_|^S_market$|^S_momentum$/.test(String(col))) {
-        const n=Number(val);
-        if(String(col)==='S_dynamic_correction') return (n>=0?'+':'')+n.toFixed(4);
-        return n.toFixed(4);
-      }
       if(String(col).startsWith('p_')||col==='matrix_sum'||col==='matrix_tail') return Number(val).toFixed(6);
       if(String(col).includes('model_total')) return Number(val).toFixed(4);
       return Number(val).toFixed(3);
@@ -9200,11 +9195,7 @@ bash scripts/update_and_serve.sh --start</div>
           mae1x2:avg('mae1x2'), maeHome:avg('maeHome'), maeDraw:avg('maeDraw'), maeAway:avg('maeAway'),
           maeAh:avg('maeAh'), maeAhLine:avg('maeAhLine'), sameAhRate:rate('sameAh'),
           maeOu:avg('maeOu'), maeOuLine:avg('maeOuLine'), sameTotRate:rate('sameTot'),
-          maeSBase:avg('maeSBase'), maeSDyn:avg('maeSDyn'),
-          sImproveShare:rate('sImproved'),
         },
-        sEma: (window.__IR_S_EMA_OVERRIDE||{}),
-        dEma: (window.__IR_D_EMA_OVERRIDE||{}),
         nActive:nActiveTrain, nActiveFetched, nActiveExcluded,
         effectiveTrain:sumTrainW,
       };
