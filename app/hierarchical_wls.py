@@ -50,7 +50,7 @@ FALLBACK_FAIL = "fail"
 
 @dataclass
 class TimeDecayConfig:
-    enabled: bool = True
+    enabled: bool = False
     half_life_days: float = 120.0
     # When True, season_weight is not multiplied again on the strength stage
     # (avoids double time decay with continuous half-life).
@@ -117,7 +117,7 @@ class RatingCacheConfig:
 
 @dataclass
 class HierarchicalWlsConfig:
-    mode: str = MODE_HIERARCHICAL
+    mode: str = MODE_STANDARD
     confidence_k: float = 8.0
     lambda_mode: str = LAMBDA_MODE_CONFIDENCE
     lambda_min: float = 0.02
@@ -126,12 +126,10 @@ class HierarchicalWlsConfig:
     n_floor: float = 1.0
     effective_n_iters: int = 2  # IRLS outer loops that refresh λ from robust weights
     prior: PriorConfig = field(default_factory=PriorConfig)
-    time_decay: TimeDecayConfig = field(
-        default_factory=lambda: TimeDecayConfig(enabled=True, half_life_days=120.0)
-    )
+    time_decay: TimeDecayConfig = field(default_factory=TimeDecayConfig)
     volatility: VolatilityConfig = field(default_factory=VolatilityConfig)
     cache: RatingCacheConfig = field(default_factory=RatingCacheConfig)
-    publish_cache: bool = True
+    publish_cache: bool = False
 
     def validated(self) -> "HierarchicalWlsConfig":
         mode = str(self.mode or MODE_STANDARD).strip().lower()
@@ -198,7 +196,7 @@ def rating_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> Hierarchical
                 continue
 
     cfg = HierarchicalWlsConfig(
-        mode=str(block.get("mode", MODE_HIERARCHICAL)),
+        mode=str(block.get("mode", MODE_STANDARD)),
         confidence_k=float(block.get("confidence_k", block.get("confidenceK", 8.0))),
         lambda_mode=str(block.get("lambda_mode", block.get("lambdaMode", LAMBDA_MODE_CONFIDENCE))),
         lambda_min=float(block.get("lambda_min", block.get("lambdaMin", 0.02))),
@@ -228,7 +226,7 @@ def rating_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> Hierarchical
             ),
         ),
         time_decay=TimeDecayConfig(
-            enabled=bool(td_raw.get("enabled", True)),
+            enabled=bool(td_raw.get("enabled", False)),
             half_life_days=float(td_raw.get("half_life_days", td_raw.get("halfLifeDays", 120.0))),
             suppress_season_weight=bool(
                 td_raw.get("suppress_season_weight", td_raw.get("suppressSeasonWeight", True))
@@ -246,7 +244,7 @@ def rating_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> Hierarchical
             versions_to_keep=int(cache_raw.get("versions_to_keep", cache_raw.get("versionsToKeep", 2))),
             root_dir=cache_raw.get("root_dir") or cache_raw.get("rootDir"),
         ),
-        publish_cache=bool(block.get("publish_cache", block.get("publishCache", True))),
+        publish_cache=bool(block.get("publish_cache", block.get("publishCache", False))),
     )
     return cfg.validated()
 
