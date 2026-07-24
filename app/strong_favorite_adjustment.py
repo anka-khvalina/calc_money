@@ -12,6 +12,11 @@ Shape providers (strongFavoriteAdjustment.shape), used by percentile mode:
 Default schedule (EXP-008/009): linear βmax=0.06 —
   P10→0, P5→0.018, P2→0.036, P1→0.048, P0→0.06
 
+Hybrid residual (EXP-011, default ON):
+  gap = max(0, favoriteFairOdds − marketFavoriteOdds)
+  β   = min(residualBetaMax, β_percentile + residualK · gap)
+  If market odds missing → β_percentile only (soft006).
+
 Architecture: calculate_sfa(...) is the single provider entry; swap shape/mode via
 config without touching the D→λ→markets pipeline.
 """
@@ -108,6 +113,10 @@ class SfaConfig:
     logistic_k: float = 0.8
     logistic_mid: float = 5.0
     logistic_max: float = 0.06
+    # hybrid residual (EXP-011): β = min(βmax, β_pct + k·gap)
+    residual_enabled: bool = True
+    residual_k: float = 0.5
+    residual_beta_max: float = 0.10
 
     def validated(self) -> "SfaConfig":
         mode = _norm_mode(self.mode)
@@ -118,6 +127,10 @@ class SfaConfig:
             raise ValueError("strongFavoriteAdjustment.oddsThreshold must be > 1")
         if self.beta < 0:
             raise ValueError("strongFavoriteAdjustment.beta must be >= 0")
+        if self.residual_k < 0:
+            raise ValueError("strongFavoriteAdjustment.residualK must be >= 0")
+        if self.residual_beta_max < 0:
+            raise ValueError("strongFavoriteAdjustment.residualBetaMax must be >= 0")
         thr = parse_percentile_thresholds(self.thresholds)
         return SfaConfig(
             mode=mode,
@@ -129,6 +142,9 @@ class SfaConfig:
             logistic_k=float(self.logistic_k),
             logistic_mid=float(self.logistic_mid),
             logistic_max=max(0.0, float(self.logistic_max)),
+            residual_enabled=bool(self.residual_enabled),
+            residual_k=float(self.residual_k),
+            residual_beta_max=float(self.residual_beta_max),
         )
 
 
@@ -168,7 +184,65 @@ def sfa_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> SfaConfig:
         logistic_k=float(block.get("logisticK", block.get("logistic_k", 0.8))),
         logistic_mid=float(block.get("logisticMid", block.get("logistic_mid", 5.0))),
         logistic_max=float(block.get("logisticMax", block.get("logistic_max", 0.06))),
+        residual_enabled=_as_bool(
+            block.get(
+                "residualEnabled",
+                block.get("residual_enabled", block.get("hybridResidual", True)),
+            ),
+            default=True,
+        ),
+        residual_k=float(
+            block.get("residualK", block.get("residual_k", block.get("gapK", 0.5)))
+        ),
+        residual_beta_max=float(
+            block.get(
+                "residualBetaMax",
+                block.get("residual_beta_max", block.get("hybridBetaMax", 0.10)),
+            )
+        ),
     ).validated()
+
+
+def _as_bool(raw: Any, *, default: bool = False) -> bool:
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    s = str(raw).strip().lower()
+    if s in ("1", "true", "yes", "y", "on"):
+        return True
+    if s in ("0", "false", "no", "n", "off"):
+        return False
+    return default
+
+
+def apply_hybrid_residual_beta(
+    beta_percentile: float,
+    *,
+    favorite_fair_odds: Optional[float],
+    market_favorite_odds: Optional[float],
+    cfg: SfaConfig,
+) -> Tuple[float, float]:
+    """
+    β = min(residualBetaMax, β_pct + k · gap), gap = max(0, o_model − o_mkt).
+
+    Returns (beta_final, gap). If residual off or market odds missing → (β_pct, 0).
+    """
+    c = cfg.validated()
+    b0 = max(0.0, float(beta_percentile))
+    if not c.residual_enabled:
+        return b0, 0.0
+    if (
+        favorite_fair_odds is None
+        or market_favorite_odds is None
+        or not math.isfinite(float(favorite_fair_odds))
+        or not math.isfinite(float(market_favorite_odds))
+        or float(market_favorite_odds) <= 1.0
+    ):
+        return b0, 0.0
+    gap = max(0.0, float(favorite_fair_odds) - float(market_favorite_odds))
+    beta = min(float(c.residual_beta_max), b0 + float(c.residual_k) * gap)
+    return max(0.0, beta), gap
 
 
 # --------------------------------------------------------------------------- #
@@ -269,12 +343,33 @@ def calculate_sfa(
 
 
 def market_favorite_odds(p1: Optional[float], p2: Optional[float]) -> Optional[float]:
+    """Favorite fair odds from Shin (or other) outcome probabilities."""
     if p1 is None or p2 is None:
         return None
     mx = max(float(p1), float(p2))
     if mx <= 1e-15:
         return None
     return 1.0 / mx
+
+
+def favorite_odds_from_decimal(
+    home_odds: Optional[float],
+    away_odds: Optional[float],
+) -> Optional[float]:
+    """Market favorite decimal odds = min(home, away) when both > 1."""
+    vals: List[float] = []
+    for o in (home_odds, away_odds):
+        if o is None:
+            continue
+        try:
+            v = float(o)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(v) and v > 1.0:
+            vals.append(v)
+    if not vals:
+        return None
+    return min(vals)
 
 
 def favorite_fair_odds_from_sd(
@@ -449,6 +544,10 @@ class SfaDiagnostics:
     favorite_fair_odds: Optional[float] = None
     favorite_percentile: Optional[float] = None
     sfa_beta: float = 0.0
+    beta_percentile: float = 0.0
+    market_favorite_odds: Optional[float] = None
+    residual_gap: float = 0.0
+    residual_enabled: bool = False
     d_base: float = 0.0
     d_final: float = 0.0
     mode: str = MODE_PERCENTILE
@@ -464,6 +563,10 @@ class SfaDiagnostics:
             "favoriteFairOdds": self.favorite_fair_odds,
             "favoritePercentile": self.favorite_percentile,
             "sfaBeta": self.sfa_beta,
+            "betaPercentile": self.beta_percentile,
+            "marketFavoriteOdds": self.market_favorite_odds,
+            "residualGap": self.residual_gap,
+            "residualEnabled": self.residual_enabled,
             "D_base": self.d_base,
             "D_final": self.d_final,
             "mode": self.mode,
@@ -484,9 +587,11 @@ def apply_strong_favorite_adjustment(
     max_goals: int = 10,
     lambda_min: float = 0.05,
     already_applied: bool = False,
+    market_favorite_odds: Optional[float] = None,
 ) -> Tuple[float, SfaDiagnostics]:
     """
-    Compute favoriteFairOdds from (S, D_base), resolve percentile, calculate_sfa, apply once.
+    Compute favoriteFairOdds from (S, D_base), resolve percentile, calculate_sfa,
+    optionally add hybrid residual gap vs market favorite odds, apply once.
 
     AC6: if already_applied, return d_base unchanged with applied=False.
     """
@@ -498,6 +603,12 @@ def apply_strong_favorite_adjustment(
         d_final=float(d_base),
         mode=c.mode,
         shape=c.shape,
+        residual_enabled=bool(c.residual_enabled),
+        market_favorite_odds=(
+            float(market_favorite_odds)
+            if market_favorite_odds is not None and math.isfinite(float(market_favorite_odds))
+            else None
+        ),
     )
     if already_applied or c.mode == MODE_OFF:
         return float(d_base), diag
@@ -516,14 +627,22 @@ def apply_strong_favorite_adjustment(
             diag.n_dist = dist.n
     diag.favorite_percentile = pct
 
-    beta = calculate_sfa(
+    beta_pct = calculate_sfa(
         league,
         season,
         pct,
         c,
         favorite_fair_odds=fav,
     )
-    diag.sfa_beta = beta
+    diag.beta_percentile = float(beta_pct)
+    beta, gap = apply_hybrid_residual_beta(
+        beta_pct,
+        favorite_fair_odds=fav,
+        market_favorite_odds=diag.market_favorite_odds,
+        cfg=c,
+    )
+    diag.residual_gap = float(gap)
+    diag.sfa_beta = float(beta)
     d_out = apply_sfa_to_d(d_base, beta)
     diag.d_final = d_out
     diag.applied = abs(beta) > 1e-15

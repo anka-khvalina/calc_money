@@ -85,6 +85,9 @@ def test_config_json_default_percentile():
     assert cfg.mode == sfa.MODE_PERCENTILE
     assert cfg.shape == sfa.SHAPE_LINEAR
     assert abs(cfg.thresholds[-1][1] - 0.06) < 1e-12  # P0 → βmax
+    assert cfg.residual_enabled is True
+    assert abs(cfg.residual_k - 0.5) < 1e-12
+    assert abs(cfg.residual_beta_max - 0.10) < 1e-12
 
 
 def test_apply_sfa_config_from_mapping():
@@ -105,6 +108,67 @@ def test_linear_shape_between_knots():
     mid = sfa.calculate_sfa("L", "S", 7.5, cfg)
     assert 0.0 < mid < 0.018
     assert abs(sfa.calculate_sfa("L", "S", 0.0, cfg) - 0.06) < 1e-12
+
+
+def test_hybrid_residual_beta_formula():
+    cfg = sfa.SfaConfig(
+        residual_enabled=True, residual_k=0.5, residual_beta_max=0.10
+    ).validated()
+    # β_pct=0.03, gap=0.20 → 0.03+0.10=0.13 → cap 0.10
+    b, gap = sfa.apply_hybrid_residual_beta(
+        0.03, favorite_fair_odds=1.33, market_favorite_odds=1.13, cfg=cfg
+    )
+    assert abs(gap - 0.20) < 1e-12
+    assert abs(b - 0.10) < 1e-12
+    # small gap
+    b2, gap2 = sfa.apply_hybrid_residual_beta(
+        0.02, favorite_fair_odds=1.20, market_favorite_odds=1.14, cfg=cfg
+    )
+    assert abs(gap2 - 0.06) < 1e-12
+    assert abs(b2 - (0.02 + 0.5 * 0.06)) < 1e-12
+    # no market → unchanged
+    b3, gap3 = sfa.apply_hybrid_residual_beta(
+        0.04, favorite_fair_odds=1.25, market_favorite_odds=None, cfg=cfg
+    )
+    assert gap3 == 0.0 and abs(b3 - 0.04) < 1e-12
+    # residual off
+    cfg_off = sfa.SfaConfig(residual_enabled=False).validated()
+    b4, gap4 = sfa.apply_hybrid_residual_beta(
+        0.04, favorite_fair_odds=1.40, market_favorite_odds=1.10, cfg=cfg_off
+    )
+    assert gap4 == 0.0 and abs(b4 - 0.04) < 1e-12
+
+
+def test_favorite_odds_from_decimal():
+    assert abs(sfa.favorite_odds_from_decimal(1.13, 25.0) - 1.13) < 1e-12
+    assert abs(sfa.favorite_odds_from_decimal(12.0, 1.25) - 1.25) < 1e-12
+    assert sfa.favorite_odds_from_decimal(None, None) is None
+
+
+def test_apply_sfa_with_hybrid_residual_increases_beta():
+    book = sfa.build_favorite_odds_book(
+        [{"league": "L1", "season": "2025-26", "fav_odds": x} for x in [1.10, 1.15, 1.20, 1.25, 1.30, 1.40, 1.50] * 10],
+        min_matches=20,
+        default_league="L1",
+    )
+    cfg = sfa.SfaConfig(
+        mode="percentile",
+        shape="linear",
+        min_matches=20,
+        residual_enabled=True,
+        residual_k=0.5,
+        residual_beta_max=0.10,
+    ).validated()
+    d0, diag0 = sfa.apply_strong_favorite_adjustment(
+        1.8, 2.6, cfg, book, league="L1", season="2025-26", market_favorite_odds=None
+    )
+    d1, diag1 = sfa.apply_strong_favorite_adjustment(
+        1.8, 2.6, cfg, book, league="L1", season="2025-26", market_favorite_odds=1.10
+    )
+    assert diag1.residual_gap >= 0
+    assert diag1.sfa_beta + 1e-12 >= diag0.sfa_beta
+    assert abs(diag1.beta_percentile - diag0.sfa_beta) < 1e-12 or diag0.market_favorite_odds is None
+    assert abs(d1) + 1e-12 >= abs(d0)
 
 
 def test_diagnostics_fields():

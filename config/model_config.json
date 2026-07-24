@@ -203,7 +203,10 @@
     ],
     "logisticK": 0.8,
     "logisticMid": 5.0,
-    "logisticMax": 0.06
+    "logisticMax": 0.06,
+    "residualEnabled": true,
+    "residualK": 0.5,
+    "residualBetaMax": 0.1
   },
   "rotationTrainingWeights": {
     "none": 1.0,
