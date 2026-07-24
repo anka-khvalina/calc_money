@@ -9656,6 +9656,12 @@ bash scripts/update_and_serve.sh --start</div>
       row.S_market = sSrc ? sSrc.S_market : null;
       row.Residual_S_base = sSrc ? sSrc.Residual_S_base : null;
       row.Residual_S_dynamic = sSrc ? sSrc.Residual_S_dynamic : null;
+      row.sfa_mode = sSrc ? sSrc.sfa_mode : null;
+      row.sfa_beta = sSrc ? sSrc.sfa_beta : null;
+      row.favorite_fair_odds = sSrc ? sSrc.favorite_fair_odds : null;
+      row.favorite_percentile = sSrc ? sSrc.favorite_percentile : null;
+      row.D_before_sfa = sSrc ? sSrc.D_before_sfa : null;
+      row.D_after_sfa = sSrc ? sSrc.D_after_sfa : null;
       const dcSrc = leg || aut;
       row.gamma_season = dcSrc ? dcSrc.gamma_season : null;
       row.gamma_effective = dcSrc ? dcSrc.gamma_effective : null;
