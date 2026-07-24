@@ -32,6 +32,7 @@ try:
     from . import momentum as mom
     from . import s_momentum as smom
     from . import strong_favorite_adjustment as sfa
+    from . import strong_favourite_total as sft
     from . import team_ranking as tr
     from .rotation_training import (
         DEFAULT_ROTATION_TRAINING_WEIGHTS,
@@ -48,6 +49,7 @@ except ImportError:  # pragma: no cover
     import momentum as mom
     import s_momentum as smom
     import strong_favorite_adjustment as sfa
+    import strong_favourite_total as sft
     import team_ranking as tr
     from rotation_training import (
         DEFAULT_ROTATION_TRAINING_WEIGHTS,
@@ -107,6 +109,11 @@ class ModelConfig:
     sfa_residual_enabled: bool = True
     sfa_residual_k: float = 0.5
     sfa_residual_beta_max: float = 0.10
+
+    # Strong Favourite total (S) correction — OU/λ_fav patch; flag off = legacy
+    sftc_enabled: bool = True
+    sftc_strong_favourite_threshold: float = sft.DEFAULT_STRONG_FAVOURITE_THRESHOLD
+    sftc_total_correction: float = sft.DEFAULT_TOTAL_CORRECTION
 
     # веса по экстремальности тотала
     alpha_t: float = 0.50
@@ -919,6 +926,30 @@ def apply_sfa_config_from_mapping(
         sfa_residual_enabled=parsed.residual_enabled,
         sfa_residual_k=parsed.residual_k,
         sfa_residual_beta_max=parsed.residual_beta_max,
+    )
+
+
+def resolve_sftc_config(cfg: ModelConfig) -> sft.StrongFavouriteTotalConfig:
+    return sft.StrongFavouriteTotalConfig(
+        enabled=bool(cfg.sftc_enabled),
+        strong_favourite_threshold=float(cfg.sftc_strong_favourite_threshold),
+        total_correction=float(cfg.sftc_total_correction),
+    )
+
+
+def apply_sftc_config_from_mapping(
+    cfg: ModelConfig,
+    raw: Optional[Mapping[str, Any]],
+) -> ModelConfig:
+    """Наложить strongFavouriteTotalCorrection из model_config.json."""
+    if not raw:
+        return cfg
+    parsed = sft.config_from_mapping(raw)
+    return replace(
+        cfg,
+        sftc_enabled=parsed.enabled,
+        sftc_strong_favourite_threshold=parsed.strong_favourite_threshold,
+        sftc_total_correction=parsed.total_correction,
     )
 
 
@@ -2623,6 +2654,9 @@ class Prediction:
     # Strong Favorite Adjustment diagnostics (AC7)
     sfa: Optional[sfa.SfaDiagnostics] = None
     d_before_sfa: Optional[float] = None
+    # Strong Favourite total (S) correction diagnostics
+    sftc: Optional[sft.StrongFavouriteTotalDiagnostics] = None
+    s_before_sftc: Optional[float] = None
 
 
 def resolve_dynamic_dc_config(cfg: ModelConfig) -> ddc.DynamicDcGammaConfig:
@@ -2865,14 +2899,14 @@ def predict_match(
     s_final = apply_s_calibration(s_for_cal, cal.s_a, cal.s_b, cfg)
     d_before_sfa = float(d_final)
     sfa_diag: Optional[sfa.SfaDiagnostics] = None
+    mkt_fav = market_favorite_odds
+    if mkt_fav is None:
+        mkt_fav = sfa.favorite_odds_from_decimal(home_odds, away_odds)
     if apply_sfa:
         sfa_cfg_use = model.sfa_cfg or resolve_sfa_config(cfg)
         lg = league
         if lg is None and model.sfa_book is not None:
             lg = model.sfa_book.league_key or None
-        mkt_fav = market_favorite_odds
-        if mkt_fav is None:
-            mkt_fav = sfa.favorite_odds_from_decimal(home_odds, away_odds)
         d_final, sfa_diag = sfa.apply_strong_favorite_adjustment(
             d_final,
             s_final,
@@ -2887,6 +2921,12 @@ def predict_match(
             already_applied=False,
             market_favorite_odds=mkt_fav,
         )
+    # SFTC after SFA so D-path / SFA inputs stay unchanged (AC-4).
+    s_before_sftc = float(s_final)
+    sftc_cfg = resolve_sftc_config(cfg)
+    s_final, sftc_diag = sft.apply_strong_favourite_total_correction(
+        s_final, mkt_fav, sftc_cfg,
+    )
     d_final = gm.clamp_goal_diff(d_final, s_final, cfg.lambda_epsilon)
 
     lam_min = scfg.lambda_min
@@ -3011,6 +3051,8 @@ def predict_match(
         d_correction=dcorr_snap,
         sfa=sfa_diag,
         d_before_sfa=d_before_sfa,
+        sftc=sftc_diag,
+        s_before_sftc=s_before_sftc,
     )
 
 

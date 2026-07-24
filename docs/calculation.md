@@ -73,6 +73,14 @@ S_final = sA + sB · S_model
 
 В Auto после выбора α/ρ выполняется повторная калибровка S/D на joint matrix (см. `auto1x2Calib`); это улучшает Auto-матрицу для AH/OU. **Итоговый 1X2 пользователю берётся только из Legacy.**
 
+После S-калибровки и SFA (D-path) применяется опциональная локальная поправка тотала для сегмента Strong Favourite (`strongFavouriteTotalCorrection` в `model_config.json`):
+
+```text
+S_final ← S_final + totalCorrection   # если flag on и fav odds ≤ threshold
+```
+
+По умолчанию включено (`enabled: true`, threshold `1.30`, correction `+0.10`). Выключение флага возвращает прежнее поведение. См. [ADR-0001](adr/0001-strong-favourite-total-correction.md).
+
 ---
 
 ## 7. Score matrix
