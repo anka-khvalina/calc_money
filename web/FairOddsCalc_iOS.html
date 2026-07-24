@@ -7409,11 +7409,13 @@ bash scripts/update_and_serve.sh --start</div>
           const autoEl = document.getElementById('goalModelAutoStatus');
           if(autoEl){
             const league = (goalLoadedMeta && goalLoadedMeta.leagueName) || '—';
-            const alphaFin = (gmModelAuto||gmModel||{}).alphaFinal != null ? (gmModelAuto||gmModel).alphaFinal : 0;
-            const rhoFin = (gmModelAuto||gmModel||{}).rhoFinal != null ? (gmModelAuto||gmModel).rhoFinal : 0;
-            const nbImpr = (gmModelAuto||gmModel||{}).nbImprovementPct != null ? (gmModelAuto||gmModel).nbImprovementPct : 0;
+            const autoSrc = gmModelAuto||gmModel||{};
+            const alphaFin = autoSrc.alphaFinal != null ? autoSrc.alphaFinal : 0;
+            const rhoFin = autoSrc.rhoFinal != null ? autoSrc.rhoFinal : 0;
+            const nbImpr = autoSrc.nbImprovementPct != null ? autoSrc.nbImprovementPct : 0;
+            const dist = autoSrc.selectedDistribution || 'poisson_like';
             const calL = gmModelLegacy ? gmNormalizeCal(gmModelLegacy.cal||{}) : null;
-            const sd = (gmModelAuto||gmModel||{}).sdDiag;
+            const sd = autoSrc.sdDiag;
             const lines = [
               `<div>Лига: ${escapeHtml(league)}</div>`,
               `<div>Режим: Combined (1X2 Legacy + AH/OU Auto)</div>`,
@@ -7421,7 +7423,7 @@ bash scripts/update_and_serve.sh --start</div>
               `<div>Legacy dA/dB: ${calL ? `${Number(calL.dA).toFixed(3)} / ${Number(calL.dB).toFixed(3)}` : '—'}</div>`,
               `<div>Auto α / ρ: ${Number(alphaFin).toFixed(4)} / ${Number(rhoFin).toFixed(4)}</div>`,
               `<div>Auto dist: ${dist==='negbin'?'Negative Binomial':'Poisson-like'} (NB +${nbImpr.toFixed(2)}%)</div>`,
-              `<div>Матчей: ${(calib && calib.nMatches != null) ? calib.nMatches : ((gmModelAuto||gmModel||{}).nMatches || n)}</div>`,
+              `<div>Матчей: ${(calib && calib.nMatches != null) ? calib.nMatches : (autoSrc.nMatches || n)}</div>`,
             ];
             if(sd && sd.nEval > 0){
               lines.push(`<div>1X2 MAE / PX: ${escapeHtml(sd.summary || '—')}</div>`);
