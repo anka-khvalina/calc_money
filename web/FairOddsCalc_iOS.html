@@ -3346,6 +3346,7 @@ bash scripts/update_and_serve.sh --start</div>
         compare: raw.compare || {},
         momentum: raw.momentum || {},
         d_correction: raw.d_correction || raw.dCorrection || {},
+        rating: raw.rating || {},
         dynamic_s_ema: raw.dynamic_s_ema || raw.sMomentum || {},
         dynamic_dc_gamma: raw.dynamic_dc_gamma || raw.dynamicDcGamma || {},
         configSource: 'model_config.json',
@@ -3802,7 +3803,93 @@ bash scripts/update_and_serve.sh --start</div>
       const w = m && m.wBase != null ? Number(m.wBase) : 0;
       return isFinite(w) && w > 1e-12 ? w : 0;
     }
-    function gmFitStrength(ms,cfg,priorSt){
+    function gmRatingCfg(leagueId, leagueName){
+      const raw0 = (GM_MODEL_CFG && GM_MODEL_CFG.rating) || (GM_MATRIX_CFG && GM_MATRIX_CFG.rating) || {};
+      let raw = raw0;
+      const by = raw0.byLeague || raw0.by_league || {};
+      const resolvedName = leagueName
+        || (leagueId && window.__SB && window.__SB.leagueNameById && window.__SB.leagueNameById[leagueId])
+        || null;
+      for(const key of [leagueId, leagueName, resolvedName, String(leagueId||''), String(leagueName||''), String(resolvedName||'')]){
+        if(key && by[key] && typeof by[key] === 'object'){
+          raw = Object.assign({}, raw0, by[key]);
+          break;
+        }
+      }
+      const prior = (raw.prior && typeof raw.prior === 'object') ? raw.prior
+        : ((raw0.prior && typeof raw0.prior === 'object') ? raw0.prior : {});
+      const td = (raw.time_decay || raw.timeDecay || raw0.time_decay || raw0.timeDecay || {});
+      const vol = (raw.volatility || raw0.volatility || {});
+      return {
+        mode: String(raw.mode || 'standard_wls').toLowerCase(),
+        confidenceK: raw.confidence_k != null ? Number(raw.confidence_k) : (raw.confidenceK != null ? Number(raw.confidenceK) : 8),
+        lambdaMode: String(raw.lambda_mode || raw.lambdaMode || 'confidence').toLowerCase(),
+        lambdaMin: raw.lambda_min != null ? Number(raw.lambda_min) : (raw.lambdaMin != null ? Number(raw.lambdaMin) : 0.02),
+        lambdaMax: raw.lambda_max != null ? Number(raw.lambda_max) : (raw.lambdaMax != null ? Number(raw.lambdaMax) : 0.50),
+        lambdaBase: raw.lambda_base != null ? Number(raw.lambda_base) : (raw.lambdaBase != null ? Number(raw.lambdaBase) : 0.10),
+        nFloor: raw.n_floor != null ? Number(raw.n_floor) : (raw.nFloor != null ? Number(raw.nFloor) : 1),
+        effectiveNIters: raw.effective_n_iters != null ? Number(raw.effective_n_iters) : (raw.effectiveNIters != null ? Number(raw.effectiveNIters) : 2),
+        priorMode: String(prior.mode || 'league_mean').toLowerCase(),
+        priorReliability: prior.prior_reliability != null ? Number(prior.prior_reliability) : (prior.priorReliability != null ? Number(prior.priorReliability) : 0.70),
+        promotedPrior: prior.promoted_team_prior != null ? Number(prior.promoted_team_prior)
+          : (prior.promotedTeamPrior != null ? Number(prior.promotedTeamPrior) : null),
+        promotedN: prior.promoted_reference_n != null ? Number(prior.promoted_reference_n)
+          : (prior.promotedReferenceN != null ? Number(prior.promotedReferenceN) : 3),
+        timeDecayEnabled: !!(td.enabled),
+        halfLifeDays: td.half_life_days != null ? Number(td.half_life_days) : (td.halfLifeDays != null ? Number(td.halfLifeDays) : 120),
+        suppressSeasonWeight: td.suppress_season_weight != null ? !!td.suppress_season_weight
+          : (td.suppressSeasonWeight != null ? !!td.suppressSeasonWeight : true),
+        volatilityEnabled: !!(vol.enabled),
+        volatilityScale: vol.volatility_scale != null ? Number(vol.volatility_scale)
+          : (vol.volatilityScale != null ? Number(vol.volatilityScale) : 1),
+      };
+    }
+    function gmEffectiveN(ws){
+      let s=0,s2=0; for(const w of ws){ const ww=Number(w); if(!(ww>0)) continue; s+=ww; s2+=ww*ww; }
+      return s2>0 ? (s*s)/s2 : 0;
+    }
+    function gmRatingConfidence(n,k){ const nn=Math.max(0,n), kk=Math.max(0,k); return (nn+kk)>0 ? nn/(nn+kk) : 0; }
+    function gmLambdaFromConf(c, lo, hi){ const cc=Math.max(0,Math.min(1,c)); return lo+(hi-lo)*(1-cc); }
+    function gmTimeWeight(dateStr, asOfStr, halfLife){
+      if(!dateStr || !asOfStr || !(halfLife>0)) return 1;
+      const a = Date.parse(String(dateStr).slice(0,10)+'T00:00:00Z');
+      const b = Date.parse(String(asOfStr).slice(0,10)+'T00:00:00Z');
+      if(!isFinite(a)||!isFinite(b)) return 1;
+      const age = Math.max(0, (b-a)/(86400000));
+      return Math.exp(-age/halfLife);
+    }
+    function gmResolvePriors(teams, rcfg, priorSt){
+      const prev = (priorSt && priorSt.ratings) ? priorSt.ratings : {};
+      const prevKeys = Object.keys(prev);
+      let meanPrev = 0;
+      if(prevKeys.length){ meanPrev = prevKeys.reduce((s,t)=>s+Number(prev[t]||0),0)/prevKeys.length; }
+      const norm = {};
+      prevKeys.forEach(t=>{ norm[t]=Number(prev[t])-meanPrev; });
+      let promoted = rcfg.promotedPrior;
+      if(promoted==null && prevKeys.length){
+        const weakest = prevKeys.map(t=>norm[t]).sort((a,b)=>a-b).slice(0, Math.max(1,rcfg.promotedN||3));
+        promoted = weakest.reduce((a,b)=>a+b,0)/weakest.length;
+      }
+      if(promoted==null) promoted = 0;
+      const out = {};
+      teams.forEach(t=>{
+        const has = Object.prototype.hasOwnProperty.call(norm, t);
+        if(rcfg.priorMode === 'previous_season'){
+          out[t] = has ? norm[t] : promoted;
+        } else if(rcfg.priorMode === 'blended'){
+          out[t] = has ? (rcfg.priorReliability*norm[t]) : promoted;
+        } else {
+          out[t] = 0;
+        }
+      });
+      const vals = Object.values(out);
+      if(vals.length){
+        const m = vals.reduce((a,b)=>a+b,0)/vals.length;
+        teams.forEach(t=>{ out[t]-=m; });
+      }
+      return out;
+    }
+    function gmFitStrength(ms,cfg,priorSt,leagueId,leagueName){
       // wBase includes rotation training_weight — exclude weight-0 from fit entirely.
       const used=ms.filter(m=>m.D!=null && gmTrainWeight(m)>0);
       if(used.length<2) throw new Error('Мало матчей с D');
@@ -3816,8 +3903,92 @@ bash scripts/update_and_serve.sh --start</div>
       const coeffs=[],tg=[];
       used.forEach(m=>{ const c=Array(p).fill(0); c[idx.get(m.home)]+=1; c[idx.get(m.away)]-=1; c[hCol]=m.iHome;
         if(dCol!=null) c[dCol]=gmDerbyHome(m)?1:0; coeffs.push(c); tg.push(m.D);
-        m.wLineAh=Math.min(cfg.maxWAh,Math.max(cfg.minWAh,1/(1+cfg.alphaAh*Math.pow(Math.abs(m.D),cfg.pAh)))); m.wRob=1; });
+        m.wLineAh=Math.min(cfg.maxWAh,Math.max(cfg.minWAh,1/(1+cfg.alphaAh*Math.pow(Math.abs(m.D),cfg.pAh)))); m.wRob=1; m.wTime=1; });
       const gauge=[...Array(teams.length).fill(1),...Array(p-teams.length).fill(0)];
+      const lid = leagueId != null ? leagueId : (used[0] && used[0].leagueId != null ? used[0].leagueId : null);
+      const lname = leagueName != null ? leagueName : (used[0] && used[0].league != null ? used[0].league : null);
+      const rcfg = gmRatingCfg(lid, lname);
+      const useHier = rcfg.mode === 'hierarchical_wls'; // shadow keeps production on standard_wls
+      if(useHier){
+        if(rcfg.timeDecayEnabled){
+          const dates = used.map(m=>m.date).filter(Boolean).map(d=>String(d).slice(0,10)).sort();
+          const asOf = dates.length ? dates[dates.length-1] : null;
+          used.forEach(m=>{ m.wTime = gmTimeWeight(m.date, asOf, rcfg.halfLifeDays); });
+        }
+        const priors = gmResolvePriors(teams, rcfg, priorSt);
+        function obsW(m, withRob){
+          let w = gmTrainWeight(m);
+          if(rcfg.timeDecayEnabled && rcfg.suppressSeasonWeight){
+            // season weight already inside wBase via prepare — approximate: keep match weights, apply time
+            // JS prepare typically folds season into wBase; suppress means prefer wTime over double decay:
+            w = gmTrainWeight(m) * (m.wTime||1);
+          } else if(rcfg.timeDecayEnabled){
+            w = gmTrainWeight(m) * (m.wTime||1);
+          }
+          w *= (m.wLineAh||1);
+          if(withRob) w *= (m.wRob||1);
+          return w;
+        }
+        function teamLambdas(matchW){
+          const bags = {}; teams.forEach(t=>bags[t]=[]);
+          used.forEach((m,i)=>{ bags[m.home].push(matchW[i]); bags[m.away].push(matchW[i]); });
+          const out = {};
+          teams.forEach(t=>{
+            const nEff = gmEffectiveN(bags[t]);
+            let conf = gmRatingConfidence(nEff, rcfg.confidenceK);
+            let lam;
+            if(rcfg.lambdaMode === 'inverse_n'){
+              const n = Math.max(rcfg.nFloor, nEff);
+              lam = Math.min(rcfg.lambdaMax, Math.max(rcfg.lambdaMin, rcfg.lambdaBase/n));
+            } else {
+              lam = gmLambdaFromConf(conf, rcfg.lambdaMin, rcfg.lambdaMax);
+            }
+            out[t] = {nEff, conf, lam, prior: priors[t]||0};
+          });
+          return out;
+        }
+        function run(W, meta){
+          const rows=used.map((m,i)=>[coeffs[i],tg[i],W[i]]);
+          teams.forEach(t=>{
+            const c=Array(p).fill(0); c[idx.get(t)]=1;
+            rows.push([c, meta[t].prior, meta[t].lam]);
+          });
+          rows.push([gauge,0,GM_GAUGE]);
+          const sol=gmWls(rows,p);
+          const res=used.map((m,i)=>{ let pr=0; for(let k=0;k<p;k++) pr+=coeffs[i][k]*sol[k]; return pr-tg[i]; });
+          return [sol,res];
+        }
+        let meta = teamLambdas(used.map(m=>obsW(m,false)));
+        let W = used.map(m=>obsW(m,false));
+        let [sol,res]=run(W, meta);
+        const outer = Math.max(1, rcfg.effectiveNIters|0);
+        for(let oi=0; oi<outer; oi++){
+          for(let it=0; it<cfg.maxIter; it++){
+            const nW=used.map((m,i)=>{ m.wRob=gmHuber(res[i],cfg.deltaAh); return obsW(m,true); });
+            const dl=Math.max(...nW.map((w,i)=>Math.abs(w-W[i])));
+            W=nW; [sol,res]=run(W, meta); if(dl<cfg.tol) break;
+          }
+          if(oi+1<outer){
+            meta = teamLambdas(W);
+            [sol,res]=run(W, meta);
+          }
+        }
+        meta = teamLambdas(W);
+        const ratings={}; teams.forEach(t=>ratings[t]=sol[idx.get(t)]); const mr=Object.values(ratings).reduce((a,b)=>a+b,0)/teams.length;
+        teams.forEach(t=>ratings[t]-=mr);
+        const rmse=Math.sqrt(res.reduce((a,e)=>a+e*e,0)/res.length);
+        const hLeague=sol[hCol], deltaRaw=dCol!=null?sol[dCol]:0;
+        const tau=cfg.derbyShrinkTau != null ? cfg.derbyShrinkTau : 30;
+        const derbyShrinkW=(derbyN>0 && useDerbyCoef) ? derbyN/(derbyN+tau) : 0;
+        const deltaDerby=(derbyN>0 && useDerbyCoef) ? derbyShrinkW*deltaRaw : 0;
+        const hDerby=derbyN>0 ? gmEffectiveH({H:hLeague,deltaDerby,derbyN,derbyShrinkW},cfg,false,true) : hLeague;
+        const kDerby=Math.abs(hLeague)>1e-9 ? hDerby/hLeague : 1;
+        const teamMeta={};
+        teams.forEach(t=>{
+          teamMeta[t]={ priorRating: meta[t].prior, effectiveN: meta[t].nEff, ratingConfidence: meta[t].conf, lambdaTeam: meta[t].lam };
+        });
+        return {ratings, H:hLeague, deltaDerby, derbyN, derbyShrinkW, hDerby, kDerby, rmse, ratingMode:'hierarchical_wls', teamMeta};
+      }
       const priorRows=[];
       const pw=(cfg.priorAlpha>0&&priorSt&&priorSt.ratings)?cfg.priorAlpha:0;
       if(pw>0){
@@ -3848,7 +4019,7 @@ bash scripts/update_and_serve.sh --start</div>
       const deltaDerby=(derbyN>0 && useDerbyCoef) ? derbyShrinkW*deltaRaw : 0;
       const hDerby=derbyN>0 ? gmEffectiveH({H:hLeague,deltaDerby,derbyN,derbyShrinkW},cfg,false,true) : hLeague;
       const kDerby=Math.abs(hLeague)>1e-9 ? hDerby/hLeague : 1;
-      return {ratings, H:hLeague, deltaDerby, derbyN, derbyShrinkW, hDerby, kDerby, rmse};
+      return {ratings, H:hLeague, deltaDerby, derbyN, derbyShrinkW, hDerby, kDerby, rmse, ratingMode:'standard_wls'};
     }
     function gmFitAD(ms,cfg,priorGl){
       const used=ms.filter(m=>m.lh>0&&m.la>0 && gmTrainWeight(m)>0);
@@ -5042,7 +5213,9 @@ bash scripts/update_and_serve.sh --start</div>
       });
       const ms=gmPrepare(raw,cfg);
       const dClamp=gmDClampDiagnostics(ms, cfg);
-      const st=gmFitStrength(ms,cfg,prior&&prior.st), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
+      const leagueId = (raw[0]&&raw[0].leagueId)!=null ? raw[0].leagueId : null;
+      const leagueName = (raw[0]&&raw[0].league)!=null ? raw[0].league : null;
+      const st=gmFitStrength(ms,cfg,prior&&prior.st,leagueId,leagueName), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
       const draw={alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'disabled',mode:'legacy'};
       const calDiag=gmAssessCalibration(cal,cfg);
       const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag,teamNames:{},
@@ -7236,11 +7409,13 @@ bash scripts/update_and_serve.sh --start</div>
           const autoEl = document.getElementById('goalModelAutoStatus');
           if(autoEl){
             const league = (goalLoadedMeta && goalLoadedMeta.leagueName) || '—';
-            const alphaFin = (gmModelAuto||gmModel||{}).alphaFinal != null ? (gmModelAuto||gmModel).alphaFinal : 0;
-            const rhoFin = (gmModelAuto||gmModel||{}).rhoFinal != null ? (gmModelAuto||gmModel).rhoFinal : 0;
-            const nbImpr = (gmModelAuto||gmModel||{}).nbImprovementPct != null ? (gmModelAuto||gmModel).nbImprovementPct : 0;
+            const autoSrc = gmModelAuto||gmModel||{};
+            const alphaFin = autoSrc.alphaFinal != null ? autoSrc.alphaFinal : 0;
+            const rhoFin = autoSrc.rhoFinal != null ? autoSrc.rhoFinal : 0;
+            const nbImpr = autoSrc.nbImprovementPct != null ? autoSrc.nbImprovementPct : 0;
+            const dist = autoSrc.selectedDistribution || 'poisson_like';
             const calL = gmModelLegacy ? gmNormalizeCal(gmModelLegacy.cal||{}) : null;
-            const sd = (gmModelAuto||gmModel||{}).sdDiag;
+            const sd = autoSrc.sdDiag;
             const lines = [
               `<div>Лига: ${escapeHtml(league)}</div>`,
               `<div>Режим: Combined (1X2 Legacy + AH/OU Auto)</div>`,
@@ -7248,7 +7423,7 @@ bash scripts/update_and_serve.sh --start</div>
               `<div>Legacy dA/dB: ${calL ? `${Number(calL.dA).toFixed(3)} / ${Number(calL.dB).toFixed(3)}` : '—'}</div>`,
               `<div>Auto α / ρ: ${Number(alphaFin).toFixed(4)} / ${Number(rhoFin).toFixed(4)}</div>`,
               `<div>Auto dist: ${dist==='negbin'?'Negative Binomial':'Poisson-like'} (NB +${nbImpr.toFixed(2)}%)</div>`,
-              `<div>Матчей: ${(calib && calib.nMatches != null) ? calib.nMatches : ((gmModelAuto||gmModel||{}).nMatches || n)}</div>`,
+              `<div>Матчей: ${(calib && calib.nMatches != null) ? calib.nMatches : (autoSrc.nMatches || n)}</div>`,
             ];
             if(sd && sd.nEval > 0){
               lines.push(`<div>1X2 MAE / PX: ${escapeHtml(sd.summary || '—')}</div>`);
@@ -7358,6 +7533,7 @@ bash scripts/update_and_serve.sh --start</div>
         homeName,
         awayName,
         leagueId: m.league_id != null ? String(m.league_id) : '',
+        league: (m.league_name != null ? String(m.league_name) : '') || (m.league_id != null ? sbLeagueName(m.league_id) : ''),
         ah: gmF(m.closing_ah_home),
         tot: gmF(m.closing_total_line),
         aho: gmF(m.ah_home_odds),
@@ -8404,7 +8580,9 @@ bash scripts/update_and_serve.sh --start</div>
       // Legacy defaults: DC on, draw model off unless explicitly enabled.
       const cfgL=Object.assign({}, cfg, {useDc:cfg.useDc!==false, useDraw:cfg.useDraw===true, irEngine:'legacy'});
       const ms=gmPrepare(raw,cfgL);
-      const st=gmFitStrength(ms,cfgL,null);
+      const leagueId = (raw[0]&&raw[0].leagueId)!=null ? raw[0].leagueId : null;
+      const leagueName = (raw[0]&&raw[0].league)!=null ? raw[0].league : null;
+      const st=gmFitStrength(ms,cfgL,null,leagueId,leagueName);
       const gl=gmFitAD(ms,cfgL,null);
       const cal=irCalibrateLegacy(ms,st,gl,cfgL);
       const draw=cfgL.useDraw

@@ -21,12 +21,13 @@ import math
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 try:
     from . import d_correction as dcorr
     from . import dynamic_dc_gamma as ddc
     from . import goal_model as gm
+    from . import hierarchical_wls as hwls
     from . import momentum as mom
     from . import s_momentum as smom
     from . import team_ranking as tr
@@ -40,6 +41,7 @@ except ImportError:  # pragma: no cover
     import d_correction as dcorr
     import dynamic_dc_gamma as ddc
     import goal_model as gm
+    import hierarchical_wls as hwls
     import momentum as mom
     import s_momentum as smom
     import team_ranking as tr
@@ -185,6 +187,29 @@ class ModelConfig:
     d_correction_cache_fallback: str = dcorr.FALLBACK_LAST_LOCAL
     d_correction_cache_versions_to_keep: int = 2
     d_correction_publish_cache: bool = False  # opt-in filesystem publish after train
+
+    # Regularized hierarchical WLS (rating.mode); default keeps current WLS
+    rating_mode: str = hwls.MODE_STANDARD
+    rating_confidence_k: float = 8.0
+    rating_lambda_mode: str = hwls.LAMBDA_MODE_CONFIDENCE
+    rating_lambda_min: float = 0.02
+    rating_lambda_max: float = 0.50
+    rating_lambda_base: float = 0.10
+    rating_n_floor: float = 1.0
+    rating_effective_n_iters: int = 2
+    rating_prior_mode: str = hwls.PRIOR_LEAGUE_MEAN
+    rating_prior_reliability: float = 0.70
+    rating_promoted_team_prior: Optional[float] = None
+    rating_time_decay_enabled: bool = False
+    rating_half_life_days: float = 120.0
+    rating_suppress_season_weight: bool = True
+    rating_volatility_enabled: bool = False
+    rating_volatility_scale: float = 1.0
+    rating_publish_cache: bool = False  # opt-in; model_config.json can enable for publish
+    rating_cache_versions_to_keep: int = 2
+    rating_cache_fallback: str = hwls.FALLBACK_LAST_LOCAL
+    # league_id / league_name → partial rating overrides (e.g. mode)
+    rating_by_league: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -366,6 +391,7 @@ class PreparedMatch:
     w_line_ah: float = 1.0
     w_line_t: float = 1.0
     w_robust: float = 1.0
+    w_time: float = 1.0
 
 
 # --------------------------------------------------------------------------- #
@@ -686,6 +712,12 @@ class StrengthModel:
     mae: float = 0.0
     rmse: float = 0.0
     n: int = 0
+    rating_mode: str = hwls.MODE_STANDARD
+    rating_algorithm_version: str = "standard_wls_v1"
+    team_meta: Dict[str, hwls.TeamRatingMeta] = field(default_factory=dict)
+    priors: Dict[str, float] = field(default_factory=dict)
+    regularization_parameters: Dict[str, Any] = field(default_factory=dict)
+    time_decay_parameters: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def home_advantage_derby(self) -> float:
@@ -708,11 +740,353 @@ def _huber_weight(e: float, delta: float) -> float:
     return 1.0 if ae <= delta else delta / ae
 
 
+def resolve_rating_config(
+    cfg: ModelConfig,
+    *,
+    league_id: Optional[str] = None,
+    league_name: Optional[str] = None,
+) -> hwls.HierarchicalWlsConfig:
+    base = hwls.HierarchicalWlsConfig(
+        mode=cfg.rating_mode,
+        confidence_k=cfg.rating_confidence_k,
+        lambda_mode=cfg.rating_lambda_mode,
+        lambda_min=cfg.rating_lambda_min,
+        lambda_max=cfg.rating_lambda_max,
+        lambda_base=cfg.rating_lambda_base,
+        n_floor=cfg.rating_n_floor,
+        effective_n_iters=cfg.rating_effective_n_iters,
+        prior=hwls.PriorConfig(
+            mode=cfg.rating_prior_mode,
+            prior_reliability=cfg.rating_prior_reliability,
+            promoted_team_prior=cfg.rating_promoted_team_prior,
+            promoted_reference_n=cfg.promoted_reference_n,
+        ),
+        time_decay=hwls.TimeDecayConfig(
+            enabled=cfg.rating_time_decay_enabled,
+            half_life_days=cfg.rating_half_life_days,
+            suppress_season_weight=cfg.rating_suppress_season_weight,
+        ),
+        volatility=hwls.VolatilityConfig(
+            enabled=cfg.rating_volatility_enabled,
+            volatility_scale=cfg.rating_volatility_scale,
+        ),
+        cache=hwls.RatingCacheConfig(
+            fallback=cfg.rating_cache_fallback,
+            versions_to_keep=cfg.rating_cache_versions_to_keep,
+        ),
+        publish_cache=cfg.rating_publish_cache,
+        by_league=dict(cfg.rating_by_league or {}),
+    ).validated()
+    return hwls.apply_league_overrides(
+        base, league_id=league_id, league_name=league_name
+    )
+
+
+def apply_rating_config_from_mapping(
+    cfg: ModelConfig,
+    raw: Optional[Dict[str, Any]],
+) -> ModelConfig:
+    """Наложить блок rating из model_config.json на ModelConfig."""
+    if not raw:
+        return cfg
+    parsed = hwls.rating_config_from_mapping(raw)
+    return replace(
+        cfg,
+        rating_mode=parsed.mode,
+        rating_confidence_k=parsed.confidence_k,
+        rating_lambda_mode=parsed.lambda_mode,
+        rating_lambda_min=parsed.lambda_min,
+        rating_lambda_max=parsed.lambda_max,
+        rating_lambda_base=parsed.lambda_base,
+        rating_n_floor=parsed.n_floor,
+        rating_effective_n_iters=parsed.effective_n_iters,
+        rating_prior_mode=parsed.prior.mode,
+        rating_prior_reliability=parsed.prior.prior_reliability,
+        rating_promoted_team_prior=parsed.prior.promoted_team_prior,
+        promoted_reference_n=parsed.prior.promoted_reference_n,
+        rating_time_decay_enabled=parsed.time_decay.enabled,
+        rating_half_life_days=parsed.time_decay.half_life_days,
+        rating_suppress_season_weight=parsed.time_decay.suppress_season_weight,
+        rating_volatility_enabled=parsed.volatility.enabled,
+        rating_volatility_scale=parsed.volatility.volatility_scale,
+        rating_publish_cache=parsed.publish_cache,
+        rating_cache_versions_to_keep=parsed.cache.versions_to_keep,
+        rating_cache_fallback=parsed.cache.fallback,
+        rating_by_league=dict(parsed.by_league or {}),
+    )
+
+
+def _apply_line_ah_weights(used: Sequence[PreparedMatch], cfg: ModelConfig) -> None:
+    for m in used:
+        m.w_line_ah = min(
+            cfg.max_w_line_ah,
+            max(cfg.min_w_line_ah, 1.0 / (1.0 + cfg.alpha_ah * abs(m.diff_goals) ** cfg.p_ah)),
+        )
+        m.w_robust = 1.0
+
+
+def _apply_time_weights(
+    used: Sequence[PreparedMatch],
+    cfg: ModelConfig,
+    rcfg: hwls.HierarchicalWlsConfig,
+    *,
+    league_id: Optional[str] = None,
+    league_name: Optional[str] = None,
+) -> None:
+    if not rcfg.time_decay.enabled:
+        for m in used:
+            m.w_time = 1.0
+        return
+    half = hwls.resolve_half_life(rcfg, league_id=league_id, league_name=league_name)
+    dates = [m.raw.date for m in used if m.raw.date is not None]
+    as_of = max(dates) if dates else None
+    for m in used:
+        m.w_time = hwls.time_weight(m.raw.date, as_of=as_of, half_life_days=half)
+
+
+def _strength_observation_weight(
+    m: PreparedMatch,
+    cfg: ModelConfig,
+    rcfg: hwls.HierarchicalWlsConfig,
+    *,
+    include_robust: bool = True,
+) -> float:
+    """Match weight for strength WLS / effective_n (no Elo update)."""
+    w = m.w_base
+    if rcfg.time_decay.enabled and rcfg.time_decay.suppress_season_weight:
+        sw = season_weight(m.raw.date, cfg)
+        if sw > 1e-12:
+            w = w / sw
+        w *= m.w_time
+    elif rcfg.time_decay.enabled:
+        w *= m.w_time
+    w *= m.w_line_ah
+    if include_robust:
+        w *= m.w_robust
+    return w
+
+
+def _strength_model_from_hierarchical(fit: hwls.HierarchicalFitResult) -> StrengthModel:
+    return StrengthModel(
+        ratings=dict(fit.ratings),
+        home_advantage=fit.home_advantage,
+        derby_home_delta=fit.derby_home_delta,
+        derby_n=fit.derby_n,
+        derby_shrink_w=fit.derby_shrink_w,
+        mae=fit.mae,
+        rmse=fit.rmse,
+        n=fit.n,
+        rating_mode=fit.rating_mode,
+        rating_algorithm_version=fit.rating_algorithm_version,
+        team_meta=dict(fit.team_meta),
+        priors=dict(fit.priors),
+        regularization_parameters=dict(fit.regularization_parameters),
+        time_decay_parameters=dict(fit.time_decay_parameters),
+    )
+
+
+def fit_hierarchical_strength_ratings(
+    matches: Sequence[PreparedMatch],
+    cfg: ModelConfig,
+    prior_ratings: Optional[Dict[str, float]] = None,
+    *,
+    league_id: Optional[str] = None,
+    league_name: Optional[str] = None,
+    rcfg: Optional[hwls.HierarchicalWlsConfig] = None,
+) -> StrengthModel:
+    """
+    Single joint hierarchical WLS/IRLS over D_market with team-specific shrinkage.
+    No sequential Elo R ← R + K·error.
+    """
+    rcfg = (rcfg or resolve_rating_config(cfg)).validated()
+    used = [m for m in matches if m.diff_goals is not None]
+    if len(used) < 2:
+        raise ValueError("Недостаточно матчей с восстановленной разницей D_m")
+    teams = sorted({m.home_id for m in used} | {m.away_id for m in used})
+    idx = {t: i for i, t in enumerate(teams)}
+    n_derby = sum(_derby_home_indicator(m) for m in used)
+    use_derby_coef = n_derby >= cfg.derby_min_matches
+    p = len(teams) + (2 if use_derby_coef else 1)
+    h_col = p - 2 if use_derby_coef else p - 1
+    d_col = p - 1 if use_derby_coef else None
+
+    _apply_line_ah_weights(used, cfg)
+    _apply_time_weights(
+        used, cfg, rcfg, league_id=league_id, league_name=league_name
+    )
+
+    priors = hwls.resolve_team_priors(teams, rcfg, previous_season=prior_ratings)
+
+    coeffs: List[List[float]] = []
+    targets: List[float] = []
+    for m in used:
+        row = [0.0] * p
+        row[idx[m.home_id]] += 1.0
+        row[idx[m.away_id]] -= 1.0
+        row[h_col] = float(m.i_home)
+        if d_col is not None:
+            row[d_col] = float(_derby_home_indicator(m))
+        coeffs.append(row)
+        targets.append(m.diff_goals)
+
+    gauge = [1.0] * len(teams) + [0.0] * (p - len(teams))
+
+    def solve(
+        weights: Sequence[float],
+        lambdas: Mapping[str, float],
+    ) -> Tuple[List[float], List[float]]:
+        rows = [(coeffs[i], targets[i], weights[i]) for i in range(len(used))]
+        for t in teams:
+            reg = [0.0] * p
+            reg[idx[t]] = 1.0
+            rows.append((reg, float(priors.get(t, 0.0)), float(lambdas[t])))
+        rows.append((gauge, 0.0, tr.GAUGE_WEIGHT))
+        sol = tr._solve_weighted(rows, p)
+        resid = [
+            (sum(coeffs[i][k] * sol[k] for k in range(p)) - targets[i])
+            for i in range(len(used))
+        ]
+        return sol, resid
+
+    def refresh_lambdas(
+        match_w: Sequence[float],
+        resid: Optional[Sequence[float]],
+    ) -> Dict[str, Tuple[float, float, float, Optional[float]]]:
+        tw = hwls.compute_team_weights(
+            teams,
+            [m.home_id for m in used],
+            [m.away_id for m in used],
+            match_w,
+        )
+        vols: Optional[Dict[str, float]] = None
+        if resid is not None and rcfg.volatility.enabled:
+            vols = {}
+            for t in teams:
+                vals: List[float] = []
+                ws: List[float] = []
+                for i, m in enumerate(used):
+                    if m.home_id == t or m.away_id == t:
+                        # home residual sign as team residual contribution
+                        sign = 1.0 if m.home_id == t else -1.0
+                        vals.append(sign * float(resid[i]))
+                        ws.append(float(match_w[i]))
+                vols[t] = hwls.weighted_std(vals, ws)
+        return hwls.build_team_lambdas(tw, rcfg, residual_vols=vols)
+
+    # Initial effective_n without robust weights
+    base_w = [
+        _strength_observation_weight(m, cfg, rcfg, include_robust=False) for m in used
+    ]
+    team_stats = refresh_lambdas(base_w, None)
+    lambdas = {t: team_stats[t][2] for t in teams}
+
+    weights = list(base_w)
+    sol, resid = solve(weights, lambdas)
+
+    # IRLS + optional recompute of effective_n / λ_team
+    outer = max(1, rcfg.effective_n_iters)
+    for outer_i in range(outer):
+        for _ in range(cfg.max_iter):
+            new_w: List[float] = []
+            for i, m in enumerate(used):
+                m.w_robust = _huber_weight(resid[i], cfg.delta_ah)
+                new_w.append(_strength_observation_weight(m, cfg, rcfg, include_robust=True))
+            delta = max(abs(new_w[i] - weights[i]) for i in range(len(used)))
+            weights = new_w
+            sol, resid = solve(weights, lambdas)
+            if delta < cfg.tolerance:
+                break
+        # refresh λ from robust-weighted effective_n (except after last if only 1 pass needed)
+        if outer_i + 1 < outer:
+            team_stats = refresh_lambdas(weights, resid)
+            lambdas = {t: team_stats[t][2] for t in teams}
+            sol, resid = solve(weights, lambdas)
+
+    # Final meta from last weights
+    team_stats = refresh_lambdas(weights, resid if rcfg.volatility.enabled else None)
+    ratings = {t: sol[idx[t]] for t in teams}
+    mean_r = sum(ratings.values()) / len(ratings)
+    ratings = {t: r - mean_r for t, r in ratings.items()}
+    mae = sum(abs(e) for e in resid) / len(resid)
+    rmse = math.sqrt(sum(e * e for e in resid) / len(resid))
+    h_league = sol[h_col]
+    delta_raw = sol[d_col] if d_col is not None else 0.0
+    if n_derby > 0 and use_derby_coef:
+        shrink_w = n_derby / (n_derby + cfg.derby_shrink_tau)
+        delta_shrunk = shrink_w * delta_raw
+    else:
+        shrink_w = 0.0
+        delta_shrunk = 0.0
+
+    team_meta: Dict[str, hwls.TeamRatingMeta] = {}
+    for t in teams:
+        n_eff, conf, lam, vol = team_stats[t]
+        team_meta[t] = hwls.TeamRatingMeta(
+            prior_rating=float(priors.get(t, 0.0)),
+            effective_n=n_eff,
+            rating_confidence=conf,
+            lambda_team=lam,
+            residual_volatility=vol,
+        )
+
+    half = hwls.resolve_half_life(rcfg, league_id=league_id, league_name=league_name)
+    fit = hwls.HierarchicalFitResult(
+        ratings=ratings,
+        home_advantage=h_league,
+        derby_home_delta=delta_shrunk,
+        derby_n=n_derby,
+        derby_shrink_w=shrink_w,
+        mae=mae,
+        rmse=rmse,
+        n=len(used),
+        team_meta=team_meta,
+        rating_mode=hwls.MODE_HIERARCHICAL,
+        rating_algorithm_version=hwls.RATING_ALGORITHM_VERSION,
+        priors=dict(priors),
+        regularization_parameters={
+            "lambda_mode": rcfg.lambda_mode,
+            "lambda_min": rcfg.lambda_min,
+            "lambda_max": rcfg.lambda_max,
+            "lambda_base": rcfg.lambda_base,
+            "confidence_k": rcfg.confidence_k,
+            "n_floor": rcfg.n_floor,
+            "effective_n_iters": rcfg.effective_n_iters,
+            "volatility_enabled": rcfg.volatility.enabled,
+        },
+        time_decay_parameters={
+            "enabled": rcfg.time_decay.enabled,
+            "half_life_days": half,
+            "suppress_season_weight": rcfg.time_decay.suppress_season_weight,
+        },
+        residuals=list(resid),
+    )
+    return _strength_model_from_hierarchical(fit)
+
+
 def fit_strength_ratings(
     matches: Sequence[PreparedMatch],
     cfg: ModelConfig,
     prior_ratings: Optional[Dict[str, float]] = None,
+    *,
+    force_mode: Optional[str] = None,
+    league_id: Optional[str] = None,
+    league_name: Optional[str] = None,
 ) -> StrengthModel:
+    rcfg = resolve_rating_config(cfg, league_id=league_id, league_name=league_name)
+    mode = (force_mode or rcfg.mode or hwls.MODE_STANDARD).strip().lower()
+
+    # Production hierarchical, or forced hierarchical (e.g. shadow side-fit).
+    # Shadow production path uses force_mode=standard_wls.
+    if mode == hwls.MODE_HIERARCHICAL:
+        return fit_hierarchical_strength_ratings(
+            matches,
+            cfg,
+            prior_ratings=prior_ratings,
+            league_id=league_id,
+            league_name=league_name,
+            rcfg=rcfg,
+        )
+
     used = [m for m in matches if m.diff_goals is not None]
     if len(used) < 2:
         raise ValueError("Недостаточно матчей с восстановленной разницей D_m")
@@ -806,6 +1180,9 @@ def fit_strength_ratings(
         mae=mae,
         rmse=rmse,
         n=len(used),
+        rating_mode=hwls.MODE_STANDARD,
+        rating_algorithm_version="standard_wls_v1",
+        regularization_parameters={"reg_lambda": cfg.reg_lambda, "prior_weight": cfg.prior_weight},
     )
 
 
@@ -1470,6 +1847,11 @@ class TrainedModel:
     d_correction_book: Optional["dcorr.DCorrectionBook"] = None
     d_correction_cfg: Optional["dcorr.DCorrectionConfig"] = None
     d_model_version: Optional[str] = None
+    # hierarchical / shadow extras (never mixed across versions)
+    shadow_strength: Optional[StrengthModel] = None
+    shadow_d_correction_book: Optional["dcorr.DCorrectionBook"] = None
+    rating_shadow_monitor: Optional[Dict[str, Any]] = None
+    rating_model_version: Optional[str] = None
 
 
 def resolve_d_correction_config(cfg: ModelConfig) -> dcorr.DCorrectionConfig:
@@ -1722,6 +2104,81 @@ def _build_team_names(matches: Sequence[PreparedMatch]) -> Dict[str, str]:
     return names
 
 
+def _slow_fast_map_from_book(
+    book: Optional[dcorr.DCorrectionBook],
+    ratings: Mapping[str, float],
+    dcorr_cfg: dcorr.DCorrectionConfig,
+) -> Dict[str, Dict[str, float]]:
+    out: Dict[str, Dict[str, float]] = {}
+    if book is None or dcorr_cfg.mode != dcorr.MODE_SLOW_FAST:
+        for tid in ratings:
+            out[tid] = {"slow_bias": 0.0, "fast_bias": 0.0}
+        return out
+    for tid in ratings:
+        view = book.team_view(tid)
+        out[tid] = {"slow_bias": float(view.slow_bias), "fast_bias": float(view.fast_bias)}
+    return out
+
+
+def _publish_strength_rating_cache(
+    *,
+    strength: StrengthModel,
+    d_correction_book: Optional[dcorr.DCorrectionBook],
+    dcorr_cfg: dcorr.DCorrectionConfig,
+    rcfg: hwls.HierarchicalWlsConfig,
+    league_id: Optional[str],
+    league_name: Optional[str],
+    model_version: str,
+    rating_mode_label: str,
+    training_cutoff: Optional[str],
+    monitor: Optional[Dict[str, Any]] = None,
+) -> None:
+    if not rcfg.publish_cache:
+        return
+    # Build a HierarchicalFitResult-shaped payload even for standard_wls packages
+    fit = hwls.HierarchicalFitResult(
+        ratings=dict(strength.ratings),
+        home_advantage=strength.home_advantage,
+        derby_home_delta=strength.derby_home_delta,
+        derby_n=strength.derby_n,
+        derby_shrink_w=strength.derby_shrink_w,
+        mae=strength.mae,
+        rmse=strength.rmse,
+        n=strength.n,
+        team_meta=dict(strength.team_meta),
+        rating_mode=rating_mode_label,
+        rating_algorithm_version=strength.rating_algorithm_version,
+        priors=dict(strength.priors),
+        regularization_parameters=dict(strength.regularization_parameters),
+        time_decay_parameters=dict(strength.time_decay_parameters),
+    )
+    # Ensure team_meta exists for standard packages
+    if not fit.team_meta:
+        lam0 = float(strength.regularization_parameters.get("reg_lambda", 0.0))
+        for tid in strength.ratings:
+            fit.team_meta[tid] = hwls.TeamRatingMeta(
+                prior_rating=0.0,
+                effective_n=0.0,
+                rating_confidence=0.0,
+                lambda_team=lam0,
+            )
+    mode_cfg = rcfg
+    if rating_mode_label in hwls.VALID_MODES:
+        mode_cfg = replace(rcfg, mode=rating_mode_label)
+    payload = hwls.build_rating_cache_payload(
+        fit=fit,
+        cfg=mode_cfg,
+        league_id=league_id,
+        league_name=league_name,
+        model_version=model_version,
+        training_cutoff=training_cutoff,
+        slow_fast=_slow_fast_map_from_book(d_correction_book, strength.ratings, dcorr_cfg),
+        monitor=monitor,
+    )
+    payload.rating_mode = rating_mode_label
+    hwls.publish_rating_model_cache(payload, replace(rcfg, publish_cache=True))
+
+
 def train_full_model(
     raw: Sequence[RawMatch],
     cfg: Optional[ModelConfig] = None,
@@ -1736,14 +2193,66 @@ def train_full_model(
     prior_r = prior.strength.ratings if prior else None
     prior_a = prior.goals.attack if prior else None
     prior_d = prior.goals.defense if prior else None
-    strength = fit_strength_ratings(matches, cfg, prior_ratings=prior_r)
+
+    league_name = next((m.raw.league for m in matches if m.raw.league), None)
+    league_id = next((m.raw.league_id for m in matches if m.raw.league_id), None)
+    rcfg = resolve_rating_config(cfg, league_id=league_id, league_name=league_name)
+
+    # --- Strength fit(s): WLS remains the solver; hierarchical adds team λ ---
+    shadow_strength: Optional[StrengthModel] = None
+    shadow_d_correction_book: Optional[dcorr.DCorrectionBook] = None
+    rating_shadow_monitor: Optional[Dict[str, Any]] = None
+
+    if rcfg.mode == hwls.MODE_HIERARCHICAL:
+        strength = fit_strength_ratings(
+            matches, cfg, prior_ratings=prior_r,
+            force_mode=hwls.MODE_HIERARCHICAL,
+            league_id=league_id, league_name=league_name,
+        )
+        # Also keep a standard package available for config rollback (AC9)
+        try:
+            standard_side = fit_strength_ratings(
+                matches, cfg, prior_ratings=prior_r,
+                force_mode=hwls.MODE_STANDARD,
+                league_id=league_id, league_name=league_name,
+            )
+        except Exception:
+            logging.getLogger(__name__).exception("standard_wls side-fit failed")
+            standard_side = None
+    elif rcfg.mode == hwls.MODE_SHADOW:
+        strength = fit_strength_ratings(
+            matches, cfg, prior_ratings=prior_r,
+            force_mode=hwls.MODE_STANDARD,
+            league_id=league_id, league_name=league_name,
+        )
+        shadow_strength = fit_strength_ratings(
+            matches, cfg, prior_ratings=prior_r,
+            force_mode=hwls.MODE_HIERARCHICAL,
+            league_id=league_id, league_name=league_name,
+        )
+        rating_shadow_monitor = hwls.shadow_compare_monitor(
+            standard_ratings=strength.ratings,
+            hierarchical_ratings=shadow_strength.ratings,
+            standard_mae=strength.mae,
+            hierarchical_mae=shadow_strength.mae,
+        )
+        logging.getLogger(__name__).info(
+            "hierarchical_wls_shadow monitor %s", rating_shadow_monitor
+        )
+        standard_side = strength
+    else:
+        strength = fit_strength_ratings(
+            matches, cfg, prior_ratings=prior_r,
+            force_mode=hwls.MODE_STANDARD,
+            league_id=league_id, league_name=league_name,
+        )
+        standard_side = strength
+
     goals = fit_attack_defense(matches, cfg, prior_attack=prior_a, prior_defense=prior_d)
     calibration = calibrate(matches, strength, goals, cfg)
     cal_diag = assess_calibration_stability(calibration, cfg=cfg)
     draw = fit_draw_for_config(matches, strength, goals, calibration, cfg)
     team_names = _build_team_names(matches)
-    league_name = next((m.raw.league for m in matches if m.raw.league), None)
-    league_id = next((m.raw.league_id for m in matches if m.raw.league_id), None)
     mcfg = resolve_momentum_config(cfg, league_id=league_id, league_name=league_name)
     momentum_book = build_momentum_book_for_matches(
         matches, strength, cfg, league_id=league_id, league_name=league_name,
@@ -1753,8 +2262,16 @@ def train_full_model(
         matches, strength, goals, cfg, league_id=league_id, league_name=league_name,
     )
     dcorr_cfg = resolve_d_correction_config(cfg)
+    # Slow/fast MUST be rebuilt from the production strength's D_base (AC7)
     d_correction_book = build_d_correction_book_for_matches(matches, strength, cfg)
+    if shadow_strength is not None:
+        shadow_d_correction_book = build_d_correction_book_for_matches(
+            matches, shadow_strength, cfg
+        )
     model_version = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    dates = [m.raw.date for m in matches if m.raw.date is not None]
+    training_cutoff = max(dates).isoformat() if dates else None
+
     if cfg.d_correction_publish_cache and dcorr_cfg.mode == dcorr.MODE_SLOW_FAST:
         try:
             payload = dcorr.build_cache_payload(
@@ -1772,12 +2289,63 @@ def train_full_model(
             logging.getLogger(__name__).exception(
                 "D model cache publish failed — keeping previous active version"
             )
+
+    # Versioned rating packages (filesystem only). Never mix R/H/slow/fast versions.
+    try:
+        if rcfg.publish_cache:
+            if standard_side is not None and rcfg.mode in (
+                hwls.MODE_STANDARD, hwls.MODE_SHADOW, hwls.MODE_HIERARCHICAL
+            ):
+                std_book = (
+                    d_correction_book
+                    if strength is standard_side
+                    else build_d_correction_book_for_matches(matches, standard_side, cfg)
+                )
+                _publish_strength_rating_cache(
+                    strength=standard_side,
+                    d_correction_book=std_book,
+                    dcorr_cfg=dcorr_cfg,
+                    rcfg=rcfg,
+                    league_id=str(league_id) if league_id is not None else None,
+                    league_name=league_name,
+                    model_version=model_version,
+                    rating_mode_label=hwls.MODE_STANDARD,
+                    training_cutoff=training_cutoff,
+                )
+            hier_src = strength if rcfg.mode == hwls.MODE_HIERARCHICAL else shadow_strength
+            hier_book = (
+                d_correction_book
+                if rcfg.mode == hwls.MODE_HIERARCHICAL
+                else shadow_d_correction_book
+            )
+            if hier_src is not None and rcfg.mode in (hwls.MODE_HIERARCHICAL, hwls.MODE_SHADOW):
+                _publish_strength_rating_cache(
+                    strength=hier_src,
+                    d_correction_book=hier_book,
+                    dcorr_cfg=dcorr_cfg,
+                    rcfg=rcfg,
+                    league_id=str(league_id) if league_id is not None else None,
+                    league_name=league_name,
+                    model_version=model_version,
+                    rating_mode_label=hwls.MODE_HIERARCHICAL,
+                    training_cutoff=training_cutoff,
+                    monitor=rating_shadow_monitor,
+                )
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Rating model cache publish failed — keeping previous active version"
+        )
+
     model = TrainedModel(
         strength, goals, calibration, draw, cfg, team_names, d_clamp, cal_diag, None, None, None,
         momentum_book=momentum_book, momentum_cfg=mcfg,
         s_momentum_book=s_momentum_book, s_momentum_cfg=scfg,
         d_correction_book=d_correction_book, d_correction_cfg=dcorr_cfg,
         d_model_version=model_version,
+        shadow_strength=shadow_strength,
+        shadow_d_correction_book=shadow_d_correction_book,
+        rating_shadow_monitor=rating_shadow_monitor,
+        rating_model_version=model_version,
     )
     draw_q_diag = draw_q_diagnostics(model, matches)
     log_draw_q_diagnostics(draw_q_diag)
@@ -1792,6 +2360,10 @@ def train_full_model(
         s_momentum_book=s_momentum_book, s_momentum_cfg=scfg,
         d_correction_book=d_correction_book, d_correction_cfg=dcorr_cfg,
         d_model_version=model_version,
+        shadow_strength=shadow_strength,
+        shadow_d_correction_book=shadow_d_correction_book,
+        rating_shadow_monitor=rating_shadow_monitor,
+        rating_model_version=model_version,
     ), matches
 
 

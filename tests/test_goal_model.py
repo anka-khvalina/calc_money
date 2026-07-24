@@ -522,9 +522,13 @@ def test_reg_lambda_stabilizes_coefficients():
     csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
     raw = gmt.load_raw_matches(csv_path)
     loose, _ = gmt.train_full_model(raw, gmt.ModelConfig(
+        rating_mode="standard_wls",
+        rating_publish_cache=False,
         reg_lambda=0.0, reg_lambda_attack=0.0, reg_lambda_defense=0.0,
     ))
     tight, _ = gmt.train_full_model(raw, gmt.ModelConfig(
+        rating_mode="standard_wls",
+        rating_publish_cache=False,
         reg_lambda=1.0, reg_lambda_attack=1.0, reg_lambda_defense=1.0,
     ))
     sum_r_loose = sum(abs(v) for v in loose.strength.ratings.values())
@@ -541,8 +545,13 @@ def test_reg_lambda_stabilizes_coefficients():
 def test_prior_shrinkage_pulls_ratings():
     csv_path = ROOT / "docs" / "examples" / "closing_lines_serie_a_sample.csv"
     raw = gmt.load_raw_matches(csv_path)
-    base, _ = gmt.train_full_model(raw)
-    cfg = gmt.ModelConfig(prior_weight=3.0, prior_alpha=0.5)
+    base, _ = gmt.train_full_model(raw, gmt.ModelConfig(
+        rating_mode="standard_wls", rating_publish_cache=False,
+    ))
+    cfg = gmt.ModelConfig(
+        rating_mode="standard_wls", rating_publish_cache=False,
+        prior_weight=3.0, prior_alpha=0.5,
+    )
     shrunk, _ = gmt.train_full_model(raw, cfg, prior=base)
     # сильнейшая команда стягивается к 0.5×prior → модуль рейтинга уменьшается
     assert abs(shrunk.strength.ratings["Inter"]) < abs(base.strength.ratings["Inter"])
