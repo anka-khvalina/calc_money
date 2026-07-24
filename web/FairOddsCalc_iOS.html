@@ -4910,8 +4910,15 @@ bash scripts/update_and_serve.sh --start</div>
         top:gmTop(m,8)};
     }
     function gmPromoted(vals,n){ const arr=Object.values(vals); if(!arr.length) return 0; const w=arr.slice().sort((a,b)=>a-b).slice(0,Math.max(1,n)); return w.reduce((a,b)=>a+b,0)/w.length; }
-    function gmPredict(model,homeId,awayId,opt){
-      const {st,gl,cfg}=model; const cal=gmNormalizeCal(model.cal); const iHome=opt.neutral?0:1;
+    /**
+     * Shared Line/Reports core: ratings → D/S dynamics → SFA → SFTC → λ.
+     * One path so Линия and Отчет cannot diverge on S/D/λ.
+     */
+    function gmCoreSdLambdas(model, homeId, awayId, opt){
+      opt = opt || {};
+      const {st,gl,cfg}=model;
+      const cal=gmNormalizeCal(model.cal);
+      const iHome=opt.neutral?0:1;
       const names=model.teamNames||{};
       const homeName=names[homeId]||homeId, awayName=names[awayId]||awayId;
       const hEff=gmEffectiveH(st,cfg,opt.neutral,!!opt.derby);
@@ -4920,36 +4927,59 @@ bash scripts/update_and_serve.sh --start</div>
       const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
       const kHg=Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
       const dmBase=R(homeId)-R(awayId)+hEff;
-      const mom=gmResolveCorrectedD(model, homeId, awayId, dmBase, opt||{});
+      const mom=gmResolveCorrectedD(model, homeId, awayId, dmBase, opt);
       const dm=mom.dModelDynamic;
       const dcorr=mom.dCorrection;
-      const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg), laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
+      const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
+      const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
       const smBase=lhAD+laAD;
-      const smom=gmMomCorrectS(model, homeId, awayId, smBase, opt||{});
+      const smom=gmMomCorrectS(model, homeId, awayId, smBase, opt);
       const sm=smom.sModelDynamic;
       const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
       let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
-      const sfaRes=gmApplyStrongFavoriteAdjustment(dc.dUsed, sf, model, opt||{}, false);
+      const sfaRes=gmApplyStrongFavoriteAdjustment(dc.dUsed, sf, model, opt, false);
       const sBeforeSftc=sf;
-      const sftcRes=gmApplyStrongFavouriteTotalCorrection(sf, gmMarketFavoriteOddsFromOpt(opt||{}), cfg);
+      const sftcRes=gmApplyStrongFavouriteTotalCorrection(sf, gmMarketFavoriteOddsFromOpt(opt), cfg);
       sf=sftcRes.s;
       let df=gmClampD(sfaRes.d,sf);
       const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
-      const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
+      return {
+        homeId, awayId, homeName, awayName, cfg, cal,
+        lh:lamPack.lh, la:lamPack.la, sf:lamPack.sf, df:lamPack.df,
+        lhRaw:lamPack.lhRaw, laRaw:lamPack.laRaw, clipped:lamPack.clipped,
+        momentum: mom, dCorrection: dcorr || null,
+        dCorrectionMode: mom.mode || 'slow_fast',
+        sMomentum: smom,
+        sModelBase: smom.sModelBase,
+        sModelDynamic: smom.sModelDynamic,
+        sDynamicCorrection: smom.dynamicCorrection,
+        sfa: sfaRes.diag,
+        dBeforeSfa: sfaRes.diag.D_base,
+        dAfterSfa: sfaRes.diag.D_final,
+        sftc: sftcRes.diag,
+        sBeforeSftc: sBeforeSftc,
+      };
+    }
+    function gmPredict(model,homeId,awayId,opt){
+      const core=gmCoreSdLambdas(model,homeId,awayId,opt||{});
+      const {lh,la,sf,df}=core;
       const alpha=model.alphaFinal||0, rho=model.rhoFinal||0;
-      const mat=gmJointScoreMatrix(lh,la,alpha,rho,cfg.maxGoals||GM_MAX);
+      const mat=gmJointScoreMatrix(lh,la,alpha,rho,core.cfg.maxGoals||GM_MAX);
       const matDiag=gmMatrixDiagnostics(mat,lh,la,alpha);
       return {
-        homeId,awayId,homeName,awayName,lh,la,df,sf,mat,matDiag,
+        homeId:core.homeId,awayId:core.awayId,homeName:core.homeName,awayName:core.awayName,
+        lh,la,df,sf,mat,matDiag,
         alphaFinal:alpha, rhoFinal:rho,
-        dModelBase: mom.dModelBase, dModelDynamic: mom.dModelDynamic, dynamicCorrection: mom.dynamicCorrection, momentum: mom,
-        dCorrectionMode: mom.mode || 'slow_fast', dCorrection: dcorr || null,
-        sModelBase: smom.sModelBase, sModelDynamic: smom.sModelDynamic, sDynamicCorrection: smom.dynamicCorrection, sMomentum: smom,
-        lambdaHomeRaw: lamPack.lhRaw, lambdaAwayRaw: lamPack.laRaw, lambdaClippingApplied: lamPack.clipped,
+        dModelBase: core.momentum.dModelBase, dModelDynamic: core.momentum.dModelDynamic,
+        dynamicCorrection: core.momentum.dynamicCorrection, momentum: core.momentum,
+        dCorrectionMode: core.dCorrectionMode, dCorrection: core.dCorrection,
+        sModelBase: core.sModelBase, sModelDynamic: core.sModelDynamic,
+        sDynamicCorrection: core.sDynamicCorrection, sMomentum: core.sMomentum,
+        lambdaHomeRaw: core.lhRaw, lambdaAwayRaw: core.laRaw, lambdaClippingApplied: core.clipped,
         selectedDistribution: model.selectedDistribution || (alpha>1e-9?'negbin':'poisson_like'),
         markets:gmMarkets(mat),drawTarget:null,drawDiag:null,
-        sfa: sfaRes.diag, dBeforeSfa: sfaRes.diag.D_base, dAfterSfa: sfaRes.diag.D_final,
-        sftc: sftcRes.diag, sBeforeSftc: sBeforeSftc,
+        sfa: core.sfa, dBeforeSfa: core.dBeforeSfa, dAfterSfa: core.dAfterSfa,
+        sftc: core.sftc, sBeforeSftc: core.sBeforeSftc,
       };
     }
     function gmDClampSensitiveTags(m, teamCounts, earlyCutoff, cfg){
@@ -8671,6 +8701,9 @@ bash scripts/update_and_serve.sh --start</div>
         dcGamma: predLegacy.dcGamma != null ? predLegacy.dcGamma : (predLegacy.cal && predLegacy.cal.gamma) || 0,
         sfa: predAuto.sfa || null,
         sfaLegacy: predLegacy.sfa || null,
+        // SFTC applies to S / OU — Auto path (same as Line totals)
+        sftc: predAuto.sftc || null,
+        sftcLegacy: predLegacy.sftc || null,
         markets: {
           p1: mkL.p1, px: mkL.px, p2: mkL.p2,
           mainAh: mkA.mainAh, mainTotal: mkA.mainTotal,
@@ -8749,6 +8782,17 @@ bash scripts/update_and_serve.sh --start</div>
           + (sfaShow.marketFavoriteOdds!=null?` · mktFav=${Number(sfaShow.marketFavoriteOdds).toFixed(2)}`:'')
           + `</div>`
         : '';
+      // OU SFTC — Auto path (same as Reports Auto totals)
+      const sftcShow = (pred && pred.sftc) || (pred && pred.sftcLegacy) || null;
+      const sftcNote = sftcShow
+        ? `<div class="goal-predict-meta" style="margin:0 0 8px">SFTC (OU Auto): `
+          + (sftcShow.applied
+            ? `+${Number(sftcShow.totalCorrection||0).toFixed(2)} · S ${Number(sftcShow.sBefore).toFixed(3)}→${Number(sftcShow.sAfter).toFixed(3)}`
+            : (sftcShow.enabled ? 'off (не Strong Fav)' : 'disabled'))
+          + (sftcShow.favoriteOdds!=null?` · mktFav=${Number(sftcShow.favoriteOdds).toFixed(2)}`:'')
+          + (sftcShow.threshold!=null?` · thr≤${Number(sftcShow.threshold).toFixed(2)}`:'')
+          + `</div>`
+        : '';
       const compareBlock=gmBuildInactiveCompareBlock(compareMatch, {
         k1: x1x2.kk1, kx: x1x2.kkx, k2: x1x2.kk2,
         p1: mk.p1, px: mk.px, p2: mk.p2,
@@ -8757,7 +8801,7 @@ bash scripts/update_and_serve.sh --start</div>
       });
       const html=`
         <div class="goal-predict-header"><h4>${title}</h4></div>
-        ${srcBadge}${sfaNote}${warnHtml}${compareBlock}${x1x2.html}${ahOu.html}`;
+        ${srcBadge}${sfaNote}${sftcNote}${warnHtml}${compareBlock}${x1x2.html}${ahOu.html}`;
       const summary=`1X2(L) ${x1x2.kk1.toFixed(2)}/${x1x2.kkx.toFixed(2)}/${x1x2.kk2.toFixed(2)} · AH(A) ${ahOu.ahLine} ${ahOu.ah.toFixed(2)}/${ahOu.aa.toFixed(2)} · Tot(A) ${ahOu.t.line} ${ahOu.ot.toFixed(2)}/${ahOu.ut.toFixed(2)}`;
       return {html, summary};
     }
@@ -8811,9 +8855,11 @@ bash scripts/update_and_serve.sh --start</div>
       'AH1','AH2','AH1_at_market','AH2_at_market','AH1_delta_mkt','AH2_delta_mkt',
       'Total_market','Total_main','Total_line_delta','same_tot',
       'O','U','O_at_market','U_at_market','O_delta_mkt','U_delta_mkt',
-      // S-EMA compact diagnostics (Auto path for OU)
-      'S_model_base','S_model_final','S_dynamic_correction',
-      'EMA_S_home_before','EMA_S_away_before','S_market','Residual_S_base','Residual_S_dynamic',
+      // S path for OU: EMA → final S (post SFTC) used for λ / totals
+      'S_model_base','S_model_dynamic','S_before_sftc','S_model_final','S_dynamic_correction',
+      'EMA_S_home_before','EMA_S_away_before','S_market','Residual_S_base','Residual_S_dynamic','Residual_S_final',
+      // SFTC (Strong Favourite total +0.10) — same as Line Auto OU
+      'sftc_enabled','sftc_applied','sftc_total_correction','sftc_favorite_odds',
       // SFA hybrid residual (Legacy 1X2 path)
       'sfa_mode','sfa_beta','beta_percentile','favorite_fair_odds','favorite_percentile',
       'market_favorite_odds','residual_gap','D_before_sfa','D_after_sfa',
@@ -9120,34 +9166,15 @@ bash scripts/update_and_serve.sh --start</div>
       return dm;
     }
     function irPredictLegacy(model,homeId,awayId,opt){
-      const {st,gl,draw,cfg}=model;
-      const cal=gmNormalizeCal(model.cal);
-      const iHome=opt.neutral?0:1;
-      const names=model.teamNames||{};
-      const homeName=names[homeId]||homeId, awayName=names[awayId]||awayId;
-      const hEff=gmEffectiveH(st,cfg,opt.neutral,!!opt.derby);
-      const R=t=>t in st.ratings?st.ratings[t]:gmPromoted(st.ratings,cfg.promotedN);
-      const A=t=>t in gl.attack?gl.attack[t]:gmPromoted(gl.attack,cfg.promotedN);
-      const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
-      const kHg=Math.abs(st.H)>1e-9?hEff/st.H:1;
-      const dmBase=R(homeId)-R(awayId)+hEff;
-      const mom=gmResolveCorrectedD(model, homeId, awayId, dmBase, opt||{});
-      const dm=mom.dModelDynamic;
-      const dcorr=mom.dCorrection;
-      const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
-      const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
-      const smBase=lhAD+laAD;
-      const smom=gmMomCorrectS(model, homeId, awayId, smBase, opt||{});
-      const sm=smom.sModelDynamic;
-      const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
-      let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
-      const sfaRes=gmApplyStrongFavoriteAdjustment(dc.dUsed, sf, model, opt||{}, false);
-      const sBeforeSftc=sf;
-      const sftcRes=gmApplyStrongFavouriteTotalCorrection(sf, gmMarketFavoriteOddsFromOpt(opt||{}), cfg);
-      sf=sftcRes.s;
-      let df=gmClampD(sfaRes.d,sf);
-      const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
-      const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
+      // Same S/D/λ core as Line Auto (`gmPredict` → `gmCoreSdLambdas`).
+      const core=gmCoreSdLambdas(model,homeId,awayId,opt||{});
+      const {draw,cfg}=model;
+      const cal=core.cal;
+      const {homeName,awayName,lh,la}=core;
+      let sf=core.sf, df=core.df;
+      const mom=core.momentum, smom=core.sMomentum, dcorr=core.dCorrection;
+      const sBeforeSftc=core.sBeforeSftc;
+      const lamPack={lhRaw:core.lhRaw, laRaw:core.laRaw, clipped:core.clipped};
       let matPoisson=gmMatrix(lh,la,cfg.maxGoals||GM_MAX);
       const pPois=gm1x2(matPoisson);
       const p1Pois=pPois[0], pxPois=pPois[1], p2Pois=pPois[2];
@@ -9211,13 +9238,13 @@ bash scripts/update_and_serve.sh --start</div>
         score00Final: score00Fin,
         score11Final: score11Fin,
         dModelBase: mom.dModelBase, dModelDynamic: mom.dModelDynamic, dynamicCorrection: mom.dynamicCorrection, momentum: mom,
-        dCorrectionMode: mom.mode || 'slow_fast', dCorrection: dcorr || null,
-        sModelBase: smom.sModelBase, sModelDynamic: smom.sModelDynamic, sDynamicCorrection: smom.dynamicCorrection, sMomentum: smom,
+        dCorrectionMode: core.dCorrectionMode, dCorrection: dcorr || null,
+        sModelBase: core.sModelBase, sModelDynamic: core.sModelDynamic, sDynamicCorrection: core.sDynamicCorrection, sMomentum: smom,
         lambdaHomeRaw: lamPack.lhRaw, lambdaAwayRaw: lamPack.laRaw, lambdaClippingApplied: lamPack.clipped,
         selectedDistribution:'poisson_dc',
         markets:gmMarkets(mat), drawTarget:dtarget, drawDiag:diag,
-        sfa: sfaRes.diag, dBeforeSfa: sfaRes.diag.D_base, dAfterSfa: sfaRes.diag.D_final,
-        sftc: sftcRes.diag, sBeforeSftc: sBeforeSftc,
+        sfa: core.sfa, dBeforeSfa: core.dBeforeSfa, dAfterSfa: core.dAfterSfa,
+        sftc: core.sftc, sBeforeSftc: sBeforeSftc,
       };
     }
     function irTrainLegacy(raw,cfg){
@@ -9483,32 +9510,18 @@ bash scripts/update_and_serve.sh --start</div>
       return `calib=${r.calib};marg=${r.marginals};joint=${r.joint};draw=${r.draw}`;
     }
     function irLambdasFromModel(model, homeId, awayId, opt){
-      const {st,gl,cfg}=model;
-      const cal=gmNormalizeCal(model.cal);
-      const iHome=opt.neutral?0:1;
-      const hEff=gmEffectiveH(st,cfg,opt.neutral,!!opt.derby);
-      const R=t=>t in st.ratings?st.ratings[t]:gmPromoted(st.ratings,cfg.promotedN);
-      const A=t=>t in gl.attack?gl.attack[t]:gmPromoted(gl.attack,cfg.promotedN);
-      const Df=t=>t in gl.defense?gl.defense[t]:gmPromoted(gl.defense,cfg.promotedN);
-      const kHg=Math.abs(st.H)>1e-9?hEff/st.H:1;
-      const dmBase=R(homeId)-R(awayId)+hEff;
-      const mom=gmResolveCorrectedD(model, homeId, awayId, dmBase, opt||{});
-      const dm=mom.dModelDynamic;
-      const lhAD=Math.exp(gl.mu+A(homeId)-Df(awayId)+gl.hg*iHome*kHg);
-      const laAD=Math.exp(gl.mu+A(awayId)-Df(homeId));
-      const smBase=lhAD+laAD;
-      const smom=gmMomCorrectS(model, homeId, awayId, smBase, opt||{});
-      const sm=smom.sModelDynamic;
-      const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
-      let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
-      const sfaRes=gmApplyStrongFavoriteAdjustment(dc.dUsed, sf, model, opt||{}, false);
-      let df=gmClampD(sfaRes.d,sf);
-      const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
-      const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
+      // Must include SFTC — same core as Line / irPredictLegacy / gmPredict.
+      const core=gmCoreSdLambdas(model,homeId,awayId,opt||{});
       return {
-        lh,la,sf,df,cfg,cal,momentum:mom,sMomentum:smom,lambdaClippingApplied:lamPack.clipped,
-        dCorrectionMode: mom.mode || 'slow_fast', dCorrection: mom.dCorrection || null,
-        sfa: sfaRes.diag,
+        lh:core.lh, la:core.la, sf:core.sf, df:core.df,
+        cfg:core.cfg, cal:core.cal,
+        momentum:core.momentum, sMomentum:core.sMomentum,
+        lambdaClippingApplied:core.clipped,
+        dCorrectionMode: core.dCorrectionMode, dCorrection: core.dCorrection,
+        sfa: core.sfa, sftc: core.sftc, sBeforeSftc: core.sBeforeSftc,
+        dBeforeSfa: core.dBeforeSfa, dAfterSfa: core.dAfterSfa,
+        sModelBase: core.sModelBase, sModelDynamic: core.sModelDynamic,
+        sDynamicCorrection: core.sDynamicCorrection,
       };
     }
     function irBuildMatrixRecipe(model, lh, la, recipe, dFinal, opt){
@@ -9567,14 +9580,17 @@ bash scripts/update_and_serve.sh --start</div>
           pred={
             markets:mk, mat, matDiag, lh, la, sf, df, alphaFinal:alpha, rhoFinal:rho, dcGamma, selectedDistribution:dist,
             momentum:lam.momentum, sMomentum:lam.sMomentum,
-            sModelBase:lam.sMomentum&&lam.sMomentum.sModelBase, sModelDynamic:lam.sMomentum&&lam.sMomentum.sModelDynamic,
-            sDynamicCorrection:lam.sMomentum&&lam.sMomentum.dynamicCorrection,
+            sModelBase:lam.sModelBase!=null?lam.sModelBase:(lam.sMomentum&&lam.sMomentum.sModelBase),
+            sModelDynamic:lam.sModelDynamic!=null?lam.sModelDynamic:(lam.sMomentum&&lam.sMomentum.sModelDynamic),
+            sDynamicCorrection:lam.sDynamicCorrection!=null?lam.sDynamicCorrection:(lam.sMomentum&&lam.sMomentum.dynamicCorrection),
             gammaSeason: dcMeta.gammaSeason, gammaEffective: dcGamma, gammaSegment: dcMeta.gammaSegment,
             absDModelFinal: dcMeta.absDModelFinal, dynamicDcGammaEnabled: dcMeta.dynamicDcGammaEnabled,
             dcApplied: dcMeta.dcApplied, dcFallbackUsed: dcMeta.dcFallbackUsed, dcFallbackReason: dcMeta.dcFallbackReason,
             homeProbabilityPoisson: pPois[0], drawProbabilityPoisson: pPois[1], awayProbabilityPoisson: pPois[2],
             homeProbabilityFinal: pFin[0], drawProbabilityFinal: pFin[1], awayProbabilityFinal: pFin[2],
             dcHomeProbabilityDelta: pFin[0]-pPois[0], dcDrawProbabilityDelta: pFin[1]-pPois[1], dcAwayProbabilityDelta: pFin[2]-pPois[2],
+            sfa: lam.sfa, dBeforeSfa: lam.dBeforeSfa, dAfterSfa: lam.dAfterSfa,
+            sftc: lam.sftc, sBeforeSftc: lam.sBeforeSftc,
           };
         } else if(engine==='legacy'){
           pred=irPredictLegacy(model,homeId,awayId,opt);
@@ -9686,7 +9702,10 @@ bash scripts/update_and_serve.sh --start</div>
           dynamic_correction: mom ? mom.dynamicCorrection : null,
           D_model_dynamic: mom ? mom.dModelDynamic : null,
           S_model_base: (smom && smom.sModelBase!=null) ? smom.sModelBase : (pred.sModelBase!=null?pred.sModelBase:null),
-          S_model_final: (smom && smom.sModelDynamic!=null) ? smom.sModelDynamic : (pred.sModelDynamic!=null?pred.sModelDynamic:null),
+          // S used for λ / OU markets (post S-cal + SFTC). EMA dynamic stays in S_model_dynamic.
+          S_model_dynamic: (smom && smom.sModelDynamic!=null) ? smom.sModelDynamic : (pred.sModelDynamic!=null?pred.sModelDynamic:null),
+          S_model_final: (sf!=null && isFinite(Number(sf))) ? Number(sf) : null,
+          S_before_sftc: pred.sBeforeSftc != null ? pred.sBeforeSftc : (pred.sftc ? pred.sftc.sBefore : null),
           S_dynamic_correction: (smom && smom.dynamicCorrection!=null) ? smom.dynamicCorrection : (pred.sDynamicCorrection!=null?pred.sDynamicCorrection:null),
           EMA_S_home_before: smom ? smom.emaHomeBefore : null,
           EMA_S_away_before: smom ? smom.emaAwayBefore : null,
@@ -9694,6 +9713,7 @@ bash scripts/update_and_serve.sh --start</div>
           S_market: sMarket,
           Residual_S_base: (sMarket!=null && smom && smom.sModelBase!=null) ? (sMarket - smom.sModelBase) : null,
           Residual_S_dynamic: (sMarket!=null && smom && smom.sModelDynamic!=null) ? (sMarket - smom.sModelDynamic) : null,
+          Residual_S_final: (sMarket!=null && sf!=null && isFinite(Number(sf))) ? (sMarket - Number(sf)) : null,
           sfa_mode: pred.sfa ? pred.sfa.mode : null,
           sfa_beta: pred.sfa ? pred.sfa.sfaBeta : null,
           favorite_fair_odds: pred.sfa ? pred.sfa.favoriteFairOdds : null,
@@ -9703,6 +9723,10 @@ bash scripts/update_and_serve.sh --start</div>
           residual_gap: pred.sfa ? pred.sfa.residualGap : null,
           D_before_sfa: pred.dBeforeSfa != null ? pred.dBeforeSfa : (pred.sfa ? pred.sfa.D_base : null),
           D_after_sfa: pred.dAfterSfa != null ? pred.dAfterSfa : (pred.sfa ? pred.sfa.D_final : null),
+          sftc_enabled: pred.sftc ? !!pred.sftc.enabled : null,
+          sftc_applied: pred.sftc ? !!pred.sftc.applied : null,
+          sftc_total_correction: pred.sftc ? pred.sftc.totalCorrection : null,
+          sftc_favorite_odds: pred.sftc ? pred.sftc.favoriteOdds : null,
         };
       }catch(_e){ console.warn('irPredictAtMarket', _e); return null; }
     }
@@ -9811,8 +9835,11 @@ bash scripts/update_and_serve.sh --start</div>
       row.U_at_market = aut ? aut.U_at_market : null;
       row.O_delta_mkt = irDelta(row.O_at_market, mkt.O);
       row.U_delta_mkt = irDelta(row.U_at_market, mkt.U);
+      // OU S diagnostics — prefer Auto (same engine as Line AH/OU)
       const sSrc = aut || leg;
       row.S_model_base = sSrc ? sSrc.S_model_base : null;
+      row.S_model_dynamic = sSrc ? sSrc.S_model_dynamic : null;
+      row.S_before_sftc = sSrc ? sSrc.S_before_sftc : null;
       row.S_model_final = sSrc ? sSrc.S_model_final : null;
       row.S_dynamic_correction = sSrc ? sSrc.S_dynamic_correction : null;
       row.EMA_S_home_before = sSrc ? sSrc.EMA_S_home_before : null;
@@ -9820,6 +9847,11 @@ bash scripts/update_and_serve.sh --start</div>
       row.S_market = sSrc ? sSrc.S_market : null;
       row.Residual_S_base = sSrc ? sSrc.Residual_S_base : null;
       row.Residual_S_dynamic = sSrc ? sSrc.Residual_S_dynamic : null;
+      row.Residual_S_final = sSrc ? sSrc.Residual_S_final : null;
+      row.sftc_enabled = sSrc ? sSrc.sftc_enabled : null;
+      row.sftc_applied = sSrc ? sSrc.sftc_applied : null;
+      row.sftc_total_correction = sSrc ? sSrc.sftc_total_correction : null;
+      row.sftc_favorite_odds = sSrc ? sSrc.sftc_favorite_odds : null;
       // SFA on 1X2 uses Legacy D — prefer Legacy diag for parity with Line / 1X2 odds
       const sfaSrc = leg || aut;
       row.sfa_mode = sfaSrc ? sfaSrc.sfa_mode : null;
