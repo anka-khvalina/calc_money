@@ -7973,6 +7973,9 @@ bash scripts/update_and_serve.sh --start</div>
       }
       if (goalLoadedRaw.length < 2) throw new Error('Недостаточно матчей с полной линией для обучения модели');
       await loadGoalMatrixConfig();
+      // Line train must not inherit Reports lab EMA overrides
+      window.__IR_S_EMA_OVERRIDE = null;
+      window.__IR_D_EMA_OVERRIDE = null;
       goalReadSeasonWeightsFromUI();
       const seasonIds=[...new Set(goalLoadedRaw.map(r=>r.seasonId).filter(s=>s!=null))];
       const leagueId = goalLoadedMeta && goalLoadedMeta.leagueId;
@@ -8140,9 +8143,10 @@ bash scripts/update_and_serve.sh --start</div>
     }
 
     const SB_INACTIVE_COMPARE_SELECT = [
-      'match_id','match_date','season_label','home_team','away_team',
+      'match_id','match_date','season_id','season_label','home_team','away_team',
       'closing_ah_home','closing_total_line','ah_home_odds','ah_away_odds',
       'over_odds','under_odds','home_odds','draw_odds','away_odds',
+      'is_neutral','derby_weight',
     ].join(',');
 
     async function sbFetchInactiveCompareMatch(leagueId, homeTeamId, awayTeamId){
@@ -8363,7 +8367,6 @@ bash scripts/update_and_serve.sh --start</div>
       if(!picked){ alert('Выберите лигу и две разные команды.'); return; }
       const { leagueId, homeId, awayId } = picked;
       try{
-        const neutral=document.getElementById('goalNeutral').checked, derby=document.getElementById('goalDerby').checked;
         const seasonIds = (goalLoadedMeta && goalLoadedMeta.seasonIds) || [];
         const seasonLabels = (goalLoadedMeta && goalLoadedMeta.seasonLabels) || [];
         // Prefer chronologically latest label (desc sort); fallback last selected id
@@ -8382,28 +8385,49 @@ bash scripts/update_and_serve.sh --start</div>
         } catch (cmpErr){
           console.warn('inactive compare', cmpErr);
         }
+        // Same opt shape as Reports for the inactive H2H (matchDate/season/odds/flags).
+        // Without compare row (future fixture) keep UI season + checkboxes.
         const mktOdds = gmMarketOddsFromRecord(compareMatch);
+        const uiNeutral = !!document.getElementById('goalNeutral').checked;
+        const uiDerby = !!document.getElementById('goalDerby').checked;
+        const neutral = compareMatch ? !!compareMatch.is_neutral : uiNeutral;
+        const derby = compareMatch ? sbIsDerby(compareMatch) : uiDerby;
         const opt=gmCorePredictOpt({
           neutral, derby,
+          matchDate: compareMatch && compareMatch.match_date ? compareMatch.match_date : null,
           leagueId,
           leagueName: (goalLoadedMeta&&goalLoadedMeta.leagueName)||null,
-          seasonId: seasonMeta,
-          seasonLabel,
+          seasonId: (compareMatch && compareMatch.season_id != null)
+            ? compareMatch.season_id
+            : seasonMeta,
+          seasonLabel: (compareMatch && compareMatch.season_label)
+            ? compareMatch.season_label
+            : seasonLabel,
           homeOdds: mktOdds.homeOdds,
           awayOdds: mktOdds.awayOdds,
         });
+        // Do not inherit Reports lab EMA overrides into Line predict
+        const prevSEma = window.__IR_S_EMA_OVERRIDE;
+        const prevDEma = window.__IR_D_EMA_OVERRIDE;
+        window.__IR_S_EMA_OVERRIDE = null;
+        window.__IR_D_EMA_OVERRIDE = null;
         let predL=null, predA=null, errL=null, errA=null;
-        if(gmModelLegacy){
-          try{ predL = irPredictLegacy(gmModelLegacy, homeId, awayId, opt); }
-          catch(e){ errL=e; console.error(e); }
-        } else {
-          errL = new Error('Legacy не обучен');
-        }
-        if(gmModelAuto){
-          try{ predA = gmPredict(gmModelAuto, homeId, awayId, opt); }
-          catch(e){ errA=e; console.error(e); }
-        } else {
-          errA = new Error('Auto не обучен');
+        try{
+          if(gmModelLegacy){
+            try{ predL = irPredictLegacy(gmModelLegacy, homeId, awayId, opt); }
+            catch(e){ errL=e; console.error(e); }
+          } else {
+            errL = new Error('Legacy не обучен');
+          }
+          if(gmModelAuto){
+            try{ predA = gmPredict(gmModelAuto, homeId, awayId, opt); }
+            catch(e){ errA=e; console.error(e); }
+          } else {
+            errA = new Error('Auto не обучен');
+          }
+        } finally {
+          window.__IR_S_EMA_OVERRIDE = prevSEma;
+          window.__IR_D_EMA_OVERRIDE = prevDEma;
         }
         if(!predL && !predA){
           throw new Error('Не удалось рассчитать ни 1X2, ни AH/OU'
