@@ -3348,6 +3348,7 @@ bash scripts/update_and_serve.sh --start</div>
         d_correction: raw.d_correction || raw.dCorrection || {},
         rating: raw.rating || {},
         lineWeight: raw.lineWeight || raw.line_weight || t.lineWeight || {},
+        strongFavoriteAdjustment: raw.strongFavoriteAdjustment || raw.sfa || t.strongFavoriteAdjustment || {},
         dynamic_s_ema: raw.dynamic_s_ema || raw.sMomentum || {},
         dynamic_dc_gamma: raw.dynamic_dc_gamma || raw.dynamicDcGamma || {},
         configSource: 'model_config.json',
@@ -4028,6 +4029,217 @@ bash scripts/update_and_serve.sh --start</div>
       console.info('Average w_line_AH = ' + Number(diag.avg).toFixed(4));
       console.info('Matches affected = ' + diag.nAffected);
     }
+    // --- Strong Favorite Adjustment (SFA): off | threshold | percentile ---
+    const GM_DEFAULT_SFA_THRESHOLDS = [[10,0],[5,0.05],[2,0.10],[1,0.15],[0,0.20]];
+    function gmParseSfaThresholds(raw){
+      if(raw==null) return GM_DEFAULT_SFA_THRESHOLDS.slice();
+      const pairs=[];
+      if(Array.isArray(raw)){
+        raw.forEach(item=>{
+          if(Array.isArray(item) && item.length>=2){
+            const p=Number(item[0]), b=Number(item[1]);
+            if(isFinite(p)&&isFinite(b)) pairs.push([Math.max(0,Math.min(100,p)), Math.max(0,b)]);
+          } else if(item && typeof item==='object'){
+            const p=Number(item.percentile!=null?item.percentile:(item.pct!=null?item.pct:item.p));
+            const b=Number(item.beta!=null?item.beta:(item.sfa!=null?item.sfa:item.w));
+            if(isFinite(p)&&isFinite(b)) pairs.push([Math.max(0,Math.min(100,p)), Math.max(0,b)]);
+          }
+        });
+      } else if(typeof raw==='object'){
+        Object.keys(raw).forEach(k=>{
+          const p=Number(k), b=Number(raw[k]);
+          if(isFinite(p)&&isFinite(b)) pairs.push([Math.max(0,Math.min(100,p)), Math.max(0,b)]);
+        });
+      }
+      if(!pairs.length) return GM_DEFAULT_SFA_THRESHOLDS.slice();
+      pairs.sort((a,b)=>b[0]-a[0]);
+      return pairs;
+    }
+    function gmSfaCfg(cfg){
+      const root = (GM_MATRIX_CFG && GM_MATRIX_CFG.strongFavoriteAdjustment)
+        || (GM_MODEL_CFG && (GM_MODEL_CFG.strongFavoriteAdjustment || GM_MODEL_CFG.sfa))
+        || {};
+      const fromCfg = (cfg && cfg.strongFavoriteAdjustment) || (cfg && cfg.sfa) || {};
+      const mode = String(
+        (cfg && cfg.sfaMode) || fromCfg.mode || root.mode || 'percentile'
+      ).trim().toLowerCase();
+      const shape = String(fromCfg.shape || root.shape || 'stepwise').trim().toLowerCase();
+      return {
+        mode: (mode==='off'||mode==='threshold'||mode==='percentile') ? mode : 'percentile',
+        shape: (shape==='linear'||shape==='logistic'||shape==='stepwise') ? shape : 'stepwise',
+        minMatches: Number(fromCfg.minMatches!=null?fromCfg.minMatches:(root.minMatches!=null?root.minMatches:40))||40,
+        oddsThreshold: Number(fromCfg.oddsThreshold!=null?fromCfg.oddsThreshold:(root.oddsThreshold!=null?root.oddsThreshold:1.30))||1.30,
+        beta: Number(fromCfg.beta!=null?fromCfg.beta:(root.beta!=null?root.beta:0.15))||0.15,
+        thresholds: gmParseSfaThresholds(fromCfg.thresholds!=null?fromCfg.thresholds:root.thresholds),
+        logisticK: Number(fromCfg.logisticK!=null?fromCfg.logisticK:(root.logisticK!=null?root.logisticK:0.8))||0.8,
+        logisticMid: Number(fromCfg.logisticMid!=null?fromCfg.logisticMid:(root.logisticMid!=null?root.logisticMid:5))||5,
+        logisticMax: Number(fromCfg.logisticMax!=null?fromCfg.logisticMax:(root.logisticMax!=null?root.logisticMax:0.20))||0.20,
+      };
+    }
+    function gmSfaBetaStepwise(pct, thresholds){
+      const pts = (thresholds&&thresholds.length)?thresholds.slice().sort((a,b)=>b[0]-a[0]):GM_DEFAULT_SFA_THRESHOLDS;
+      if(!(isFinite(pct))) return 0;
+      for(let i=0;i<pts.length;i++){
+        if(pct > pts[i][0]) return pts[i][1];
+      }
+      return pts[pts.length-1][1];
+    }
+    function gmSfaBetaLinear(pct, thresholds){
+      const pts = (thresholds&&thresholds.length)?thresholds.slice().sort((a,b)=>a[0]-b[0]):GM_DEFAULT_SFA_THRESHOLDS.slice().sort((a,b)=>a[0]-b[0]);
+      if(!(isFinite(pct))||!pts.length) return 0;
+      if(pct >= pts[pts.length-1][0]) return pts[pts.length-1][1];
+      if(pct <= pts[0][0]) return pts[0][1];
+      for(let i=1;i<pts.length;i++){
+        const p0=pts[i-1][0], b0=pts[i-1][1], p1=pts[i][0], b1=pts[i][1];
+        if(pct <= p1){
+          if(Math.abs(p1-p0)<1e-15) return b1;
+          const t=(pct-p0)/(p1-p0);
+          return b0+t*(b1-b0);
+        }
+      }
+      return pts[pts.length-1][1];
+    }
+    function gmSfaBetaLogistic(pct, scfg){
+      if(!(isFinite(pct))) return 0;
+      const k=scfg.logisticK||0.8, mid=scfg.logisticMid||5, bmax=scfg.logisticMax||0.2;
+      return bmax/(1+Math.exp(k*(pct-mid)));
+    }
+    function gmCalculateSFA(league, season, favoritePercentile, scfg, favoriteFairOdds){
+      const c = scfg || gmSfaCfg({});
+      if(c.mode==='off') return 0;
+      if(c.mode==='threshold'){
+        if(!(favoriteFairOdds>1)) return 0;
+        return favoriteFairOdds <= c.oddsThreshold ? c.beta : 0;
+      }
+      if(!(isFinite(favoritePercentile))) return 0;
+      if(c.shape==='linear') return gmSfaBetaLinear(favoritePercentile, c.thresholds);
+      if(c.shape==='logistic') return gmSfaBetaLogistic(favoritePercentile, c);
+      return gmSfaBetaStepwise(favoritePercentile, c.thresholds);
+    }
+    function gmEmpiricalFavPercentile(sortedOdds, value){
+      if(!sortedOdds || !sortedOdds.length || !(value>0)) return NaN;
+      let cnt=0;
+      for(let i=0;i<sortedOdds.length;i++) if(sortedOdds[i] <= value+1e-12) cnt++;
+      return 100*cnt/sortedOdds.length;
+    }
+    function gmFavoriteFairOddsFromSd(s, d, cfg){
+      const sf=Number(s), df=gmClampD(d,s);
+      if(!(sf>0) || !isFinite(df)) return null;
+      const lamMin = (cfg && cfg.lambdaMin!=null)?Number(cfg.lambdaMin):0.05;
+      const lh=Math.max(lamMin,(sf+df)/2), la=Math.max(lamMin,(sf-df)/2);
+      const mat=gmMatrix(lh,la,(cfg&&cfg.maxGoals)||GM_MAX);
+      const p=gm1x2(mat);
+      const mx=Math.max(p[0],p[2]);
+      if(!(mx>1e-15)) return null;
+      return 1/mx;
+    }
+    function gmApplySfaToD(dBase, beta){
+      const b=Math.max(0, Number(beta)||0);
+      if(b<=1e-15) return dBase;
+      if(Math.abs(dBase)<1e-15) return dBase;
+      return Math.sign(dBase)*(Math.abs(dBase)+b);
+    }
+    function gmBuildSfaBook(ms, scfg){
+      const minM = (scfg && scfg.minMatches)!=null ? scfg.minMatches : 40;
+      const buckets = {};
+      const seasonsByLeague = {};
+      let defaultLeague = 'ALL';
+      (ms||[]).forEach(m=>{
+        if(!(m.p1!=null && m.p2!=null)) return;
+        const mx=Math.max(m.p1,m.p2);
+        if(!(mx>1e-15)) return;
+        const fo=1/mx;
+        const raw=m.raw||{};
+        const lg = (raw.leagueId!=null && String(raw.leagueId)) || (raw.league||'') || 'ALL';
+        const season = (raw.seasonLabel && String(raw.seasonLabel)) || (raw.seasonId!=null?String(raw.seasonId):'ALL');
+        const k = lg+'|'+season;
+        if(!buckets[k]) buckets[k]=[];
+        buckets[k].push(fo);
+        const kAll = lg+'|ALL';
+        if(!buckets[kAll]) buckets[kAll]=[];
+        buckets[kAll].push(fo);
+        if(season!=='ALL'){
+          if(!seasonsByLeague[lg]) seasonsByLeague[lg]=[];
+          if(seasonsByLeague[lg].indexOf(season)<0) seasonsByLeague[lg].push(season);
+        }
+        if(defaultLeague==='ALL' && lg!=='ALL') defaultLeague=lg;
+      });
+      const distributions={};
+      Object.keys(buckets).forEach(k=>{
+        const xs=buckets[k].slice().sort((a,b)=>a-b);
+        const parts=k.split('|');
+        const lg=parts[0], season=parts.slice(1).join('|');
+        distributions[k]={ league:lg, season, odds:xs, n:xs.length, sourceSeason:season };
+      });
+      Object.keys(seasonsByLeague).forEach(lg=>{
+        seasonsByLeague[lg].sort().reverse();
+      });
+      return { distributions, seasonsByLeague, minMatches:minM, leagueKey:defaultLeague };
+    }
+    function gmResolveSfaDist(book, league, season){
+      if(!book || !book.distributions) return null;
+      const lg = String(league||book.leagueKey||'ALL');
+      const seasons = (book.seasonsByLeague && book.seasonsByLeague[lg]) || (book.seasonsByLeague && book.seasonsByLeague.ALL) || [];
+      const minM = book.minMatches!=null?book.minMatches:40;
+      function get(lg0, s0){
+        return book.distributions[lg0+'|'+s0] || null;
+      }
+      if(season!=null && String(season)!==''){
+        const exact=get(lg, String(season));
+        if(exact && exact.n>=minM) return exact;
+        const idx = seasons.indexOf(String(season));
+        const start = idx>=0 ? idx+1 : 0;
+        for(let i=start;i<seasons.length;i++){
+          const d=get(lg, seasons[i]);
+          if(d && d.n>=minM) return Object.assign({}, d, { season:String(season), sourceSeason:seasons[i] });
+        }
+      }
+      for(let i=0;i<seasons.length;i++){
+        const d=get(lg, seasons[i]);
+        if(d && d.n>=minM) return Object.assign({}, d, { season: season!=null?String(season):seasons[i], sourceSeason:seasons[i] });
+      }
+      const pooled = get(lg,'ALL') || get('ALL','ALL');
+      if(pooled && pooled.n >= Math.max(5, Math.floor(minM/2))) return pooled;
+      if(pooled && pooled.n>=5) return pooled;
+      return null;
+    }
+    function gmApplyStrongFavoriteAdjustment(dBase, sForOdds, model, opt, alreadyApplied){
+      const cfg = (model && model.cfg) || {};
+      const scfg = (model && model.sfaCfg) || gmSfaCfg(cfg);
+      const diag = {
+        league: opt && (opt.leagueId!=null?opt.leagueId:opt.league),
+        season: opt && (opt.seasonId!=null?opt.seasonId:opt.seasonLabel||opt.season),
+        sourceSeason: null,
+        favoriteFairOdds: null,
+        favoritePercentile: null,
+        sfaBeta: 0,
+        D_base: dBase,
+        D_final: dBase,
+        mode: scfg.mode,
+        shape: scfg.shape,
+        applied: false,
+        nDist: 0,
+      };
+      if(alreadyApplied || scfg.mode==='off') return { d:dBase, diag };
+      const fav = gmFavoriteFairOddsFromSd(sForOdds, dBase, cfg);
+      diag.favoriteFairOdds = fav;
+      let pct = NaN;
+      if(scfg.mode==='percentile' && model && model.sfaBook && fav!=null){
+        const dist = gmResolveSfaDist(model.sfaBook, diag.league || model.sfaBook.leagueKey, diag.season);
+        if(dist){
+          pct = gmEmpiricalFavPercentile(dist.odds, fav);
+          diag.sourceSeason = dist.sourceSeason || dist.season;
+          diag.nDist = dist.n;
+        }
+      }
+      diag.favoritePercentile = isFinite(pct) ? pct : null;
+      const beta = gmCalculateSFA(diag.league, diag.season, diag.favoritePercentile, scfg, fav);
+      diag.sfaBeta = beta;
+      const dOut = gmApplySfaToD(dBase, beta);
+      diag.D_final = dOut;
+      diag.applied = Math.abs(beta)>1e-15;
+      return { d:dOut, diag };
+    }
     function gmFitStrength(ms,cfg,priorSt,leagueId,leagueName){
       // wBase includes rotation training_weight — exclude weight-0 from fit entirely.
       const used=ms.filter(m=>m.D!=null && gmTrainWeight(m)>0);
@@ -4543,7 +4755,8 @@ bash scripts/update_and_serve.sh --start</div>
       const sm=smom.sModelDynamic;
       const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
       let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
-      let df=gmClampD(dc.dUsed,sf);
+      const sfaRes=gmApplyStrongFavoriteAdjustment(dc.dUsed, sf, model, opt||{}, false);
+      let df=gmClampD(sfaRes.d,sf);
       const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
       const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
       const alpha=model.alphaFinal||0, rho=model.rhoFinal||0;
@@ -4557,7 +4770,8 @@ bash scripts/update_and_serve.sh --start</div>
         sModelBase: smom.sModelBase, sModelDynamic: smom.sModelDynamic, sDynamicCorrection: smom.dynamicCorrection, sMomentum: smom,
         lambdaHomeRaw: lamPack.lhRaw, lambdaAwayRaw: lamPack.laRaw, lambdaClippingApplied: lamPack.clipped,
         selectedDistribution: model.selectedDistribution || (alpha>1e-9?'negbin':'poisson_like'),
-        markets:gmMarkets(mat),drawTarget:null,drawDiag:null
+        markets:gmMarkets(mat),drawTarget:null,drawDiag:null,
+        sfa: sfaRes.diag, dBeforeSfa: sfaRes.diag.D_base, dAfterSfa: sfaRes.diag.D_final
       };
     }
     function gmDClampSensitiveTags(m, teamCounts, earlyCutoff, cfg){
@@ -5360,8 +5574,13 @@ bash scripts/update_and_serve.sh --start</div>
       const calDiag=gmAssessCalibration(cal,cfg);
       const lwDiag=gmDiagnoseLineWeights(ms.filter(m=>m.D!=null).map(m=>m.wLineAh!=null?m.wLineAh:gmWLineAh(Math.abs(m.D),cfg)), (gmLineWeightCfg(cfg).mode));
       gmLogLineWeightDiagnostics(lwDiag);
+      const sfaCfg=gmSfaCfg(cfg);
+      const sfaBook=gmBuildSfaBook(ms, sfaCfg);
+      console.info('SFA config mode=' + sfaCfg.mode + ' shape=' + sfaCfg.shape
+        + ' dists=' + Object.keys(sfaBook.distributions||{}).length);
       const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag,lineWeightDiag:lwDiag,teamNames:{},
-        alphaFinal:0, rhoFinal:0, selectedDistribution:'poisson_like', nbImprovementPct:0, matrixCalib:null};
+        alphaFinal:0, rhoFinal:0, selectedDistribution:'poisson_like', nbImprovementPct:0, matrixCalib:null,
+        sfaCfg, sfaBook};
       ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
       // Bootstrap α/ρ (classic OU+1X2 mix), then Auto-only 1X2 refinement + acceptance gate.
       // Legacy never calls gmTrain — calculateLegacyModel uses irTrainLegacy.
@@ -5395,6 +5614,8 @@ bash scripts/update_and_serve.sh --start</div>
         lineWeightTable: lw.table,
         lineWeightPresets: lw.presets,
         lineWeight: lw,
+        strongFavoriteAdjustment: gmSfaCfg({}),
+        sfaMode: gmSfaCfg({}).mode,
         alphaT:0.5, deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
         seasonDefault:1.0,
         seasonWeightsById: goalSeasonWeightById || {},
@@ -8018,7 +8239,14 @@ bash scripts/update_and_serve.sh --start</div>
       const { leagueId, homeId, awayId } = picked;
       try{
         const neutral=document.getElementById('goalNeutral').checked, derby=document.getElementById('goalDerby').checked;
-        const opt={neutral,derby};
+        const seasonMeta = (goalLoadedMeta && goalLoadedMeta.seasonIds && goalLoadedMeta.seasonIds.length)
+          ? goalLoadedMeta.seasonIds[goalLoadedMeta.seasonIds.length-1]
+          : null;
+        const seasonLabel = (goalLoadedMeta && goalLoadedMeta.seasonLabels && goalLoadedMeta.seasonLabels.length)
+          ? goalLoadedMeta.seasonLabels[goalLoadedMeta.seasonLabels.length-1]
+          : null;
+        const opt={neutral,derby, leagueId, league: (goalLoadedMeta&&goalLoadedMeta.leagueName)||null,
+          seasonId: seasonMeta, seasonLabel, season: seasonLabel||seasonMeta};
         let predL=null, predA=null, errL=null, errA=null;
         if(gmModelLegacy){
           try{ predL = irPredictLegacy(gmModelLegacy, homeId, awayId, opt); }
@@ -8486,6 +8714,7 @@ bash scripts/update_and_serve.sh --start</div>
         lineWeightPresets: lwRoot.presets,
         lineWeight: lwRoot,
       });
+      const lwSfa = gmSfaCfg({});
       const cfgOut = {
         maxGoals: irPickNum(M, 'maxGoals', irPickNum(L, 'maxGoals', GM_MAX)),
         alphaAh: lw.alphaAh,
@@ -8494,6 +8723,8 @@ bash scripts/update_and_serve.sh --start</div>
         lineWeightTable: lw.table,
         lineWeightPresets: lw.presets,
         lineWeight: lw,
+        strongFavoriteAdjustment: lwSfa,
+        sfaMode: lwSfa.mode,
         alphaT,
         deltaAh: 0.5, deltaLam: 0.25, maxIter: 30, tol: 1e-4,
         drawLoss: useDraw ? irPickNum(Ldraw, 'drawLossWeight', irPickNum(L, 'drawLossWeight', 1.5)) : 1,
@@ -8670,7 +8901,8 @@ bash scripts/update_and_serve.sh --start</div>
       const sm=smom.sModelDynamic;
       const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
       let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
-      let df=gmClampD(dc.dUsed,sf);
+      const sfaRes=gmApplyStrongFavoriteAdjustment(dc.dUsed, sf, model, opt||{}, false);
+      let df=gmClampD(sfaRes.d,sf);
       const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
       const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
       let matPoisson=gmMatrix(lh,la,cfg.maxGoals||GM_MAX);
@@ -8741,6 +8973,7 @@ bash scripts/update_and_serve.sh --start</div>
         lambdaHomeRaw: lamPack.lhRaw, lambdaAwayRaw: lamPack.laRaw, lambdaClippingApplied: lamPack.clipped,
         selectedDistribution:'poisson_dc',
         markets:gmMarkets(mat), drawTarget:dtarget, drawDiag:diag,
+        sfa: sfaRes.diag, dBeforeSfa: sfaRes.diag.D_base, dAfterSfa: sfaRes.diag.D_final,
       };
     }
     function irTrainLegacy(raw,cfg){
@@ -8769,6 +9002,12 @@ bash scripts/update_and_serve.sh --start</div>
         gmBuildSMomentumBook(model, ms, leagueId, leagueName);
         gmBuildDCorrectionBook(model, ms);
       }catch(e){ console.warn('legacy momentum build', e); }
+      try{
+        model.sfaCfg = gmSfaCfg(cfgL);
+        model.sfaBook = gmBuildSfaBook(ms, model.sfaCfg);
+        console.info('SFA config mode=' + model.sfaCfg.mode + ' shape=' + model.sfaCfg.shape
+          + ' dists=' + Object.keys(model.sfaBook.distributions||{}).length);
+      }catch(e){ console.warn('SFA book build', e); }
       return model;
     }
     /** Entry point: historical Legacy pipeline (Poisson + DC; draw off). Isolated from Auto. */
@@ -9014,12 +9253,14 @@ bash scripts/update_and_serve.sh --start</div>
       const sm=smom.sModelDynamic;
       const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
       let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
-      let df=gmClampD(dc.dUsed,sf);
+      const sfaRes=gmApplyStrongFavoriteAdjustment(dc.dUsed, sf, model, opt||{}, false);
+      let df=gmClampD(sfaRes.d,sf);
       const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
       const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
       return {
         lh,la,sf,df,cfg,cal,momentum:mom,sMomentum:smom,lambdaClippingApplied:lamPack.clipped,
         dCorrectionMode: mom.mode || 'slow_fast', dCorrection: mom.dCorrection || null,
+        sfa: sfaRes.diag,
       };
     }
     function irBuildMatrixRecipe(model, lh, la, recipe, dFinal){
@@ -9482,6 +9723,7 @@ bash scripts/update_and_serve.sh --start</div>
         ['maxGoals', num(Lmx,'maxGoals', num(L,'maxGoals', num(M,'maxGoals', mx.maxGoals||10)))],
         ['handicap / total weight', `${num(Ltr,'alphaAh', num(L,'handicapWeight', num(T,'alphaAh',0.25)))} / ${num(Ltr,'alphaT', num(L,'totalWeight', num(T,'alphaT',0.5)))}`],
         ['lineWeightMode', ((mx.lineWeight&&mx.lineWeight.mode)||T.lineWeightMode||'soft')],
+        ['SFA mode / shape', `${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.mode)||'percentile')} / ${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.shape)||'stepwise')}`],
         ['dCalMode / sCalMode', `${Lcal.dCalMode||L.dCalMode||T.dCalMode||'soft'} / ${Lcal.sCalMode||L.sCalMode||T.sCalMode||'off'}`],
         ['Copula / NB', 'выкл'],
       ]);
@@ -9500,6 +9742,7 @@ bash scripts/update_and_serve.sh --start</div>
         ['AH/OU degrade max %', num(mx.auto1x2Calib||{},'ahOuDegradeMaxPct',5)],
         ['α форы / тотала', `${num(Atr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Atr,'alphaT', num(T,'alphaT',0.5))}`],
         ['lineWeightMode', ((mx.lineWeight&&mx.lineWeight.mode)||T.lineWeightMode||'soft')],
+        ['SFA mode / shape', `${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.mode)||'percentile')} / ${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.shape)||'stepwise')}`],
         ['dCalMode', Atr.dCalMode || T.dCalMode || 'soft'],
       ]);
     }
