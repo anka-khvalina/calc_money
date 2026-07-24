@@ -7,7 +7,10 @@ Modes (strongFavoriteAdjustment.mode):
   percentile  — league×season left-tail CDF percentile → shape provider (DEFAULT)
 
 Shape providers (strongFavoriteAdjustment.shape), used by percentile mode:
-  stepwise | linear | logistic
+  stepwise | linear (DEFAULT) | logistic
+
+Default schedule (EXP-008/009): linear βmax=0.06 —
+  P10→0, P5→0.018, P2→0.036, P1→0.048, P0→0.06
 
 Architecture: calculate_sfa(...) is the single provider entry; swap shape/mode via
 config without touching the D→λ→markets pipeline.
@@ -32,12 +35,13 @@ SHAPE_LINEAR = "linear"
 SHAPE_LOGISTIC = "logistic"
 VALID_SHAPES = frozenset({SHAPE_STEPWISE, SHAPE_LINEAR, SHAPE_LOGISTIC})
 
+# EXP-008/009: linear βmax=0.06 (P10→0 … P0→βmax), relative knots 0 / 0.3 / 0.6 / 0.8 / 1.0
 DEFAULT_THRESHOLDS: Tuple[Tuple[float, float], ...] = (
-    (10.0, 0.00),
-    (5.0, 0.05),
-    (2.0, 0.10),
-    (1.0, 0.15),
-    (0.0, 0.20),
+    (10.0, 0.000),
+    (5.0, 0.018),
+    (2.0, 0.036),
+    (1.0, 0.048),
+    (0.0, 0.060),
 )
 
 
@@ -91,11 +95,11 @@ def parse_percentile_thresholds(raw: Any) -> List[Tuple[float, float]]:
 @dataclass
 class SfaConfig:
     mode: str = MODE_PERCENTILE
-    shape: str = SHAPE_STEPWISE
+    shape: str = SHAPE_LINEAR
     min_matches: int = 40
     # threshold (legacy absolute) mode
     odds_threshold: float = 1.30
-    beta: float = 0.15
+    beta: float = 0.06
     # percentile schedule
     thresholds: List[Tuple[float, float]] = field(
         default_factory=lambda: list(DEFAULT_THRESHOLDS)
@@ -103,7 +107,7 @@ class SfaConfig:
     # logistic shape params
     logistic_k: float = 0.8
     logistic_mid: float = 5.0
-    logistic_max: float = 0.20
+    logistic_max: float = 0.06
 
     def validated(self) -> "SfaConfig":
         mode = _norm_mode(self.mode)
@@ -152,18 +156,18 @@ def sfa_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> SfaConfig:
     )
     return SfaConfig(
         mode=str(mode),
-        shape=str(block.get("shape", block.get("provider", SHAPE_STEPWISE))),
+        shape=str(block.get("shape", block.get("provider", SHAPE_LINEAR))),
         min_matches=int(block.get("minMatches", block.get("min_matches", 40))),
         odds_threshold=float(
             block.get("oddsThreshold", block.get("odds_threshold", 1.30))
         ),
-        beta=float(block.get("beta", block.get("fixedBeta", 0.15))),
+        beta=float(block.get("beta", block.get("fixedBeta", 0.06))),
         thresholds=parse_percentile_thresholds(
             block.get("thresholds", block.get("table", block.get("schedule")))
         ),
         logistic_k=float(block.get("logisticK", block.get("logistic_k", 0.8))),
         logistic_mid=float(block.get("logisticMid", block.get("logistic_mid", 5.0))),
-        logistic_max=float(block.get("logisticMax", block.get("logistic_max", 0.20))),
+        logistic_max=float(block.get("logisticMax", block.get("logistic_max", 0.06))),
     ).validated()
 
 
@@ -176,8 +180,8 @@ def beta_stepwise(percentile: float, thresholds: Sequence[Tuple[float, float]]) 
     """
     thresholds: (boundary, beta_when_pct_above_boundary), sorted DESC.
 
-    DEFAULT (10,0),(5,0.05),(2,0.10),(1,0.15),(0,0.20) ⇒
-      pct>10→0; 5<pct≤10→0.05; 2<pct≤5→0.10; 1<pct≤2→0.15; pct≤1→0.20
+    DEFAULT (10,0),(5,0.018),(2,0.036),(1,0.048),(0,0.06) ⇒
+      pct>10→0; 5<pct≤10→0.018; 2<pct≤5→0.036; 1<pct≤2→0.048; pct≤1→0.06
     """
     if percentile is None or (isinstance(percentile, float) and math.isnan(percentile)):
         return 0.0

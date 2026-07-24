@@ -4030,7 +4030,7 @@ bash scripts/update_and_serve.sh --start</div>
       console.info('Matches affected = ' + diag.nAffected);
     }
     // --- Strong Favorite Adjustment (SFA): off | threshold | percentile ---
-    const GM_DEFAULT_SFA_THRESHOLDS = [[10,0],[5,0.05],[2,0.10],[1,0.15],[0,0.20]];
+    const GM_DEFAULT_SFA_THRESHOLDS = [[10,0],[5,0.018],[2,0.036],[1,0.048],[0,0.06]];
     function gmParseSfaThresholds(raw){
       if(raw==null) return GM_DEFAULT_SFA_THRESHOLDS.slice();
       const pairs=[];
@@ -4063,17 +4063,17 @@ bash scripts/update_and_serve.sh --start</div>
       const mode = String(
         (cfg && cfg.sfaMode) || fromCfg.mode || root.mode || 'percentile'
       ).trim().toLowerCase();
-      const shape = String(fromCfg.shape || root.shape || 'stepwise').trim().toLowerCase();
+      const shape = String(fromCfg.shape || root.shape || 'linear').trim().toLowerCase();
       return {
         mode: (mode==='off'||mode==='threshold'||mode==='percentile') ? mode : 'percentile',
-        shape: (shape==='linear'||shape==='logistic'||shape==='stepwise') ? shape : 'stepwise',
+        shape: (shape==='linear'||shape==='logistic'||shape==='stepwise') ? shape : 'linear',
         minMatches: Number(fromCfg.minMatches!=null?fromCfg.minMatches:(root.minMatches!=null?root.minMatches:40))||40,
         oddsThreshold: Number(fromCfg.oddsThreshold!=null?fromCfg.oddsThreshold:(root.oddsThreshold!=null?root.oddsThreshold:1.30))||1.30,
-        beta: Number(fromCfg.beta!=null?fromCfg.beta:(root.beta!=null?root.beta:0.15))||0.15,
+        beta: Number(fromCfg.beta!=null?fromCfg.beta:(root.beta!=null?root.beta:0.06))||0.06,
         thresholds: gmParseSfaThresholds(fromCfg.thresholds!=null?fromCfg.thresholds:root.thresholds),
         logisticK: Number(fromCfg.logisticK!=null?fromCfg.logisticK:(root.logisticK!=null?root.logisticK:0.8))||0.8,
         logisticMid: Number(fromCfg.logisticMid!=null?fromCfg.logisticMid:(root.logisticMid!=null?root.logisticMid:5))||5,
-        logisticMax: Number(fromCfg.logisticMax!=null?fromCfg.logisticMax:(root.logisticMax!=null?root.logisticMax:0.20))||0.20,
+        logisticMax: Number(fromCfg.logisticMax!=null?fromCfg.logisticMax:(root.logisticMax!=null?root.logisticMax:0.06))||0.06,
       };
     }
     function gmSfaBetaStepwise(pct, thresholds){
@@ -4101,7 +4101,7 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function gmSfaBetaLogistic(pct, scfg){
       if(!(isFinite(pct))) return 0;
-      const k=scfg.logisticK||0.8, mid=scfg.logisticMid||5, bmax=scfg.logisticMax||0.2;
+      const k=scfg.logisticK||0.8, mid=scfg.logisticMid||5, bmax=scfg.logisticMax||0.06;
       return bmax/(1+Math.exp(k*(pct-mid)));
     }
     function gmCalculateSFA(league, season, favoritePercentile, scfg, favoriteFairOdds){
@@ -9825,7 +9825,7 @@ bash scripts/update_and_serve.sh --start</div>
         ['maxGoals', num(Lmx,'maxGoals', num(L,'maxGoals', num(M,'maxGoals', mx.maxGoals||10)))],
         ['handicap / total weight', `${num(Ltr,'alphaAh', num(L,'handicapWeight', num(T,'alphaAh',0.25)))} / ${num(Ltr,'alphaT', num(L,'totalWeight', num(T,'alphaT',0.5)))}`],
         ['lineWeightMode', ((mx.lineWeight&&mx.lineWeight.mode)||T.lineWeightMode||'soft')],
-        ['SFA mode / shape', `${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.mode)||'percentile')} / ${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.shape)||'stepwise')}`],
+        ['SFA mode / shape', `${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.mode)||'percentile')} / ${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.shape)||'linear')}`],
         ['dCalMode / sCalMode', `${Lcal.dCalMode||L.dCalMode||T.dCalMode||'soft'} / ${Lcal.sCalMode||L.sCalMode||T.sCalMode||'off'}`],
         ['Copula / NB', 'выкл'],
       ]);
@@ -9844,7 +9844,7 @@ bash scripts/update_and_serve.sh --start</div>
         ['AH/OU degrade max %', num(mx.auto1x2Calib||{},'ahOuDegradeMaxPct',5)],
         ['α форы / тотала', `${num(Atr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Atr,'alphaT', num(T,'alphaT',0.5))}`],
         ['lineWeightMode', ((mx.lineWeight&&mx.lineWeight.mode)||T.lineWeightMode||'soft')],
-        ['SFA mode / shape', `${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.mode)||'percentile')} / ${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.shape)||'stepwise')}`],
+        ['SFA mode / shape', `${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.mode)||'percentile')} / ${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.shape)||'linear')}`],
         ['dCalMode', Atr.dCalMode || T.dCalMode || 'soft'],
       ]);
     }

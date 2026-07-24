@@ -15,7 +15,7 @@ import strong_favorite_adjustment as sfa  # noqa: E402
 def test_default_mode_percentile():
     cfg = sfa.SfaConfig().validated()
     assert cfg.mode == sfa.MODE_PERCENTILE
-    assert cfg.shape == sfa.SHAPE_STEPWISE
+    assert cfg.shape == sfa.SHAPE_LINEAR
 
 
 def test_stepwise_ac3_rarer_gets_more():
@@ -23,9 +23,9 @@ def test_stepwise_ac3_rarer_gets_more():
     b8 = sfa.calculate_sfa("L", "S", 8.0, cfg)
     b3 = sfa.calculate_sfa("L", "S", 3.0, cfg)
     b1_5 = sfa.calculate_sfa("L", "S", 1.5, cfg)
-    assert abs(b8 - 0.05) < 1e-12
-    assert abs(b3 - 0.10) < 1e-12
-    assert abs(b1_5 - 0.15) < 1e-12
+    assert abs(b8 - 0.018) < 1e-12
+    assert abs(b3 - 0.036) < 1e-12
+    assert abs(b1_5 - 0.048) < 1e-12
     assert b1_5 > b3 > b8
 
 
@@ -83,7 +83,8 @@ def test_config_json_default_percentile():
     raw = json.loads((ROOT / "config" / "model_config.json").read_text(encoding="utf-8"))
     cfg = sfa.sfa_config_from_mapping(raw)
     assert cfg.mode == sfa.MODE_PERCENTILE
-    assert cfg.shape == sfa.SHAPE_STEPWISE
+    assert cfg.shape == sfa.SHAPE_LINEAR
+    assert abs(cfg.thresholds[-1][1] - 0.06) < 1e-12  # P0 → βmax
 
 
 def test_apply_sfa_config_from_mapping():
@@ -98,11 +99,12 @@ def test_apply_sfa_config_from_mapping():
 
 def test_linear_shape_between_knots():
     cfg = sfa.SfaConfig(mode="percentile", shape="linear").validated()
-    # at P5 knot → 0.05; at P10 → 0
-    assert abs(sfa.calculate_sfa("L", "S", 5.0, cfg) - 0.05) < 1e-12
+    # at P5 knot → 0.018; at P10 → 0
+    assert abs(sfa.calculate_sfa("L", "S", 5.0, cfg) - 0.018) < 1e-12
     assert abs(sfa.calculate_sfa("L", "S", 10.0, cfg) - 0.0) < 1e-12
     mid = sfa.calculate_sfa("L", "S", 7.5, cfg)
-    assert 0.0 < mid < 0.05
+    assert 0.0 < mid < 0.018
+    assert abs(sfa.calculate_sfa("L", "S", 0.0, cfg) - 0.06) < 1e-12
 
 
 def test_diagnostics_fields():

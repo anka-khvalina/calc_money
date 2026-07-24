@@ -94,16 +94,16 @@ class ModelConfig:
 
     # Strong Favorite Adjustment (amplify |D| for rare favorites)
     sfa_mode: str = sfa.MODE_PERCENTILE  # off | threshold | percentile
-    sfa_shape: str = sfa.SHAPE_STEPWISE  # stepwise | linear | logistic
+    sfa_shape: str = sfa.SHAPE_LINEAR  # stepwise | linear | logistic
     sfa_min_matches: int = 40
     sfa_odds_threshold: float = 1.30
-    sfa_beta: float = 0.15
+    sfa_beta: float = 0.06
     sfa_thresholds: List[Tuple[float, float]] = field(
         default_factory=lambda: list(sfa.DEFAULT_THRESHOLDS)
     )
     sfa_logistic_k: float = 0.8
     sfa_logistic_mid: float = 5.0
-    sfa_logistic_max: float = 0.20
+    sfa_logistic_max: float = 0.06
 
     # веса по экстремальности тотала
     alpha_t: float = 0.50
