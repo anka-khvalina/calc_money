@@ -42,7 +42,7 @@ bash scripts/update_and_serve.sh --start
 bash scripts/update_and_serve.sh --no-pull
 
 # другая ветка
-FAIR_ODDS_BRANCH=main bash scripts/update_and_serve.sh --start
+FAIR_ODDS_BRANCH=cursor/d-ah-weight-policy-17b5 bash scripts/update_and_serve.sh --start
 
 # логи
 bash scripts/logs.sh
