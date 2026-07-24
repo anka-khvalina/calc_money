@@ -104,6 +104,9 @@ class ModelConfig:
     sfa_logistic_k: float = 0.8
     sfa_logistic_mid: float = 5.0
     sfa_logistic_max: float = 0.06
+    sfa_residual_enabled: bool = True
+    sfa_residual_k: float = 0.5
+    sfa_residual_beta_max: float = 0.10
 
     # веса по экстремальности тотала
     alpha_t: float = 0.50
@@ -888,6 +891,9 @@ def resolve_sfa_config(cfg: ModelConfig) -> sfa.SfaConfig:
         logistic_k=cfg.sfa_logistic_k,
         logistic_mid=cfg.sfa_logistic_mid,
         logistic_max=cfg.sfa_logistic_max,
+        residual_enabled=bool(cfg.sfa_residual_enabled),
+        residual_k=float(cfg.sfa_residual_k),
+        residual_beta_max=float(cfg.sfa_residual_beta_max),
     ).validated()
 
 
@@ -910,6 +916,9 @@ def apply_sfa_config_from_mapping(
         sfa_logistic_k=parsed.logistic_k,
         sfa_logistic_mid=parsed.logistic_mid,
         sfa_logistic_max=parsed.logistic_max,
+        sfa_residual_enabled=parsed.residual_enabled,
+        sfa_residual_k=parsed.residual_k,
+        sfa_residual_beta_max=parsed.residual_beta_max,
     )
 
 
@@ -2647,6 +2656,9 @@ def predict_match(
     league: Optional[str] = None,
     season: Optional[str] = None,
     apply_sfa: bool = True,
+    home_odds: Optional[float] = None,
+    away_odds: Optional[float] = None,
+    market_favorite_odds: Optional[float] = None,
 ) -> Prediction:
     cfg = model.config
     s, g, cal = model.strength, model.goals, model.calibration
@@ -2858,6 +2870,9 @@ def predict_match(
         lg = league
         if lg is None and model.sfa_book is not None:
             lg = model.sfa_book.league_key or None
+        mkt_fav = market_favorite_odds
+        if mkt_fav is None:
+            mkt_fav = sfa.favorite_odds_from_decimal(home_odds, away_odds)
         d_final, sfa_diag = sfa.apply_strong_favorite_adjustment(
             d_final,
             s_final,
@@ -2870,6 +2885,7 @@ def predict_match(
                 (model.s_momentum_cfg or resolve_s_momentum_config(cfg)).lambda_min
             ),
             already_applied=False,
+            market_favorite_odds=mkt_fav,
         )
     d_final = gm.clamp_goal_diff(d_final, s_final, cfg.lambda_epsilon)
 
@@ -3680,6 +3696,8 @@ def walk_forward_validate(
             pred = predict_match(
                 model, home_id, away_id,
                 neutral=target.neutral_flag, derby=target.derby_flag,
+                home_odds=target.home_odds,
+                away_odds=target.away_odds,
             )
         except (ValueError, ZeroDivisionError):
             continue
