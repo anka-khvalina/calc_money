@@ -3347,6 +3347,7 @@ bash scripts/update_and_serve.sh --start</div>
         momentum: raw.momentum || {},
         d_correction: raw.d_correction || raw.dCorrection || {},
         rating: raw.rating || {},
+        lineWeight: raw.lineWeight || raw.line_weight || t.lineWeight || {},
         dynamic_s_ema: raw.dynamic_s_ema || raw.sMomentum || {},
         dynamic_dc_gamma: raw.dynamic_dc_gamma || raw.dynamicDcGamma || {},
         configSource: 'model_config.json',
@@ -3889,6 +3890,144 @@ bash scripts/update_and_serve.sh --start</div>
       }
       return out;
     }
+    // --- AH line weights (w_line_AH): CURRENT / SOFT / DISABLED + optional table/presets ---
+    const GM_DEFAULT_SOFT_LINE_TABLE = [[0.50,1.00],[0.75,0.95],[1.00,0.90],[1.50,0.80],[2.00,0.70],[3.00,0.60]];
+    function gmParseLineWeightTable(raw){
+      if(raw==null) return null;
+      const pairs=[];
+      if(Array.isArray(raw)){
+        raw.forEach(item=>{
+          if(Array.isArray(item) && item.length>=2){
+            const a=Number(item[0]), w=Number(item[1]);
+            if(isFinite(a) && isFinite(w) && a>=0) pairs.push([a, Math.max(1e-9, Math.min(1, w))]);
+          } else if(item && typeof item==='object'){
+            const a=Number(item.abs!=null?item.abs:(item.absD!=null?item.absD:item.ah));
+            const w=Number(item.weight!=null?item.weight:item.w);
+            if(isFinite(a) && isFinite(w) && a>=0) pairs.push([a, Math.max(1e-9, Math.min(1, w))]);
+          }
+        });
+      } else if(typeof raw==='object'){
+        Object.keys(raw).forEach(k=>{
+          if(['table','mode','kind','presets'].indexOf(String(k).toLowerCase())>=0) return;
+          const a=Number(k), w=Number(raw[k]);
+          if(isFinite(a) && isFinite(w) && a>=0) pairs.push([a, Math.max(1e-9, Math.min(1, w))]);
+        });
+      }
+      if(!pairs.length) return null;
+      pairs.sort((x,y)=>x[0]-y[0]);
+      return pairs;
+    }
+    function gmParseLineWeightPresets(raw){
+      const out={};
+      if(!raw || typeof raw!=='object') return out;
+      Object.keys(raw).forEach(name=>{
+        const key=String(name).trim().toLowerCase();
+        if(!key) return;
+        const body=raw[name];
+        let table=null;
+        if(body && typeof body==='object' && !Array.isArray(body) && (body.table!=null || body.lineWeightTable!=null)){
+          table=gmParseLineWeightTable(body.table!=null?body.table:body.lineWeightTable);
+        } else {
+          table=gmParseLineWeightTable(body);
+        }
+        if(table) out[key]=table;
+      });
+      return out;
+    }
+    function gmLineWeightCfg(cfg){
+      const root = (GM_MATRIX_CFG && GM_MATRIX_CFG.lineWeight)
+        || (GM_MODEL_CFG && (GM_MODEL_CFG.lineWeight || GM_MODEL_CFG.line_weight))
+        || {};
+      const train = (GM_MATRIX_CFG && GM_MATRIX_CFG.train) || (GM_MODEL_CFG && GM_MODEL_CFG.train) || {};
+      const fromCfg = (cfg && cfg.lineWeight) || {};
+      const modeRaw = (cfg && cfg.lineWeightMode)
+        || fromCfg.mode || fromCfg.lineWeightMode
+        || root.mode || root.lineWeightMode
+        || train.lineWeightMode
+        || 'soft';
+      const mode = String(modeRaw||'soft').trim().toLowerCase();
+      const alphaAh = Number(
+        (cfg && cfg.alphaAh!=null)?cfg.alphaAh
+        :(fromCfg.alphaAh!=null?fromCfg.alphaAh:(root.alphaAh!=null?root.alphaAh:0.25))
+      );
+      const pAh = Number(
+        (cfg && cfg.pAh!=null)?cfg.pAh
+        :(fromCfg.pAh!=null?fromCfg.pAh:(root.pAh!=null?root.pAh:2))
+      );
+      const minWAh = Number(
+        (cfg && cfg.minWAh!=null)?cfg.minWAh
+        :(fromCfg.minWAh!=null?fromCfg.minWAh:(root.minWAh!=null?root.minWAh:0.15))
+      );
+      const maxWAh = Number(
+        (cfg && cfg.maxWAh!=null)?cfg.maxWAh
+        :(fromCfg.maxWAh!=null?fromCfg.maxWAh:(root.maxWAh!=null?root.maxWAh:1))
+      );
+      const table = gmParseLineWeightTable(
+        (cfg && cfg.lineWeightTable)!=null ? cfg.lineWeightTable
+        : (fromCfg.table!=null?fromCfg.table:(root.table!=null?root.table:null))
+      );
+      const presets = Object.assign(
+        {},
+        gmParseLineWeightPresets(root.presets),
+        gmParseLineWeightPresets(fromCfg.presets),
+        gmParseLineWeightPresets(cfg && cfg.lineWeightPresets)
+      );
+      return { mode, alphaAh, pAh, minWAh, maxWAh, table, presets };
+    }
+    function gmFormulaLineAh(absD, lcfg){
+      const ad=Math.abs(Number(absD)||0);
+      const raw=1/(1+(lcfg.alphaAh||0.25)*Math.pow(ad, lcfg.pAh||2));
+      return Math.min(lcfg.maxWAh!=null?lcfg.maxWAh:1, Math.max(lcfg.minWAh!=null?lcfg.minWAh:0.15, raw));
+    }
+    function gmTableLookupLineAh(absD, table){
+      if(!table || !table.length) return 1;
+      const x=Math.abs(Number(absD)||0);
+      if(x<=table[0][0]) return table[0][1];
+      if(x>=table[table.length-1][0]) return table[table.length-1][1];
+      for(let i=1;i<table.length;i++){
+        const a0=table[i-1][0], w0=table[i-1][1], a1=table[i][0], w1=table[i][1];
+        if(x<=a1){
+          if(Math.abs(a1-a0)<1e-15) return w1;
+          const t=(x-a0)/(a1-a0);
+          return w0+t*(w1-w0);
+        }
+      }
+      return table[table.length-1][1];
+    }
+    function gmResolveSoftLineTable(lcfg){
+      if(lcfg.table && lcfg.table.length) return lcfg.table;
+      if(lcfg.presets && lcfg.presets[lcfg.mode]) return lcfg.presets[lcfg.mode];
+      if(lcfg.mode==='soft') return GM_DEFAULT_SOFT_LINE_TABLE;
+      return null;
+    }
+    function gmWLineAh(absD, cfgOrLcfg){
+      const lcfg = (cfgOrLcfg && cfgOrLcfg.mode!=null && cfgOrLcfg.alphaAh!=null && cfgOrLcfg.presets!=null)
+        ? cfgOrLcfg
+        : gmLineWeightCfg(cfgOrLcfg||{});
+      const mode = String(lcfg.mode||'soft').toLowerCase();
+      if(mode==='disabled') return 1;
+      const current = gmFormulaLineAh(absD, lcfg);
+      if(mode==='current') return current;
+      const table = gmResolveSoftLineTable(lcfg);
+      if(!table) return current;
+      const tw = gmTableLookupLineAh(absD, table);
+      if(mode==='soft') return Math.max(tw, current);
+      return tw;
+    }
+    function gmDiagnoseLineWeights(weights, mode){
+      const ws=(weights||[]).map(Number).filter(w=>isFinite(w));
+      if(!ws.length) return {mode, nMatches:0, avg:1, nAffected:0, min:1, max:1};
+      const avg=ws.reduce((a,b)=>a+b,0)/ws.length;
+      const nAffected=ws.filter(w=>w<1-1e-9).length;
+      return {mode, nMatches:ws.length, avg, nAffected, min:Math.min(...ws), max:Math.max(...ws)};
+    }
+    function gmLogLineWeightDiagnostics(diag){
+      if(!diag) return;
+      console.info('Training configuration');
+      console.info('lineWeightMode = ' + String(diag.mode||'').toUpperCase());
+      console.info('Average w_line_AH = ' + Number(diag.avg).toFixed(4));
+      console.info('Matches affected = ' + diag.nAffected);
+    }
     function gmFitStrength(ms,cfg,priorSt,leagueId,leagueName){
       // wBase includes rotation training_weight — exclude weight-0 from fit entirely.
       const used=ms.filter(m=>m.D!=null && gmTrainWeight(m)>0);
@@ -3901,9 +4040,10 @@ bash scripts/update_and_serve.sh --start</div>
       const hCol=useDerbyCoef?p-2:p-1;
       const dCol=useDerbyCoef?p-1:null;
       const coeffs=[],tg=[];
+      const lcfg=gmLineWeightCfg(cfg);
       used.forEach(m=>{ const c=Array(p).fill(0); c[idx.get(m.home)]+=1; c[idx.get(m.away)]-=1; c[hCol]=m.iHome;
         if(dCol!=null) c[dCol]=gmDerbyHome(m)?1:0; coeffs.push(c); tg.push(m.D);
-        m.wLineAh=Math.min(cfg.maxWAh,Math.max(cfg.minWAh,1/(1+cfg.alphaAh*Math.pow(Math.abs(m.D),cfg.pAh)))); m.wRob=1; m.wTime=1; });
+        m.wLineAh=gmWLineAh(Math.abs(m.D), lcfg); m.wRob=1; m.wTime=1; });
       const gauge=[...Array(teams.length).fill(1),...Array(p-teams.length).fill(0)];
       const lid = leagueId != null ? leagueId : (used[0] && used[0].leagueId != null ? used[0].leagueId : null);
       const lname = leagueName != null ? leagueName : (used[0] && used[0].league != null ? used[0].league : null);
@@ -5218,7 +5358,9 @@ bash scripts/update_and_serve.sh --start</div>
       const st=gmFitStrength(ms,cfg,prior&&prior.st,leagueId,leagueName), gl=gmFitAD(ms,cfg,prior&&prior.gl), cal=gmCalibrate(ms,st,gl,cfg);
       const draw={alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'disabled',mode:'legacy'};
       const calDiag=gmAssessCalibration(cal,cfg);
-      const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag,teamNames:{},
+      const lwDiag=gmDiagnoseLineWeights(ms.filter(m=>m.D!=null).map(m=>m.wLineAh!=null?m.wLineAh:gmWLineAh(Math.abs(m.D),cfg)), (gmLineWeightCfg(cfg).mode));
+      gmLogLineWeightDiagnostics(lwDiag);
+      const model={st,gl,cal,draw,cfg,nMatches:ms.length,dClamp,calDiag,lineWeightDiag:lwDiag,teamNames:{},
         alphaFinal:0, rhoFinal:0, selectedDistribution:'poisson_like', nbImprovementPct:0, matrixCalib:null};
       ms.forEach(m=>{ model.teamNames[m.home]=m.homeName; model.teamNames[m.away]=m.awayName; });
       // Bootstrap α/ρ (classic OU+1X2 mix), then Auto-only 1X2 refinement + acceptance gate.
@@ -5247,7 +5389,12 @@ bash scripts/update_and_serve.sh --start</div>
     let gmModelAuto=null;      // alias of gmModel after combined train
     function gmHasCombined(){ return !!(gmModelLegacy && gmModelAuto); }
     function gmCfg(){
-      return { maxGoals:GM_MAX, alphaAh:0.25, pAh:2, minWAh:0.15, maxWAh:1,
+      const lw = gmLineWeightCfg({});
+      return { maxGoals:GM_MAX, alphaAh:lw.alphaAh, pAh:lw.pAh, minWAh:lw.minWAh, maxWAh:lw.maxWAh,
+        lineWeightMode: lw.mode,
+        lineWeightTable: lw.table,
+        lineWeightPresets: lw.presets,
+        lineWeight: lw,
         alphaT:0.5, deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
         seasonDefault:1.0,
         seasonWeightsById: goalSeasonWeightById || {},
@@ -7294,6 +7441,11 @@ bash scripts/update_and_serve.sh --start</div>
           rows.push(['1X2 MAE до → после', `${goalFmtTrainNum(a1.before.mae1x2, 4)} → ${goalFmtTrainNum(a1.after.mae1x2, 4)}`, 'ok']);
         }
       }
+      const lwDiag = (gmModelAuto||gmModel||{}).lineWeightDiag;
+      if (lwDiag && lwDiag.nMatches > 0){
+        rows.push(['lineWeightMode', String(lwDiag.mode||'').toUpperCase(), '']);
+        rows.push(['Avg w_line_AH / affected', `${goalFmtTrainNum(lwDiag.avg, 2)} / ${lwDiag.nAffected}`, 'num']);
+      }
       if (inactiveDiag && inactiveDiag.nEval > 0){
         rows.push(['Inactive D vs эталон', escapeHtml(inactiveDiag.summary), inactiveDiag.pctOverGap > 55 ? 'warn' : '']);
       }
@@ -8323,10 +8475,25 @@ bash scripts/update_and_serve.sh --start</div>
       const useDraw = legacy && (Ldraw.enabled === true || (Ldraw.enabled == null && L.useDrawModel === true));
       const alphaAh = irPickNum(T, 'alphaAh', irPickNum(L, 'handicapWeight', 0.25));
       const alphaT = irPickNum(T, 'alphaT', irPickNum(L, 'totalWeight', 0.5));
+      const lwRoot = (GM_MATRIX_CFG && GM_MATRIX_CFG.lineWeight) || (GM_MODEL_CFG && GM_MODEL_CFG.lineWeight) || {};
+      const lw = gmLineWeightCfg({
+        alphaAh,
+        pAh: irPickNum(lwRoot, 'pAh', 2),
+        minWAh: irPickNum(lwRoot, 'minWAh', 0.15),
+        maxWAh: irPickNum(lwRoot, 'maxWAh', 1),
+        lineWeightMode: lwRoot.mode || T.lineWeightMode || 'soft',
+        lineWeightTable: lwRoot.table,
+        lineWeightPresets: lwRoot.presets,
+        lineWeight: lwRoot,
+      });
       const cfgOut = {
         maxGoals: irPickNum(M, 'maxGoals', irPickNum(L, 'maxGoals', GM_MAX)),
-        alphaAh,
-        pAh: 2, minWAh: 0.15, maxWAh: 1,
+        alphaAh: lw.alphaAh,
+        pAh: lw.pAh, minWAh: lw.minWAh, maxWAh: lw.maxWAh,
+        lineWeightMode: lw.mode,
+        lineWeightTable: lw.table,
+        lineWeightPresets: lw.presets,
+        lineWeight: lw,
         alphaT,
         deltaAh: 0.5, deltaLam: 0.25, maxIter: 30, tol: 1e-4,
         drawLoss: useDraw ? irPickNum(Ldraw, 'drawLossWeight', irPickNum(L, 'drawLossWeight', 1.5)) : 1,
@@ -9314,6 +9481,7 @@ bash scripts/update_and_serve.sh --start</div>
         ['γ max', num(Ldc,'gammaMax', num(L,'gammaMax',0.20))],
         ['maxGoals', num(Lmx,'maxGoals', num(L,'maxGoals', num(M,'maxGoals', mx.maxGoals||10)))],
         ['handicap / total weight', `${num(Ltr,'alphaAh', num(L,'handicapWeight', num(T,'alphaAh',0.25)))} / ${num(Ltr,'alphaT', num(L,'totalWeight', num(T,'alphaT',0.5)))}`],
+        ['lineWeightMode', ((mx.lineWeight&&mx.lineWeight.mode)||T.lineWeightMode||'soft')],
         ['dCalMode / sCalMode', `${Lcal.dCalMode||L.dCalMode||T.dCalMode||'soft'} / ${Lcal.sCalMode||L.sCalMode||T.sCalMode||'off'}`],
         ['Copula / NB', 'выкл'],
       ]);
@@ -9331,6 +9499,7 @@ bash scripts/update_and_serve.sh --start</div>
         ['приоритет 1X2/AH/OU', `${num(mx.auto1x2Calib||{},'w1x2',1)} / ${num(mx.auto1x2Calib||{},'wAh',0.35)} / ${num(mx.auto1x2Calib||{},'wOu',0.25)}`],
         ['AH/OU degrade max %', num(mx.auto1x2Calib||{},'ahOuDegradeMaxPct',5)],
         ['α форы / тотала', `${num(Atr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Atr,'alphaT', num(T,'alphaT',0.5))}`],
+        ['lineWeightMode', ((mx.lineWeight&&mx.lineWeight.mode)||T.lineWeightMode||'soft')],
         ['dCalMode', Atr.dCalMode || T.dCalMode || 'soft'],
       ]);
     }

@@ -28,6 +28,7 @@ try:
     from . import dynamic_dc_gamma as ddc
     from . import goal_model as gm
     from . import hierarchical_wls as hwls
+    from . import line_weights as lw
     from . import momentum as mom
     from . import s_momentum as smom
     from . import team_ranking as tr
@@ -42,6 +43,7 @@ except ImportError:  # pragma: no cover
     import dynamic_dc_gamma as ddc
     import goal_model as gm
     import hierarchical_wls as hwls
+    import line_weights as lw
     import momentum as mom
     import s_momentum as smom
     import team_ranking as tr
@@ -77,11 +79,16 @@ class ModelConfig:
     season_weights: List[SeasonWeight] = field(default_factory=list)
     exclude_data_errors: bool = True
 
-    # веса по размеру линии (фора)
+    # веса по размеру линии (фора) — режим lineWeight.mode
     alpha_ah: float = 0.25
     p_ah: float = 2.0
     min_w_line_ah: float = 0.15
     max_w_line_ah: float = 1.0
+    line_weight_mode: str = lw.MODE_SOFT  # current | soft | disabled | named preset
+    # optional soft/custom breakpoints [(abs_D, weight), ...]; None → built-in soft preset
+    line_weight_table: Optional[List[Tuple[float, float]]] = None
+    # extra named tables from model_config lineWeight.presets
+    line_weight_presets: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
 
     # веса по экстремальности тотала
     alpha_t: float = 0.50
@@ -816,13 +823,63 @@ def apply_rating_config_from_mapping(
     )
 
 
+def resolve_line_weight_config(cfg: ModelConfig) -> lw.LineWeightConfig:
+    """Build LineWeightConfig from ModelConfig fields."""
+    return lw.LineWeightConfig(
+        mode=cfg.line_weight_mode,
+        alpha_ah=float(cfg.alpha_ah),
+        p_ah=float(cfg.p_ah),
+        min_w=float(cfg.min_w_line_ah),
+        max_w=float(cfg.max_w_line_ah),
+        table=cfg.line_weight_table,
+        presets=dict(cfg.line_weight_presets or {}),
+    ).validated()
+
+
+def apply_line_weight_config_from_mapping(
+    cfg: ModelConfig,
+    raw: Optional[Mapping[str, Any]],
+) -> ModelConfig:
+    """Наложить блок lineWeight / lineWeightMode из model_config.json на ModelConfig."""
+    if not raw:
+        return cfg
+    parsed = lw.line_weight_config_from_mapping(raw)
+    return replace(
+        cfg,
+        line_weight_mode=parsed.mode,
+        alpha_ah=parsed.alpha_ah,
+        p_ah=parsed.p_ah,
+        min_w_line_ah=parsed.min_w,
+        max_w_line_ah=parsed.max_w,
+        line_weight_table=parsed.table,
+        line_weight_presets=dict(parsed.presets or {}),
+    )
+
+
 def _apply_line_ah_weights(used: Sequence[PreparedMatch], cfg: ModelConfig) -> None:
+    lcfg = resolve_line_weight_config(cfg)
     for m in used:
-        m.w_line_ah = min(
-            cfg.max_w_line_ah,
-            max(cfg.min_w_line_ah, 1.0 / (1.0 + cfg.alpha_ah * abs(m.diff_goals) ** cfg.p_ah)),
-        )
+        m.w_line_ah = lw.w_line_ah(abs(m.diff_goals), lcfg)
         m.w_robust = 1.0
+
+
+def log_line_weight_diagnostics(
+    matches: Sequence[PreparedMatch],
+    cfg: ModelConfig,
+) -> lw.LineWeightDiagnostics:
+    """Log AC5 training diagnostics for w_line_AH."""
+    lcfg = resolve_line_weight_config(cfg)
+    used = [m for m in matches if m.diff_goals is not None]
+    # Prefer already-applied weights; otherwise compute from config.
+    weights: List[float] = []
+    for m in used:
+        w = getattr(m, "w_line_ah", None)
+        if w is None:
+            w = lw.w_line_ah(abs(m.diff_goals), lcfg)
+        weights.append(float(w))
+    diag = lw.diagnose_weights(weights, lcfg.mode)
+    lw.log_diagnostics(diag)
+    return diag
 
 
 def _apply_time_weights(
@@ -1118,11 +1175,8 @@ def fit_strength_ratings(
             row[d_col] = float(_derby_home_indicator(m))
         coeffs.append(row)
         targets.append(m.diff_goals)
-        m.w_line_ah = min(
-            cfg.max_w_line_ah,
-            max(cfg.min_w_line_ah, 1.0 / (1.0 + cfg.alpha_ah * abs(m.diff_goals) ** cfg.p_ah)),
-        )
-        m.w_robust = 1.0
+
+    _apply_line_ah_weights(used, cfg)
 
     gauge = [1.0] * len(teams) + [0.0] * (p - len(teams))
 
@@ -2197,6 +2251,10 @@ def train_full_model(
     league_name = next((m.raw.league for m in matches if m.raw.league), None)
     league_id = next((m.raw.league_id for m in matches if m.raw.league_id), None)
     rcfg = resolve_rating_config(cfg, league_id=league_id, league_name=league_name)
+    logging.getLogger(__name__).info(
+        "Training configuration lineWeightMode = %s",
+        resolve_line_weight_config(cfg).mode.upper(),
+    )
 
     # --- Strength fit(s): WLS remains the solver; hierarchical adds team λ ---
     shadow_strength: Optional[StrengthModel] = None
@@ -2247,6 +2305,8 @@ def train_full_model(
             league_id=league_id, league_name=league_name,
         )
         standard_side = strength
+
+    log_line_weight_diagnostics(matches, cfg)
 
     goals = fit_attack_defense(matches, cfg, prior_attack=prior_a, prior_defense=prior_d)
     calibration = calibrate(matches, strength, goals, cfg)
