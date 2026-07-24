@@ -1,0 +1,42 @@
+{
+  "understat_to_db_team": {
+    "Manchester City": "Man City",
+    "Manchester United": "Man United",
+    "Newcastle United": "Newcastle",
+    "Nottingham Forest": "Nott'm Forest",
+    "Wolverhampton Wanderers": "Wolves",
+
+    "Borussia Dortmund": "Dortmund",
+    "Eintracht Frankfurt": "Ein Frankfurt",
+    "FC Cologne": "FC Koln",
+    "Hamburger SV": "Hamburg",
+    "FC Heidenheim": "Heidenheim",
+    "Bayer Leverkusen": "Leverkusen",
+    "Borussia M.Gladbach": "M'gladbach",
+    "Mainz 05": "Mainz",
+    "RasenBallsport Leipzig": "RB Leipzig",
+    "St. Pauli": "St Pauli",
+    "VfB Stuttgart": "Stuttgart",
+
+    "Athletic Club": "Ath Bilbao",
+    "Atletico Madrid": "Ath Madrid",
+    "Real Betis": "Betis",
+    "Celta Vigo": "Celta",
+    "Espanyol": "Espanol",
+    "Real Oviedo": "Oviedo",
+    "Real Sociedad": "Sociedad",
+    "Rayo Vallecano": "Vallecano",
+
+    "Paris Saint Germain": "Paris SG",
+
+    "AC Milan": "Milan",
+    "Parma Calcio 1913": "Parma"
+  },
+  "understat_to_db_league": {
+    "EPL": "Premier League",
+    "La_Liga": "La Liga",
+    "Ligue_1": "Ligue 1",
+    "Serie_A": "Serie A",
+    "Bundesliga": "Bundesliga"
+  }
+}
