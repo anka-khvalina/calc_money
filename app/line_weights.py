@@ -1,10 +1,15 @@
 """
 Configurable Asian-handicap line weights for WLS strength fit (w_line_AH).
 
+D-training weight policy (Goal Difference / strength WLS only):
+  Default production mode is **disabled** — AH line weight is excluded from
+  observation weights: w = w_base × w_Huber. Total Goals (S) still uses w_line_T.
+  Prediction / pricing is unaffected.
+
 Modes (lineWeight.mode / lineWeightMode / line_weight_mode):
   current  — legacy formula 1/(1+α·|D|^p) clamped to [min,max]
   soft     — piecewise table on |D| (preset or config table); never below current
-  disabled — w_line_AH = 1 for every match
+  disabled — w_line_AH = 1 for every match (AH line weight not applied)
 
 Named presets CURRENT / SOFT / DISABLED are built-in. Extra named presets can be
 added under lineWeight.presets in model_config.json without code changes:
@@ -46,7 +51,7 @@ DEFAULT_SOFT_TABLE: Tuple[Tuple[float, float], ...] = (
 
 
 def _norm_mode(raw: Any) -> str:
-    s = str(raw or MODE_SOFT).strip().lower()
+    s = str(raw or MODE_DISABLED).strip().lower()
     return s
 
 
@@ -150,7 +155,7 @@ def formula_weight(
 
 @dataclass
 class LineWeightConfig:
-    mode: str = MODE_SOFT
+    mode: str = MODE_DISABLED
     alpha_ah: float = 0.25
     p_ah: float = 2.0
     min_w: float = 0.15
@@ -225,7 +230,7 @@ def line_weight_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> LineWei
         or block.get("line_weight_mode")
         or raw.get("lineWeightMode")
         or raw.get("line_weight_mode")
-        or MODE_SOFT
+        or MODE_DISABLED
     )
     table = parse_weight_table(
         block.get("table")

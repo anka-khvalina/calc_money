@@ -88,7 +88,9 @@ class ModelConfig:
     p_ah: float = 2.0
     min_w_line_ah: float = 0.15
     max_w_line_ah: float = 1.0
-    line_weight_mode: str = lw.MODE_SOFT  # current | soft | disabled | named preset
+    # D-training weight policy: AH line weight off by default (EXP-028).
+    # Modes: current | soft | disabled | named preset. Prediction unaffected.
+    line_weight_mode: str = lw.MODE_DISABLED
     # optional soft/custom breakpoints [(abs_D, weight), ...]; None → built-in soft preset
     line_weight_table: Optional[List[Tuple[float, float]]] = None
     # extra named tables from model_config lineWeight.presets
@@ -993,7 +995,13 @@ def build_sfa_book_for_matches(
 
 
 def _apply_line_ah_weights(used: Sequence[PreparedMatch], cfg: ModelConfig) -> None:
+    """Apply AH line weights for D/strength WLS. Disabled mode → w_line_AH = 1 (not used)."""
     lcfg = resolve_line_weight_config(cfg)
+    if lcfg.mode == lw.MODE_DISABLED:
+        for m in used:
+            m.w_line_ah = 1.0
+            m.w_robust = 1.0
+        return
     for m in used:
         m.w_line_ah = lw.w_line_ah(abs(m.diff_goals), lcfg)
         m.w_robust = 1.0

@@ -173,7 +173,7 @@
     "derbyHDefault": 0.7
   },
   "lineWeight": {
-    "mode": "soft",
+    "mode": "disabled",
     "alphaAh": 0.25,
     "pAh": 2,
     "minWAh": 0.15,
