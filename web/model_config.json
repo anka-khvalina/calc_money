@@ -172,6 +172,22 @@
     "sCalMode": "off",
     "derbyHDefault": 0.7
   },
+  "lineWeight": {
+    "mode": "soft",
+    "alphaAh": 0.25,
+    "pAh": 2,
+    "minWAh": 0.15,
+    "maxWAh": 1.0,
+    "table": {
+      "0.50": 1.0,
+      "0.75": 0.95,
+      "1.00": 0.9,
+      "1.50": 0.8,
+      "2.00": 0.7,
+      "3.00": 0.6
+    },
+    "presets": {}
+  },
   "rotationTrainingWeights": {
     "none": 1.0,
     "middle": 0.7,
