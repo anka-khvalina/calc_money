@@ -31,6 +31,7 @@ try:
     from . import line_weights as lw
     from . import momentum as mom
     from . import s_momentum as smom
+    from . import strong_favorite_adjustment as sfa
     from . import team_ranking as tr
     from .rotation_training import (
         DEFAULT_ROTATION_TRAINING_WEIGHTS,
@@ -46,6 +47,7 @@ except ImportError:  # pragma: no cover
     import line_weights as lw
     import momentum as mom
     import s_momentum as smom
+    import strong_favorite_adjustment as sfa
     import team_ranking as tr
     from rotation_training import (
         DEFAULT_ROTATION_TRAINING_WEIGHTS,
@@ -89,6 +91,19 @@ class ModelConfig:
     line_weight_table: Optional[List[Tuple[float, float]]] = None
     # extra named tables from model_config lineWeight.presets
     line_weight_presets: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+
+    # Strong Favorite Adjustment (amplify |D| for rare favorites)
+    sfa_mode: str = sfa.MODE_PERCENTILE  # off | threshold | percentile
+    sfa_shape: str = sfa.SHAPE_STEPWISE  # stepwise | linear | logistic
+    sfa_min_matches: int = 40
+    sfa_odds_threshold: float = 1.30
+    sfa_beta: float = 0.15
+    sfa_thresholds: List[Tuple[float, float]] = field(
+        default_factory=lambda: list(sfa.DEFAULT_THRESHOLDS)
+    )
+    sfa_logistic_k: float = 0.8
+    sfa_logistic_mid: float = 5.0
+    sfa_logistic_max: float = 0.20
 
     # веса по экстремальности тотала
     alpha_t: float = 0.50
@@ -258,6 +273,8 @@ class RawMatch:
     neutral_match_weight: Optional[float] = None
     home_rotation_code: str = "none"
     away_rotation_code: str = "none"
+    season_id: Optional[str] = None
+    season_label: Optional[str] = None
 
 
 _CSV_ALIASES: Dict[str, str] = {
@@ -284,6 +301,8 @@ _CSV_ALIASES: Dict[str, str] = {
     "neutral_weight": "neutral_weight", "neutral_value": "neutral_weight",
     "home_rotation_code": "home_rotation_code", "home_rot": "home_rotation_code",
     "away_rotation_code": "away_rotation_code", "away_rot": "away_rotation_code",
+    "season_id": "season_id", "seasonid": "season_id",
+    "season_label": "season_label", "season": "season_label", "seasonlabel": "season_label",
 }
 
 
@@ -363,6 +382,8 @@ def parse_raw_matches(text: str) -> List["RawMatch"]:
             neutral_match_weight=_to_float(rec.get("neutral_weight")),
             home_rotation_code=normalize_rotation_code(rec.get("home_rotation_code"), log_unknown=True),
             away_rotation_code=normalize_rotation_code(rec.get("away_rotation_code"), log_unknown=True),
+            season_id=(rec.get("season_id") or "").strip() or None,
+            season_label=(rec.get("season_label") or "").strip() or None,
         ))
     return out
 
@@ -854,6 +875,81 @@ def apply_line_weight_config_from_mapping(
         line_weight_table=parsed.table,
         line_weight_presets=dict(parsed.presets or {}),
     )
+
+
+def resolve_sfa_config(cfg: ModelConfig) -> sfa.SfaConfig:
+    return sfa.SfaConfig(
+        mode=cfg.sfa_mode,
+        shape=cfg.sfa_shape,
+        min_matches=cfg.sfa_min_matches,
+        odds_threshold=cfg.sfa_odds_threshold,
+        beta=cfg.sfa_beta,
+        thresholds=list(cfg.sfa_thresholds or sfa.DEFAULT_THRESHOLDS),
+        logistic_k=cfg.sfa_logistic_k,
+        logistic_mid=cfg.sfa_logistic_mid,
+        logistic_max=cfg.sfa_logistic_max,
+    ).validated()
+
+
+def apply_sfa_config_from_mapping(
+    cfg: ModelConfig,
+    raw: Optional[Mapping[str, Any]],
+) -> ModelConfig:
+    """Наложить strongFavoriteAdjustment из model_config.json."""
+    if not raw:
+        return cfg
+    parsed = sfa.sfa_config_from_mapping(raw)
+    return replace(
+        cfg,
+        sfa_mode=parsed.mode,
+        sfa_shape=parsed.shape,
+        sfa_min_matches=parsed.min_matches,
+        sfa_odds_threshold=parsed.odds_threshold,
+        sfa_beta=parsed.beta,
+        sfa_thresholds=list(parsed.thresholds),
+        sfa_logistic_k=parsed.logistic_k,
+        sfa_logistic_mid=parsed.logistic_mid,
+        sfa_logistic_max=parsed.logistic_max,
+    )
+
+
+def build_sfa_book_for_matches(
+    matches: Sequence[PreparedMatch],
+    cfg: ModelConfig,
+) -> sfa.FavoriteOddsBook:
+    """Build league×season favorite-odds CDF from market Shin 1X2 (AC1)."""
+    sfa_cfg = resolve_sfa_config(cfg)
+    rows: List[Dict[str, Any]] = []
+    default_league = "ALL"
+    for m in matches:
+        fo = sfa.market_favorite_odds(m.p1_shin, m.p2_shin)
+        if fo is None:
+            continue
+        lg = (
+            (m.raw.league_id and str(m.raw.league_id))
+            or (m.raw.league or "").strip()
+            or default_league
+        )
+        season = (
+            (m.raw.season_label and str(m.raw.season_label).strip())
+            or (m.raw.season_id and str(m.raw.season_id).strip())
+            or "ALL"
+        )
+        rows.append({"league": lg, "season": season, "fav_odds": fo})
+        if default_league == "ALL" and lg != "ALL":
+            default_league = lg
+    book = sfa.build_favorite_odds_book(
+        rows, min_matches=sfa_cfg.min_matches, default_league=default_league
+    )
+    logging.getLogger(__name__).info(
+        "SFA book built mode=%s shape=%s leagues=%d dists=%d minMatches=%d",
+        sfa_cfg.mode,
+        sfa_cfg.shape,
+        len(book.seasons_by_league),
+        len(book.distributions),
+        sfa_cfg.min_matches,
+    )
+    return book
 
 
 def _apply_line_ah_weights(used: Sequence[PreparedMatch], cfg: ModelConfig) -> None:
@@ -1906,6 +2002,8 @@ class TrainedModel:
     shadow_d_correction_book: Optional["dcorr.DCorrectionBook"] = None
     rating_shadow_monitor: Optional[Dict[str, Any]] = None
     rating_model_version: Optional[str] = None
+    sfa_book: Optional["sfa.FavoriteOddsBook"] = None
+    sfa_cfg: Optional["sfa.SfaConfig"] = None
 
 
 def resolve_d_correction_config(cfg: ModelConfig) -> dcorr.DCorrectionConfig:
@@ -2307,6 +2405,8 @@ def train_full_model(
         standard_side = strength
 
     log_line_weight_diagnostics(matches, cfg)
+    sfa_book = build_sfa_book_for_matches(matches, cfg)
+    sfa_cfg = resolve_sfa_config(cfg)
 
     goals = fit_attack_defense(matches, cfg, prior_attack=prior_a, prior_defense=prior_d)
     calibration = calibrate(matches, strength, goals, cfg)
@@ -2406,6 +2506,7 @@ def train_full_model(
         shadow_d_correction_book=shadow_d_correction_book,
         rating_shadow_monitor=rating_shadow_monitor,
         rating_model_version=model_version,
+        sfa_book=sfa_book, sfa_cfg=sfa_cfg,
     )
     draw_q_diag = draw_q_diagnostics(model, matches)
     log_draw_q_diagnostics(draw_q_diag)
@@ -2424,6 +2525,7 @@ def train_full_model(
         shadow_d_correction_book=shadow_d_correction_book,
         rating_shadow_monitor=rating_shadow_monitor,
         rating_model_version=model_version,
+        sfa_book=sfa_book, sfa_cfg=sfa_cfg,
     ), matches
 
 
@@ -2509,6 +2611,9 @@ class Prediction:
     slow_shrink_factor_home: Optional[float] = None
     slow_shrink_factor_away: Optional[float] = None
     d_correction: Optional[dcorr.DCorrectionSnapshot] = None
+    # Strong Favorite Adjustment diagnostics (AC7)
+    sfa: Optional[sfa.SfaDiagnostics] = None
+    d_before_sfa: Optional[float] = None
 
 
 def resolve_dynamic_dc_config(cfg: ModelConfig) -> ddc.DynamicDcGammaConfig:
@@ -2539,6 +2644,9 @@ def predict_match(
     use_momentum_lookup: bool = True,
     apply_momentum: bool = True,
     apply_s_momentum: bool = True,
+    league: Optional[str] = None,
+    season: Optional[str] = None,
+    apply_sfa: bool = True,
 ) -> Prediction:
     cfg = model.config
     s, g, cal = model.strength, model.goals, model.calibration
@@ -2743,6 +2851,26 @@ def predict_match(
 
     d_final = cal.d_a + cal.d_b * d_for_cal
     s_final = apply_s_calibration(s_for_cal, cal.s_a, cal.s_b, cfg)
+    d_before_sfa = float(d_final)
+    sfa_diag: Optional[sfa.SfaDiagnostics] = None
+    if apply_sfa:
+        sfa_cfg_use = model.sfa_cfg or resolve_sfa_config(cfg)
+        lg = league
+        if lg is None and model.sfa_book is not None:
+            lg = model.sfa_book.league_key or None
+        d_final, sfa_diag = sfa.apply_strong_favorite_adjustment(
+            d_final,
+            s_final,
+            sfa_cfg_use,
+            model.sfa_book,
+            league=lg,
+            season=season,
+            max_goals=cfg.max_goals,
+            lambda_min=float(
+                (model.s_momentum_cfg or resolve_s_momentum_config(cfg)).lambda_min
+            ),
+            already_applied=False,
+        )
     d_final = gm.clamp_goal_diff(d_final, s_final, cfg.lambda_epsilon)
 
     lam_min = scfg.lambda_min
@@ -2865,6 +2993,8 @@ def predict_match(
         slow_shrink_factor_home=dcorr_snap.slow_shrink_factor_home if dcorr_snap else None,
         slow_shrink_factor_away=dcorr_snap.slow_shrink_factor_away if dcorr_snap else None,
         d_correction=dcorr_snap,
+        sfa=sfa_diag,
+        d_before_sfa=d_before_sfa,
     )
 
 
@@ -3038,6 +3168,7 @@ def _match_draw_px_stages(
         derby=_is_derby_match(m.raw) and m.i_home == 1,
         apply_momentum=False,
         apply_s_momentum=False,
+        apply_sfa=False,  # isolate draw-model harm from SFA
     )
     return px_poisson, px_after_dc, pred.markets.px
 

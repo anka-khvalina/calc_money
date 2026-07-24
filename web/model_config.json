@@ -295,12 +295,24 @@
     "n_floor": 1.0,
     "effective_n_iters": 2,
     "byLeague": {
-      "Bundesliga": { "mode": "hierarchical_wls" },
-      "Serie A": { "mode": "hierarchical_wls" },
-      "Ligue 1": { "mode": "hierarchical_wls" },
-      "bundesliga": { "mode": "hierarchical_wls" },
-      "serie_a": { "mode": "hierarchical_wls" },
-      "ligue_1": { "mode": "hierarchical_wls" }
+      "Bundesliga": {
+        "mode": "hierarchical_wls"
+      },
+      "Serie A": {
+        "mode": "hierarchical_wls"
+      },
+      "Ligue 1": {
+        "mode": "hierarchical_wls"
+      },
+      "bundesliga": {
+        "mode": "hierarchical_wls"
+      },
+      "serie_a": {
+        "mode": "hierarchical_wls"
+      },
+      "ligue_1": {
+        "mode": "hierarchical_wls"
+      }
     },
     "prior": {
       "mode": "league_mean",
@@ -324,5 +336,37 @@
       "fallback": "last_local",
       "versions_to_keep": 2
     }
+  },
+  "strongFavoriteAdjustment": {
+    "mode": "percentile",
+    "shape": "stepwise",
+    "minMatches": 40,
+    "oddsThreshold": 1.3,
+    "beta": 0.15,
+    "thresholds": [
+      {
+        "percentile": 10,
+        "beta": 0.0
+      },
+      {
+        "percentile": 5,
+        "beta": 0.05
+      },
+      {
+        "percentile": 2,
+        "beta": 0.1
+      },
+      {
+        "percentile": 1,
+        "beta": 0.15
+      },
+      {
+        "percentile": 0,
+        "beta": 0.2
+      }
+    ],
+    "logisticK": 0.8,
+    "logisticMid": 5.0,
+    "logisticMax": 0.2
   }
 }
