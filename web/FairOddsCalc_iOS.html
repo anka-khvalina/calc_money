@@ -3349,6 +3349,10 @@ bash scripts/update_and_serve.sh --start</div>
         rating: raw.rating || {},
         lineWeight: raw.lineWeight || raw.line_weight || t.lineWeight || {},
         strongFavoriteAdjustment: raw.strongFavoriteAdjustment || raw.sfa || t.strongFavoriteAdjustment || {},
+        strongFavouriteTotalCorrection: raw.strongFavouriteTotalCorrection
+          || raw.strong_favourite_total_correction
+          || t.strongFavouriteTotalCorrection
+          || {},
         dynamic_s_ema: raw.dynamic_s_ema || raw.sMomentum || {},
         dynamic_dc_gamma: raw.dynamic_dc_gamma || raw.dynamicDcGamma || {},
         configSource: 'model_config.json',
@@ -4081,6 +4085,54 @@ bash scripts/update_and_serve.sh --start</div>
       if(!(c.residualK>=0)) c.residualK = 0.5;
       if(!(c.residualBetaMax>=0)) c.residualBetaMax = 0.10;
       return c;
+    }
+    /** Strong Favourite total (S) correction — OU/λ_fav patch; enabled:false = legacy. */
+    function gmSftcCfg(cfg){
+      const root = (GM_MATRIX_CFG && GM_MATRIX_CFG.strongFavouriteTotalCorrection)
+        || (GM_MODEL_CFG && (GM_MODEL_CFG.strongFavouriteTotalCorrection || GM_MODEL_CFG.strong_favourite_total_correction))
+        || {};
+      const fromCfg = (cfg && cfg.strongFavouriteTotalCorrection)
+        || (cfg && cfg.strong_favourite_total_correction)
+        || {};
+      let enabled = true;
+      if(typeof fromCfg === 'boolean') enabled = fromCfg;
+      else if(typeof root === 'boolean') enabled = root;
+      else if(fromCfg && fromCfg.enabled != null) enabled = fromCfg.enabled !== false && fromCfg.enabled !== 0 && String(fromCfg.enabled).toLowerCase() !== 'false';
+      else if(root && root.enabled != null) enabled = root.enabled !== false && root.enabled !== 0 && String(root.enabled).toLowerCase() !== 'false';
+      const src = (fromCfg && typeof fromCfg === 'object') ? fromCfg : ((root && typeof root === 'object') ? root : {});
+      const thr = Number(src.strongFavouriteThreshold!=null?src.strongFavouriteThreshold:(src.strong_favourite_threshold!=null?src.strong_favourite_threshold:1.30));
+      const corr = Number(src.totalCorrection!=null?src.totalCorrection:(src.total_correction!=null?src.total_correction:0.10));
+      return {
+        enabled: !!enabled,
+        strongFavouriteThreshold: (isFinite(thr) && thr>1) ? thr : 1.30,
+        totalCorrection: isFinite(corr) ? corr : 0.10,
+      };
+    }
+    function gmIsStrongFavouriteSegment(favoriteOdds, threshold){
+      const fo = Number(favoriteOdds), thr = Number(threshold);
+      if(!(fo>1) || !(thr>1)) return false;
+      return fo <= thr + 1e-15;
+    }
+    function gmApplyStrongFavouriteTotalCorrection(sModel, favoriteOdds, cfg){
+      const c = gmSftcCfg(cfg||{});
+      const s0 = Number(sModel);
+      const inSeg = gmIsStrongFavouriteSegment(favoriteOdds, c.strongFavouriteThreshold);
+      const apply = !!(c.enabled && inSeg && c.totalCorrection);
+      let s1 = apply ? (s0 + c.totalCorrection) : s0;
+      if(!(s1>=0.05)) s1 = 0.05;
+      return {
+        s: s1,
+        diag: {
+          enabled: !!c.enabled,
+          applied: apply,
+          inStrongFavouriteSegment: inSeg,
+          favoriteOdds: (favoriteOdds!=null && Number(favoriteOdds)>1) ? Number(favoriteOdds) : null,
+          threshold: c.strongFavouriteThreshold,
+          totalCorrection: apply ? c.totalCorrection : 0,
+          sBefore: s0,
+          sAfter: s1,
+        },
+      };
     }
     function gmSfaBetaStepwise(pct, thresholds){
       const pts = (thresholds&&thresholds.length)?thresholds.slice().sort((a,b)=>b[0]-a[0]):GM_DEFAULT_SFA_THRESHOLDS;
@@ -4878,6 +4930,9 @@ bash scripts/update_and_serve.sh --start</div>
       const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
       let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
       const sfaRes=gmApplyStrongFavoriteAdjustment(dc.dUsed, sf, model, opt||{}, false);
+      const sBeforeSftc=sf;
+      const sftcRes=gmApplyStrongFavouriteTotalCorrection(sf, gmMarketFavoriteOddsFromOpt(opt||{}), cfg);
+      sf=sftcRes.s;
       let df=gmClampD(sfaRes.d,sf);
       const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
       const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
@@ -4893,7 +4948,8 @@ bash scripts/update_and_serve.sh --start</div>
         lambdaHomeRaw: lamPack.lhRaw, lambdaAwayRaw: lamPack.laRaw, lambdaClippingApplied: lamPack.clipped,
         selectedDistribution: model.selectedDistribution || (alpha>1e-9?'negbin':'poisson_like'),
         markets:gmMarkets(mat),drawTarget:null,drawDiag:null,
-        sfa: sfaRes.diag, dBeforeSfa: sfaRes.diag.D_base, dAfterSfa: sfaRes.diag.D_final
+        sfa: sfaRes.diag, dBeforeSfa: sfaRes.diag.D_base, dAfterSfa: sfaRes.diag.D_final,
+        sftc: sftcRes.diag, sBeforeSftc: sBeforeSftc,
       };
     }
     function gmDClampSensitiveTags(m, teamCounts, earlyCutoff, cfg){
@@ -5736,6 +5792,7 @@ bash scripts/update_and_serve.sh --start</div>
       }
       const lw = gmLineWeightCfg({});
       const sfa = gmSfaCfg({});
+      const sftc = gmSftcCfg({});
       return { maxGoals:GM_MAX, alphaAh:lw.alphaAh, pAh:lw.pAh, minWAh:lw.minWAh, maxWAh:lw.maxWAh,
         lineWeightMode: lw.mode,
         lineWeightTable: lw.table,
@@ -5743,6 +5800,7 @@ bash scripts/update_and_serve.sh --start</div>
         lineWeight: lw,
         strongFavoriteAdjustment: sfa,
         sfaMode: sfa.mode,
+        strongFavouriteTotalCorrection: sftc,
         alphaT:0.5, deltaAh:0.5, deltaLam:0.25, maxIter:30, tol:1e-4, drawLoss:1.5,
         seasonDefault:1.0,
         seasonWeightsById: goalSeasonWeightById || {},
@@ -8895,6 +8953,7 @@ bash scripts/update_and_serve.sh --start</div>
         lineWeight: lwRoot,
       });
       const lwSfa = gmSfaCfg({});
+      const lwSftc = gmSftcCfg({});
       const cfgOut = {
         maxGoals: irPickNum(M, 'maxGoals', irPickNum(L, 'maxGoals', GM_MAX)),
         alphaAh: lw.alphaAh,
@@ -8905,6 +8964,7 @@ bash scripts/update_and_serve.sh --start</div>
         lineWeight: lw,
         strongFavoriteAdjustment: lwSfa,
         sfaMode: lwSfa.mode,
+        strongFavouriteTotalCorrection: lwSftc,
         alphaT,
         deltaAh: 0.5, deltaLam: 0.25, maxIter: 30, tol: 1e-4,
         drawLoss: useDraw ? irPickNum(Ldraw, 'drawLossWeight', irPickNum(L, 'drawLossWeight', 1.5)) : 1,
@@ -9082,6 +9142,9 @@ bash scripts/update_and_serve.sh --start</div>
       const dc=gmApplyDCal(dm,cal.dA,cal.dB,cfg);
       let sf=gmApplySCal(sm,cal.sA,cal.sB,cfg);
       const sfaRes=gmApplyStrongFavoriteAdjustment(dc.dUsed, sf, model, opt||{}, false);
+      const sBeforeSftc=sf;
+      const sftcRes=gmApplyStrongFavouriteTotalCorrection(sf, gmMarketFavoriteOddsFromOpt(opt||{}), cfg);
+      sf=sftcRes.s;
       let df=gmClampD(sfaRes.d,sf);
       const lamPack=gmApplyLambdaMin(sf, df, smom.lambdaMin!=null?smom.lambdaMin:0.05);
       const lh=lamPack.lh, la=lamPack.la; sf=lamPack.sf; df=lamPack.df;
@@ -9154,6 +9217,7 @@ bash scripts/update_and_serve.sh --start</div>
         selectedDistribution:'poisson_dc',
         markets:gmMarkets(mat), drawTarget:dtarget, drawDiag:diag,
         sfa: sfaRes.diag, dBeforeSfa: sfaRes.diag.D_base, dAfterSfa: sfaRes.diag.D_final,
+        sftc: sftcRes.diag, sBeforeSftc: sBeforeSftc,
       };
     }
     function irTrainLegacy(raw,cfg){

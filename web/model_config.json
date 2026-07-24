@@ -337,6 +337,11 @@
       "versions_to_keep": 2
     }
   },
+  "strongFavouriteTotalCorrection": {
+    "enabled": true,
+    "strongFavouriteThreshold": 1.3,
+    "totalCorrection": 0.1
+  },
   "strongFavoriteAdjustment": {
     "mode": "percentile",
     "shape": "linear",
