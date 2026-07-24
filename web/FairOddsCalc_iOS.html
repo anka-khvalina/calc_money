@@ -1358,8 +1358,8 @@ S<sub>final</sub> = c + d·S<sub>модель</sub></div>
 P<sub>X</sub> = Σ<sub>i</sub> P(i,i)</div>
       <p>Параметры α и ρ калибруются автоматически по лиге/сезону. Dixon–Coles и отдельная модель ничьи не используются.</p>
 
-      <h3>Веса матча при обучении</h3>
-      <div class="formula">w<sub>base</sub> = W<sub>сезон</sub> × match_weight × neutral_mult
+      <h3>Политика весов при обучении</h3>
+      <div class="formula">w<sub>base</sub> = W<sub>сезон</sub> × match_weight × neutral_mult × w<sub>rotation</sub>
 <span class="m"># neutral_mult = neutral_weight только если нейтральное поле = да</span></div>
       <p>При прогнозе дерби меняет <b>H<sub>eff</sub></b>, не вес:</p>
       <div class="formula">H<sub>eff</sub> = 0                         <span class="m"># нейтраль</span>
@@ -1373,17 +1373,18 @@ D<sub>pred</sub> = r<sub>h</sub> − r<sub>a</sub> + H<sub>eff</sub></div>
           <tr><td>match_weight</td><td>История → «Вес»</td><td>низкая мотивация 0.5 (бывш. CSV <code>value</code>)</td></tr>
           <tr><td>Дерби</td><td>История → ▼ Веса</td><td>флаг 1/0; δ<sub>derby</sub> при обучении, H<sub>eff</sub> при прогнозе</td></tr>
           <tr><td>neutral_weight</td><td>История → ▼ Веса</td><td>0.8, только если нейтральное поле = да</td></tr>
+          <tr><td>w<sub>rotation</sub></td><td>rotation codes + config</td><td>none=1, middle=0.7, high=0</td></tr>
         </tbody>
       </table></div>
       <p>Метка <code>low_motivation</code> в <code>note</code> — только заметка; в формулу входит <b>число</b> match_weight.  
       <b>0</b> — матч исключён из обучения.</p>
-      <p>Дополнительно (автоматически в коде):</p>
-      <div class="formula">w<sub>сила</sub> = w<sub>base</sub> × w<sub>line AH</sub> × w<sub>Huber</sub>
-w<sub>line AH</sub> = clamp( 1 / (1 + α<sub>форы</sub>·|D|²), 0.15, 1 )
+      <p>Итоговые веса по этапам (политика D: <b>AH Line Weight выключен</b>, <code>lineWeight.mode=disabled</code>):</p>
+      <div class="formula">w<sub>сила (D)</sub> = w<sub>base</sub> × w<sub>Huber</sub>
+<span class="m"># AH line weight не участвует в обучении Goal Difference</span>
 
-w<sub>атака</sub> = w<sub>base</sub> × w<sub>line тотал</sub> × w<sub>Huber</sub>
+w<sub>атака (S)</sub> = w<sub>base</sub> × w<sub>line тотал</sub> × w<sub>Huber</sub>
 w<sub>line тотал</sub> = clamp( 1 / (1 + α<sub>тотала</sub>·(S−S̄)²), 0.3, 1 )</div>
-      <p class="small">Большой перевес по форе / экстремальный тотал → матч слабее влияет на соответствующий этап. Huber ослабляет выбросы по остаткам.</p>
+      <p class="small">Прогноз и расчёт коэффициентов не меняются. Huber по-прежнему ослабляет выбросы на обучении D. Экстремальный тотал по-прежнему режет вес на этапе S.</p>
 
       <h2>Прогноз («Рассчитать линию»)</h2>
       <div class="help-card">
@@ -3949,8 +3950,8 @@ bash scripts/update_and_serve.sh --start</div>
         || fromCfg.mode || fromCfg.lineWeightMode
         || root.mode || root.lineWeightMode
         || train.lineWeightMode
-        || 'soft';
-      const mode = String(modeRaw||'soft').trim().toLowerCase();
+        || 'disabled';
+      const mode = String(modeRaw||'disabled').trim().toLowerCase();
       const alphaAh = Number(
         (cfg && cfg.alphaAh!=null)?cfg.alphaAh
         :(fromCfg.alphaAh!=null?fromCfg.alphaAh:(root.alphaAh!=null?root.alphaAh:0.25))
@@ -4009,7 +4010,7 @@ bash scripts/update_and_serve.sh --start</div>
       const lcfg = (cfgOrLcfg && cfgOrLcfg.mode!=null && cfgOrLcfg.alphaAh!=null && cfgOrLcfg.presets!=null)
         ? cfgOrLcfg
         : gmLineWeightCfg(cfgOrLcfg||{});
-      const mode = String(lcfg.mode||'soft').toLowerCase();
+      const mode = String(lcfg.mode||'disabled').toLowerCase();
       if(mode==='disabled') return 1;
       const current = gmFormulaLineAh(absD, lcfg);
       if(mode==='current') return current;
@@ -4429,7 +4430,9 @@ bash scripts/update_and_serve.sh --start</div>
       const lcfg=gmLineWeightCfg(cfg);
       used.forEach(m=>{ const c=Array(p).fill(0); c[idx.get(m.home)]+=1; c[idx.get(m.away)]-=1; c[hCol]=m.iHome;
         if(dCol!=null) c[dCol]=gmDerbyHome(m)?1:0; coeffs.push(c); tg.push(m.D);
-        m.wLineAh=gmWLineAh(Math.abs(m.D), lcfg); m.wRob=1; m.wTime=1; });
+        // D weight policy: disabled → AH line weight not applied (wLineAh=1)
+        m.wLineAh=(String(lcfg.mode||'').toLowerCase()==='disabled')?1:gmWLineAh(Math.abs(m.D), lcfg);
+        m.wRob=1; m.wTime=1; });
       const gauge=[...Array(teams.length).fill(1),...Array(p-teams.length).fill(0)];
       const lid = leagueId != null ? leagueId : (used[0] && used[0].leagueId != null ? used[0].leagueId : null);
       const lname = leagueName != null ? leagueName : (used[0] && used[0].league != null ? used[0].league : null);
@@ -8993,7 +8996,7 @@ bash scripts/update_and_serve.sh --start</div>
         pAh: irPickNum(lwRoot, 'pAh', 2),
         minWAh: irPickNum(lwRoot, 'minWAh', 0.15),
         maxWAh: irPickNum(lwRoot, 'maxWAh', 1),
-        lineWeightMode: lwRoot.mode || T.lineWeightMode || 'soft',
+        lineWeightMode: lwRoot.mode || T.lineWeightMode || 'disabled',
         lineWeightTable: lwRoot.table,
         lineWeightPresets: lwRoot.presets,
         lineWeight: lwRoot,
@@ -10025,7 +10028,7 @@ bash scripts/update_and_serve.sh --start</div>
         ['γ max', num(Ldc,'gammaMax', num(L,'gammaMax',0.20))],
         ['maxGoals', num(Lmx,'maxGoals', num(L,'maxGoals', num(M,'maxGoals', mx.maxGoals||10)))],
         ['handicap / total weight', `${num(Ltr,'alphaAh', num(L,'handicapWeight', num(T,'alphaAh',0.25)))} / ${num(Ltr,'alphaT', num(L,'totalWeight', num(T,'alphaT',0.5)))}`],
-        ['lineWeightMode', ((mx.lineWeight&&mx.lineWeight.mode)||T.lineWeightMode||'soft')],
+        ['lineWeightMode', ((mx.lineWeight&&mx.lineWeight.mode)||T.lineWeightMode||'disabled')],
         ['SFA mode / shape', `${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.mode)||'percentile')} / ${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.shape)||'linear')}`],
         ['dCalMode / sCalMode', `${Lcal.dCalMode||L.dCalMode||T.dCalMode||'soft'} / ${Lcal.sCalMode||L.sCalMode||T.sCalMode||'off'}`],
         ['Copula / NB', 'выкл'],
@@ -10044,7 +10047,7 @@ bash scripts/update_and_serve.sh --start</div>
         ['приоритет 1X2/AH/OU', `${num(mx.auto1x2Calib||{},'w1x2',1)} / ${num(mx.auto1x2Calib||{},'wAh',0.35)} / ${num(mx.auto1x2Calib||{},'wOu',0.25)}`],
         ['AH/OU degrade max %', num(mx.auto1x2Calib||{},'ahOuDegradeMaxPct',5)],
         ['α форы / тотала', `${num(Atr,'alphaAh', num(T,'alphaAh',0.25))} / ${num(Atr,'alphaT', num(T,'alphaT',0.5))}`],
-        ['lineWeightMode', ((mx.lineWeight&&mx.lineWeight.mode)||T.lineWeightMode||'soft')],
+        ['lineWeightMode', ((mx.lineWeight&&mx.lineWeight.mode)||T.lineWeightMode||'disabled')],
         ['SFA mode / shape', `${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.mode)||'percentile')} / ${((mx.strongFavoriteAdjustment&&mx.strongFavoriteAdjustment.shape)||'linear')}`],
         ['dCalMode', Atr.dCalMode || T.dCalMode || 'soft'],
       ]);

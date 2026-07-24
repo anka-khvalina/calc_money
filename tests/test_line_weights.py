@@ -64,26 +64,28 @@ def test_named_experiment_preset_without_code_change():
     assert abs(lw.w_line_ah(2.0, cfg) - 0.85) < 1e-12
 
 
-def test_apply_line_weight_config_from_mapping_default_soft():
+def test_apply_line_weight_config_from_mapping_default_disabled():
     cfg = gmt.apply_line_weight_config_from_mapping(gmt.ModelConfig(), {})
-    # empty mapping keeps ModelConfig defaults (soft)
-    assert cfg.line_weight_mode == lw.MODE_SOFT
+    # empty mapping keeps ModelConfig defaults (disabled — D weight policy)
+    assert cfg.line_weight_mode == lw.MODE_DISABLED
     cfg2 = gmt.apply_line_weight_config_from_mapping(
         gmt.ModelConfig(),
-        {"lineWeight": {"mode": "DISABLED"}},
+        {"lineWeight": {"mode": "SOFT"}},
     )
-    assert cfg2.line_weight_mode == lw.MODE_DISABLED
-    lcfg = gmt.resolve_line_weight_config(cfg2)
+    assert cfg2.line_weight_mode == lw.MODE_SOFT
+    lcfg = gmt.resolve_line_weight_config(cfg)
     assert lw.w_line_ah(3.0, lcfg) == 1.0
 
 
-def test_config_json_default_soft():
+def test_config_json_default_disabled_d_weight_policy():
     import json
 
     raw = json.loads((ROOT / "config" / "model_config.json").read_text(encoding="utf-8"))
     lcfg = lw.line_weight_config_from_mapping(raw)
-    assert lcfg.mode == lw.MODE_SOFT
-    assert lcfg.table is not None
+    assert lcfg.mode == lw.MODE_DISABLED
+    # table may remain for experiments / soft rollback; disabled ignores it
+    assert lw.w_line_ah(2.0, lcfg) == 1.0
+    assert lw.w_line_ah(3.0, lcfg) == 1.0
 
 
 def test_apply_weights_disabled_vs_current():
@@ -114,6 +116,31 @@ def test_apply_weights_disabled_vs_current():
     gmt._apply_line_ah_weights(used, cfg_soft)
     for i, m in enumerate(used):
         assert m.w_line_ah + 1e-12 >= w_cur[i]
+
+
+def test_d_strength_weight_excludes_ah_line_when_disabled():
+    """AC: D training weight = w_base × w_Huber (no AH line factor)."""
+    raw = gmt.RawMatch(date=None, league="T", home_team="A", away_team="B")
+    m = gmt.PreparedMatch(
+        raw=raw, home_id="a", away_id="b", home_team="A", away_team="B",
+        i_home=1, diff_goals=2.5, w_base=0.7, w_robust=0.8, w_line_ah=0.5,
+    )
+    cfg = gmt.ModelConfig(line_weight_mode=lw.MODE_DISABLED)
+    gmt._apply_line_ah_weights([m], cfg)
+    assert m.w_line_ah == 1.0  # AH line weight not applied
+    m.w_robust = 0.8  # Huber applied later in WLS iterations
+    import hierarchical_wls as hwls
+    rcfg = hwls.HierarchicalWlsConfig(mode="standard_wls")
+    w = gmt._strength_observation_weight(m, cfg, rcfg, include_robust=True)
+    assert abs(w - (0.7 * 1.0 * 0.8)) < 1e-12
+    # soft/current would shrink |D|=2.5; disabled must not
+    cfg_soft = gmt.ModelConfig(line_weight_mode=lw.MODE_SOFT)
+    m2 = gmt.PreparedMatch(
+        raw=raw, home_id="a", away_id="b", home_team="A", away_team="B",
+        i_home=1, diff_goals=2.5, w_base=0.7, w_robust=1.0,
+    )
+    gmt._apply_line_ah_weights([m2], cfg_soft)
+    assert m2.w_line_ah < 1.0
 
 
 def test_diagnose_summary():

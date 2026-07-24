@@ -69,8 +69,8 @@ neutral_mult = is_neutral ? neutral_weight : 1.0
 
 Далее на этапах WLS:
 
-- сила: `w = w_base × w_line_AH × w_robust`
-- attack/defense: `w = w_base × w_line_T × w_robust_λ`
+- сила (Goal Difference / D): `w = w_base × w_robust` — **AH Line Weight выключен** (`lineWeight.mode=disabled`)
+- attack/defense (Total Goals / S): `w = w_base × w_line_T × w_robust_λ`
 
 `season_weight` — на вкладке «Линия» (по выбранному `season_id`).  
 `match_weight`, `is_neutral`, `derby_weight`, `neutral_weight` — в БД (`v_matches_full`), блок **▼ Веса** на «Истории».
