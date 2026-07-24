@@ -4229,6 +4229,16 @@ bash scripts/update_and_serve.sh --start</div>
       if(o2>1) return o2;
       return null;
     }
+    /** Shared Line/Reports: pull decimal 1X2 home/away from a match-like record. */
+    function gmMarketOddsFromRecord(rec){
+      if(!rec) return { homeOdds:null, awayOdds:null };
+      const homeOdds = gmF(rec.home_odds!=null?rec.home_odds:(rec.homeOdds!=null?rec.homeOdds:(rec.ho!=null?rec.ho:(rec.o1!=null?rec.o1:null))));
+      const awayOdds = gmF(rec.away_odds!=null?rec.away_odds:(rec.awayOdds!=null?rec.awayOdds:(rec.ao!=null?rec.ao:(rec.o2!=null?rec.o2:null))));
+      return {
+        homeOdds: homeOdds!=null && homeOdds>1 ? homeOdds : null,
+        awayOdds: awayOdds!=null && awayOdds>1 ? awayOdds : null,
+      };
+    }
     function gmApplyStrongFavoriteAdjustment(dBase, sForOdds, model, opt, alreadyApplied){
       const cfg = (model && model.cfg) || {};
       const scfg = (model && model.sfaCfg) || gmSfaCfg(cfg);
@@ -4276,8 +4286,10 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function gmCorePredictOptFromMatch(m){
       const raw = (m && m.raw) || m || {};
-      const homeOdds = raw.ho!=null?raw.ho:(raw.home_odds!=null?raw.home_odds:(m && m.ho!=null?m.ho:null));
-      const awayOdds = raw.ao!=null?raw.ao:(raw.away_odds!=null?raw.away_odds:(m && m.ao!=null?m.ao:null));
+      const odds = gmMarketOddsFromRecord(Object.assign({}, raw, {
+        home_odds: raw.ho!=null?raw.ho:(raw.home_odds!=null?raw.home_odds:(m && m.ho!=null?m.ho:null)),
+        away_odds: raw.ao!=null?raw.ao:(raw.away_odds!=null?raw.away_odds:(m && m.ao!=null?m.ao:null)),
+      }));
       return gmCorePredictOpt({
         neutral: m && m.iHome === 0 ? true : !!raw.neu,
         derby: (typeof gmDerbyHome === 'function' && m && m.raw) ? gmDerbyHome(m) : !!raw.der,
@@ -4286,8 +4298,8 @@ bash scripts/update_and_serve.sh --start</div>
         leagueName: raw.league || raw.leagueName || raw.league_name,
         seasonId: raw.seasonId != null ? raw.seasonId : raw.season_id,
         seasonLabel: raw.seasonLabel || raw.season_label,
-        homeOdds: homeOdds,
-        awayOdds: awayOdds,
+        homeOdds: odds.homeOdds,
+        awayOdds: odds.awayOdds,
       });
     }
     /** Single predict-opt shape for Line + Reports (+ any other tab). */
@@ -8363,12 +8375,22 @@ bash scripts/update_and_serve.sh --start</div>
         } else if(seasonIds.length){
           seasonMeta = seasonIds.slice().sort().reverse()[0];
         }
+        let compareMatch = null;
+        try {
+          await loadSupabaseConfig();
+          compareMatch = await sbFetchInactiveCompareMatch(leagueId, homeId, awayId);
+        } catch (cmpErr){
+          console.warn('inactive compare', cmpErr);
+        }
+        const mktOdds = gmMarketOddsFromRecord(compareMatch);
         const opt=gmCorePredictOpt({
           neutral, derby,
           leagueId,
           leagueName: (goalLoadedMeta&&goalLoadedMeta.leagueName)||null,
           seasonId: seasonMeta,
           seasonLabel,
+          homeOdds: mktOdds.homeOdds,
+          awayOdds: mktOdds.awayOdds,
         });
         let predL=null, predA=null, errL=null, errA=null;
         if(gmModelLegacy){
@@ -8392,13 +8414,6 @@ bash scripts/update_and_serve.sh --start</div>
         const awayName = (predA&&predA.awayName) || (predL&&predL.awayName) || awayId;
         const useM=document.getElementById('goalMargin').checked;
         const mg=(parseFloat((document.getElementById('goalMarginPct').value||'3').replace(',','.'))||0)/100;
-        let compareMatch = null;
-        try {
-          await loadSupabaseConfig();
-          compareMatch = await sbFetchInactiveCompareMatch(leagueId, homeId, awayId);
-        } catch (cmpErr){
-          console.warn('inactive compare', cmpErr);
-        }
         const homeRot = gmNormalizeRotCode((document.getElementById('goalPredHomeRot')||{}).value||'none');
         const awayRot = gmNormalizeRotCode((document.getElementById('goalPredAwayRot')||{}).value||'none');
         let rotationWarn = null;
@@ -8641,13 +8656,15 @@ bash scripts/update_and_serve.sh --start</div>
       const srcBadge = '<div class="goal-predict-compare-note" style="margin:0 0 8px;color:#334155">Комбинация: <b>1X2 — Legacy</b> · <b>AH/OU — Auto</b></div>';
       const sfaA = pred && pred.sfa;
       const sfaL = pred && pred.sfaLegacy;
-      const sfaNote = (sfaA || sfaL)
-        ? `<div class="goal-predict-meta" style="margin:0 0 8px">SFA: mode=${escapeHtml(String((sfaA||sfaL).mode||''))} · β=${(sfaA&&sfaA.sfaBeta!=null?sfaA.sfaBeta:(sfaL&&sfaL.sfaBeta)||0).toFixed(3)}`
-          + (sfaA&&sfaA.betaPercentile!=null?` · βpct=${Number(sfaA.betaPercentile).toFixed(3)}`:'')
-          + (sfaA&&sfaA.residualGap!=null && Number(sfaA.residualGap)>0?` · gap=${Number(sfaA.residualGap).toFixed(3)}`:'')
-          + (sfaA&&sfaA.favoritePercentile!=null?` · pct=${Number(sfaA.favoritePercentile).toFixed(1)}`:'')
-          + (sfaA&&sfaA.favoriteFairOdds!=null?` · favOdds=${Number(sfaA.favoriteFairOdds).toFixed(2)}`:'')
-          + (sfaA&&sfaA.marketFavoriteOdds!=null?` · mktFav=${Number(sfaA.marketFavoriteOdds).toFixed(2)}`:'')
+      // 1X2 is Legacy — show Legacy SFA (hybrid residual) as primary; fall back to Auto
+      const sfaShow = sfaL || sfaA;
+      const sfaNote = sfaShow
+        ? `<div class="goal-predict-meta" style="margin:0 0 8px">SFA${sfaL?' (1X2 Legacy)':''}: mode=${escapeHtml(String(sfaShow.mode||''))} · β=${(sfaShow.sfaBeta!=null?sfaShow.sfaBeta:0).toFixed(3)}`
+          + (sfaShow.betaPercentile!=null?` · βpct=${Number(sfaShow.betaPercentile).toFixed(3)}`:'')
+          + (sfaShow.residualGap!=null && Number(sfaShow.residualGap)>0?` · gap=${Number(sfaShow.residualGap).toFixed(3)}`:'')
+          + (sfaShow.favoritePercentile!=null?` · pct=${Number(sfaShow.favoritePercentile).toFixed(1)}`:'')
+          + (sfaShow.favoriteFairOdds!=null?` · favOdds=${Number(sfaShow.favoriteFairOdds).toFixed(2)}`:'')
+          + (sfaShow.marketFavoriteOdds!=null?` · mktFav=${Number(sfaShow.marketFavoriteOdds).toFixed(2)}`:'')
           + `</div>`
         : '';
       const compareBlock=gmBuildInactiveCompareBlock(compareMatch, {
@@ -8715,6 +8732,9 @@ bash scripts/update_and_serve.sh --start</div>
       // S-EMA compact diagnostics (Auto path for OU)
       'S_model_base','S_model_final','S_dynamic_correction',
       'EMA_S_home_before','EMA_S_away_before','S_market','Residual_S_base','Residual_S_dynamic',
+      // SFA hybrid residual (Legacy 1X2 path)
+      'sfa_mode','sfa_beta','beta_percentile','favorite_fair_odds','favorite_percentile',
+      'market_favorite_odds','residual_gap','D_before_sfa','D_after_sfa',
       // Dynamic DC γ(|D|) diagnostics (Legacy 1X2 path)
       'gamma_season','gamma_effective','gamma_segment','abs_D_model_final','dynamic_dc_gamma_enabled','dc_applied',
       'draw_probability_poisson','draw_probability_final','dc_draw_probability_delta',
@@ -9712,15 +9732,17 @@ bash scripts/update_and_serve.sh --start</div>
       row.S_market = sSrc ? sSrc.S_market : null;
       row.Residual_S_base = sSrc ? sSrc.Residual_S_base : null;
       row.Residual_S_dynamic = sSrc ? sSrc.Residual_S_dynamic : null;
-      row.sfa_mode = sSrc ? sSrc.sfa_mode : null;
-      row.sfa_beta = sSrc ? sSrc.sfa_beta : null;
-      row.favorite_fair_odds = sSrc ? sSrc.favorite_fair_odds : null;
-      row.favorite_percentile = sSrc ? sSrc.favorite_percentile : null;
-      row.beta_percentile = sSrc ? sSrc.beta_percentile : null;
-      row.market_favorite_odds = sSrc ? sSrc.market_favorite_odds : null;
-      row.residual_gap = sSrc ? sSrc.residual_gap : null;
-      row.D_before_sfa = sSrc ? sSrc.D_before_sfa : null;
-      row.D_after_sfa = sSrc ? sSrc.D_after_sfa : null;
+      // SFA on 1X2 uses Legacy D — prefer Legacy diag for parity with Line / 1X2 odds
+      const sfaSrc = leg || aut;
+      row.sfa_mode = sfaSrc ? sfaSrc.sfa_mode : null;
+      row.sfa_beta = sfaSrc ? sfaSrc.sfa_beta : null;
+      row.favorite_fair_odds = sfaSrc ? sfaSrc.favorite_fair_odds : null;
+      row.favorite_percentile = sfaSrc ? sfaSrc.favorite_percentile : null;
+      row.beta_percentile = sfaSrc ? sfaSrc.beta_percentile : null;
+      row.market_favorite_odds = sfaSrc ? sfaSrc.market_favorite_odds : null;
+      row.residual_gap = sfaSrc ? sfaSrc.residual_gap : null;
+      row.D_before_sfa = sfaSrc ? sfaSrc.D_before_sfa : null;
+      row.D_after_sfa = sfaSrc ? sfaSrc.D_after_sfa : null;
       const dcSrc = leg || aut;
       row.gamma_season = dcSrc ? dcSrc.gamma_season : null;
       row.gamma_effective = dcSrc ? dcSrc.gamma_effective : null;
@@ -10155,6 +10177,7 @@ bash scripts/update_and_serve.sh --start</div>
         for(const m of byLeague[leagueId]){
           const homeId=gmTeamKey(m.home_team_id,m.home_team);
           const awayId=gmTeamKey(m.away_team_id,m.away_team);
+          const mktOdds = gmMarketOddsFromRecord(m);
           const opt=gmCorePredictOpt({
             neutral:!!m.is_neutral,
             derby:sbIsDerby(m),
@@ -10163,6 +10186,8 @@ bash scripts/update_and_serve.sh --start</div>
             leagueName: m.league_name || leagueName,
             seasonId: m.season_id != null ? m.season_id : seasonIdForLeague,
             seasonLabel: m.season_label || seasonLabel,
+            homeOdds: mktOdds.homeOdds,
+            awayOdds: mktOdds.awayOdds,
           });
           const marketLines={
             AH:gmF(m.closing_ah_home), Тот:gmF(m.closing_total_line),
