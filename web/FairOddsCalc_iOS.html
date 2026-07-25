@@ -1193,24 +1193,24 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <button type="button" id="irExportCsv" class="btn" disabled>Скачать CSV</button>
           </div>
 
-          <details class="ir-dyn-panel" id="irDynPanel" style="margin:8px 0 4px">
-            <summary>Динамическая корректировка модели (D-EMA / S-EMA)</summary>
-            <div class="ir-report-toolbar" style="flex-wrap:wrap;gap:10px;padding:8px 0">
-              <label class="ir-mode-row" style="margin:0"><input type="checkbox" id="irUseDEma" checked /><span>D-EMA</span></label>
-              <div class="field" style="max-width:80px"><label>α_D</label><input id="irAlphaD" type="text" value="0.30" /></div>
-              <div class="field" style="max-width:80px"><label>k_D</label><input id="irKD" type="text" value="0.80" /></div>
-              <label class="ir-mode-row" style="margin:0"><input type="checkbox" id="irUseSEma" checked /><span>S-EMA</span></label>
-              <div class="field" style="max-width:80px"><label>α_S</label><input id="irAlphaS" type="text" value="0.30" /></div>
-              <div class="field" style="max-width:80px"><label>k_S</label><input id="irKS" type="text" value="1.00" /></div>
-              <div class="field" style="max-width:90px"><label>min матчей</label><input id="irSMinMatches" type="text" value="1" /></div>
-              <div class="field" style="max-width:90px"><label>max |EMA_S|</label><input id="irSMaxEma" type="text" placeholder="—" /></div>
-              <div class="field" style="max-width:90px"><label>max |ΔS|</label><input id="irSMaxCorr" type="text" placeholder="—" /></div>
-              <div class="field" style="max-width:90px"><label>λ_min</label><input id="irSLambdaMin" type="text" value="0.05" /></div>
-            </div>
-            <div class="small" style="color:#64748b">Параметры для текущего запуска отчёта (не пишутся в model_config.json). S-EMA: Residual_S/2 обеим, сигнал = сумма EMA.</div>
-          </details>
-          <!-- hidden legacy controls kept for JS compat defaults -->
-          <div style="display:none" aria-hidden="true">
+          <!-- D-EMA/S-EMA lab panel hidden: Report uses model_config like Line (no UI overrides). -->
+          <div style="display:none" aria-hidden="true" id="irDynPanelHidden">
+            <details class="ir-dyn-panel" id="irDynPanel">
+              <summary>Динамическая корректировка модели (D-EMA / S-EMA)</summary>
+              <div class="ir-report-toolbar" style="flex-wrap:wrap;gap:10px;padding:8px 0">
+                <label class="ir-mode-row" style="margin:0"><input type="checkbox" id="irUseDEma" /><span>D-EMA</span></label>
+                <div class="field" style="max-width:80px"><label>α_D</label><input id="irAlphaD" type="text" value="0.30" /></div>
+                <div class="field" style="max-width:80px"><label>k_D</label><input id="irKD" type="text" value="0.80" /></div>
+                <label class="ir-mode-row" style="margin:0"><input type="checkbox" id="irUseSEma" /><span>S-EMA</span></label>
+                <div class="field" style="max-width:80px"><label>α_S</label><input id="irAlphaS" type="text" value="0.30" /></div>
+                <div class="field" style="max-width:80px"><label>k_S</label><input id="irKS" type="text" value="1.00" /></div>
+                <div class="field" style="max-width:90px"><label>min матчей</label><input id="irSMinMatches" type="text" value="1" /></div>
+                <div class="field" style="max-width:90px"><label>max |EMA_S|</label><input id="irSMaxEma" type="text" placeholder="—" /></div>
+                <div class="field" style="max-width:90px"><label>max |ΔS|</label><input id="irSMaxCorr" type="text" placeholder="—" /></div>
+                <div class="field" style="max-width:90px"><label>λ_min</label><input id="irSLambdaMin" type="text" value="0.05" /></div>
+              </div>
+            </details>
+            <!-- legacy mode controls kept for JS compat defaults -->
             <input type="radio" name="irReportMode" value="combined" checked />
             <input type="checkbox" id="irUseLegacy" checked />
             <input type="checkbox" id="irUseAuto" checked />
@@ -10236,27 +10236,18 @@ bash scripts/update_and_serve.sh --start</div>
       });
     }
     function irApplyDynOverrides(){
-      window.__IR_D_EMA_OVERRIDE = {
-        enabled: !!(document.getElementById('irUseDEma')||{}).checked,
-        alpha: irNumOrNull('irAlphaD'),
-        k: irNumOrNull('irKD'),
-      };
-      const maxEma = irNumOrNull('irSMaxEma');
-      const maxCorr = irNumOrNull('irSMaxCorr');
-      window.__IR_S_EMA_OVERRIDE = {
-        enabled: !!(document.getElementById('irUseSEma')||{}).checked,
-        alpha: irNumOrNull('irAlphaS'),
-        k: irNumOrNull('irKS'),
-        minMatches: irNumOrNull('irSMinMatches'),
-        maxAbsTeamEma: maxEma,
-        maxAbsCorrection: maxCorr,
-        lambdaMin: irNumOrNull('irSLambdaMin'),
-      };
+      // Deprecated: Reports lab UI is hidden. Kept as no-op clear for compat.
+      irClearDynOverrides();
+    }
+    function irClearDynOverrides(){
+      // Same contract as Line predict: EMA from model_config only.
+      window.__IR_D_EMA_OVERRIDE = null;
+      window.__IR_S_EMA_OVERRIDE = null;
     }
 
     async function irRunReport(){
       await loadGoalMatrixConfig();
-      irApplyDynOverrides();
+      irClearDynOverrides();
       const leagueFilter=(document.getElementById('irLeagueFilter')||{}).value||'';
       const seasonFilter=irEnsureSeasonSelected();
       const useMargin=irUseMarginOn();
@@ -10283,6 +10274,8 @@ bash scripts/update_and_serve.sh --start</div>
         irFetchInactiveMatches(leagueFilter||null),
         irFetchActiveNoMotivationMatches(leagueFilter||null),
       ]);
+      // Display: inactive ∪ motivation=нет. Dynamics/EMA walk-forward: true inactive only (Line parity).
+      const inactiveForDyn=irFilterMatches(inactiveRawList||[]);
       let reportMatches=irMergeReportMatches(inactiveRawList, noMotActiveRaw);
       reportMatches=irFilterMatches(reportMatches);
       if(!reportMatches.length){
@@ -10294,6 +10287,12 @@ bash scripts/update_and_serve.sh --start</div>
         const lid=String(m.league_id||''); if(!lid) return;
         if(!byLeague[lid]) byLeague[lid]=[];
         byLeague[lid].push(m);
+      });
+      const inactiveDynByLeague={};
+      inactiveForDyn.forEach(m=>{
+        const lid=String(m.league_id||''); if(!lid) return;
+        if(!inactiveDynByLeague[lid]) inactiveDynByLeague[lid]=[];
+        inactiveDynByLeague[lid].push(m);
       });
       const leagueIds=Object.keys(byLeague).sort((a,b)=>{
         const na=byLeague[a][0].league_name||a, nb=byLeague[b][0].league_name||b;
@@ -10338,7 +10337,8 @@ bash scripts/update_and_serve.sh --start</div>
           const seasonIds=[...new Set(parsed.raw.map(r=>r.seasonId).filter(s=>s!=null))];
           const weights=irBuildSeasonWeights(leagueId, seasonIds);
           try{
-            const inactiveParsed=goalMatchesToRaw(byLeague[leagueId], { ignoreRotation });
+            // EMA/diagnostics: only active=false (not motivation=нет active rows)
+            const inactiveParsed=goalMatchesToRaw(inactiveDynByLeague[leagueId]||[], { ignoreRotation });
             const inactiveRaw=inactiveParsed.raw||[];
             modelL=irTrainModel(parsed.raw, irBaselineCfg(weights,'legacy'), 'legacy', inactiveRaw);
             modelA=irTrainModel(parsed.raw, irBaselineCfg(weights,'auto'), 'auto', inactiveRaw);
@@ -10404,8 +10404,8 @@ bash scripts/update_and_serve.sh --start</div>
           maeSBase:avg('maeSBase'), maeSDyn:avg('maeSDyn'),
           sImproveShare:rate('sImproved'),
         },
-        sEma: (window.__IR_S_EMA_OVERRIDE||{}),
-        dEma: (window.__IR_D_EMA_OVERRIDE||{}),
+        sEma: (typeof gmSMomentumCfgFromGlobal==='function' ? gmSMomentumCfgFromGlobal() : {}),
+        dEma: (typeof gmMomentumCfgFromGlobal==='function' ? gmMomentumCfgFromGlobal() : {}),
         nActive:nActiveTrain, nActiveFetched, nActiveExcluded, nMotivationExcluded,
         effectiveTrain:sumTrainW,
       };
