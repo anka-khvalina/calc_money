@@ -68,7 +68,7 @@ GET /v_season_summary?select=...&league_id=eq.{league_id}&matches_count=gt.0&ord
 ### Матчи (чтение)
 
 `v_matches_full` — все матчи (и `active=true`, и `active=false`).  
-**История:** без фильтра по `active`. **Обучение (Линия):** только `active=eq.true`.
+**История:** без фильтра по `active`. **Обучение (Линия):** `active=eq.true` и без явного `motivation=false` (`null`/unset остаётся в обучении).
 
 ```http
 GET /v_matches_full?select={fields}&league_id=eq.{league_id}&season_id=eq.{season_id}&order=match_date.asc
@@ -157,7 +157,7 @@ CORS: `HISTORY_API_CORS` (default `*`).
 | Ротация хозяев | `home_rot` | `home_rotation_code` | да (▼ Веса; влияет на **training_weight** при обучении) |
 | Ротация гостей | `away_rot` | `away_rotation_code` | да (▼ Веса; влияет на **training_weight** при обучении) |
 | Источник | `source` | `note` | да (в блоке **▼ Веса**; default `Pinnacle`) |
-| Мотивация | `motivation` | `motivation` | да (в блоке **▼ Веса**; boolean да/нет; не влияет на модель) |
+| Мотивация | `motivation` | `motivation` | да (▼ Веса; `false`/«нет» → вне обучения; на Отчёте серый с кэфами, без MAE; `null` = «да») |
 | Активен | `active` | `active` | да (в блоке **▼ Веса**; `true` → в обучении, `false` → только история) |
 
 **Сохранение:** кнопка «Сохранить» в строке — после **ручной** правки ячейки или весов.

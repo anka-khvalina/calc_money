@@ -175,6 +175,12 @@
       display:inline-block; margin-left:4px; padding:1px 5px; border-radius:4px;
       font-size:10px; font-weight:600; color:#92400e; background:#fef3c7; border:1px solid #fde68a;
     }
+    .ir-report-table tr.ir-no-motivation td{ color:#64748b; background:#f1f5f9; }
+    .ir-report-table tr.ir-no-motivation:hover td{ background:#e2e8f0; }
+    .ir-no-motivation-badge{
+      display:inline-block; margin-left:4px; padding:1px 5px; border-radius:4px;
+      font-size:10px; font-weight:600; color:#475569; background:#e2e8f0; border:1px solid #cbd5e1;
+    }
     .hist-weights-row td{ background:#f8fafc; padding:8px 12px; border-bottom:1px solid var(--line); }
     .hist-fetch-row td{ background:#f7f9ff; padding:8px 12px; border-bottom:1px solid var(--line); }
     .hist-fetch-panel{ display:flex; flex-wrap:wrap; gap:8px 12px; align-items:flex-end; }
@@ -1131,7 +1137,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <!-- TAB REPORT: combined Legacy 1X2 + Auto AH/OU vs market -->
     <section id="tab-inactreport" class="panel">
       <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Отчёты</h3>
-      <p class="small" style="margin:0 0 10px">Сравнение рассчитанной линии с closing-рынком на матчах <code>active=false</code>. Обучение — на active выбранного сезона. <b>1X2 = Legacy</b>, <b>AH/OU = Auto</b>. БД не меняется.</p>
+      <p class="small" style="margin:0 0 10px">Сравнение рассчитанной линии с closing-рынком на матчах <code>active=false</code> и <code>motivation=нет</code> (серые строки). Обучение — на active выбранного сезона <b>без</b> motivation=нет. Кэфы считаем по всем строкам; MAE/выводы — только без серых. <b>1X2 = Legacy</b>, <b>AH/OU = Auto</b>. БД не меняется.</p>
       <details id="irParamsPanel" class="ir-params-panel">
         <summary>Параметры моделей (debug, model_config.json)</summary>
         <div class="ir-params-body" id="irParamsBody">
@@ -1376,8 +1382,10 @@ D<sub>pred</sub> = r<sub>h</sub> − r<sub>a</sub> + H<sub>eff</sub></div>
           <tr><td>w<sub>rotation</sub></td><td>rotation codes + config</td><td>none=1, middle=0.7, high=0</td></tr>
         </tbody>
       </table></div>
-      <p>Метка <code>low_motivation</code> в <code>note</code> — только заметка; в формулу входит <b>число</b> match_weight.  
-      <b>0</b> — матч исключён из обучения.</p>
+      <p>Метка <code>low_motivation</code> в <code>note</code> — только заметка; в формулу входит <b>число</b> match_weight.
+      <b>0</b> — матч исключён из обучения.
+      Флаг <b>Мотивация = нет</b> в Истории — матч <b>не участвует в обучении</b> (как исключённый), на вкладке «Отчёт» показывается серым с кэфами, но не входит в MAE/выводы.
+      Пустое/<code>null</code> в БД считается мотивацией «да» (остаётся в обучении).</p>
       <p>Итоговые веса по этапам (политика D: <b>AH Line Weight выключен</b>, <code>lineWeight.mode=disabled</code>):</p>
       <div class="formula">w<sub>сила (D)</sub> = w<sub>base</sub> × w<sub>Huber</sub>
 <span class="m"># AH line weight не участвует в обучении Goal Difference</span>
@@ -1430,7 +1438,7 @@ bash scripts/update_and_serve.sh --start</div>
         <li>Фора в БД — <b>на хозяев, знак как у бука</b>; программа знак при расчёте не переворачивает.</li>
         <li><b>Нейтральное поле</b> и <b>Нейтр. вес</b> — разные вещи: первое отключает H, второе ослабляет вклад строки при обучении.</li>
         <li><b>Дерби</b> по умолчанию выключено у всех матчей. Отметьте в Истории → ▼ Веса → перезагрузите и переобучите модель.</li>
-        <li>Низкая мотивация → уменьшите <b>match_weight</b> в Истории (не отдельный флаг).</li>
+        <li>Низкая мотивация → <b>Мотивация = нет</b> в Истории (матч вне обучения; на Отчёте серый, без MAE). Мягко ослабить вклад: уменьшите <b>match_weight</b>.</li>
         <li>После правок в <b>Истории</b> — «Загрузить из БД», затем снова <b>«Обучить модель»</b> (каждое нажатие пересчитывает коэффициенты по текущим данным).</li>
         <li>«Нужно ≥2 матчей» — мало загруженных матчей или не заполнены обязательные рынки.</li>
         <li><b>Где хранятся данные:</b> матчи, коэффициенты и веса — в <b>Supabase</b> (общие для всех устройств с доступом к БД). Локально в Safari (localStorage) — только логотипы команд, история расчётов на «Линии» и мелкие настройки UI. Обученная модель живёт в памяти вкладки — после перезагрузки страницы снова «Загрузить из БД» → «Обучить модель».</li>
@@ -6782,7 +6790,7 @@ bash scripts/update_and_serve.sh --start</div>
       { col:'home_rot', label:'Ротация хозяев', hint:'уровень ротации; при обучении влияет на training_weight (high→0, middle→0.7)' },
       { col:'away_rot', label:'Ротация гостей', hint:'уровень ротации; при обучении влияет на training_weight (high→0, middle→0.7)' },
       { col:'source', label:'Источник', hint:'источник closing-линии (по умолчанию Pinnacle)' },
-      { col:'motivation', label:'Мотивация', hint:'флаг мотивации да/нет (не влияет на модель)' },
+      { col:'motivation', label:'Мотивация', hint:'нет → вне обучения; на Отчёте серый (кэфы да, MAE нет)' },
     ];
     const USERBET_FIELD_TO_UI = {
       ah_home_odds:'ah1', closing_ah_home:'ah', ah_away_odds:'ah2',
@@ -6871,10 +6879,23 @@ bash scripts/update_and_serve.sh --start</div>
       if (['нет','false','0','no','n'].includes(text)) return false;
       return true;
     }
-    function sbMotivationDisplay(m){
+    /** Explicit motivation=false → out of training. null/unset → keep (legacy). */
+    function sbIsMotivated(m){
       const raw = sbMotivationRaw(m);
-      if (raw == null) return 'нет';
-      return raw ? 'да' : 'нет';
+      if (raw == null) return true;
+      return !!raw;
+    }
+    function sbMotivationDisplay(m){
+      return sbIsMotivated(m) ? 'да' : 'нет';
+    }
+    function sbFilterMotivatedForTrain(matches){
+      const kept = [];
+      const excluded = [];
+      (matches || []).forEach(m => {
+        if (sbIsMotivated(m)) kept.push(m);
+        else excluded.push(m);
+      });
+      return { kept, excluded, nExcluded: excluded.length };
     }
     function sbParseMotivation(text){
       return sbParseBool(text);
@@ -7776,7 +7797,7 @@ bash scripts/update_and_serve.sh --start</div>
       const rows = [
         ['Лига', escapeHtml(meta.leagueName || ''), ''],
         ['Сезоны', escapeHtml((meta.seasonLabels || []).join(', ')), ''],
-        ['Матчей в обучении', `<b>${goalLoadedRaw.length}</b>${meta.excluded ? ` <span class="small">(исключено ${meta.excluded} без полной линии)</span>` : ''}`, 'num'],
+        ['Матчей в обучении', `<b>${goalLoadedRaw.length}</b>${meta.excluded ? ` <span class="small">(исключено ${meta.excluded} без полной линии)</span>` : ''}${meta.motivationExcluded ? ` <span class="small">(+${meta.motivationExcluded} motivation=нет)</span>` : ''}`, 'num'],
         ['Период матчей', escapeHtml(goalTrainDateRange(goalLoadedRaw)), ''],
         ['Загружено из БД', escapeHtml(goalFmtTrainDt(goalTrainState.loadedAt)), ''],
         ['Дерби в выборке', String(derbyN), 'num'],
@@ -8409,11 +8430,14 @@ bash scripts/update_and_serve.sh --start</div>
       if (!seasonIds.length){ alert('Выберите хотя бы один сезон'); return; }
       try {
         await loadSupabaseConfig();
-        const [matches, inactiveMatches] = await Promise.all([
+        const [matchesAll, inactiveMatches] = await Promise.all([
           sbLoadMatchesForSeasons(leagueId, seasonIds),
           sbLoadInactiveMatchesForSeasons(leagueId, seasonIds),
         ]);
-        if (!matches.length){ alert('В БД нет матчей по выбранным сезонам'); return; }
+        if (!matchesAll.length){ alert('В БД нет матчей по выбранным сезонам'); return; }
+        const motSplit = sbFilterMotivatedForTrain(matchesAll);
+        const matches = motSplit.kept;
+        if (!matches.length){ alert('Все active-матчи с motivation=нет — нечего обучать'); return; }
         const parsed = goalMatchesToRaw(matches);
         if (!parsed.valid){ alert('Недостаточно матчей с полной линией для обучения модели'); return; }
         const inactiveParsed = goalMatchesToRaw(inactiveMatches);
@@ -8425,6 +8449,7 @@ bash scripts/update_and_serve.sh --start</div>
         goalLoadedMeta = {
           leagueId, leagueName, seasonIds, seasonLabels,
           total: parsed.total, valid: parsed.valid, excluded: parsed.excluded,
+          motivationExcluded: motSplit.nExcluded,
           inactiveTotal: inactiveParsed.total, inactiveValid: inactiveParsed.valid,
         };
         goalTrainState.loadedAt = new Date().toISOString();
@@ -9377,6 +9402,32 @@ bash scripts/update_and_serve.sh --start</div>
       if(leagueId) q+=`&league_id=eq.${encodeURIComponent(leagueId)}`;
       return irFetchPagedMatches(q);
     }
+    /** Active matches explicitly flagged motivation=false — show on Report (gray), not used in train. */
+    async function irFetchActiveNoMotivationMatches(leagueId){
+      let q=`select=${SB_MATCH_VIEW_SELECT}&active=eq.true&motivation=eq.false&order=league_name.asc,match_date.asc,home_team.asc,away_team.asc`;
+      if(leagueId) q+=`&league_id=eq.${encodeURIComponent(leagueId)}`;
+      return irFetchPagedMatches(q);
+    }
+    function irMergeReportMatches(inactive, noMotActive){
+      const byId=new Map();
+      (inactive||[]).forEach(m=>{
+        const id=m&&m.match_id!=null?String(m.match_id):'';
+        if(!id) return;
+        byId.set(id, m);
+      });
+      (noMotActive||[]).forEach(m=>{
+        const id=m&&m.match_id!=null?String(m.match_id):'';
+        if(!id) return;
+        if(!byId.has(id)) byId.set(id, m);
+      });
+      return [...byId.values()].sort((a,b)=>{
+        const la=String(a.league_name||''), lb=String(b.league_name||'');
+        if(la!==lb) return la.localeCompare(lb);
+        const da=String(a.match_date||''), db=String(b.match_date||'');
+        if(da!==db) return da.localeCompare(db);
+        return String(a.home_team||'').localeCompare(String(b.home_team||''));
+      });
+    }
     async function irFetchActiveMatchesForLeague(leagueId, seasonId){
       let q=`select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&active=eq.true&order=match_date.asc`;
       if(seasonId) q+=`&season_id=eq.${encodeURIComponent(seasonId)}`;
@@ -9818,6 +9869,7 @@ bash scripts/update_and_serve.sh --start</div>
     function irBuildCombinedRow(match, leg, aut, useMargin){
       const mkt=irEtalonFromMatch(match, !!useMargin);
       const row=Object.assign({}, mkt);
+      row._noMotivation = !sbIsMotivated(match);
       row.calc_model = 'combined (1X2 Legacy + AH/OU Auto)';
       row.recipe = 'combined';
       ['1','X','2'].forEach(k=>{
@@ -10059,8 +10111,11 @@ bash scripts/update_and_serve.sh --start</div>
       const pct=(v)=> v==null||!isFinite(v)?'—':(100*v).toFixed(0)+'%';
       const c = sum.combined || {};
       const eff = sum.effectiveTrain != null ? Number(sum.effectiveTrain).toFixed(1) : '—';
-      el.innerHTML = `<div class="ir-sum-row"><span>Inactive (оценка)</span><span><b>${sum.n}</b></span></div>`
-        + `<div class="ir-sum-row"><span>Active (обучение)</span><span><b>${sum.nActive!=null?sum.nActive:'—'}</b>${sum.nActiveExcluded?` <span class="small" style="font-weight:400">(+${sum.nActiveExcluded} без полной линии)</span>`:''}</span></div>`
+      const nMae = sum.nMae != null ? sum.nMae : sum.n;
+      const nNoMot = sum.nNoMotivation != null ? sum.nNoMotivation : 0;
+      el.innerHTML = `<div class="ir-sum-row"><span>Строк в таблице</span><span><b>${sum.n}</b>${nNoMot?` <span class="small" style="font-weight:400">(${nNoMot} без мотивации, серые)</span>`:''}</span></div>`
+        + `<div class="ir-sum-row"><span>В MAE / выводах</span><span><b>${nMae}</b></span></div>`
+        + `<div class="ir-sum-row"><span>Active (обучение)</span><span><b>${sum.nActive!=null?sum.nActive:'—'}</b>${sum.nActiveExcluded?` <span class="small" style="font-weight:400">(+${sum.nActiveExcluded} без полной линии)</span>`:''}${sum.nMotivationExcluded?` <span class="small" style="font-weight:400">(+${sum.nMotivationExcluded} motivation=нет)</span>`:''}</span></div>`
         + `<div class="ir-sum-row"><span>Effective training sample</span><span><b>${escapeHtml(eff)}</b></span></div>`
         + `<div class="ir-sum-block"><div style="font-weight:600;margin-bottom:4px">1X2 — Legacy</div>
           <div class="ir-sum-row"><span>1X2 MAE odds</span><span>${irFmtMae(c.mae1x2)}</span></div>
@@ -10102,8 +10157,9 @@ bash scripts/update_and_serve.sh --start</div>
       irActiveCols=cols||IR_SINGLE_COLS;
       head.innerHTML=irActiveCols.map(c=>`<th>${escapeHtml(c)}</th>`).join('');
       body.innerHTML=rows.map(row=>{
+        const noMot=!!row._noMotivation;
         const tds=irActiveCols.map(col=>{
-          const raw=col==='Дата'?sbFmtDate(row[col]):row[col];
+          let raw=col==='Дата'?sbFmtDate(row[col]):row[col];
           const cls=[];
           if(!IR_TEXT_COLS.has(col)) cls.push('num');
           if((String(col).includes('_d')||String(col).includes('delta'))&&raw!=null&&isFinite(raw)){
@@ -10115,9 +10171,13 @@ bash scripts/update_and_serve.sh --start</div>
             if(raw==='Auto') cls.push('win-auto');
             if(raw==='Legacy') cls.push('win-legacy');
           }
-          return `<td class="${cls.join(' ')}">${escapeHtml(irFmtDisplay(raw,col))}</td>`;
+          let cell=escapeHtml(irFmtDisplay(raw,col));
+          if(col==='Дата' && noMot){
+            cell += '<span class="ir-no-motivation-badge">мотив. нет</span>';
+          }
+          return `<td class="${cls.join(' ')}">${cell}</td>`;
         }).join('');
-        return `<tr>${tds}</tr>`;
+        return `<tr class="${noMot?'ir-no-motivation':''}">${tds}</tr>`;
       }).join('');
       wrap.style.display=rows.length?'block':'none';
     }
@@ -10214,19 +10274,23 @@ bash scripts/update_and_serve.sh --start</div>
         irSetReportStatus('Выберите сезон для обучения (по умолчанию 2025-26).', true);
         return;
       }
-      irSetReportStatus(`Загрузка неактивных матчей… (комбинированный отчёт; сезон ${seasonLabel}; ${etalonTxt})`);
+      irSetReportStatus(`Загрузка матчей отчёта… (inactive + motivation=нет; сезон ${seasonLabel}; ${etalonTxt})`);
       irRenderReportTable([], IR_COMBINED_COLS);
       await loadSupabaseConfig();
       if(!window.__SB.leagues||!window.__SB.leagues.length) await sbFetchLeaguesList();
       if(!window.__SB.seasons||!window.__SB.seasons.length) await sbLoadSeasonSummary();
-      let inactive=await irFetchInactiveMatches(leagueFilter||null);
-      inactive=irFilterMatches(inactive);
-      if(!inactive.length){
-        irSetReportStatus(`Матчей не найдено (active=false + сезон ${seasonLabel} + фильтры).`, true);
+      const [inactiveRawList, noMotActiveRaw]=await Promise.all([
+        irFetchInactiveMatches(leagueFilter||null),
+        irFetchActiveNoMotivationMatches(leagueFilter||null),
+      ]);
+      let reportMatches=irMergeReportMatches(inactiveRawList, noMotActiveRaw);
+      reportMatches=irFilterMatches(reportMatches);
+      if(!reportMatches.length){
+        irSetReportStatus(`Матчей не найдено (active=false или motivation=нет + сезон ${seasonLabel} + фильтры).`, true);
         return;
       }
       const byLeague={};
-      inactive.forEach(m=>{
+      reportMatches.forEach(m=>{
         const lid=String(m.league_id||''); if(!lid) return;
         if(!byLeague[lid]) byLeague[lid]=[];
         byLeague[lid].push(m);
@@ -10236,7 +10300,7 @@ bash scripts/update_and_serve.sh --start</div>
         return String(na).localeCompare(String(nb));
       });
       const out=[]; let skipped=0;
-      let nActiveTrain=0, nActiveFetched=0, nActiveExcluded=0, sumTrainW=0;
+      let nActiveTrain=0, nActiveFetched=0, nActiveExcluded=0, nMotivationExcluded=0, sumTrainW=0;
       for(let li=0; li<leagueIds.length; li++){
         const leagueId=leagueIds[li];
         const leagueName=byLeague[leagueId][0].league_name||leagueId;
@@ -10257,8 +10321,11 @@ bash scripts/update_and_serve.sh --start</div>
           return seasonFilter || '';
         })();
         if(!seasonIdForLeague){ skipped++; continue; }
-        const activeMatches=await irFetchActiveMatchesForLeague(leagueId, seasonIdForLeague);
-        nActiveFetched += (activeMatches&&activeMatches.length)||0;
+        const activeMatchesAll=await irFetchActiveMatchesForLeague(leagueId, seasonIdForLeague);
+        nActiveFetched += (activeMatchesAll&&activeMatchesAll.length)||0;
+        const motSplit=sbFilterMotivatedForTrain(activeMatchesAll);
+        nMotivationExcluded += motSplit.nExcluded||0;
+        const activeMatches=motSplit.kept;
         const ignoreRotation=!!(document.getElementById('irIgnoreRotation')||{}).checked;
         const parsed=goalMatchesToRaw(activeMatches, { ignoreRotation });
         nActiveTrain += parsed.valid||0;
@@ -10323,11 +10390,13 @@ bash scripts/update_and_serve.sh --start</div>
       }
       irReportRows=out;
       irRenderReportTable(irReportRows, IR_COMBINED_COLS);
-      const xs=irReportRows.map(r=>r._mae).filter(Boolean);
+      const nNoMotivation=irReportRows.filter(r=>r._noMotivation).length;
+      // Conclusions / MAE: exclude motivation=нет (gray rows); coeffs still shown in table.
+      const xs=irReportRows.filter(r=>!r._noMotivation).map(r=>r._mae).filter(Boolean);
       const avg=k=>{ const a=xs.map(o=>o[k]).filter(v=>v!=null&&isFinite(v)); return a.length?a.reduce((x,y)=>x+y,0)/a.length:null; };
       const rate=k=>{ const a=xs.map(o=>o[k]).filter(v=>v!=null); return a.length?a.filter(Boolean).length/a.length:null; };
       irReportSummary={
-        n:out.length, mode:'combined',
+        n:out.length, nMae:xs.length, nNoMotivation, mode:'combined',
         combined:{
           mae1x2:avg('mae1x2'), maeHome:avg('maeHome'), maeDraw:avg('maeDraw'), maeAway:avg('maeAway'),
           maeAh:avg('maeAh'), maeAhLine:avg('maeAhLine'), sameAhRate:rate('sameAh'),
@@ -10337,13 +10406,15 @@ bash scripts/update_and_serve.sh --start</div>
         },
         sEma: (window.__IR_S_EMA_OVERRIDE||{}),
         dEma: (window.__IR_D_EMA_OVERRIDE||{}),
-        nActive:nActiveTrain, nActiveFetched, nActiveExcluded,
+        nActive:nActiveTrain, nActiveFetched, nActiveExcluded, nMotivationExcluded,
         effectiveTrain:sumTrainW,
       };
       irRenderSummary(irReportSummary);
       if(exportBtn) exportBtn.disabled=!irReportRows.length;
       const warn=skipped?`; ${skipped} лиг без обучения`:'';
-      irSetReportStatus(`Готово: ${irReportRows.length} inactive / ${nActiveTrain} active (сезон ${seasonLabel}); combined 1X2=Legacy AH/OU=Auto; ${etalonTxt}${warn}`);
+      const motTxt=nNoMotivation?`; ${nNoMotivation} без мотивации (серые, вне MAE)`:'';
+      const trainMot=nMotivationExcluded?`; −${nMotivationExcluded} train motivation=нет`:'';
+      irSetReportStatus(`Готово: ${irReportRows.length} в таблице / ${xs.length} в MAE / ${nActiveTrain} active train (сезон ${seasonLabel})${motTxt}${trainMot}; combined 1X2=Legacy AH/OU=Auto; ${etalonTxt}${warn}`);
     }
     function irPopulateLeagueFilter(){
       const sel=document.getElementById('irLeagueFilter');

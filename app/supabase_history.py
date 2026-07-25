@@ -235,15 +235,29 @@ def match_motivation_raw(match: MatchFull) -> Optional[bool]:
     return True
 
 
-def motivation_display(match: MatchFull) -> str:
+def is_match_motivated(match: MatchFull) -> bool:
+    """True unless motivation is explicitly false.
+
+    ``null``/unset keeps the match in training (legacy rows); only UI «нет»
+    (false) excludes it from coefficient fitting.
+    """
     raw = match_motivation_raw(match)
     if raw is None:
-        return "нет"
-    return "да" if raw else "нет"
+        return True
+    return bool(raw)
+
+
+def motivation_display(match: MatchFull) -> str:
+    return "да" if is_match_motivated(match) else "нет"
 
 
 def parse_motivation_input(text: str) -> bool:
     return parse_bool_input(text)
+
+
+def filter_motivated_matches(matches: List[MatchFull]) -> List[MatchFull]:
+    """Drop matches with motivation=false (kept for Report, not for train)."""
+    return [m for m in matches if is_match_motivated(m)]
 
 
 def is_match_active(match: MatchFull) -> bool:
@@ -827,8 +841,18 @@ def fetch_matches(
     return out
 
 
-def matches_to_goal_csv(matches: List[MatchFull], *, league_name: str = "") -> str:
-    """Конвертация матчей в CSV closing-линий для вкладки «Линия»."""
+def matches_to_goal_csv(
+    matches: List[MatchFull],
+    *,
+    league_name: str = "",
+    exclude_unmotivated: bool = True,
+) -> str:
+    """Конвертация матчей в CSV closing-линий для вкладки «Линия».
+
+    By default skips ``motivation=false`` (same policy as web training load).
+    """
+    if exclude_unmotivated:
+        matches = filter_motivated_matches(matches)
     header = (
         "date,league,league_id,home_team_id,home_team,away_team_id,away_team,"
         "closing_ah_home,closing_total_line,"

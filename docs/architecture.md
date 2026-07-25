@@ -23,7 +23,7 @@ Supabase (leagues, team, v_season_summary, v_matches_full, matches)
         │
         ├─► Вкладка «Линия» — загрузка матчей, обучение Legacy+Auto, комбинированный прогноз
         │
-        ├─► Вкладка «Отчет» — calculated vs closing на inactive (1X2 Legacy, AH/OU Auto)
+        ├─► Вкладка «Отчет» — calculated vs closing на inactive и motivation=нет (1X2 Legacy, AH/OU Auto)
         │
         └─► Вкладка «Справочник» — лиги и команды
 
@@ -39,7 +39,7 @@ userbet.info ◄── History API ◄── «Получить данные» (
 | **Линия** | `leagues`, `v_season_summary`, `v_matches_full` | загрузка сезонов, обучение Legacy+Auto, комбинированная линия |
 | **Справочник** | `leagues`, `team` | список команд, логотипы (локально) |
 | **История** | `v_season_summary`, `v_matches_full`, `PATCH matches` | сезоны, правка кэфов и весов |
-| **Отчет** | `v_matches_full` (active train / inactive eval) | MAE комбинированной линии vs closing |
+| **Отчет** | `v_matches_full` (active+motivated train / inactive ∪ unmotivated eval) | MAE без motivation=нет; серые строки с кэфами |
 | **Справка** | — | встроенная документация |
 
 Desktop дополнительно: Калькулятор A, Рейтинг 1X2, Счёт кэф (Shin), локальный CSV-импорт истории (legacy).
