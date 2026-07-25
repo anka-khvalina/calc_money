@@ -331,6 +331,28 @@ def test_parse_motivation_row():
     assert sbh._parse_motivation_row({"motivation": None}) is None
 
 
+def test_is_match_motivated_and_display():
+    assert sbh.is_match_motivated(_sample_match(motivation=True)) is True
+    assert sbh.is_match_motivated(_sample_match(motivation=False)) is False
+    # null/unset stays in training (legacy rows)
+    assert sbh.is_match_motivated(_sample_match(motivation=None)) is True
+    assert sbh.motivation_display(_sample_match(motivation=None)) == "да"
+    assert sbh.motivation_display(_sample_match(motivation=False)) == "нет"
+    assert sbh.motivation_display(_sample_match(motivation=True)) == "да"
+
+
+def test_filter_motivated_matches_and_csv_exclude():
+    yes = _sample_match(match_id=1, motivation=True)
+    no = _sample_match(match_id=2, motivation=False)
+    unset = _sample_match(match_id=3, motivation=None)
+    kept = sbh.filter_motivated_matches([yes, no, unset])
+    assert [m.match_id for m in kept] == [1, 3]
+    csv_default = sbh.matches_to_goal_csv([yes, no, unset])
+    assert len(csv_default.strip().splitlines()) == 3  # header + 2 (no excluded)
+    csv_all = sbh.matches_to_goal_csv([yes, no, unset], exclude_unmotivated=False)
+    assert len(csv_all.strip().splitlines()) == 4
+
+
 def test_fetch_rotation_from_view():
     view_payload = json.dumps(
         [

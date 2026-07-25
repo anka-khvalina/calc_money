@@ -7,7 +7,7 @@
 #   bash scripts/update_and_serve.sh --no-pull    # только конфиг
 #
 # Переменные:
-#   FAIR_ODDS_BRANCH   ветка для git pull (default: cursor/d-ah-weight-policy-17b5)
+#   FAIR_ODDS_BRANCH   ветка для git pull (default: cursor/motivation-train-exclude-17b5)
 #   FAIR_ODDS_WEB_PORT порт веб+прокси (default: 8080)
 #   HISTORY_API_PORT   порт History API на localhost (default: 8765)
 
@@ -17,7 +17,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 RUN_DIR="$ROOT/.run"
 
-BRANCH="${FAIR_ODDS_BRANCH:-cursor/d-ah-weight-policy-17b5}"
+BRANCH="${FAIR_ODDS_BRANCH:-cursor/motivation-train-exclude-17b5}"
 WEB_PORT="${FAIR_ODDS_WEB_PORT:-8080}"
 API_PORT="${HISTORY_API_PORT:-8765}"
 DO_PULL=1

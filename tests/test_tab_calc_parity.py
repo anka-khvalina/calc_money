@@ -92,3 +92,44 @@ def test_d_train_weight_policy_python_matches_config():
     )
     gmt._apply_line_ah_weights([m], cfg)
     assert m.w_line_ah == 1.0
+
+
+def test_report_dyn_ema_panel_hidden():
+    src = _src()
+    assert 'id="irDynPanel"' in src
+    assert "Динамическая корректировка модели (D-EMA / S-EMA)" in src
+    # Visible lab panel must stay inside a display:none wrapper
+    wrap_i = src.index('id="irDynPanelHidden"')
+    panel_i = src.index('id="irDynPanel"')
+    assert wrap_i < panel_i
+    wrap_chunk = src[wrap_i - 80 : wrap_i + 40]
+    assert "display:none" in wrap_chunk or 'display: none' in wrap_chunk
+
+
+def test_report_clears_ema_overrides_like_line():
+    """Report must not apply UI EMA overrides — same model_config path as Line."""
+    src = _src()
+    report = _slice(src, "async function irRunReport(", "function irPopulateLeagueFilter(")
+    assert "irClearDynOverrides(" in report
+    assert "irApplyDynOverrides()" not in report
+    clear_fn = _slice(src, "function irClearDynOverrides(", "async function irRunReport(")
+    assert "__IR_D_EMA_OVERRIDE = null" in clear_fn
+    assert "__IR_S_EMA_OVERRIDE = null" in clear_fn
+    # Line predict clears the same overrides before shared core
+    assert "Do not inherit Reports lab EMA overrides into Line predict" in src
+
+
+def test_motivation_train_filter_wired_on_line_and_report():
+    src = _src()
+    assert "function sbIsMotivated(" in src
+    assert "function sbFilterMotivatedForTrain(" in src
+    load = _slice(src, "bindClick('goalLoadHist'", "bindClick('goalTrain'")
+    assert "sbFilterMotivatedForTrain(" in load
+    report = _slice(src, "async function irRunReport(", "function irPopulateLeagueFilter(")
+    assert "sbFilterMotivatedForTrain(" in report
+    assert "irFetchActiveNoMotivationMatches(" in report
+    assert "_noMotivation" in report or "r._noMotivation" in src
+    # Dynamics book must use true inactive only — not merged report rows with motivation=нет
+    assert "inactiveDynByLeague" in report
+    assert "goalMatchesToRaw(inactiveDynByLeague[leagueId]||[]" in report
+    assert "goalMatchesToRaw(byLeague[leagueId]" not in report.split("for(const m of byLeague[leagueId])")[0]
