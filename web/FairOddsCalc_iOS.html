@@ -188,8 +188,10 @@
     .hist-fetch-panel input{ min-width:180px; font-size:13px; padding:6px 8px; }
     .hist-bulk-active-panel .hist-fetch-panel select{ min-width:220px; font-size:13px; padding:6px 8px; }
     .hist-bulk-active-panel input[type="date"]{ min-width:150px; }
-    #histBulkMsg.ok{ color:#16a34a; }
-    #histBulkMsg.err{ color:var(--danger); }
+    .hist-bulk-weight-panel .hist-fetch-panel input[type="number"],
+    .hist-bulk-weight-panel .hist-fetch-panel input[type="text"]{ min-width:100px; font-size:13px; padding:6px 8px; }
+    #histBulkMsg.ok,#histBulkWeightMsg.ok{ color:#16a34a; }
+    #histBulkMsg.err,#histBulkWeightMsg.err{ color:var(--danger); }
     .hist-weights-panel{ display:flex; flex-wrap:wrap; gap:10px 16px; align-items:flex-end; }
     .hist-weights-field label{ display:block; font-size:11px; color:var(--muted); margin-bottom:3px; }
     .hist-weights-field .hist-field-hint{ display:block; font-size:10px; color:#8a93a0; margin-top:2px; line-height:1.25; max-width:200px; }
@@ -1116,6 +1118,27 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <button type="button" id="histBulkApply" class="btn primary">Применить</button>
         </div>
         <div id="histBulkMsg" class="small" style="margin-top:6px"></div>
+      </div>
+      <div class="hist-bulk-active-panel hist-bulk-weight-panel help-card" style="margin-top:10px">
+        <p class="small" style="margin:0 0 8px;font-weight:600">Массовое управление весом матчей</p>
+        <p class="small" style="margin:0 0 8px;color:var(--muted)">Применяется к выбранному сезону (лиге) в таблице выше за период дат. Меняется только поле <code>matches.match_weight</code> (по умолчанию 1).</p>
+        <div class="hist-fetch-panel">
+          <div class="hist-weights-field">
+            <label for="histBulkWeightDateFrom">Дата от</label>
+            <input type="date" id="histBulkWeightDateFrom" />
+          </div>
+          <div class="hist-weights-field">
+            <label for="histBulkWeightDateTo">Дата до</label>
+            <input type="date" id="histBulkWeightDateTo" />
+          </div>
+          <div class="hist-weights-field">
+            <label for="histBulkMatchWeight">Вес матча</label>
+            <input type="number" id="histBulkMatchWeight" min="0" step="0.1" value="1" />
+            <span class="hist-field-hint">≥ 0; влияет на обучение</span>
+          </div>
+          <button type="button" id="histBulkWeightApply" class="btn primary">Применить</button>
+        </div>
+        <div id="histBulkWeightMsg" class="small" style="margin-top:6px"></div>
       </div>
       <div class="table-wrap hist-matches-wrap">
         <div class="hist-matches-caption small">Матчи выбранного сезона</div>
@@ -7078,12 +7101,35 @@ bash scripts/update_and_serve.sh --start</div>
       });
       return Array.isArray(rows) ? rows : (rows ? [rows] : []);
     }
+    async function sbHistBulkPatchMatchWeight(seasonId, dateFrom, dateTo, matchWeight){
+      const q = `season_id=eq.${encodeURIComponent(seasonId)}&match_date=gte.${encodeURIComponent(dateFrom)}&match_date=lte.${encodeURIComponent(dateTo)}`;
+      const rows = await sbFetch(`/matches?${q}`, {
+        method: 'PATCH',
+        body: { match_weight: matchWeight },
+        prefer: 'return=representation',
+      });
+      return Array.isArray(rows) ? rows : (rows ? [rows] : []);
+    }
     function sbHistBulkSetMsg(text, kind){
       const el = document.getElementById('histBulkMsg');
       if(!el) return;
       el.textContent = text || '';
       el.classList.remove('ok', 'err');
       if(kind) el.classList.add(kind);
+    }
+    function sbHistBulkWeightSetMsg(text, kind){
+      const el = document.getElementById('histBulkWeightMsg');
+      if(!el) return;
+      el.textContent = text || '';
+      el.classList.remove('ok', 'err');
+      if(kind) el.classList.add(kind);
+    }
+    function sbHistBulkParseMatchWeight(raw){
+      const text = String(raw == null ? '' : raw).trim().replace(',', '.');
+      if(text === '') return 1;
+      const n = Number(text);
+      if(!isFinite(n) || n < 0) return null;
+      return n;
     }
     async function sbHistBulkApply(){
       const sel = window.__SB.histSelected;
@@ -7150,6 +7196,76 @@ bash scripts/update_and_serve.sh --start</div>
         console.error('bulk active reload', e);
         alert('Активность обновлена, но не удалось обновить список матчей');
         sbHistBulkSetMsg(`Активность обновлена (${updatedCount} матч.), но не удалось обновить список матчей`, 'err');
+      } finally {
+        if(btn) btn.disabled = false;
+      }
+    }
+    async function sbHistBulkWeightApply(){
+      const sel = window.__SB.histSelected;
+      if(!sel || sel.selected_season_id == null){
+        alert('Выберите сезон');
+        return;
+      }
+      const dateFrom = String((document.getElementById('histBulkWeightDateFrom')||{}).value || '').trim();
+      const dateTo = String((document.getElementById('histBulkWeightDateTo')||{}).value || '').trim();
+      const weightRaw = (document.getElementById('histBulkMatchWeight')||{}).value;
+      const matchWeight = sbHistBulkParseMatchWeight(weightRaw);
+      if(!dateFrom){ alert('Укажите дату начала периода'); return; }
+      if(!dateTo){ alert('Укажите дату окончания периода'); return; }
+      if(dateFrom > dateTo){ alert('Дата начала не может быть больше даты окончания'); return; }
+      if(matchWeight == null){ alert('Вес матча должен быть числом ≥ 0'); return; }
+      const btn = document.getElementById('histBulkWeightApply');
+      sbHistBulkWeightSetMsg('Проверка матчей за период…');
+      if(btn) btn.disabled = true;
+      let count = 0;
+      try {
+        count = await sbHistBulkCountMatches(sel.selected_season_id, dateFrom, dateTo);
+      } catch (e){
+        console.error('bulk weight count', e);
+        sbHistBulkWeightSetMsg('Не удалось проверить матчи за выбранный период', 'err');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      if(count === 0){
+        alert('За выбранный период матчи не найдены');
+        sbHistBulkWeightSetMsg('За выбранный период матчи не найдены', 'err');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      const leagueLabel = sel.selected_league_name || 'лига';
+      const seasonLabel = sel.selected_season_label || sel.selected_season_id;
+      const ok = confirm(
+        `Вы собираетесь установить match_weight=${matchWeight} для матчей «${leagueLabel} / ${seasonLabel}» за период с ${dateFrom} по ${dateTo}.\nКоличество матчей: ${count}.\nПродолжить?`
+      );
+      if(!ok){
+        sbHistBulkWeightSetMsg('');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      sbHistBulkWeightSetMsg('Обновление веса матчей…');
+      let updated = [];
+      try {
+        updated = await sbHistBulkPatchMatchWeight(sel.selected_season_id, dateFrom, dateTo, matchWeight);
+      } catch (e){
+        console.error('bulk weight patch', e);
+        alert('Не удалось обновить вес матчей');
+        sbHistBulkWeightSetMsg('Не удалось обновить вес матчей', 'err');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      const updatedCount = updated.length;
+      try {
+        await sbSelectHistSeason(
+          sel.selected_league_id,
+          sel.selected_season_id,
+          sel.selected_league_name,
+          sel.selected_season_label,
+        );
+        sbHistBulkWeightSetMsg(`Вес матчей обновлён (${matchWeight}). Количество обновленных матчей: ${updatedCount}.`, 'ok');
+      } catch (e){
+        console.error('bulk weight reload', e);
+        alert('Вес обновлён, но не удалось обновить список матчей');
+        sbHistBulkWeightSetMsg(`Вес обновлён (${updatedCount} матч.), но не удалось обновить список матчей`, 'err');
       } finally {
         if(btn) btn.disabled = false;
       }
@@ -7658,6 +7774,7 @@ bash scripts/update_and_serve.sh --start</div>
       sbSelectHistSeason(leagueId, seasonId, row ? row.league_name : '', row ? row.season_label : String(seasonId));
     });
     bindClick('histBulkApply', () => { sbHistBulkApply().catch(e => console.error(e)); });
+    bindClick('histBulkWeightApply', () => { sbHistBulkWeightApply().catch(e => console.error(e)); });
 
     // ---------------- «Линия»: загрузка из Supabase ----------------
     let goalLoadedRaw = null;

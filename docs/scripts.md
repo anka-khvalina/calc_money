@@ -42,7 +42,7 @@ bash scripts/update_and_serve.sh --start
 bash scripts/update_and_serve.sh --no-pull
 
 # другая ветка
-FAIR_ODDS_BRANCH=cursor/motivation-train-exclude-17b5 bash scripts/update_and_serve.sh --start
+FAIR_ODDS_BRANCH=cursor/bulk-match-weight-17b5 bash scripts/update_and_serve.sh --start
 
 # логи
 bash scripts/logs.sh
