@@ -188,8 +188,21 @@
     .hist-fetch-panel input{ min-width:180px; font-size:13px; padding:6px 8px; }
     .hist-bulk-active-panel .hist-fetch-panel select{ min-width:220px; font-size:13px; padding:6px 8px; }
     .hist-bulk-active-panel input[type="date"]{ min-width:150px; }
-    #histBulkMsg.ok{ color:#16a34a; }
-    #histBulkMsg.err{ color:var(--danger); }
+    .hist-bulk-weight-panel .hist-fetch-panel input[type="number"],
+    .hist-bulk-weight-panel .hist-fetch-panel input[type="text"]{ min-width:100px; font-size:13px; padding:6px 8px; }
+    .hist-weight-hint{ margin-top:8px; border-top:1px dashed #cbd5e1; padding-top:8px; }
+    .hist-weight-hint > summary{ cursor:pointer; font-size:12px; font-weight:600; color:#1d4ed8; }
+    .hist-weight-hint-body{ margin-top:8px; }
+    .hist-weight-hint-table{ font-size:12px; }
+    .hist-weight-hint-table th,.hist-weight-hint-table td{ padding:4px 8px; }
+    .hist-weight-hint-list{ margin:6px 0 0 18px; padding:0; }
+    .hist-weight-hint-list li{ margin-bottom:3px; }
+    .hist-weight-suggest{ margin-top:8px; }
+    .hist-weight-suggest table{ font-size:12px; border-collapse:collapse; }
+    .hist-weight-suggest th,.hist-weight-suggest td{ border:1px solid #dbe3f7; padding:4px 8px; }
+    .hist-weight-suggest .btn{ padding:3px 8px; font-size:11px; }
+    #histBulkMsg.ok,#histBulkWeightMsg.ok{ color:#16a34a; }
+    #histBulkMsg.err,#histBulkWeightMsg.err{ color:var(--danger); }
     .hist-weights-panel{ display:flex; flex-wrap:wrap; gap:10px 16px; align-items:flex-end; }
     .hist-weights-field label{ display:block; font-size:11px; color:var(--muted); margin-bottom:3px; }
     .hist-weights-field .hist-field-hint{ display:block; font-size:10px; color:#8a93a0; margin-top:2px; line-height:1.25; max-width:200px; }
@@ -875,7 +888,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             </div>
           </div>
           <div class="hint" style="margin-top:6px">
-            Supabase → closing-линии (<b>только active</b>). Вес: <b>сезон × match_weight × neutral</b>.
+            Supabase → closing-линии (<b>только active</b>). Вес: <b>сезон × match_weight × neutral × ротация</b>.
+            Веса сезонов и <code>match_weight</code> из Истории применяются только после <b>«Загрузить из БД»</b> и <b>«Обучить модель»</b>.
           </div>
         </div>
 
@@ -1116,6 +1130,52 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <button type="button" id="histBulkApply" class="btn primary">Применить</button>
         </div>
         <div id="histBulkMsg" class="small" style="margin-top:6px"></div>
+      </div>
+      <div class="hist-bulk-active-panel hist-bulk-weight-panel help-card" style="margin-top:10px">
+        <p class="small" style="margin:0 0 8px;font-weight:600">Массовое управление весом матчей</p>
+        <p class="small" style="margin:0 0 8px;color:var(--muted)">Применяется к выбранному сезону (лиге) в таблице выше за период дат. Меняется только поле <code>matches.match_weight</code> (по умолчанию 1).</p>
+        <div class="hist-fetch-panel">
+          <div class="hist-weights-field">
+            <label for="histBulkWeightDateFrom">Дата от</label>
+            <input type="date" id="histBulkWeightDateFrom" />
+          </div>
+          <div class="hist-weights-field">
+            <label for="histBulkWeightDateTo">Дата до</label>
+            <input type="date" id="histBulkWeightDateTo" />
+          </div>
+          <div class="hist-weights-field">
+            <label for="histBulkMatchWeight">Вес матча</label>
+            <input type="number" id="histBulkMatchWeight" min="0" step="0.1" value="1" />
+            <span class="hist-field-hint">≥ 0; влияет на обучение</span>
+          </div>
+          <button type="button" id="histBulkWeightApply" class="btn primary">Применить</button>
+        </div>
+        <div id="histBulkWeightMsg" class="small" style="margin-top:6px"></div>
+        <details class="hist-weight-hint" id="histBulkWeightHint">
+          <summary>Как разделить сезон и какие веса поставить — подсказка</summary>
+          <div class="hist-weight-hint-body">
+            <p class="small">Смысл веса: свежие матчи описывают <b>текущий</b> состав и форму, старые тянут рейтинги к прошлому. Вес — множитель строки при обучении (<code>w<sub>base</sub></code>), он не удаляет матч.</p>
+            <p class="small" style="margin-top:6px"><b>Рекомендация по умолчанию</b> — три периода по «возрасту» относительно последнего тура:</p>
+            <div class="table-wrap"><table class="hist-weight-hint-table">
+              <thead><tr><th>Период (дней назад)</th><th>Вес</th><th>Зачем</th></tr></thead>
+              <tbody>
+                <tr><td>0–60 — последние ~2 месяца</td><td><b>1.0</b></td><td>актуальная форма и состав</td></tr>
+                <tr><td>61–120 — предыдущие ~2 месяца</td><td><b>0.8</b></td><td>ещё релевантно, но слабее</td></tr>
+                <tr><td>&gt; 120 — начало сезона</td><td><b>0.6</b></td><td>сохраняем выборку, снижаем влияние</td></tr>
+              </tbody>
+            </table></div>
+            <p class="small" style="margin-top:6px"><b>Если важнее тоталы (OU):</b> агрессивнее — границы 30/90 дней и веса <b>1.0 / 0.7 / 0.4</b>.</p>
+            <p class="small" style="margin-top:6px">Проверено walk-forward на 13 лига-сезонах Big-5 (264 сравнения, обучение до даты отсечки → прогноз следующих 40 матчей, метрика — отклонение от closing):</p>
+            <ul class="small hist-weight-hint-list">
+              <li><b>Тоталы (S)</b> выигрывают от спада веса: <code>1.0/0.7/0.4</code> → MAE_S <b>−4.8%</b>, экспоненциальный спад с полураспадом 30–60 дней → <b>−7…−9.6%</b>.</li>
+              <li><b>Форы (D)</b> почти не меняются у мягких схем (<b>±0.1%</b>), но <b>портятся</b> при слишком быстром спаде: полураспад 45 дней → <b>+1.2%</b>, 30 дней → <b>+3.0%</b> ошибки.</li>
+              <li>Лучший компромисс — <code>1.0 / 0.8 / 0.6</code> (границы 60/120): D <b>−0.07%</b>, S <b>−2.6%</b>.</li>
+              <li>По лигам: <b>Premier League</b> любит короткий горизонт (D −2.6% при полураспаде 30 дней), <b>Serie A</b> — ровные веса, <b>La Liga / Bundesliga / Ligue 1</b> — мягкий спад.</li>
+            </ul>
+            <p class="small" style="margin-top:6px"><b>Правила:</b> не ставьте <code>0</code> — это полное исключение из обучения (для этого «Активен = нет» или «Мотивация = нет»). Не опускайте вес ниже <b>0.4</b>. Если в сезоне меньше ~100 матчей — оставьте всем <b>1.0</b>. Периоды применяйте по очереди: от старого к свежему.</p>
+            <div id="histBulkWeightSuggest" class="small hist-weight-suggest"></div>
+          </div>
+        </details>
       </div>
       <div class="table-wrap hist-matches-wrap">
         <div class="hist-matches-caption small">Матчи выбранного сезона</div>
@@ -6503,11 +6563,38 @@ bash scripts/update_and_serve.sh --start</div>
 
     function gmSeasonWeight(rec, cfg){
       const def = cfg.seasonDefault != null ? cfg.seasonDefault : 1.0;
-      const sid = rec.seasonId;
-      if (sid != null && cfg.seasonWeightsById && cfg.seasonWeightsById[sid] != null){
-        return cfg.seasonWeightsById[sid];
-      }
-      return def;
+      return goalLookupSeasonWeight(cfg && cfg.seasonWeightsById, rec && rec.seasonId, def);
+    }
+
+    /** Normalize season id keys so UI Number("2") matches raw seasonId 2 / "2". */
+    function goalSeasonWKey(sid){
+      if (sid == null || sid === '') return null;
+      const n = Number(sid);
+      return Number.isFinite(n) ? n : String(sid);
+    }
+    function goalLookupSeasonWeight(map, sid, fallback){
+      // Pass fallback=null to mean "missing" (do not coerce null→1).
+      const miss = (arguments.length >= 3) ? fallback : 1;
+      if (!map || sid == null || sid === '') return miss;
+      if (map[sid] != null && isFinite(Number(map[sid]))) return Number(map[sid]);
+      const k = goalSeasonWKey(sid);
+      if (k != null && map[k] != null && isFinite(Number(map[k]))) return Number(map[k]);
+      if (map[String(sid)] != null && isFinite(Number(map[String(sid)]))) return Number(map[String(sid)]);
+      const n = Number(sid);
+      if (Number.isFinite(n) && map[n] != null && isFinite(Number(map[n]))) return Number(map[n]);
+      return miss;
+    }
+    function goalInvalidateTrainedModels(reason){
+      gmModelLegacy = null;
+      gmModelAuto = null;
+      gmModel = null;
+      goalTrainState.trainedAt = null;
+      try{
+        const el = document.getElementById('goalModelCalibStatus');
+        if (el) el.textContent = reason ? `требуется (${reason})` : 'требуется';
+        const d = document.getElementById('goalModelCalibDate');
+        if (d) d.textContent = '—';
+      }catch(_e){}
     }
 
     // ---------------- «Расчёт линии»: лига + команды (справочник Supabase) ----------------
@@ -7078,12 +7165,118 @@ bash scripts/update_and_serve.sh --start</div>
       });
       return Array.isArray(rows) ? rows : (rows ? [rows] : []);
     }
+    async function sbHistBulkPatchMatchWeight(seasonId, dateFrom, dateTo, matchWeight){
+      const q = `season_id=eq.${encodeURIComponent(seasonId)}&match_date=gte.${encodeURIComponent(dateFrom)}&match_date=lte.${encodeURIComponent(dateTo)}`;
+      const rows = await sbFetch(`/matches?${q}`, {
+        method: 'PATCH',
+        body: { match_weight: matchWeight },
+        prefer: 'return=representation',
+      });
+      return Array.isArray(rows) ? rows : (rows ? [rows] : []);
+    }
     function sbHistBulkSetMsg(text, kind){
       const el = document.getElementById('histBulkMsg');
       if(!el) return;
       el.textContent = text || '';
       el.classList.remove('ok', 'err');
       if(kind) el.classList.add(kind);
+    }
+    function sbHistBulkWeightSetMsg(text, kind){
+      const el = document.getElementById('histBulkWeightMsg');
+      if(!el) return;
+      el.textContent = text || '';
+      el.classList.remove('ok', 'err');
+      if(kind) el.classList.add(kind);
+    }
+    function sbHistBulkParseMatchWeight(raw){
+      const text = String(raw == null ? '' : raw).trim().replace(',', '.');
+      if(text === '') return 1;
+      const n = Number(text);
+      if(!isFinite(n) || n < 0) return null;
+      return n;
+    }
+    /** Recommended split: 0-60 days → 1.0, 61-120 → 0.8, older → 0.6 (see hint). */
+    const SB_WEIGHT_PERIOD_PLAN = [
+      { maxAgeDays: 60, weight: 1.0, label: 'последние ~2 месяца' },
+      { maxAgeDays: 120, weight: 0.8, label: 'предыдущие ~2 месяца' },
+      { maxAgeDays: null, weight: 0.6, label: 'начало сезона' },
+    ];
+    function sbHistShiftDate(iso, days){
+      const d = new Date(`${iso}T00:00:00Z`);
+      if(isNaN(d.getTime())) return iso;
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10);
+    }
+    function sbHistSeasonMatchDates(){
+      const sel = window.__SB.histSelected;
+      if(!sel || sel.selected_season_id == null) return [];
+      const key = sbSeasonKey(sel.selected_league_id, sel.selected_season_id);
+      const list = (window.__SB.matchesBySeason || {})[key] || [];
+      return list
+        .map(m => String(m.match_date || '').slice(0, 10))
+        .filter(Boolean)
+        .sort();
+    }
+    /** Build concrete date ranges for the selected season from the recommended plan. */
+    function sbHistBuildWeightPeriods(dates){
+      if(!dates || !dates.length) return [];
+      const first = dates[0];
+      const last = dates[dates.length - 1];
+      const today = new Date().toISOString().slice(0, 10);
+      // Anchor on the latest played round, but never in the future.
+      const anchor = last > today ? today : last;
+      const rows = [];
+      let cursorTo = anchor;
+      for(const step of SB_WEIGHT_PERIOD_PLAN){
+        if(cursorTo < first) break;
+        const from = step.maxAgeDays == null ? first : sbHistShiftDate(anchor, -step.maxAgeDays);
+        const dateFrom = from < first ? first : from;
+        if(dateFrom > cursorTo) continue;
+        rows.push({
+          dateFrom, dateTo: cursorTo, weight: step.weight, label: step.label,
+          n: dates.filter(d => d >= dateFrom && d <= cursorTo).length,
+        });
+        cursorTo = sbHistShiftDate(dateFrom, -1);
+      }
+      return rows.reverse();
+    }
+    function sbHistRenderWeightSuggest(){
+      const el = document.getElementById('histBulkWeightSuggest');
+      if(!el) return;
+      const dates = sbHistSeasonMatchDates();
+      if(!dates.length){
+        el.innerHTML = '<span style="color:var(--muted)">Выберите сезон в таблице выше — здесь появятся конкретные даты периодов.</span>';
+        return;
+      }
+      const periods = sbHistBuildWeightPeriods(dates);
+      if(!periods.length){
+        el.innerHTML = '<span style="color:var(--muted)">Не удалось рассчитать периоды по датам сезона.</span>';
+        return;
+      }
+      const total = dates.length;
+      const smallSample = total < 100
+        ? '<div style="margin-top:6px;color:#b45309">В сезоне меньше 100 матчей — лучше оставить всем вес 1.0.</div>'
+        : '';
+      el.innerHTML = '<div style="font-weight:600;margin-bottom:4px">Расчёт для выбранного сезона'
+        + ` (${total} матч.; отсчёт от ${escapeHtml(periods[periods.length - 1].dateTo)})</div>`
+        + '<table><thead><tr><th>Период</th><th>Даты</th><th>Матчей</th><th>Вес</th><th></th></tr></thead><tbody>'
+        + periods.map(p => `<tr>`
+          + `<td>${escapeHtml(p.label)}</td>`
+          + `<td>${escapeHtml(p.dateFrom)} — ${escapeHtml(p.dateTo)}</td>`
+          + `<td class="right">${p.n}</td>`
+          + `<td class="right"><b>${p.weight}</b></td>`
+          + `<td><button type="button" class="btn" data-hist-weight-fill="${escapeHtml(p.dateFrom)}|${escapeHtml(p.dateTo)}|${p.weight}">Подставить</button></td>`
+          + `</tr>`).join('')
+        + '</tbody></table>'
+        + '<div style="margin-top:6px;color:var(--muted)">«Подставить» заполняет форму выше — останется нажать «Применить» для каждого периода.</div>'
+        + smallSample;
+    }
+    function sbHistFillWeightForm(dateFrom, dateTo, weight){
+      const setVal = (id, v) => { const el = document.getElementById(id); if(el) el.value = v; };
+      setVal('histBulkWeightDateFrom', dateFrom);
+      setVal('histBulkWeightDateTo', dateTo);
+      setVal('histBulkMatchWeight', weight);
+      sbHistBulkWeightSetMsg(`Период ${dateFrom} — ${dateTo}, вес ${weight}. Нажмите «Применить».`);
     }
     async function sbHistBulkApply(){
       const sel = window.__SB.histSelected;
@@ -7150,6 +7343,76 @@ bash scripts/update_and_serve.sh --start</div>
         console.error('bulk active reload', e);
         alert('Активность обновлена, но не удалось обновить список матчей');
         sbHistBulkSetMsg(`Активность обновлена (${updatedCount} матч.), но не удалось обновить список матчей`, 'err');
+      } finally {
+        if(btn) btn.disabled = false;
+      }
+    }
+    async function sbHistBulkWeightApply(){
+      const sel = window.__SB.histSelected;
+      if(!sel || sel.selected_season_id == null){
+        alert('Выберите сезон');
+        return;
+      }
+      const dateFrom = String((document.getElementById('histBulkWeightDateFrom')||{}).value || '').trim();
+      const dateTo = String((document.getElementById('histBulkWeightDateTo')||{}).value || '').trim();
+      const weightRaw = (document.getElementById('histBulkMatchWeight')||{}).value;
+      const matchWeight = sbHistBulkParseMatchWeight(weightRaw);
+      if(!dateFrom){ alert('Укажите дату начала периода'); return; }
+      if(!dateTo){ alert('Укажите дату окончания периода'); return; }
+      if(dateFrom > dateTo){ alert('Дата начала не может быть больше даты окончания'); return; }
+      if(matchWeight == null){ alert('Вес матча должен быть числом ≥ 0'); return; }
+      const btn = document.getElementById('histBulkWeightApply');
+      sbHistBulkWeightSetMsg('Проверка матчей за период…');
+      if(btn) btn.disabled = true;
+      let count = 0;
+      try {
+        count = await sbHistBulkCountMatches(sel.selected_season_id, dateFrom, dateTo);
+      } catch (e){
+        console.error('bulk weight count', e);
+        sbHistBulkWeightSetMsg('Не удалось проверить матчи за выбранный период', 'err');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      if(count === 0){
+        alert('За выбранный период матчи не найдены');
+        sbHistBulkWeightSetMsg('За выбранный период матчи не найдены', 'err');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      const leagueLabel = sel.selected_league_name || 'лига';
+      const seasonLabel = sel.selected_season_label || sel.selected_season_id;
+      const ok = confirm(
+        `Вы собираетесь установить match_weight=${matchWeight} для матчей «${leagueLabel} / ${seasonLabel}» за период с ${dateFrom} по ${dateTo}.\nКоличество матчей: ${count}.\nПродолжить?`
+      );
+      if(!ok){
+        sbHistBulkWeightSetMsg('');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      sbHistBulkWeightSetMsg('Обновление веса матчей…');
+      let updated = [];
+      try {
+        updated = await sbHistBulkPatchMatchWeight(sel.selected_season_id, dateFrom, dateTo, matchWeight);
+      } catch (e){
+        console.error('bulk weight patch', e);
+        alert('Не удалось обновить вес матчей');
+        sbHistBulkWeightSetMsg('Не удалось обновить вес матчей', 'err');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      const updatedCount = updated.length;
+      try {
+        await sbSelectHistSeason(
+          sel.selected_league_id,
+          sel.selected_season_id,
+          sel.selected_league_name,
+          sel.selected_season_label,
+        );
+        sbHistBulkWeightSetMsg(`Вес матчей обновлён (${matchWeight}). Количество обновленных матчей: ${updatedCount}.`, 'ok');
+      } catch (e){
+        console.error('bulk weight reload', e);
+        alert('Вес обновлён, но не удалось обновить список матчей');
+        sbHistBulkWeightSetMsg(`Вес обновлён (${updatedCount} матч.), но не удалось обновить список матчей`, 'err');
       } finally {
         if(btn) btn.disabled = false;
       }
@@ -7566,6 +7829,7 @@ bash scripts/update_and_serve.sh --start</div>
           return;
         }
         renderHistMatchesTable(matches, `${leagueName || leagueId} / ${seasonLabel || seasonId} — ${matches.length} матчей`);
+        sbHistRenderWeightSuggest();
       } catch (e){
         console.error('sbSelectHistSeason failed', e);
         const msg = sbHistErrorMessage(e, 'загрузить матчи сезона');
@@ -7658,6 +7922,17 @@ bash scripts/update_and_serve.sh --start</div>
       sbSelectHistSeason(leagueId, seasonId, row ? row.league_name : '', row ? row.season_label : String(seasonId));
     });
     bindClick('histBulkApply', () => { sbHistBulkApply().catch(e => console.error(e)); });
+    bindClick('histBulkWeightApply', () => { sbHistBulkWeightApply().catch(e => console.error(e)); });
+    document.getElementById('histBulkWeightSuggest')?.addEventListener('click', e => {
+      const btn = e.target.closest('[data-hist-weight-fill]');
+      if(!btn) return;
+      e.preventDefault();
+      const [dateFrom, dateTo, weight] = String(btn.getAttribute('data-hist-weight-fill') || '').split('|');
+      if(dateFrom && dateTo) sbHistFillWeightForm(dateFrom, dateTo, weight);
+    });
+    document.getElementById('histBulkWeightHint')?.addEventListener('toggle', e => {
+      if(e.target.open) sbHistRenderWeightSuggest();
+    });
 
     // ---------------- «Линия»: загрузка из Supabase ----------------
     let goalLoadedRaw = null;
@@ -7794,6 +8069,10 @@ bash scripts/update_and_serve.sh --start</div>
       const derbyN = goalLoadedRaw.filter(r => r.der).length;
       const neuN = goalLoadedRaw.filter(r => r.neu).length;
       const rotSum = gmSummarizeRotationTraining(goalLoadedRaw, cfg);
+      const mwVals = goalLoadedRaw.map(r => Number(r.mw)).filter(n => isFinite(n));
+      const mwAvg = mwVals.length ? mwVals.reduce((a,b)=>a+b,0)/mwVals.length : null;
+      const mwNonOne = mwVals.filter(n => Math.abs(n - 1) > 1e-9).length;
+      const effWBase = goalLoadedRaw.reduce((s,r)=>s+gmMatchWeight(r,cfg),0);
       const rows = [
         ['Лига', escapeHtml(meta.leagueName || ''), ''],
         ['Сезоны', escapeHtml((meta.seasonLabels || []).join(', ')), ''],
@@ -7802,10 +8081,12 @@ bash scripts/update_and_serve.sh --start</div>
         ['Загружено из БД', escapeHtml(goalFmtTrainDt(goalTrainState.loadedAt)), ''],
         ['Дерби в выборке', String(derbyN), 'num'],
         ['Нейтральных матчей', String(neuN), 'num'],
+        ['match_weight (средн.)', `${goalFmtTrainNum(mwAvg, 3)}${mwNonOne ? ` <span class="small">(${mwNonOne} ≠ 1)</span>` : ''}`, 'num'],
         ['Ротация: полный вес', String(rotSum.full), 'num'],
         ['Ротация: пониженный вес', String(rotSum.reduced), 'num'],
         ['Ротация: исключено (вес 0)', String(rotSum.excluded), 'num'],
-        ['Эффективный размер выборки', `<b>${goalFmtTrainNum(rotSum.effective, 1)}</b> <span class="small">(Σ training_weight)</span>`, 'num'],
+        ['Σ training_weight (ротация)', `<b>${goalFmtTrainNum(rotSum.effective, 1)}</b>`, 'num'],
+        ['Σ w_base (сезон×mw×нейтр×рот.)', `<b>${goalFmtTrainNum(effWBase, 1)}</b>`, 'num'],
         ['Inactive для контроля', `${meta.inactiveValid || 0}${meta.inactiveTotal ? ` из ${meta.inactiveTotal}` : ''}`, 'num'],
         ['Подпись данных', `<code>${escapeHtml(goalComputeDataSignature(goalLoadedRaw))}</code>`, ''],
       ];
@@ -8091,9 +8372,26 @@ bash scripts/update_and_serve.sh --start</div>
       goalReadSeasonWeightsFromUI();
       const seasonIds=[...new Set(goalLoadedRaw.map(r=>r.seasonId).filter(s=>s!=null))];
       const leagueId = goalLoadedMeta && goalLoadedMeta.leagueId;
-      const weights = (typeof irBuildSeasonWeights==='function' && leagueId)
+      // Use weights from the Line UI (goalSeasonWeightById). Fall back to defaults only for missing ids.
+      // Do NOT replace UI values with irBuildSeasonWeights() — that always resets to 1/0.7/0.5.
+      const defaults = (typeof irBuildSeasonWeights==='function' && leagueId)
         ? irBuildSeasonWeights(leagueId, seasonIds)
-        : (goalSeasonWeightById||{});
+        : {};
+      const weights = {};
+      seasonIds.forEach(sid => {
+        const key = goalSeasonWKey(sid);
+        const fromUi = goalLookupSeasonWeight(goalSeasonWeightById, sid, null);
+        const fromDef = goalLookupSeasonWeight(defaults, sid, 1);
+        const w = fromUi != null ? fromUi : fromDef;
+        weights[sid] = w;
+        if (key != null){
+          weights[key] = w;
+          goalSeasonWeightById[key] = w;
+        }
+        goalSeasonWeightById[sid] = w;
+      });
+      // Persist normalized map back into weight inputs
+      try{ goalRenderSeasonWeights(); }catch(_e){}
       const inactiveRaw = goalLoadedInactiveRaw || [];
       // Independent pipelines on the same active sample + training_weight (same core as Reports)
       let errL=null, errA=null;
@@ -8110,8 +8408,26 @@ bash scripts/update_and_serve.sh --start</div>
       if(!gmModelLegacy && !gmModelAuto){
         throw new Error('Не удалось обучить ни Legacy, ни Auto'+(errL?': '+(errL.message||errL):''));
       }
+      try{
+        const cfgDiag = irBaselineCfg(weights, 'auto');
+        const eff = (goalLoadedRaw||[]).reduce((s,r)=>s+gmMatchWeight(r,cfgDiag),0);
+        const mwAvg = (()=>{
+          const xs=(goalLoadedRaw||[]).map(r=>Number(r.mw)).filter(n=>isFinite(n));
+          return xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : null;
+        })();
+        console.info('[line train] seasonWeights', weights, { matchWeightAvg: mwAvg, effectiveWBase: eff });
+        const st = document.getElementById('goalModelCalibStatus');
+        if (st){
+          const swTxt = seasonIds.map(sid => {
+            const lab = (goalLoadedMeta.seasonLabels||[])[ (goalLoadedMeta.seasonIds||[]).indexOf(sid) ] || sid;
+            return `${lab}=${Number(weights[sid]).toFixed(2)}`;
+          }).join(', ');
+          st.textContent = `ок · веса сезонов: ${swTxt || '—'}; Σw=${eff.toFixed(1)}; mw̄=${mwAvg!=null?mwAvg.toFixed(3):'—'}`;
+        }
+      }catch(_e){}
       goalTrainState.trainedAt = new Date().toISOString();
       goalTrainState.priorUsed = false;
+      goalTrainState.lastSeasonWeights = Object.assign({}, weights);
       const marginSrc = gmModelAuto || gmModelLegacy;
       if (goalLoadedMeta && goalLoadedMeta.leagueId && marginSrc && marginSrc.trainMargin1x2 && marginSrc.trainMargin1x2.avgPct != null){
         goalSaveLeagueMargin(goalLoadedMeta.leagueId, marginSrc.trainMargin1x2);
@@ -8166,7 +8482,7 @@ bash scripts/update_and_serve.sh --start</div>
         trainingWeight: rot.trainingWeight,
         trainingStatus: rot.trainingStatus,
         rotationReason: rot.rotationReason,
-        seasonId: m.season_id,
+        seasonId: m.season_id != null && Number.isFinite(Number(m.season_id)) ? Number(m.season_id) : m.season_id,
         seasonLabel: m.season_label || '',
         matchId: m.match_id,
       };
@@ -8324,11 +8640,11 @@ bash scripts/update_and_serve.sh --start</div>
       ordered.sort((a, b) => String(b.season_label).localeCompare(String(a.season_label)));
       const next = {};
       ordered.forEach((s, i) => {
-        if (goalSeasonWeightById[s.season_id] == null){
-          next[s.season_id] = goalDefaultSeasonWeight(i);
-        } else {
-          next[s.season_id] = goalSeasonWeightById[s.season_id];
-        }
+        const key = goalSeasonWKey(s.season_id);
+        const prev = goalLookupSeasonWeight(goalSeasonWeightById, s.season_id, null);
+        const w = prev != null ? prev : goalDefaultSeasonWeight(i);
+        if (key != null) next[key] = w;
+        next[s.season_id] = w;
       });
       goalSeasonWeightById = next;
     }
@@ -8348,11 +8664,12 @@ bash scripts/update_and_serve.sh --start</div>
         + ids.map(sid => {
           const s = byId.get(sid);
           if (!s) return '';
-          const w = goalSeasonWeightById[sid] != null ? goalSeasonWeightById[sid] : 1;
+          const w = goalLookupSeasonWeight(goalSeasonWeightById, sid, 1);
           return `<tr><td class="goal-sw-season" title="${escapeHtml(s.season_label)}">${escapeHtml(s.season_label)}</td>`
             + `<td class="num goal-sw-n">${escapeHtml(String(sbSeasonActiveCount(s)))}</td>`
             + `<td class="num"><input class="goal-season-w" data-sid="${escapeHtml(String(sid))}" value="${escapeHtml(String(w).replace('.', ','))}" /></td></tr>`;
-        }).join('') + '</tbody></table></div>';
+        }).join('') + '</tbody></table></div>'
+        + '<div class="hint" style="margin-top:6px">После смены веса нажмите <b>«Обучить модель»</b> — иначе расчёт линии идёт по старой калибровке.</div>';
     }
 
     async function goalOnLeagueChange(){
@@ -8378,9 +8695,12 @@ bash scripts/update_and_serve.sh --start</div>
 
     function goalReadSeasonWeightsFromUI(){
       document.querySelectorAll('.goal-season-w').forEach(inp => {
-        const sid = Number(inp.getAttribute('data-sid'));
+        const sid = goalSeasonWKey(inp.getAttribute('data-sid'));
         const w = parseFloat(String(inp.value).replace(',', '.'));
-        if (!isNaN(sid) && !isNaN(w)) goalSeasonWeightById[sid] = w;
+        if (sid != null && !isNaN(w)){
+          goalSeasonWeightById[sid] = w;
+          goalSeasonWeightById[String(sid)] = w;
+        }
       });
     }
 
@@ -8418,9 +8738,16 @@ bash scripts/update_and_serve.sh --start</div>
     document.getElementById('goalSeasonWeightsTable').addEventListener('input', e => {
       const inp = e.target.closest('.goal-season-w');
       if (!inp) return;
-      const sid = Number(inp.getAttribute('data-sid'));
+      const sid = goalSeasonWKey(inp.getAttribute('data-sid'));
       const w = parseFloat(String(inp.value).replace(',', '.'));
-      if (!isNaN(sid) && !isNaN(w)) goalSeasonWeightById[sid] = w;
+      if (sid != null && !isNaN(w)){
+        goalSeasonWeightById[sid] = w;
+        goalSeasonWeightById[String(sid)] = w;
+        // Weights only apply on train — invalidate stale model so user must retrain.
+        if (gmModelLegacy || gmModelAuto || gmModel){
+          goalInvalidateTrainedModels('измените веса → обучите');
+        }
+      }
     });
 
     bindClick('goalLoadHist', async () => {

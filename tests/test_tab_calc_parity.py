@@ -133,3 +133,39 @@ def test_motivation_train_filter_wired_on_line_and_report():
     assert "inactiveDynByLeague" in report
     assert "goalMatchesToRaw(inactiveDynByLeague[leagueId]||[]" in report
     assert "goalMatchesToRaw(byLeague[leagueId]" not in report.split("for(const m of byLeague[leagueId])")[0]
+
+
+def test_line_train_uses_ui_season_weights_not_defaults_only():
+    """Regression: season weights from Line UI must reach train cfg."""
+    src = _src()
+    train = _slice(src, "async function goalRunTrain(", "function goalDefaultSeasonWeight(")
+    assert "goalReadSeasonWeightsFromUI()" in train
+    # Must NOT blindly replace UI weights with irBuildSeasonWeights()
+    assert "goalLookupSeasonWeight(goalSeasonWeightById" in train
+    assert "fromUi" in train
+    # Guard against the old bug that always reset to 1/0.7/0.5
+    assert '? irBuildSeasonWeights(leagueId, seasonIds)\n        : (goalSeasonWeightById||{})' not in train
+    assert "irBaselineCfg(weights," in train
+
+
+def test_line_season_weight_lookup_preserves_null_miss():
+    """fallback=null must mean missing — not silently coerced to 1."""
+    src = _src()
+    fn = _slice(src, "function goalLookupSeasonWeight(", "function goalInvalidateTrainedModels(")
+    assert "arguments.length >= 3" in fn
+    assert "if (fallback == null) fallback = 1" not in fn
+    read = _slice(src, "function goalReadSeasonWeightsFromUI(", "async function goalInitTab(")
+    assert "goalSeasonWKey(" in read
+    inv = _slice(src, "goalSeasonWeightsTable').addEventListener('input'", "bindClick('goalLoadHist'")
+    assert "goalInvalidateTrainedModels(" in inv
+
+
+def test_line_maps_db_match_weight_to_raw_mw():
+    src = _src()
+    db = _slice(src, "function goalDbMatchToRaw(", "function goalRawHasFullLine(")
+    assert "mw: gmF(m.match_weight)" in db
+    assert "Number(m.season_id)" in db
+    mw = _slice(src, "function gmMatchWeight(", "function gmPrepare(")
+    assert "r.mw" in mw
+    assert "gmSeasonWeight(r, cfg)" in mw
+    assert "goalLookupSeasonWeight(" in _slice(src, "function gmSeasonWeight(", "function goalSeasonWKey(")
