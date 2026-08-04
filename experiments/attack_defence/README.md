@@ -20,9 +20,19 @@ Optional: `--league "Serie A"` (repeatable), `--regularization 0.5`, `--min-team
 - Matches without FT in `note` are excluded with a logged reason.
 - Premier League rows in DB currently lack FT notes → skipped until notes exist.
 
+## Compare vs production (EXP-038/039/040)
+
+```bash
+mkdir -p /opt/cursor/artifacts/ad_compare
+PYTHONPATH=app:. python3 -m experiments.attack_defence.compare_prod
+```
+
+Writes `COMPARE_REPORT.md` here and artifacts under `/opt/cursor/artifacts/ad_compare/`.
+
 ## Safety
 
 - Fail-closed GET-only HTTP client.
 - Mutating methods and SQL keywords rejected.
 - Secrets never printed.
 - Production entrypoints / UI / API untouched.
+
