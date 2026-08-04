@@ -133,3 +133,24 @@ def test_motivation_train_filter_wired_on_line_and_report():
     assert "inactiveDynByLeague" in report
     assert "goalMatchesToRaw(inactiveDynByLeague[leagueId]||[]" in report
     assert "goalMatchesToRaw(byLeague[leagueId]" not in report.split("for(const m of byLeague[leagueId])")[0]
+
+
+def test_line_train_uses_ui_season_weights_not_defaults_only():
+    """Regression: season weights from Line UI must reach train cfg."""
+    src = _src()
+    train = _slice(src, "async function goalRunTrain(", "function goalDefaultSeasonWeight(")
+    assert "goalReadSeasonWeightsFromUI()" in train
+    # Must NOT blindly replace UI weights with irBuildSeasonWeights()
+    assert "fromUi" in train or "goalSeasonWeightById[sid]" in train
+    # Guard against the old bug that always reset to 1/0.7/0.5
+    assert '? irBuildSeasonWeights(leagueId, seasonIds)\n        : (goalSeasonWeightById||{})' not in train
+    assert "irBaselineCfg(weights," in train
+
+
+def test_line_maps_db_match_weight_to_raw_mw():
+    src = _src()
+    db = _slice(src, "function goalDbMatchToRaw(", "function goalRawHasFullLine(")
+    assert "mw: gmF(m.match_weight)" in db
+    mw = _slice(src, "function gmMatchWeight(", "function gmPrepare(")
+    assert "r.mw" in mw
+    assert "gmSeasonWeight(r, cfg)" in mw

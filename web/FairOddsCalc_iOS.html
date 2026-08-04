@@ -8041,6 +8041,10 @@ bash scripts/update_and_serve.sh --start</div>
       const derbyN = goalLoadedRaw.filter(r => r.der).length;
       const neuN = goalLoadedRaw.filter(r => r.neu).length;
       const rotSum = gmSummarizeRotationTraining(goalLoadedRaw, cfg);
+      const mwVals = goalLoadedRaw.map(r => Number(r.mw)).filter(n => isFinite(n));
+      const mwAvg = mwVals.length ? mwVals.reduce((a,b)=>a+b,0)/mwVals.length : null;
+      const mwNonOne = mwVals.filter(n => Math.abs(n - 1) > 1e-9).length;
+      const effWBase = goalLoadedRaw.reduce((s,r)=>s+gmMatchWeight(r,cfg),0);
       const rows = [
         ['Лига', escapeHtml(meta.leagueName || ''), ''],
         ['Сезоны', escapeHtml((meta.seasonLabels || []).join(', ')), ''],
@@ -8049,10 +8053,12 @@ bash scripts/update_and_serve.sh --start</div>
         ['Загружено из БД', escapeHtml(goalFmtTrainDt(goalTrainState.loadedAt)), ''],
         ['Дерби в выборке', String(derbyN), 'num'],
         ['Нейтральных матчей', String(neuN), 'num'],
+        ['match_weight (средн.)', `${goalFmtTrainNum(mwAvg, 3)}${mwNonOne ? ` <span class="small">(${mwNonOne} ≠ 1)</span>` : ''}`, 'num'],
         ['Ротация: полный вес', String(rotSum.full), 'num'],
         ['Ротация: пониженный вес', String(rotSum.reduced), 'num'],
         ['Ротация: исключено (вес 0)', String(rotSum.excluded), 'num'],
-        ['Эффективный размер выборки', `<b>${goalFmtTrainNum(rotSum.effective, 1)}</b> <span class="small">(Σ training_weight)</span>`, 'num'],
+        ['Σ training_weight (ротация)', `<b>${goalFmtTrainNum(rotSum.effective, 1)}</b>`, 'num'],
+        ['Σ w_base (сезон×mw×нейтр×рот.)', `<b>${goalFmtTrainNum(effWBase, 1)}</b>`, 'num'],
         ['Inactive для контроля', `${meta.inactiveValid || 0}${meta.inactiveTotal ? ` из ${meta.inactiveTotal}` : ''}`, 'num'],
         ['Подпись данных', `<code>${escapeHtml(goalComputeDataSignature(goalLoadedRaw))}</code>`, ''],
       ];
@@ -8338,9 +8344,23 @@ bash scripts/update_and_serve.sh --start</div>
       goalReadSeasonWeightsFromUI();
       const seasonIds=[...new Set(goalLoadedRaw.map(r=>r.seasonId).filter(s=>s!=null))];
       const leagueId = goalLoadedMeta && goalLoadedMeta.leagueId;
-      const weights = (typeof irBuildSeasonWeights==='function' && leagueId)
+      // Use weights from the Line UI (goalSeasonWeightById). Fall back to defaults only for missing ids.
+      // Do NOT replace UI values with irBuildSeasonWeights() — that always resets to 1/0.7/0.5.
+      const defaults = (typeof irBuildSeasonWeights==='function' && leagueId)
         ? irBuildSeasonWeights(leagueId, seasonIds)
-        : (goalSeasonWeightById||{});
+        : {};
+      const weights = {};
+      seasonIds.forEach(sid => {
+        const fromUi = goalSeasonWeightById[sid] != null ? goalSeasonWeightById[sid]
+          : (goalSeasonWeightById[Number(sid)] != null ? goalSeasonWeightById[Number(sid)]
+          : (goalSeasonWeightById[String(sid)] != null ? goalSeasonWeightById[String(sid)] : null));
+        weights[sid] = fromUi != null ? Number(fromUi)
+          : (defaults[sid] != null ? defaults[sid]
+          : (defaults[Number(sid)] != null ? defaults[Number(sid)]
+          : (defaults[String(sid)] != null ? defaults[String(sid)] : 1)));
+        // keep UI map in sync for diagnostics
+        goalSeasonWeightById[sid] = weights[sid];
+      });
       const inactiveRaw = goalLoadedInactiveRaw || [];
       // Independent pipelines on the same active sample + training_weight (same core as Reports)
       let errL=null, errA=null;
@@ -8357,6 +8377,18 @@ bash scripts/update_and_serve.sh --start</div>
       if(!gmModelLegacy && !gmModelAuto){
         throw new Error('Не удалось обучить ни Legacy, ни Auto'+(errL?': '+(errL.message||errL):''));
       }
+      try{
+        console.info('[line train] seasonWeights', weights, {
+          matchWeightAvg: (()=>{
+            const xs=(goalLoadedRaw||[]).map(r=>Number(r.mw)).filter(n=>isFinite(n));
+            return xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : null;
+          })(),
+          effectiveWBase: (()=>{
+            const cfg = irBaselineCfg(weights, 'auto');
+            return (goalLoadedRaw||[]).reduce((s,r)=>s+gmMatchWeight(r,cfg),0);
+          })(),
+        });
+      }catch(_e){}
       goalTrainState.trainedAt = new Date().toISOString();
       goalTrainState.priorUsed = false;
       const marginSrc = gmModelAuto || gmModelLegacy;
