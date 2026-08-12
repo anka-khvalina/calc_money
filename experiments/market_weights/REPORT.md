@@ -59,7 +59,15 @@ within eps; dAH=0.0013 dTot=-0.0030
 within eps; dAH=0.0009 dTot=0.0009
 
 ### EXP-044_OVERALL: **FAIL**
-no |D|-bucket scheme beats baseline on incremental closing MAE
+no |D|-bucket scheme clears eps=0.005 vs baseline; directional tip only: SMALL_D (dAH=-0.0026, dTot=-0.0017)
+
+## Conclusions
+
+1. **Baseline already strong.** Dynamic D + S-EMA + SFA + expanding leave little room for crude train-weight buckets on this window (n=585, Big-5, Dec 2025–Feb 2026).
+2. **Multipliers did fire** (not a no-op): e.g. EXP-042 downweighted ~half of train rows; EXP-044/041 used 0.7–1.3 buckets. Effect on closing MAE stayed **< 0.003**.
+3. **EXP-041:** causal features vs future market revaluation are weak (|r|≲0.07). Tercile weights on `abs_delta1_max` do not beat baseline. Need a real `f(features)→info` model or better label — not hand buckets.
+4. **Best directional hint:** `EXP044_SMALL_D` (closer matches ↑ weight) slightly better on both AH and Tot, but inside noise band → do **not** promote.
+5. **Next research (still offline):** (a) learn info-weight with holdout-separated calibration of `f`, not terciles; (b) change-point per-team with reset, not sticky-forever; (c) longer expanding window once PL/BL odds history is filled; (d) do **not** stack 041×042×043 yet.
 
 ## Method notes
 
@@ -67,3 +75,4 @@ no |D|-bucket scheme beats baseline on incremental closing MAE
 2. Metrics = closing AH/Total only (FT not used for verdicts).
 3. Change-point & volatility use only history before each monthly cut.
 4. EXP-041 future revaluation is train label / correlation only; runtime weight uses causal feature buckets.
+5. `season_stage` excluded from EXP-041 weight feature (confounds `w_time`).
