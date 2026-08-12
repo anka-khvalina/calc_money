@@ -235,6 +235,18 @@
     "reset_on_new_season": true,
     "byLeague": {}
   },
+  "dynamic_d": {
+    "state_aging": {
+      "enabled": false,
+      "half_life_days": 60
+    }
+  },
+  "dynamic_s": {
+    "state_aging": {
+      "enabled": false,
+      "half_life_days": 60
+    }
+  },
   "dynamic_dc_gamma": {
     "enabled": true,
     "source": "D_model_final",

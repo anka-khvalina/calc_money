@@ -267,3 +267,139 @@ def test_predict_legacy_mode_unchanged_path():
     assert pred.d_correction_mode == dcorr.MODE_LEGACY_EMA
     # without momentum book → D stays base
     assert pred.d_model_dynamic == pytest.approx(pred.d_model_base)
+
+
+def test_state_aging_factor_half_life():
+    cfg = dcorr.StateAgingConfig(enabled=True, half_life_days=60).validated()
+    assert dcorr.state_aging_factor(0, cfg) == pytest.approx(1.0)
+    assert dcorr.state_aging_factor(60, cfg) == pytest.approx(0.5)
+    assert dcorr.state_aging_factor(120, cfg) == pytest.approx(0.25)
+    assert dcorr.state_aging_factor(None, cfg) == pytest.approx(1.0)
+    off = dcorr.StateAgingConfig(enabled=False, half_life_days=60).validated()
+    assert dcorr.state_aging_factor(90, off) == pytest.approx(1.0)
+
+
+def test_ac1_short_gap_aging_near_one():
+    """AC-1: short gap → agingFactor close to 1."""
+    cfg = _cfg(state_aging=dcorr.StateAgingConfig(enabled=True, half_life_days=60))
+    hist = [
+        dcorr.DCorrectionWalkMatch(date(2026, 1, i), "H", "A", 0.0, 0.8)
+        for i in range(1, 8)
+    ]
+    book = dcorr.build_d_correction_walk(hist, cfg)
+    snap7 = book.peek(home_id="H", away_id="A", d_model_base=0.0, match_date=date(2026, 1, 14))
+    assert snap7.home_days_since_previous_match == 7
+    assert snap7.home_dynamic_aging_factor == pytest.approx(2 ** (-7 / 60), rel=1e-9)
+    assert snap7.home_dynamic_aging_factor > 0.9
+
+
+def test_ac2_long_gap_attenuates():
+    """AC-2: ≥60 days → not full trust (factor < 1)."""
+    cfg = _cfg(state_aging=dcorr.StateAgingConfig(enabled=True, half_life_days=60))
+    hist = [
+        dcorr.DCorrectionWalkMatch(date(2026, 1, i), "H", "A", 0.0, 0.8)
+        for i in range(1, 8)
+    ]
+    book = dcorr.build_d_correction_walk(hist, cfg)
+    snap0 = book.peek(home_id="H", away_id="A", d_model_base=0.0, match_date=date(2026, 1, 7))
+    # last update was Jan 7; peek same day → 0 days if last_match set on update
+    # after walk last match is Jan 7
+    snap60 = book.peek(home_id="H", away_id="A", d_model_base=0.0, match_date=date(2026, 3, 8))
+    assert snap60.home_days_since_previous_match is not None
+    assert snap60.home_days_since_previous_match >= 60
+    assert snap60.home_dynamic_aging_factor < 1.0
+    assert abs(snap60.total_correction) < abs(snap0.d_correction_before_aging) + 1e-9 or (
+        abs(snap60.total_correction) <= abs(snap60.d_correction_before_aging) + 1e-12
+    )
+    assert snap60.d_correction_after_aging == pytest.approx(snap60.total_correction)
+    assert abs(snap60.d_correction_after_aging) < abs(snap60.d_correction_before_aging) - 1e-9
+
+
+def test_ac3_per_team_aging():
+    """AC-3: home/away independent days and factors."""
+    cfg = _cfg(state_aging=dcorr.StateAgingConfig(enabled=True, half_life_days=60))
+    matches = [
+        dcorr.DCorrectionWalkMatch(date(2026, 1, 1), "H", "X", 0.0, 0.5),
+        dcorr.DCorrectionWalkMatch(date(2026, 1, 1), "Y", "A", 0.0, -0.5),
+        dcorr.DCorrectionWalkMatch(date(2026, 1, 10), "H", "Z", 0.0, 0.4),
+        dcorr.DCorrectionWalkMatch(date(2026, 2, 20), "W", "A", 0.0, -0.4),
+    ]
+    book = dcorr.build_d_correction_walk(matches, cfg)
+    # H last: Jan 10; A last: Feb 20; predict Mar 1
+    snap = book.peek(home_id="H", away_id="A", d_model_base=0.0, match_date=date(2026, 3, 1))
+    assert snap.home_days_since_previous_match == (date(2026, 3, 1) - date(2026, 1, 10)).days
+    assert snap.away_days_since_previous_match == (date(2026, 3, 1) - date(2026, 2, 20)).days
+    assert snap.home_days_since_previous_match != snap.away_days_since_previous_match
+    assert snap.home_dynamic_aging_factor != snap.away_dynamic_aging_factor
+
+
+def test_ac5_new_match_updates_without_gw_multiplier():
+    """AC-5: after long pause, new match updates via existing EMA (no GW multiplier)."""
+    cfg = _cfg(state_aging=dcorr.StateAgingConfig(enabled=True, half_life_days=60))
+    hist = [
+        dcorr.DCorrectionWalkMatch(date(2025, 5, i), "H", "A", 0.0, 0.8)
+        for i in range(1, 8)
+    ]
+    book = dcorr.build_d_correction_walk(hist, cfg)
+    before = book.team_view("H").slow_bias
+    # season restart after long gap
+    more = hist + [
+        dcorr.DCorrectionWalkMatch(date(2025, 8, 15), "H", "A", 0.0, 0.5),
+        dcorr.DCorrectionWalkMatch(date(2025, 8, 22), "H", "A", 0.0, 0.5),
+    ]
+    book2 = dcorr.build_d_correction_walk(more, cfg)
+    # second post-gap match should use state updated from Aug 15 (days≈7), not GW table
+    k = dcorr.match_key(date(2025, 8, 22), "H", "A")
+    rec = book2.records[k]
+    assert rec.home_days_since_previous_match == 7
+    assert rec.home_dynamic_aging_factor == pytest.approx(2 ** (-7 / 60))
+    assert book2.teams["H"].slow_n == book.teams["H"].slow_n + 2
+    assert before != 0 or book2.team_view("H").slow_n >= 1
+
+
+def test_config_parses_state_aging():
+    cfg = dcorr.d_correction_config_from_mapping({
+        "dynamic_d": {
+            "state_aging": {"enabled": True, "half_life_days": 45},
+        },
+        "d_correction": {"mode": "slow_fast"},
+    })
+    assert cfg.state_aging.enabled is True
+    assert cfg.state_aging.half_life_days == pytest.approx(45.0)
+
+
+def test_config_dynamic_d_preferred_over_nested():
+    cfg = dcorr.d_correction_config_from_mapping({
+        "dynamic_d": {"stateAging": {"enabled": False, "halfLifeDays": 90}},
+        "d_correction": {
+            "mode": "slow_fast",
+            "state_aging": {"enabled": True, "half_life_days": 45},
+        },
+    })
+    assert cfg.state_aging.enabled is False
+    assert cfg.state_aging.half_life_days == pytest.approx(90.0)
+
+
+def test_config_default_aging_off_is_current():
+    cfg = dcorr.d_correction_config_from_mapping({"d_correction": {"mode": "slow_fast"}})
+    assert cfg.state_aging.enabled is False
+
+
+def test_ac4_feature_off_matches_legacy():
+    """AC-4: state_aging.enabled=false → identical to no aging (CURRENT rollback)."""
+    base_cfg = _cfg()
+    aged_off = _cfg(state_aging=dcorr.StateAgingConfig(enabled=False, half_life_days=60))
+    hist = [
+        dcorr.DCorrectionWalkMatch(date(2026, 1, i), "H", "A", 0.0, 0.7)
+        for i in range(1, 8)
+    ]
+    b0 = dcorr.build_d_correction_walk(hist, base_cfg)
+    b1 = dcorr.build_d_correction_walk(hist, aged_off)
+    s0 = b0.peek(home_id="H", away_id="A", d_model_base=0.2, match_date=date(2026, 5, 1))
+    s1 = b1.peek(home_id="H", away_id="A", d_model_base=0.2, match_date=date(2026, 5, 1))
+    assert s0.total_correction == pytest.approx(s1.total_correction)
+    assert s0.d_model_dynamic == pytest.approx(s1.d_model_dynamic)
+    assert s0.slow_bias_home == pytest.approx(s1.slow_bias_home)
+    assert s0.fast_bias_home == pytest.approx(s1.fast_bias_home)
+    assert s1.home_dynamic_aging_factor == pytest.approx(1.0)
+    assert s1.d_correction_after_aging == pytest.approx(s1.d_correction_before_aging)

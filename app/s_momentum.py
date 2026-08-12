@@ -7,13 +7,45 @@ EMA обновляется только по матчам с валидным S_
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import math
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 
 def clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
+
+
+@dataclass(frozen=True)
+class StateAgingConfig:
+    """Time-based decay of carried S-EMA state (per team). Independent of Dynamic D."""
+
+    enabled: bool = False
+    half_life_days: float = 60.0
+
+    def validated(self) -> "StateAgingConfig":
+        h = float(self.half_life_days)
+        if h <= 0:
+            raise ValueError(
+                f"dynamic_s.state_aging.half_life_days must be > 0, got {h}"
+            )
+        return StateAgingConfig(enabled=bool(self.enabled), half_life_days=h)
+
+
+def days_since_previous_match(
+    previous: Optional[date], as_of: Optional[date]
+) -> Optional[int]:
+    if previous is None or as_of is None:
+        return None
+    return max(0, (as_of - previous).days)
+
+
+def state_aging_factor(days: Optional[int], cfg: StateAgingConfig) -> float:
+    cfg = cfg.validated()
+    if not cfg.enabled or days is None:
+        return 1.0
+    return float(math.pow(2.0, -float(days) / float(cfg.half_life_days)))
 
 
 @dataclass(frozen=True)
@@ -26,6 +58,7 @@ class SMomentumConfig:
     max_abs_correction: Optional[float] = None
     lambda_min: float = 0.05
     reset_on_new_season: bool = True
+    state_aging: StateAgingConfig = field(default_factory=StateAgingConfig)
 
     def validated(self) -> "SMomentumConfig":
         a = float(self.alpha)
@@ -59,6 +92,7 @@ class SMomentumConfig:
             max_abs_correction=max_corr,
             lambda_min=lam,
             reset_on_new_season=bool(self.reset_on_new_season),
+            state_aging=self.state_aging.validated(),
         )
 
 
@@ -74,7 +108,9 @@ def s_momentum_config_from_mapping(
     league_id: Optional[str] = None,
     league_name: Optional[str] = None,
 ) -> SMomentumConfig:
-    """Читает dynamic_s_ema / sMomentum / s_momentum из model_config."""
+    """Читает dynamic_s_ema / sMomentum / s_momentum из model_config.
+    Aging — отдельно: dynamic_s.state_aging / dynamicS.stateAging (fallback: nested in dynamic_s_ema).
+    """
     base: Dict[str, Any] = {}
     if raw:
         for block in (
@@ -115,13 +151,57 @@ def s_momentum_config_from_mapping(
             if "reset_on_new_season" in base
             else base.get("resetOnNewSeason", True)
         ),
+        state_aging=state_aging_from_root_mapping(raw if isinstance(raw, Mapping) else None, ema_base=base),
     ).validated()
+
+
+def state_aging_from_root_mapping(
+    raw: Optional[Mapping[str, Any]],
+    *,
+    ema_base: Optional[Mapping[str, Any]] = None,
+) -> StateAgingConfig:
+    """Primary: dynamic_s.state_aging / dynamicS.stateAging.
+    Fallback: nested state_aging under dynamic_s_ema block.
+    Default: enabled=false (CURRENT / rollback).
+    """
+    aging_raw: Mapping[str, Any] = {}
+    if isinstance(raw, Mapping):
+        for key in ("dynamic_s", "dynamicS"):
+            top = raw.get(key)
+            if isinstance(top, Mapping):
+                if isinstance(top.get("state_aging"), Mapping):
+                    aging_raw = top["state_aging"]  # type: ignore[assignment]
+                    break
+                if isinstance(top.get("stateAging"), Mapping):
+                    aging_raw = top["stateAging"]  # type: ignore[assignment]
+                    break
+    if not aging_raw and isinstance(ema_base, Mapping):
+        if isinstance(ema_base.get("state_aging"), Mapping):
+            aging_raw = ema_base["state_aging"]  # type: ignore[assignment]
+        elif isinstance(ema_base.get("stateAging"), Mapping):
+            aging_raw = ema_base["stateAging"]  # type: ignore[assignment]
+    if not isinstance(aging_raw, Mapping) or not aging_raw:
+        return StateAgingConfig()
+    return StateAgingConfig(
+        enabled=bool(aging_raw["enabled"]) if "enabled" in aging_raw else False,
+        half_life_days=float(
+            aging_raw["half_life_days"]
+            if "half_life_days" in aging_raw
+            else aging_raw.get("halfLifeDays", 60.0)
+        ),
+    ).validated()
+
+
+def _state_aging_from_mapping(base: Mapping[str, Any]) -> StateAgingConfig:
+    """Legacy helper: nested state_aging inside an S-EMA block."""
+    return state_aging_from_root_mapping(None, ema_base=base)
 
 
 @dataclass
 class TeamSMomentumState:
     ema: float = 0.0
     matches_count: int = 0
+    last_match_date: Optional[date] = None
 
 
 @dataclass
@@ -146,14 +226,25 @@ class SMomentumSnapshot:
     max_abs_team_ema: Optional[float]
     max_abs_correction: Optional[float]
     lambda_min: float
+    home_days_since_previous_match: Optional[int] = None
+    away_days_since_previous_match: Optional[int] = None
+    home_dynamic_aging_factor: float = 1.0
+    away_dynamic_aging_factor: float = 1.0
+    home_dynamic_before_aging: float = 0.0
+    away_dynamic_before_aging: float = 0.0
+    home_dynamic_after_aging: float = 0.0
+    away_dynamic_after_aging: float = 0.0
+    s_correction_before_aging: float = 0.0
+    s_correction_after_aging: float = 0.0
+    state_aging_enabled: bool = False
 
 
 @dataclass
 class MatchSMomentumRecord(SMomentumSnapshot):
-    match_key: str
-    match_date: Optional[date]
-    home_id: str
-    away_id: str
+    match_key: str = ""
+    match_date: Optional[date] = None
+    home_id: str = ""
+    away_id: str = ""
     s_market: Optional[float] = None
     residual_s_base: Optional[float] = None
     team_residual_s: Optional[float] = None
@@ -197,14 +288,36 @@ def apply_s_momentum(
     *,
     home_matches: int,
     away_matches: int,
+    match_date: Optional[date] = None,
+    home_last_match_date: Optional[date] = None,
+    away_last_match_date: Optional[date] = None,
 ) -> SMomentumSnapshot:
-    """AC-2, AC-3, AC-7, AC-8."""
+    """AC-2, AC-3, AC-7, AC-8 + Dynamic State Aging for S-EMA."""
     cfg = cfg.validated()
-    eh_lim, eh_cl = limit_team_ema(ema_home, cfg.max_abs_team_ema)
-    ea_lim, ea_cl = limit_team_ema(ema_away, cfg.max_abs_team_ema)
+    days_h = days_since_previous_match(home_last_match_date, match_date)
+    days_a = days_since_previous_match(away_last_match_date, match_date)
+    af_h = state_aging_factor(days_h, cfg.state_aging)
+    af_a = state_aging_factor(days_a, cfg.state_aging)
+
+    # Unaged path (diagnostics + identity when aging off)
+    eh_lim0, eh_cl = limit_team_ema(ema_home, cfg.max_abs_team_ema)
+    ea_lim0, ea_cl = limit_team_ema(ema_away, cfg.max_abs_team_ema)
+    eh_eff0 = eh_lim0 if home_matches >= cfg.min_team_matches else 0.0
+    ea_eff0 = ea_lim0 if away_matches >= cfg.min_team_matches else 0.0
+    mom0 = eh_eff0 + ea_eff0
+    corr0_raw = cfg.k * mom0 if cfg.enabled else 0.0
+    corr0 = corr0_raw
+    if cfg.enabled and cfg.max_abs_correction is not None:
+        corr0 = clamp(corr0_raw, -cfg.max_abs_correction, cfg.max_abs_correction)
+    if not cfg.enabled:
+        corr0 = 0.0
+
+    ema_h_aged = ema_home * af_h
+    ema_a_aged = ema_away * af_a
+    eh_lim, _ = limit_team_ema(ema_h_aged, cfg.max_abs_team_ema)
+    ea_lim, _ = limit_team_ema(ema_a_aged, cfg.max_abs_team_ema)
     eh_eff = eh_lim if home_matches >= cfg.min_team_matches else 0.0
     ea_eff = ea_lim if away_matches >= cfg.min_team_matches else 0.0
-    # если порог не достигнут — effective=0, но для диагностики оставляем limited
     if home_matches < cfg.min_team_matches:
         eh_eff = 0.0
     if away_matches < cfg.min_team_matches:
@@ -243,6 +356,17 @@ def apply_s_momentum(
         max_abs_team_ema=cfg.max_abs_team_ema,
         max_abs_correction=cfg.max_abs_correction,
         lambda_min=cfg.lambda_min,
+        home_days_since_previous_match=days_h,
+        away_days_since_previous_match=days_a,
+        home_dynamic_aging_factor=af_h,
+        away_dynamic_aging_factor=af_a,
+        home_dynamic_before_aging=eh_eff0,
+        away_dynamic_before_aging=ea_eff0,
+        home_dynamic_after_aging=eh_eff,
+        away_dynamic_after_aging=ea_eff,
+        s_correction_before_aging=corr0,
+        s_correction_after_aging=corr,
+        state_aging_enabled=cfg.state_aging.enabled,
     )
 
 
@@ -290,6 +414,7 @@ class SMomentumBook:
         home_id: str,
         away_id: str,
         s_model_base: float,
+        match_date: Optional[date] = None,
     ) -> SMomentumSnapshot:
         ht = self._team(home_id)
         at = self._team(away_id)
@@ -300,6 +425,9 @@ class SMomentumBook:
             self.cfg,
             home_matches=ht.matches_count,
             away_matches=at.matches_count,
+            match_date=match_date,
+            home_last_match_date=ht.last_match_date,
+            away_last_match_date=at.last_match_date,
         )
 
     def update_pair(
@@ -309,6 +437,7 @@ class SMomentumBook:
         team_residual: float,
         *,
         match_weight: float = 1.0,
+        match_date: Optional[date] = None,
     ) -> Tuple[float, float, bool]:
         """Update both teams with the same TeamResidual_S. Returns (eh, ea, updated)."""
         a_eff = effective_alpha(self.cfg.alpha, match_weight)
@@ -320,6 +449,9 @@ class SMomentumBook:
         at.ema = update_ema(at.ema, team_residual, a_eff)
         ht.matches_count += 1
         at.matches_count += 1
+        if match_date is not None:
+            ht.last_match_date = match_date
+            at.last_match_date = match_date
         return ht.ema, at.ema, True
 
 
@@ -331,6 +463,69 @@ class SMomentumWalkMatch:
     s_model_base: float
     s_market: Optional[float]
     match_weight: float = 1.0
+
+
+def _record_from_snap(
+    snap: SMomentumSnapshot,
+    *,
+    match_key: str,
+    match_date: Optional[date],
+    home_id: str,
+    away_id: str,
+    s_market: Optional[float] = None,
+    residual_s_base: Optional[float] = None,
+    team_residual_s: Optional[float] = None,
+    ema_home_after: Optional[float] = None,
+    ema_away_after: Optional[float] = None,
+    updated_ema: bool = False,
+    update_skip_reason: Optional[str] = None,
+    match_weight: float = 1.0,
+) -> MatchSMomentumRecord:
+    return MatchSMomentumRecord(
+        match_key=match_key,
+        match_date=match_date,
+        home_id=home_id,
+        away_id=away_id,
+        ema_home_before=snap.ema_home_before,
+        ema_away_before=snap.ema_away_before,
+        ema_home_effective=snap.ema_home_effective,
+        ema_away_effective=snap.ema_away_effective,
+        home_matches_count=snap.home_matches_count,
+        away_matches_count=snap.away_matches_count,
+        s_momentum=snap.s_momentum,
+        dynamic_correction_raw=snap.dynamic_correction_raw,
+        dynamic_correction=snap.dynamic_correction,
+        s_model_base=snap.s_model_base,
+        s_model_dynamic=snap.s_model_dynamic,
+        correction_clamped=snap.correction_clamped,
+        ema_home_clamped=snap.ema_home_clamped,
+        ema_away_clamped=snap.ema_away_clamped,
+        enabled=snap.enabled,
+        alpha=snap.alpha,
+        k=snap.k,
+        max_abs_team_ema=snap.max_abs_team_ema,
+        max_abs_correction=snap.max_abs_correction,
+        lambda_min=snap.lambda_min,
+        home_days_since_previous_match=snap.home_days_since_previous_match,
+        away_days_since_previous_match=snap.away_days_since_previous_match,
+        home_dynamic_aging_factor=snap.home_dynamic_aging_factor,
+        away_dynamic_aging_factor=snap.away_dynamic_aging_factor,
+        home_dynamic_before_aging=snap.home_dynamic_before_aging,
+        away_dynamic_before_aging=snap.away_dynamic_before_aging,
+        home_dynamic_after_aging=snap.home_dynamic_after_aging,
+        away_dynamic_after_aging=snap.away_dynamic_after_aging,
+        s_correction_before_aging=snap.s_correction_before_aging,
+        s_correction_after_aging=snap.s_correction_after_aging,
+        state_aging_enabled=snap.state_aging_enabled,
+        s_market=s_market,
+        residual_s_base=residual_s_base,
+        team_residual_s=team_residual_s,
+        ema_home_after=ema_home_after,
+        ema_away_after=ema_away_after,
+        updated_ema=updated_ema,
+        update_skip_reason=update_skip_reason,
+        match_weight=match_weight,
+    )
 
 
 def build_s_momentum_walk(
@@ -353,7 +548,10 @@ def build_s_momentum_walk(
         pending: List[Tuple[SMomentumWalkMatch, float, float, SMomentumSnapshot]] = []
         for m in group:
             snap = book.peek(
-                home_id=m.home_id, away_id=m.away_id, s_model_base=m.s_model_base,
+                home_id=m.home_id,
+                away_id=m.away_id,
+                s_model_base=m.s_model_base,
+                match_date=m.match_date,
             )
             key = match_key(m.match_date, m.home_id, m.away_id)
             skip = None
@@ -369,31 +567,12 @@ def build_s_momentum_walk(
             else:
                 resid, half = residual_s(float(m.s_market), m.s_model_base)
                 can_update = True
-            book.records[key] = MatchSMomentumRecord(
+            book.records[key] = _record_from_snap(
+                snap,
                 match_key=key,
                 match_date=m.match_date,
                 home_id=m.home_id,
                 away_id=m.away_id,
-                ema_home_before=snap.ema_home_before,
-                ema_away_before=snap.ema_away_before,
-                ema_home_effective=snap.ema_home_effective,
-                ema_away_effective=snap.ema_away_effective,
-                home_matches_count=snap.home_matches_count,
-                away_matches_count=snap.away_matches_count,
-                s_momentum=snap.s_momentum,
-                dynamic_correction_raw=snap.dynamic_correction_raw,
-                dynamic_correction=snap.dynamic_correction,
-                s_model_base=snap.s_model_base,
-                s_model_dynamic=snap.s_model_dynamic,
-                correction_clamped=snap.correction_clamped,
-                ema_home_clamped=snap.ema_home_clamped,
-                ema_away_clamped=snap.ema_away_clamped,
-                enabled=snap.enabled,
-                alpha=snap.alpha,
-                k=snap.k,
-                max_abs_team_ema=snap.max_abs_team_ema,
-                max_abs_correction=snap.max_abs_correction,
-                lambda_min=snap.lambda_min,
                 s_market=m.s_market,
                 residual_s_base=resid,
                 team_residual_s=half,
@@ -405,42 +584,21 @@ def build_s_momentum_walk(
                 pending.append((m, resid, half, snap))
         for m, resid, half, snap in pending:
             eh_a, ea_a, ok = book.update_pair(
-                m.home_id, m.away_id, half, match_weight=m.match_weight,
+                m.home_id,
+                m.away_id,
+                half,
+                match_weight=m.match_weight,
+                match_date=m.match_date,
             )
             key = match_key(m.match_date, m.home_id, m.away_id)
             old = book.records[key]
-            book.records[key] = MatchSMomentumRecord(
-                match_key=old.match_key,
-                match_date=old.match_date,
-                home_id=old.home_id,
-                away_id=old.away_id,
-                ema_home_before=old.ema_home_before,
-                ema_away_before=old.ema_away_before,
-                ema_home_effective=old.ema_home_effective,
-                ema_away_effective=old.ema_away_effective,
-                home_matches_count=old.home_matches_count,
-                away_matches_count=old.away_matches_count,
-                s_momentum=old.s_momentum,
-                dynamic_correction_raw=old.dynamic_correction_raw,
-                dynamic_correction=old.dynamic_correction,
-                s_model_base=old.s_model_base,
-                s_model_dynamic=old.s_model_dynamic,
-                correction_clamped=old.correction_clamped,
-                ema_home_clamped=old.ema_home_clamped,
-                ema_away_clamped=old.ema_away_clamped,
-                enabled=old.enabled,
-                alpha=old.alpha,
-                k=old.k,
-                max_abs_team_ema=old.max_abs_team_ema,
-                max_abs_correction=old.max_abs_correction,
-                lambda_min=old.lambda_min,
-                s_market=m.s_market,
+            book.records[key] = replace(
+                old,
                 residual_s_base=resid,
                 team_residual_s=half,
                 ema_home_after=eh_a,
                 ema_away_after=ea_a,
                 updated_ema=ok,
                 update_skip_reason=None if ok else "alpha_effective_zero",
-                match_weight=old.match_weight,
             )
     return book

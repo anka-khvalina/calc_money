@@ -14,10 +14,14 @@ import csv
 import json
 import sys
 from collections import defaultdict
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 import goal_model_train as gmt
+
+# Opening cards date for Dynamic State Aging (days since previous match).
+MATCH_DATE = date(2026, 8, 12)
 
 from experiments.market_weights.data import fetch_all_view_rows, parse_rows, to_raw_match
 from experiments.market_weights.eval import load_baseline_config, season_weights_for
@@ -59,8 +63,11 @@ def _pack(fx: Dict[str, Any], pred: gmt.Prediction, *, mode: str) -> Dict[str, A
     mk = pred.markets
     ah_pred = float(mk.main_ah.line) if mk.main_ah else float("nan")
     tot_pred = float(mk.main_total.line) if mk.main_total else float("nan")
+    # 1X2: fair model probs × same-match book overround (never raw fair odds).
     b1, bx, b2, over = model_odds_with_market_margin(p1, px, p2, fx["o1"], fx["ox"], fx["o2"])
     shin = market_1x2_probs(fx["o1"], fx["ox"], fx["o2"])
+    dc = pred.d_correction
+    sm = pred.s_momentum
     out: Dict[str, Any] = {
         "mode": mode,
         "league": fx["league"],
@@ -87,6 +94,14 @@ def _pack(fx: Dict[str, Any], pred: gmt.Prediction, *, mode: str) -> Dict[str, A
         "overround_pct": (over - 1.0) * 100.0,
         "lh": float(mk.lambda_home),
         "la": float(mk.lambda_away),
+        "home_days_since_prev": getattr(dc, "home_days_since_previous_match", None) if dc else None,
+        "away_days_since_prev": getattr(dc, "away_days_since_previous_match", None) if dc else None,
+        "home_d_aging": getattr(dc, "home_dynamic_aging_factor", None) if dc else None,
+        "away_d_aging": getattr(dc, "away_dynamic_aging_factor", None) if dc else None,
+        "d_corr_before_aging": getattr(dc, "d_correction_before_aging", None) if dc else None,
+        "d_corr_after_aging": getattr(dc, "d_correction_after_aging", None) if dc else None,
+        "home_s_aging": getattr(sm, "home_dynamic_aging_factor", None) if sm else None,
+        "away_s_aging": getattr(sm, "away_dynamic_aging_factor", None) if sm else None,
     }
     if shin is not None:
         out["m1"], out["mx"], out["m2"] = shin
@@ -154,8 +169,13 @@ def _report(
     lines.append("## Method")
     lines.append("")
     lines.append("- **Model:** production FULL (`train_full_model` + `predict_match`), Dynamic D + S-EMA on.")
+    lines.append(
+        "- **Dynamic State Aging:** separate `dynamic_d` / `dynamic_s` configs "
+        "(default **OFF** = CURRENT; research candidate half-life e.g. 60). "
+        f"`match_date={MATCH_DATE.isoformat()}` when enabled."
+    )
     lines.append(f"- **Train:** {train_desc}.")
-    lines.append("- **1X2 odds:** fair model probs × **same match overround** as the book.")
+    lines.append("- **1X2 odds:** fair model probs × **same match overround** as the book (маржа рынка).")
     lines.append("- **AH / Tot:** compare **main lines**.")
     lines.append("- **BASE:** same ratings, Dynamic D / S-EMA off.")
     lines.append("- Excluded brand-new clubs (Racing Santander, Deportivo, Málaga, Troyes, Le Mans, …).")
@@ -178,11 +198,21 @@ def _report(
     lines.append("")
     lines.append("## Per match — FULL with margin")
     lines.append("")
-    lines.append("| League | Match | AH mkt→mod | Tot mkt→mod | Mkt 1X2 | Model+margin 1X2 | Δodds |")
-    lines.append("|---|---|---|---|---|---|---|")
+    lines.append("| League | Match | days H/A | af_D H/A | AH mkt→mod | Tot mkt→mod | Mkt 1X2 | Model+margin 1X2 | Δodds |")
+    lines.append("|---|---|---|---|---|---|---|---|---|")
     for r in full:
+        dh = r.get("home_days_since_prev")
+        da = r.get("away_days_since_prev")
+        ahf = r.get("home_d_aging")
+        aaf = r.get("away_d_aging")
+        days = f"{dh if dh is not None else '—'}/{da if da is not None else '—'}"
+        afs = (
+            f"{ahf:.2f}/{aaf:.2f}"
+            if ahf is not None and aaf is not None
+            else "—/—"
+        )
         lines.append(
-            f"| {r['league']} | {r['home']}–{r['away']} | "
+            f"| {r['league']} | {r['home']}–{r['away']} | {days} | {afs} | "
             f"{r['ah_mkt']:+.2f}→{r['ah_pred']:+.2f} | "
             f"{r['tot_mkt']:.2f}→{r['tot_pred']:.2f} | "
             f"{_fmt_odds(r['o1'])}/{_fmt_odds(r['ox'])}/{_fmt_odds(r['o2'])} | "
@@ -211,12 +241,12 @@ def run_once(rows: Sequence, *, season: Optional[str]) -> Dict[str, Any]:
         model = models[fx["league"]]
         pred_f = gmt.predict_match(
             model, fx["home_id"], fx["away_id"],
-            neutral=False, derby=False, match_date=None, league=fx["league"],
+            neutral=False, derby=False, match_date=MATCH_DATE, league=fx["league"],
             home_odds=fx["o1"], away_odds=fx["o2"],
         )
         pred_b = gmt.predict_match(
             model, fx["home_id"], fx["away_id"],
-            neutral=False, derby=False, match_date=None, league=fx["league"],
+            neutral=False, derby=False, match_date=MATCH_DATE, league=fx["league"],
             apply_momentum=False, apply_s_momentum=False,
             home_odds=fx["o1"], away_odds=fx["o2"],
         )

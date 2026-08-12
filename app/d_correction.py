@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import tempfile
 import time
@@ -123,12 +124,48 @@ class DCorrectionCacheConfig:
 
 
 @dataclass(frozen=True)
+class StateAgingConfig:
+    """Time-based decay of carried Dynamic D state (per team). Default OFF = legacy."""
+
+    enabled: bool = False
+    half_life_days: float = 60.0
+
+    def validated(self) -> "StateAgingConfig":
+        h = float(self.half_life_days)
+        if h <= 0:
+            raise ValueError(
+                f"dynamic_d.state_aging.half_life_days must be > 0, got {h}"
+            )
+        return StateAgingConfig(enabled=bool(self.enabled), half_life_days=h)
+
+
+def days_since_previous_match(
+    previous: Optional[date], as_of: Optional[date]
+) -> Optional[int]:
+    """Calendar days between previous observation and as_of. None if either missing."""
+    if previous is None or as_of is None:
+        return None
+    return max(0, (as_of - previous).days)
+
+
+def state_aging_factor(
+    days: Optional[int], cfg: StateAgingConfig
+) -> float:
+    """agingFactor = 2^(-days/H). Missing days or disabled → 1.0 (no change)."""
+    cfg = cfg.validated()
+    if not cfg.enabled or days is None:
+        return 1.0
+    return float(math.pow(2.0, -float(days) / float(cfg.half_life_days)))
+
+
+@dataclass(frozen=True)
 class DCorrectionConfig:
     mode: str = MODE_SLOW_FAST
     slow: SlowLayerConfig = field(default_factory=SlowLayerConfig)
     fast: FastLayerConfig = field(default_factory=FastLayerConfig)
     total_max_abs_correction: float = 0.60
     cache: DCorrectionCacheConfig = field(default_factory=DCorrectionCacheConfig)
+    state_aging: StateAgingConfig = field(default_factory=StateAgingConfig)
 
     def validated(self) -> "DCorrectionConfig":
         mode = str(self.mode or MODE_SLOW_FAST).strip().lower()
@@ -145,6 +182,7 @@ class DCorrectionConfig:
             fast=self.fast.validated(),
             total_max_abs_correction=tmax,
             cache=self.cache.validated(),
+            state_aging=self.state_aging.validated(),
         )
 
     @property
@@ -164,8 +202,46 @@ def _layer_from_mapping(raw: Optional[Mapping[str, Any]], *, slow: bool) -> Mapp
     return raw if isinstance(raw, Mapping) else {}
 
 
+def state_aging_from_root_mapping(raw: Optional[Mapping[str, Any]]) -> StateAgingConfig:
+    """Primary: dynamic_d.state_aging / dynamicD.stateAging.
+    Fallback: d_correction.state_aging (legacy nesting).
+    Default: enabled=false (CURRENT / rollback).
+    half_life_days is a tunable research candidate (e.g. 60), not a locked prod constant.
+    """
+    if not isinstance(raw, Mapping):
+        return StateAgingConfig()
+    block: Dict[str, Any] = {}
+    for key in ("dynamic_d", "dynamicD"):
+        top = raw.get(key)
+        if isinstance(top, Mapping):
+            block = dict(top)
+            break
+    aging_raw: Mapping[str, Any] = {}
+    if isinstance(block.get("state_aging"), Mapping):
+        aging_raw = block["state_aging"]  # type: ignore[assignment]
+    elif isinstance(block.get("stateAging"), Mapping):
+        aging_raw = block["stateAging"]  # type: ignore[assignment]
+    if not aging_raw:
+        dc = raw.get("d_correction") if isinstance(raw.get("d_correction"), Mapping) else {}
+        if isinstance(dc, Mapping):
+            if isinstance(dc.get("state_aging"), Mapping):
+                aging_raw = dc["state_aging"]  # type: ignore[assignment]
+            elif isinstance(dc.get("stateAging"), Mapping):
+                aging_raw = dc["stateAging"]  # type: ignore[assignment]
+    if not isinstance(aging_raw, Mapping) or not aging_raw:
+        return StateAgingConfig()
+    return StateAgingConfig(
+        enabled=bool(aging_raw["enabled"]) if "enabled" in aging_raw else False,
+        half_life_days=float(
+            aging_raw["half_life_days"]
+            if "half_life_days" in aging_raw
+            else aging_raw.get("halfLifeDays", 60.0)
+        ),
+    ).validated()
+
+
 def d_correction_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> DCorrectionConfig:
-    """Читает d_correction из model_config (top-level)."""
+    """Читает d_correction из model_config (top-level); aging — из dynamic_d."""
     block: Dict[str, Any] = {}
     if isinstance(raw, Mapping):
         dc = raw.get("d_correction")
@@ -210,6 +286,7 @@ def d_correction_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> DCorre
         versions_to_keep=int(_f(cache_raw, "versions_to_keep", "versionsToKeep", default=2)),
         root_dir=_f(cache_raw, "root_dir", "rootDir", default=None),
     )
+    state_aging = state_aging_from_root_mapping(raw if isinstance(raw, Mapping) else None)
     return DCorrectionConfig(
         mode=str(block.get("mode", MODE_SLOW_FAST)),
         slow=slow,
@@ -220,6 +297,7 @@ def d_correction_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> DCorre
             else block.get("total_max_abs_correction", block.get("totalMaxAbsCorrection", 0.60))
         ),
         cache=cache,
+        state_aging=state_aging,
     ).validated()
 
 
@@ -245,6 +323,7 @@ class TeamCorrectionState:
     slow_n: int = 0
     fast_ema: float = 0.0
     fast_n: int = 0
+    last_match_date: Optional[date] = None
 
 
 @dataclass
@@ -282,6 +361,18 @@ class DCorrectionSnapshot:
     fast_shrink_factor_home: float
     fast_shrink_factor_away: float
     clamped_total: bool = False
+    # Dynamic State Aging diagnostics
+    home_days_since_previous_match: Optional[int] = None
+    away_days_since_previous_match: Optional[int] = None
+    home_dynamic_aging_factor: float = 1.0
+    away_dynamic_aging_factor: float = 1.0
+    home_dynamic_before_aging: float = 0.0
+    away_dynamic_before_aging: float = 0.0
+    home_dynamic_after_aging: float = 0.0
+    away_dynamic_after_aging: float = 0.0
+    d_correction_before_aging: float = 0.0
+    d_correction_after_aging: float = 0.0
+    state_aging_enabled: bool = False
 
 
 @dataclass
@@ -313,6 +404,17 @@ class MatchDCorrectionRecord:
     residual_base_home: Optional[float] = None
     residual_after_slow_home: Optional[float] = None
     updated: bool = False
+    home_days_since_previous_match: Optional[int] = None
+    away_days_since_previous_match: Optional[int] = None
+    home_dynamic_aging_factor: float = 1.0
+    away_dynamic_aging_factor: float = 1.0
+    home_dynamic_before_aging: float = 0.0
+    away_dynamic_before_aging: float = 0.0
+    home_dynamic_after_aging: float = 0.0
+    away_dynamic_after_aging: float = 0.0
+    d_correction_before_aging: float = 0.0
+    d_correction_after_aging: float = 0.0
+    state_aging_enabled: bool = False
 
     def as_snapshot(self) -> DCorrectionSnapshot:
         return DCorrectionSnapshot(
@@ -335,6 +437,17 @@ class MatchDCorrectionRecord:
             fast_shrink_factor_home=self.fast_shrink_factor_home,
             fast_shrink_factor_away=self.fast_shrink_factor_away,
             clamped_total=self.clamped_total,
+            home_days_since_previous_match=self.home_days_since_previous_match,
+            away_days_since_previous_match=self.away_days_since_previous_match,
+            home_dynamic_aging_factor=self.home_dynamic_aging_factor,
+            away_dynamic_aging_factor=self.away_dynamic_aging_factor,
+            home_dynamic_before_aging=self.home_dynamic_before_aging,
+            away_dynamic_before_aging=self.away_dynamic_before_aging,
+            home_dynamic_after_aging=self.home_dynamic_after_aging,
+            away_dynamic_after_aging=self.away_dynamic_after_aging,
+            d_correction_before_aging=self.d_correction_before_aging,
+            d_correction_after_aging=self.d_correction_after_aging,
+            state_aging_enabled=self.state_aging_enabled,
         )
 
 def match_key(match_date: Optional[date], home_id: str, away_id: str) -> str:
@@ -367,8 +480,15 @@ def apply_slow_fast_to_d(
     home: TeamCorrectionState,
     away: TeamCorrectionState,
     cfg: DCorrectionConfig,
+    *,
+    match_date: Optional[date] = None,
 ) -> DCorrectionSnapshot:
     cfg = cfg.validated()
+    days_h = days_since_previous_match(home.last_match_date, match_date)
+    days_a = days_since_previous_match(away.last_match_date, match_date)
+    af_h = state_aging_factor(days_h, cfg.state_aging)
+    af_a = state_aging_factor(days_a, cfg.state_aging)
+
     if cfg.mode != MODE_SLOW_FAST:
         return DCorrectionSnapshot(
             d_model_base=d_model_base,
@@ -389,14 +509,48 @@ def apply_slow_fast_to_d(
             slow_shrink_factor_away=0.0,
             fast_shrink_factor_home=0.0,
             fast_shrink_factor_away=0.0,
+            home_days_since_previous_match=days_h,
+            away_days_since_previous_match=days_a,
+            home_dynamic_aging_factor=af_h,
+            away_dynamic_aging_factor=af_a,
+            state_aging_enabled=cfg.state_aging.enabled,
         )
 
-    sh, sh_f = bias_from_state(home, cfg, layer="slow")
-    sa, sa_f = bias_from_state(away, cfg, layer="slow")
+    # Unaged biases (diagnostic + OFF path identity)
+    sh0, sh_f = bias_from_state(home, cfg, layer="slow")
+    sa0, sa_f = bias_from_state(away, cfg, layer="slow")
+    fh0, fh_f = bias_from_state(home, cfg, layer="fast")
+    fa0, fa_f = bias_from_state(away, cfg, layer="fast")
+    total0 = (sh0 - sa0) + (fh0 - fa0)
+    if abs(total0) > cfg.total_max_abs_correction:
+        scale0 = cfg.total_max_abs_correction / abs(total0)
+        total0 *= scale0
+
+    home_dyn0 = sh0 + fh0
+    away_dyn0 = sa0 + fa0
+
+    # Age carried EMAs per team, then recompute slow_fast (structure unchanged)
+    home_aged = TeamCorrectionState(
+        slow_ema=home.slow_ema * af_h,
+        slow_n=home.slow_n,
+        fast_ema=home.fast_ema * af_h,
+        fast_n=home.fast_n,
+        last_match_date=home.last_match_date,
+    )
+    away_aged = TeamCorrectionState(
+        slow_ema=away.slow_ema * af_a,
+        slow_n=away.slow_n,
+        fast_ema=away.fast_ema * af_a,
+        fast_n=away.fast_n,
+        last_match_date=away.last_match_date,
+    )
+
+    sh, _ = bias_from_state(home_aged, cfg, layer="slow")
+    sa, _ = bias_from_state(away_aged, cfg, layer="slow")
     d_slow = d_model_base + sh - sa
 
-    fh, fh_f = bias_from_state(home, cfg, layer="fast")
-    fa, fa_f = bias_from_state(away, cfg, layer="fast")
+    fh, _ = bias_from_state(home_aged, cfg, layer="fast")
+    fa, _ = bias_from_state(away_aged, cfg, layer="fast")
     d_fast_corr = fh - fa
     total = (sh - sa) + d_fast_corr
     clamped = False
@@ -404,11 +558,12 @@ def apply_slow_fast_to_d(
         scale = cfg.total_max_abs_correction / abs(total)
         total *= scale
         d_fast_corr = total - (sh - sa)
-        # rescale fast biases proportionally for diagnostics consistency
         fh *= scale
         fa *= scale
         clamped = True
     d_dyn = d_model_base + total
+    home_dyn1 = sh + fh
+    away_dyn1 = sa + fa
     return DCorrectionSnapshot(
         d_model_base=d_model_base,
         slow_bias_home=sh,
@@ -429,6 +584,17 @@ def apply_slow_fast_to_d(
         fast_shrink_factor_home=fh_f,
         fast_shrink_factor_away=fa_f,
         clamped_total=clamped,
+        home_days_since_previous_match=days_h,
+        away_days_since_previous_match=days_a,
+        home_dynamic_aging_factor=af_h,
+        away_dynamic_aging_factor=af_a,
+        home_dynamic_before_aging=home_dyn0,
+        away_dynamic_before_aging=away_dyn0,
+        home_dynamic_after_aging=home_dyn1,
+        away_dynamic_after_aging=away_dyn1,
+        d_correction_before_aging=total0,
+        d_correction_after_aging=total,
+        state_aging_enabled=cfg.state_aging.enabled,
     )
 
 
@@ -456,9 +622,20 @@ class DCorrectionBook:
             self.teams[team_id] = TeamCorrectionState()
         return self.teams[team_id]
 
-    def peek(self, *, home_id: str, away_id: str, d_model_base: float) -> DCorrectionSnapshot:
+    def peek(
+        self,
+        *,
+        home_id: str,
+        away_id: str,
+        d_model_base: float,
+        match_date: Optional[date] = None,
+    ) -> DCorrectionSnapshot:
         return apply_slow_fast_to_d(
-            d_model_base, self._team(home_id), self._team(away_id), self.cfg
+            d_model_base,
+            self._team(home_id),
+            self._team(away_id),
+            self.cfg,
+            match_date=match_date,
         )
 
     def team_view(self, team_id: str) -> TeamCorrectionView:
@@ -484,6 +661,7 @@ class DCorrectionBook:
         d_market: float,
         d_model_base: float,
         d_slow: float,
+        match_date: Optional[date] = None,
     ) -> None:
         """Обновить slow по residual vs D_base; fast по residual vs D_slow."""
         ht = self._team(home_id)
@@ -503,6 +681,9 @@ class DCorrectionBook:
             at.fast_ema = update_ema(at.fast_ema, ra_slow, self.cfg.fast.alpha)
             ht.fast_n += 1
             at.fast_n += 1
+        if match_date is not None:
+            ht.last_match_date = match_date
+            at.last_match_date = match_date
 
 
 def build_d_correction_walk(
@@ -533,7 +714,12 @@ def build_d_correction_walk(
         group = buckets[dkey]
         pending: List[Tuple[DCorrectionWalkMatch, DCorrectionSnapshot]] = []
         for m in group:
-            snap = book.peek(home_id=m.home_id, away_id=m.away_id, d_model_base=m.d_model_base)
+            snap = book.peek(
+                home_id=m.home_id,
+                away_id=m.away_id,
+                d_model_base=m.d_model_base,
+                match_date=m.match_date,
+            )
             if snap.clamped_total:
                 clamp_hits += 1
             key = match_key(m.match_date, m.home_id, m.away_id)
@@ -562,6 +748,17 @@ def build_d_correction_walk(
                 fast_shrink_factor_away=snap.fast_shrink_factor_away,
                 clamped_total=snap.clamped_total,
                 d_market=m.d_market,
+                home_days_since_previous_match=snap.home_days_since_previous_match,
+                away_days_since_previous_match=snap.away_days_since_previous_match,
+                home_dynamic_aging_factor=snap.home_dynamic_aging_factor,
+                away_dynamic_aging_factor=snap.away_dynamic_aging_factor,
+                home_dynamic_before_aging=snap.home_dynamic_before_aging,
+                away_dynamic_before_aging=snap.away_dynamic_before_aging,
+                home_dynamic_after_aging=snap.home_dynamic_after_aging,
+                away_dynamic_after_aging=snap.away_dynamic_after_aging,
+                d_correction_before_aging=snap.d_correction_before_aging,
+                d_correction_after_aging=snap.d_correction_after_aging,
+                state_aging_enabled=snap.state_aging_enabled,
             )
             if m.d_market is not None and m.d_market == m.d_market:
                 pending.append((m, snap))
@@ -572,6 +769,7 @@ def build_d_correction_walk(
                 d_market=float(m.d_market),
                 d_model_base=m.d_model_base,
                 d_slow=snap.d_slow,
+                match_date=m.match_date,
             )
             n_updated += 1
             key = match_key(m.match_date, m.home_id, m.away_id)
@@ -739,6 +937,7 @@ def build_cache_payload(
             "slow": asdict(cfg.slow),
             "fast": asdict(cfg.fast),
             "total_max_abs_correction": cfg.total_max_abs_correction,
+            "state_aging": asdict(cfg.state_aging),
         },
         teams=teams,
         monitor=(book.monitor if book is not None else {}),

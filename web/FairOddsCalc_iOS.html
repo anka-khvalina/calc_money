@@ -3423,6 +3423,8 @@ bash scripts/update_and_serve.sh --start</div>
           || t.strongFavouriteTotalCorrection
           || {},
         dynamic_s_ema: raw.dynamic_s_ema || raw.sMomentum || {},
+        dynamic_d: raw.dynamic_d || raw.dynamicD || {},
+        dynamic_s: raw.dynamic_s || raw.dynamicS || {},
         dynamic_dc_gamma: raw.dynamic_dc_gamma || raw.dynamicDcGamma || {},
         configSource: 'model_config.json',
       });
@@ -6056,6 +6058,13 @@ bash scripts/update_and_serve.sh --start</div>
       const slow = raw.slow || {};
       const fast = raw.fast || {};
       const total = raw.total || {};
+      // Primary: dynamic_d.state_aging / dynamicD.stateAging (independent of S). Fallback: nested under d_correction.
+      const root = GM_MODEL_CFG || GM_MATRIX_CFG || {};
+      const dynD = root.dynamic_d || root.dynamicD
+        || (GM_MATRIX_CFG && (GM_MATRIX_CFG.dynamic_d || GM_MATRIX_CFG.dynamicD))
+        || {};
+      const aging = dynD.state_aging || dynD.stateAging
+        || raw.state_aging || raw.stateAging || {};
       return {
         mode: String(raw.mode || 'slow_fast').toLowerCase(),
         slow: {
@@ -6074,7 +6083,32 @@ bash scripts/update_and_serve.sh --start</div>
         },
         totalMaxAbs: total.max_abs_correction != null ? Number(total.max_abs_correction)
           : (raw.total_max_abs_correction != null ? Number(raw.total_max_abs_correction) : 0.60),
+        stateAging: {
+          // OFF by default = CURRENT / rollback
+          enabled: aging.enabled === true || aging.enabled === 'true',
+          // halfLifeDays is a research candidate (e.g. 60), not a locked production constant
+          halfLifeDays: aging.half_life_days != null ? Number(aging.half_life_days)
+            : (aging.halfLifeDays != null ? Number(aging.halfLifeDays) : 60),
+        },
       };
+    }
+    function gmStateAgingFactor(days, agingCfg){
+      if(!agingCfg || !agingCfg.enabled || days == null || !(agingCfg.halfLifeDays > 0)) return 1;
+      return Math.pow(2, -Number(days) / Number(agingCfg.halfLifeDays));
+    }
+    function gmDaysSincePrev(prevIso, asOfIso){
+      if(!prevIso || !asOfIso) return null;
+      const a = Date.parse(String(prevIso).slice(0,10) + 'T00:00:00Z');
+      const b = Date.parse(String(asOfIso).slice(0,10) + 'T00:00:00Z');
+      if(!isFinite(a) || !isFinite(b)) return null;
+      return Math.max(0, Math.round((b - a) / 86400000));
+    }
+    function gmTodayIso(){
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,'0');
+      const day = String(d.getDate()).padStart(2,'0');
+      return y + '-' + m + '-' + day;
     }
     function gmDCorrShrink(n, k){ return n > 0 ? n / (n + k) : 0; }
     function gmDCorrBias(st, layer, cfg){
@@ -6087,33 +6121,79 @@ bash scripts/update_and_serve.sh --start</div>
       const raw = ema * sh;
       return {bias: gmMomClamp(raw, -L.maxAbs, L.maxAbs), shrink: sh, n};
     }
-    function gmDCorrApply(dBase, homeSt, awaySt, cfg){
+    function gmDCorrApply(dBase, homeSt, awaySt, cfg, opt){
+      const asOf = (opt && opt.matchDate) ? String(opt.matchDate).slice(0,10) : null;
+      const daysH = gmDaysSincePrev(homeSt && homeSt.lastMatchDate, asOf);
+      const daysA = gmDaysSincePrev(awaySt && awaySt.lastMatchDate, asOf);
+      const afH = gmStateAgingFactor(daysH, cfg.stateAging);
+      const afA = gmStateAgingFactor(daysA, cfg.stateAging);
+      const agingDiag = {
+        homeDaysSincePreviousMatch: daysH,
+        awayDaysSincePreviousMatch: daysA,
+        homeDynamicAgingFactor: afH,
+        awayDynamicAgingFactor: afA,
+        homeDynamicBeforeAging: 0,
+        awayDynamicBeforeAging: 0,
+        homeDynamicAfterAging: 0,
+        awayDynamicAfterAging: 0,
+        dCorrectionBeforeAging: 0,
+        dCorrectionAfterAging: 0,
+        stateAgingEnabled: !!(cfg.stateAging && cfg.stateAging.enabled),
+      };
       if(cfg.mode !== 'slow_fast'){
-        return {
+        return Object.assign({
           dModelBase:dBase, slowBiasHome:0, slowBiasAway:0, dSlow:dBase,
           fastBiasHome:0, fastBiasAway:0, dFastCorrection:0,
           dModelDynamic:dBase, totalCorrection:0, mode:cfg.mode,
           slowObsHome:0, slowObsAway:0, fastObsHome:0, fastObsAway:0,
-        };
+        }, agingDiag);
       }
-      const sh = gmDCorrBias(homeSt, 'slow', cfg);
-      const sa = gmDCorrBias(awaySt, 'slow', cfg);
+      const sh0 = gmDCorrBias(homeSt, 'slow', cfg);
+      const sa0 = gmDCorrBias(awaySt, 'slow', cfg);
+      const fh0 = gmDCorrBias(homeSt, 'fast', cfg);
+      const fa0 = gmDCorrBias(awaySt, 'fast', cfg);
+      let total0 = (sh0.bias - sa0.bias) + (fh0.bias - fa0.bias);
+      if(Math.abs(total0) > cfg.totalMaxAbs){
+        total0 *= cfg.totalMaxAbs / Math.abs(total0);
+      }
+      agingDiag.homeDynamicBeforeAging = sh0.bias + fh0.bias;
+      agingDiag.awayDynamicBeforeAging = sa0.bias + fa0.bias;
+      agingDiag.dCorrectionBeforeAging = total0;
+
+      const homeAged = homeSt ? {
+        emaS: (homeSt.emaS||0) * afH, nS: homeSt.nS||0,
+        emaF: (homeSt.emaF||0) * afH, nF: homeSt.nF||0,
+        lastMatchDate: homeSt.lastMatchDate || null,
+      } : null;
+      const awayAged = awaySt ? {
+        emaS: (awaySt.emaS||0) * afA, nS: awaySt.nS||0,
+        emaF: (awaySt.emaF||0) * afA, nF: awaySt.nF||0,
+        lastMatchDate: awaySt.lastMatchDate || null,
+      } : null;
+
+      const sh = gmDCorrBias(homeAged, 'slow', cfg);
+      const sa = gmDCorrBias(awayAged, 'slow', cfg);
       const dSlow = dBase + sh.bias - sa.bias;
-      const fh = gmDCorrBias(homeSt, 'fast', cfg);
-      const fa = gmDCorrBias(awaySt, 'fast', cfg);
+      const fh = gmDCorrBias(homeAged, 'fast', cfg);
+      const fa = gmDCorrBias(awayAged, 'fast', cfg);
       let dFast = fh.bias - fa.bias;
       let total = (sh.bias - sa.bias) + dFast;
+      let fhBias = fh.bias, faBias = fa.bias;
       if(Math.abs(total) > cfg.totalMaxAbs){
         const scale = cfg.totalMaxAbs / Math.abs(total);
         total *= scale; dFast = total - (sh.bias - sa.bias);
+        fhBias *= scale; faBias *= scale;
       }
-      return {
+      agingDiag.homeDynamicAfterAging = sh.bias + fhBias;
+      agingDiag.awayDynamicAfterAging = sa.bias + faBias;
+      agingDiag.dCorrectionAfterAging = total;
+      return Object.assign({
         dModelBase:dBase, slowBiasHome:sh.bias, slowBiasAway:sa.bias, dSlow,
-        fastBiasHome:fh.bias, fastBiasAway:fa.bias, dFastCorrection:dFast,
+        fastBiasHome:fhBias, fastBiasAway:faBias, dFastCorrection:dFast,
         dModelDynamic:dBase + total, totalCorrection:total, mode:cfg.mode,
         slowObsHome:sh.n, slowObsAway:sa.n, fastObsHome:fh.n, fastObsAway:fa.n,
         slowShrinkHome:sh.shrink, slowShrinkAway:sa.shrink,
-      };
+      }, agingDiag);
     }
     function gmBuildDCorrectionBook(model, preparedMs){
       const cfg = gmDCorrCfgFromGlobal();
@@ -6125,7 +6205,7 @@ bash scripts/update_and_serve.sh --start</div>
         return book;
       }
       const ensure = tid => {
-        if(!book.teams[tid]) book.teams[tid]={emaS:0,nS:0,emaF:0,nF:0};
+        if(!book.teams[tid]) book.teams[tid]={emaS:0,nS:0,emaF:0,nF:0,lastMatchDate:null};
         return book.teams[tid];
       };
       const st = model.st;
@@ -6141,18 +6221,18 @@ bash scripts/update_and_serve.sh --start</div>
         if(!buckets.has(d)) buckets.set(d, []);
         buckets.get(d).push(m);
       }
-      for(const [, group] of buckets){
+      for(const [dkey, group] of buckets){
         const pending = [];
         for(const m of group){
           const hEff = gmEffectiveH(st, model.cfg || {}, !!(m.raw&&m.raw.neutral), !!(m.raw&&m.raw.derby));
           const dBase = st.ratings[m.home] - st.ratings[m.away] + hEff;
           const ht = ensure(m.home), at = ensure(m.away);
-          const snap = gmDCorrApply(dBase, ht, at, cfg);
+          const snap = gmDCorrApply(dBase, ht, at, cfg, {matchDate: dkey || null});
           const key = gmMomMatchKey((m.raw&&m.raw.date)||'', m.home, m.away);
           book.records[key] = Object.assign({matchKey:key, homeId:m.home, awayId:m.away, dMarket:m.D}, snap);
-          pending.push({m, snap, dBase});
+          pending.push({m, snap, dBase, dkey});
         }
-        for(const {m, snap, dBase} of pending){
+        for(const {m, snap, dBase, dkey} of pending){
           const ht = ensure(m.home), at = ensure(m.away);
           const residH = m.D - dBase;
           const residA = -residH;
@@ -6166,6 +6246,10 @@ bash scripts/update_and_serve.sh --start</div>
             ht.emaF = gmMomUpdate(ht.emaF, residSlowH, cfg.fast.alpha); ht.nF += 1;
             at.emaF = gmMomUpdate(at.emaF, residSlowA, cfg.fast.alpha); at.nF += 1;
           }
+          if(dkey){
+            ht.lastMatchDate = dkey;
+            at.lastMatchDate = dkey;
+          }
         }
       }
       model.dCorrection = book;
@@ -6174,29 +6258,30 @@ bash scripts/update_and_serve.sh --start</div>
     function gmDCorrCorrectD(model, homeId, awayId, dBase, opt){
       const cfg = (model && model.dCorrectionCfg) || gmDCorrCfgFromGlobal();
       if(cfg.mode === 'disabled' || (opt && opt.applyMomentum===false)){
-        return gmDCorrApply(dBase, null, null, Object.assign({}, cfg, {mode:'disabled'}));
+        return gmDCorrApply(dBase, null, null, Object.assign({}, cfg, {mode:'disabled'}), opt||{});
       }
       if(cfg.mode !== 'slow_fast'){
         // legacy_ema handled by caller via gmMomCorrectD
         return null;
       }
       const book = model && model.dCorrection;
-      if(!book) return gmDCorrApply(dBase, null, null, cfg);
+      if(!book) return gmDCorrApply(dBase, null, null, cfg, opt||{});
       const dateStr = opt && opt.matchDate ? String(opt.matchDate).slice(0,10) : null;
       if(dateStr && opt && opt.useMomentumLookup!==false){
         const rec = book.records[gmMomMatchKey(dateStr, homeId, awayId)];
         if(rec) return rec;
       }
-      const ht = book.teams[homeId] || {emaS:0,nS:0,emaF:0,nF:0};
-      const at = book.teams[awayId] || {emaS:0,nS:0,emaF:0,nF:0};
-      return gmDCorrApply(dBase, ht, at, cfg);
+      const asOf = dateStr || gmTodayIso();
+      const ht = book.teams[homeId] || {emaS:0,nS:0,emaF:0,nF:0,lastMatchDate:null};
+      const at = book.teams[awayId] || {emaS:0,nS:0,emaF:0,nF:0,lastMatchDate:null};
+      return gmDCorrApply(dBase, ht, at, cfg, Object.assign({}, opt||{}, {matchDate: asOf}));
     }
     /** Resolve D by d_correction.mode: slow_fast (default) | disabled | legacy_ema. */
     function gmResolveCorrectedD(model, homeId, awayId, dBase, opt){
       const cfg = (model && model.dCorrectionCfg) || gmDCorrCfgFromGlobal();
       const mode = String(cfg.mode || 'slow_fast').toLowerCase();
       if(mode === 'slow_fast'){
-        const sf = gmDCorrCorrectD(model, homeId, awayId, dBase, opt||{}) || gmDCorrApply(dBase, null, null, cfg);
+        const sf = gmDCorrCorrectD(model, homeId, awayId, dBase, opt||{}) || gmDCorrApply(dBase, null, null, cfg, opt||{});
         return {
           dModelBase: sf.dModelBase, dModelDynamic: sf.dModelDynamic,
           dynamicCorrection: sf.totalCorrection != null ? sf.totalCorrection : 0,
@@ -6209,7 +6294,7 @@ bash scripts/update_and_serve.sh --start</div>
         const mcfg = (model && model.momentumCfg) || gmMomentumCfgFromGlobal();
         const empty = gmMomApplyToD(dBase, 0, 0, Object.assign({}, mcfg, {enabled:false}), 0, 0);
         empty.mode = 'disabled';
-        empty.dCorrection = gmDCorrApply(dBase, null, null, Object.assign({}, cfg, {mode:'disabled'}));
+        empty.dCorrection = gmDCorrApply(dBase, null, null, Object.assign({}, cfg, {mode:'disabled'}), opt||{});
         return empty;
       }
       const mom = gmMomCorrectD(model, homeId, awayId, dBase, opt||{});
@@ -6221,6 +6306,12 @@ bash scripts/update_and_serve.sh --start</div>
     function gmSMomentumCfgFromGlobal(leagueId, leagueName){
       const raw = (GM_MATRIX_CFG && GM_MATRIX_CFG.dynamic_s_ema) || (GM_MODEL_CFG && GM_MODEL_CFG.dynamic_s_ema) || {};
       const ov = (typeof window !== 'undefined' && window.__IR_S_EMA_OVERRIDE) ? window.__IR_S_EMA_OVERRIDE : null;
+      // Primary: dynamic_s.state_aging / dynamicS.stateAging (independent of D). Fallback: nested under dynamic_s_ema.
+      const root = GM_MODEL_CFG || GM_MATRIX_CFG || {};
+      const dynS = root.dynamic_s || root.dynamicS
+        || (GM_MATRIX_CFG && (GM_MATRIX_CFG.dynamic_s || GM_MATRIX_CFG.dynamicS))
+        || {};
+      const agingRaw = dynS.state_aging || dynS.stateAging || raw.state_aging || raw.stateAging || {};
       let base = {
         enabled: raw.enabled === true || raw.enabled === 'true',
         alpha: raw.alpha != null ? Number(raw.alpha) : 0.30,
@@ -6236,6 +6327,11 @@ bash scripts/update_and_serve.sh --start</div>
           : (raw.lambdaMin != null ? Number(raw.lambdaMin) : 0.05),
         resetOnNewSeason: raw.reset_on_new_season != null ? !!raw.reset_on_new_season
           : (raw.resetOnNewSeason != null ? !!raw.resetOnNewSeason : true),
+        stateAging: {
+          enabled: agingRaw.enabled === true || agingRaw.enabled === 'true',
+          halfLifeDays: agingRaw.half_life_days != null ? Number(agingRaw.half_life_days)
+            : (agingRaw.halfLifeDays != null ? Number(agingRaw.halfLifeDays) : 60),
+        },
       };
       if(ov && typeof ov === 'object'){
         if(ov.enabled != null) base.enabled = !!ov.enabled;
@@ -6252,6 +6348,7 @@ bash scripts/update_and_serve.sh --start</div>
       for(const key of [leagueId, leagueName, String(leagueId||''), String(leagueName||'')]){
         if(key && by[key] && typeof by[key]==='object'){
           const o=by[key];
+          const oAging = o.state_aging || o.stateAging || null;
           base = Object.assign({}, base, {
             enabled: o.enabled != null ? !!o.enabled : base.enabled,
             alpha: o.alpha != null ? Number(o.alpha) : base.alpha,
@@ -6264,6 +6361,11 @@ bash scripts/update_and_serve.sh --start</div>
             maxAbsCorrection: o.max_abs_correction !== undefined ? (o.max_abs_correction==null?null:Number(o.max_abs_correction))
               : (o.maxAbsCorrection !== undefined ? (o.maxAbsCorrection==null?null:Number(o.maxAbsCorrection)) : base.maxAbsCorrection),
             lambdaMin: o.lambda_min != null ? Number(o.lambda_min) : (o.lambdaMin != null ? Number(o.lambdaMin) : base.lambdaMin),
+            stateAging: oAging ? {
+              enabled: oAging.enabled === true || oAging.enabled === 'true',
+              halfLifeDays: oAging.half_life_days != null ? Number(oAging.half_life_days)
+                : (oAging.halfLifeDays != null ? Number(oAging.halfLifeDays) : base.stateAging.halfLifeDays),
+            } : base.stateAging,
           });
           break;
         }
@@ -6432,9 +6534,28 @@ bash scripts/update_and_serve.sh --start</div>
       const v = gmMomClamp(ema, -maxAbs, maxAbs);
       return {val:v, clamped: Math.abs(v-ema)>1e-15};
     }
-    function gmSMomApplyToS(sBase, emaH, emaA, cfg, nH, nA){
-      const hLim = gmSMomLimitEma(emaH, cfg.maxAbsTeamEma);
-      const aLim = gmSMomLimitEma(emaA, cfg.maxAbsTeamEma);
+    function gmSMomApplyToS(sBase, emaH, emaA, cfg, nH, nA, opt){
+      const asOf = (opt && opt.matchDate) ? String(opt.matchDate).slice(0,10) : null;
+      const daysH = gmDaysSincePrev(opt && opt.homeLastMatchDate, asOf);
+      const daysA = gmDaysSincePrev(opt && opt.awayLastMatchDate, asOf);
+      const afH = gmStateAgingFactor(daysH, cfg.stateAging);
+      const afA = gmStateAgingFactor(daysA, cfg.stateAging);
+
+      const hLim0 = gmSMomLimitEma(emaH, cfg.maxAbsTeamEma);
+      const aLim0 = gmSMomLimitEma(emaA, cfg.maxAbsTeamEma);
+      const eh0 = (nH >= cfg.minMatches) ? hLim0.val : 0;
+      const ea0 = (nA >= cfg.minMatches) ? aLim0.val : 0;
+      const mom0 = eh0 + ea0;
+      let corr0 = cfg.enabled ? cfg.k * mom0 : 0;
+      if(cfg.enabled && cfg.maxAbsCorrection!=null && isFinite(cfg.maxAbsCorrection)){
+        corr0 = gmMomClamp(corr0, -cfg.maxAbsCorrection, cfg.maxAbsCorrection);
+      }
+      if(!cfg.enabled) corr0 = 0;
+
+      const emaHAged = emaH * afH;
+      const emaAAged = emaA * afA;
+      const hLim = gmSMomLimitEma(emaHAged, cfg.maxAbsTeamEma);
+      const aLim = gmSMomLimitEma(emaAAged, cfg.maxAbsTeamEma);
       const ehEff = (nH >= cfg.minMatches) ? hLim.val : 0;
       const eaEff = (nA >= cfg.minMatches) ? aLim.val : 0;
       const momentum = ehEff + eaEff;
@@ -6458,23 +6579,40 @@ bash scripts/update_and_serve.sh --start</div>
         sModelBase: sBase,
         sModelDynamic: cfg.enabled ? (sBase + corr) : sBase,
         correctionClamped: corrClamped,
-        emaHomeClamped: hLim.clamped, emaAwayClamped: aLim.clamped,
+        emaHomeClamped: hLim0.clamped, emaAwayClamped: aLim0.clamped,
         enabled: !!cfg.enabled,
         alpha: cfg.alpha, k: cfg.k, lambdaMin: cfg.lambdaMin,
         maxAbsTeamEma: cfg.maxAbsTeamEma, maxAbsCorrection: cfg.maxAbsCorrection,
+        homeDaysSincePreviousMatch: daysH,
+        awayDaysSincePreviousMatch: daysA,
+        homeDynamicAgingFactor: afH,
+        awayDynamicAgingFactor: afA,
+        homeDynamicBeforeAging: eh0,
+        awayDynamicBeforeAging: ea0,
+        homeDynamicAfterAging: ehEff,
+        awayDynamicAfterAging: eaEff,
+        sCorrectionBeforeAging: corr0,
+        sCorrectionAfterAging: corr,
+        stateAgingEnabled: !!(cfg.stateAging && cfg.stateAging.enabled),
       };
     }
-    function gmSMomPeek(book, homeId, awayId, sBase){
-      if(!book) return gmSMomApplyToS(sBase, 0, 0, {enabled:false,alpha:0.3,k:1,minMatches:1,maxAbsTeamEma:null,maxAbsCorrection:null,lambdaMin:0.05}, 0, 0);
-      const ht = book.teams[homeId] || {ema:0, n:0};
-      const at = book.teams[awayId] || {ema:0, n:0};
-      return gmSMomApplyToS(sBase, ht.ema, at.ema, book.cfg, ht.n, at.n);
+    function gmSMomPeek(book, homeId, awayId, sBase, opt){
+      if(!book) return gmSMomApplyToS(sBase, 0, 0, {enabled:false,alpha:0.3,k:1,minMatches:1,maxAbsTeamEma:null,maxAbsCorrection:null,lambdaMin:0.05,stateAging:{enabled:false,halfLifeDays:60}}, 0, 0, opt||{});
+      const ht = book.teams[homeId] || {ema:0, n:0, lastMatchDate:null};
+      const at = book.teams[awayId] || {ema:0, n:0, lastMatchDate:null};
+      const hasDate = opt && opt.matchDate != null && String(opt.matchDate) !== '';
+      const asOf = hasDate ? String(opt.matchDate).slice(0,10) : ((opt && opt.agingAsOfToday) ? gmTodayIso() : null);
+      return gmSMomApplyToS(sBase, ht.ema, at.ema, book.cfg, ht.n, at.n, {
+        matchDate: asOf,
+        homeLastMatchDate: ht.lastMatchDate || null,
+        awayLastMatchDate: at.lastMatchDate || null,
+      });
     }
     function gmBuildSMomentumBook(model, preparedMs, leagueId, leagueName){
       const cfg = gmSMomentumCfgFromGlobal(leagueId, leagueName);
       const book = { cfg, teams:{}, records:{} };
       const ensure = tid => {
-        if(!book.teams[tid]) book.teams[tid]={ema:0,n:0};
+        if(!book.teams[tid]) book.teams[tid]={ema:0,n:0,lastMatchDate:null};
         return book.teams[tid];
       };
       const st = model.st, gl = model.gl;
@@ -6493,17 +6631,16 @@ bash scripts/update_and_serve.sh --start</div>
         if(!buckets.has(d)) buckets.set(d, []);
         buckets.get(d).push(m);
       }
-      for(const [, group] of buckets){
+      for(const [dkey, group] of buckets){
         const pending=[];
         for(const m of group){
-          const dkey = (m.raw&&m.raw.date) ? String(m.raw.date).slice(0,10) : '';
           const hEff = gmEffectiveH(st, model.cfg, m.iHome===0, gmDerbyHome(m));
           const kHg = Math.abs(st.H)>1e-9 ? hEff/st.H : 1;
           const iHome = m.iHome||0;
           const lhAD = Math.exp(gl.mu+(gl.attack[m.home]||0)-(gl.defense[m.away]||0)+gl.hg*iHome*kHg);
           const laAD = Math.exp(gl.mu+(gl.attack[m.away]||0)-(gl.defense[m.home]||0));
           const sBase = lhAD + laAD;
-          const snap = gmSMomPeek(book, m.home, m.away, sBase);
+          const snap = gmSMomPeek(book, m.home, m.away, sBase, {matchDate: dkey || null});
           const key = gmMomMatchKey(dkey, m.home, m.away);
           const w = (typeof gmTrainWeight==='function') ? gmTrainWeight(m) : (m.wBase!=null?Number(m.wBase):1);
           book.records[key] = Object.assign({
@@ -6511,7 +6648,7 @@ bash scripts/update_and_serve.sh --start</div>
             sMarket:m.S, residual:null, teamResidual:null, updated:false,
             matchWeight:w, updateSkipReason:null,
           }, snap);
-          pending.push({ m, resid: m.S - sBase, half: 0.5*(m.S - sBase), key, w });
+          pending.push({ m, resid: m.S - sBase, half: 0.5*(m.S - sBase), key, w, dkey });
         }
         for(const p of pending){
           const aEff = gmMomClamp(cfg.alpha * Math.max(0, p.w||0), 0, 1);
@@ -6525,6 +6662,7 @@ bash scripts/update_and_serve.sh --start</div>
           ht.ema = gmMomUpdate(ht.ema, p.half, aEff);
           at.ema = gmMomUpdate(at.ema, p.half, aEff);
           ht.n += 1; at.n += 1;
+          if(p.dkey){ ht.lastMatchDate = p.dkey; at.lastMatchDate = p.dkey; }
           book.records[p.key] = Object.assign({}, book.records[p.key], {
             residual:p.resid, teamResidual:p.half, updated:true,
             emaHomeAfter: ht.ema, emaAwayAfter: at.ema,
@@ -6539,17 +6677,24 @@ bash scripts/update_and_serve.sh --start</div>
       const book = model && model.sMomentum;
       const cfg = (model && model.sMomentumCfg) || gmSMomentumCfgFromGlobal();
       if(!book || (opt && opt.applySMomentum===false)){
-        return gmSMomApplyToS(sBase, 0, 0, Object.assign({}, cfg, {enabled:false}), 0, 0);
+        return gmSMomApplyToS(sBase, 0, 0, Object.assign({}, cfg, {enabled:false}), 0, 0, opt||{});
       }
       const dateStr = opt && opt.matchDate ? String(opt.matchDate).slice(0,10) : null;
       if(dateStr && opt && opt.useMomentumLookup!==false){
         const key = gmMomMatchKey(dateStr, homeId, awayId);
         const rec = book.records[key];
         if(rec){
-          return gmSMomApplyToS(sBase, rec.emaHomeBefore, rec.emaAwayBefore, cfg, rec.homeMatches, rec.awayMatches);
+          // Walk already aged this match; keep stored correction/diagnostics.
+          return Object.assign({}, rec, {
+            sModelBase: sBase,
+            sModelDynamic: sBase + (rec.dynamicCorrection != null ? rec.dynamicCorrection : 0),
+          });
         }
       }
-      return gmSMomPeek(book, homeId, awayId, sBase);
+      return gmSMomPeek(book, homeId, awayId, sBase, Object.assign({}, opt||{}, {
+        matchDate: dateStr || null,
+        agingAsOfToday: !dateStr,
+      }));
     }
     function gmApplyLambdaMin(sf, df, lambdaMin){
       let lh=(sf+df)/2, la=(sf-df)/2;
@@ -8837,7 +8982,10 @@ bash scripts/update_and_serve.sh --start</div>
         const derby = compareMatch ? sbIsDerby(compareMatch) : uiDerby;
         const opt=gmCorePredictOpt({
           neutral, derby,
-          matchDate: compareMatch && compareMatch.match_date ? compareMatch.match_date : null,
+          // Manual line calc: match day = today when no inactive compare row.
+          matchDate: compareMatch && compareMatch.match_date
+            ? compareMatch.match_date
+            : gmTodayIso(),
           leagueId,
           leagueName: (goalLoadedMeta&&goalLoadedMeta.leagueName)||null,
           seasonId: (compareMatch && compareMatch.season_id != null)
@@ -10006,6 +10154,7 @@ bash scripts/update_and_serve.sh --start</div>
           emaAwayBefore: pred.sMomentum ? pred.sMomentum.emaAwayBefore : null,
           sMomentum: pred.sMomentum ? pred.sMomentum.sMomentum : null,
         } : null);
+        const dcorr = pred.dCorrection || (mom && mom.dCorrection) || null;
         let dMarket = null;
         let sMarket = null;
         try{
@@ -10082,6 +10231,16 @@ bash scripts/update_and_serve.sh --start</div>
           EMA_away_before: mom ? mom.emaAwayBefore : null,
           dynamic_correction: mom ? mom.dynamicCorrection : null,
           D_model_dynamic: mom ? mom.dModelDynamic : null,
+          home_days_since_previous_match: dcorr ? dcorr.homeDaysSincePreviousMatch : null,
+          away_days_since_previous_match: dcorr ? dcorr.awayDaysSincePreviousMatch : null,
+          home_dynamic_aging_factor: dcorr ? dcorr.homeDynamicAgingFactor : null,
+          away_dynamic_aging_factor: dcorr ? dcorr.awayDynamicAgingFactor : null,
+          home_dynamic_before_aging: dcorr ? dcorr.homeDynamicBeforeAging : null,
+          away_dynamic_before_aging: dcorr ? dcorr.awayDynamicBeforeAging : null,
+          home_dynamic_after_aging: dcorr ? dcorr.homeDynamicAfterAging : null,
+          away_dynamic_after_aging: dcorr ? dcorr.awayDynamicAfterAging : null,
+          D_correction_before_aging: dcorr ? dcorr.dCorrectionBeforeAging : null,
+          D_correction_after_aging: dcorr ? dcorr.dCorrectionAfterAging : null,
           S_model_base: (smom && smom.sModelBase!=null) ? smom.sModelBase : (pred.sModelBase!=null?pred.sModelBase:null),
           // S used for λ / OU markets (post S-cal + SFTC). EMA dynamic stays in S_model_dynamic.
           S_model_dynamic: (smom && smom.sModelDynamic!=null) ? smom.sModelDynamic : (pred.sModelDynamic!=null?pred.sModelDynamic:null),
@@ -10091,6 +10250,16 @@ bash scripts/update_and_serve.sh --start</div>
           EMA_S_home_before: smom ? smom.emaHomeBefore : null,
           EMA_S_away_before: smom ? smom.emaAwayBefore : null,
           S_momentum: smom ? smom.sMomentum : null,
+          home_s_days_since_previous_match: smom ? smom.homeDaysSincePreviousMatch : null,
+          away_s_days_since_previous_match: smom ? smom.awayDaysSincePreviousMatch : null,
+          home_s_dynamic_aging_factor: smom ? smom.homeDynamicAgingFactor : null,
+          away_s_dynamic_aging_factor: smom ? smom.awayDynamicAgingFactor : null,
+          home_s_dynamic_before_aging: smom ? smom.homeDynamicBeforeAging : null,
+          away_s_dynamic_before_aging: smom ? smom.awayDynamicBeforeAging : null,
+          home_s_dynamic_after_aging: smom ? smom.homeDynamicAfterAging : null,
+          away_s_dynamic_after_aging: smom ? smom.awayDynamicAfterAging : null,
+          S_correction_before_aging: smom ? smom.sCorrectionBeforeAging : null,
+          S_correction_after_aging: smom ? smom.sCorrectionAfterAging : null,
           S_market: sMarket,
           Residual_S_base: (sMarket!=null && smom && smom.sModelBase!=null) ? (sMarket - smom.sModelBase) : null,
           Residual_S_dynamic: (sMarket!=null && smom && smom.sModelDynamic!=null) ? (sMarket - smom.sModelDynamic) : null,
