@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import csv
 import json
-import math
 import sys
 from collections import defaultdict
 from datetime import date
@@ -35,7 +34,7 @@ import goal_model_train as gmt
 
 from experiments.market_weights.data import Row, fetch_all_view_rows, parse_rows, to_raw_match
 from experiments.market_weights.eval import load_baseline_config, season_weights_for
-from experiments.early_season_dyn.gw import EVAL_SEASONS, prior_and_hold_bucket, assign_gameweeks
+from experiments.early_season_dyn.gw import EVAL_SEASONS, prior_and_hold_bucket
 from experiments.early_season_dyn.metrics import mae, model_odds_with_market_margin
 from experiments.early_season_dyn.predict_scaled import finalize_from_ds
 from experiments.aug12_market_compare.fixtures import FIXTURES
