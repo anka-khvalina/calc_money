@@ -1,22 +1,21 @@
 """Offline FULL production vs Aug-12 book cards (with margin on 1X2).
 
-Method (same as prior early-season research, not the UI Combined Legacy/Auto path):
-  - train per league on all closing history through 2025-26
-  - FULL Dynamic D + S-EMA (production config)
-  - 1X2: model fair probs × **same match overround** as the book quote
-  - AH / Tot: compare **lines** (margin N/A)
+Train modes:
+  - all history (default legacy artifacts)
+  - **only season 2025-26** (closer to UI loaded-season window)
 
 Does not modify production code.
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import goal_model_train as gmt
 
@@ -35,13 +34,14 @@ OUT.mkdir(parents=True, exist_ok=True)
 REPO_OUT = ROOT / "experiments" / "aug12_market_compare"
 
 
-def _train(league: str, rows) -> gmt.TrainedModel:
+def _train(league: str, rows, *, season: Optional[str]) -> tuple[gmt.TrainedModel, int]:
     league_rows = [r for r in rows if r.league_name == league]
+    if season:
+        league_rows = [r for r in league_rows if str(r.season_label) == season]
     raw = [to_raw_match(r) for r in league_rows]
     if len(raw) < 80:
-        raise ValueError(f"{league}: too few rows {len(raw)}")
+        raise ValueError(f"{league}: too few rows {len(raw)} (season={season})")
     cfg = load_baseline_config(season_weights_for(raw))
-    # silence diagnostics
     old = sys.stdout
     sys.stdout = open("/dev/null", "w")
     try:
@@ -49,7 +49,7 @@ def _train(league: str, rows) -> gmt.TrainedModel:
     finally:
         sys.stdout.close()
         sys.stdout = old
-    return model
+    return model, len(raw)
 
 
 def _pack(fx: Dict[str, Any], pred: gmt.Prediction, *, mode: str) -> Dict[str, Any]:
@@ -130,20 +130,40 @@ def _fmt_odds(x: float) -> str:
     return f"{x:.2f}"
 
 
-def _report(full: List[Dict[str, Any]], base: List[Dict[str, Any]], summary: Dict[str, Any]) -> str:
+def _tag(season: Optional[str]) -> str:
+    return f"season_{season.replace('-', '')}" if season else "all_history"
+
+
+def _report(
+    full: List[Dict[str, Any]],
+    summary: Dict[str, Any],
+    *,
+    season: Optional[str],
+    train_n: Dict[str, int],
+) -> str:
+    train_desc = (
+        f"only season **{season}** per league (UI-like window)"
+        if season
+        else "all closing history per league through 2025–26"
+    )
     lines: List[str] = []
-    lines.append("# Aug-12 market cards vs current production model")
+    lines.append(f"# Aug-12 market cards vs production model ({_tag(season)})")
     lines.append("")
     lines.append("Source: uploaded «кэфы на 12 августа.docx» (book screenshots).")
     lines.append("")
     lines.append("## Method")
     lines.append("")
     lines.append("- **Model:** production FULL (`train_full_model` + `predict_match`), Dynamic D + S-EMA on.")
-    lines.append("- **Train:** all closing history per league through 2025–26 (not the UI single-season ~337 window).")
-    lines.append("- **1X2 odds:** fair model probs × **same match overround** as the book → comparable to quoted odds.")
-    lines.append("- **AH / Tot:** compare **main lines** (margin does not apply to the line itself).")
-    lines.append("- **BASE** column: same ratings but Dynamic D / S-EMA off (diagnostic).")
-    lines.append("- Excluded brand-new clubs without usable history (Racing Santander, Deportivo, Málaga, Troyes, Le Mans, …).")
+    lines.append(f"- **Train:** {train_desc}.")
+    lines.append("- **1X2 odds:** fair model probs × **same match overround** as the book.")
+    lines.append("- **AH / Tot:** compare **main lines**.")
+    lines.append("- **BASE:** same ratings, Dynamic D / S-EMA off.")
+    lines.append("- Excluded brand-new clubs (Racing Santander, Deportivo, Málaga, Troyes, Le Mans, …).")
+    lines.append("")
+    lines.append("### Train sizes")
+    lines.append("")
+    for lg, n in sorted(train_n.items()):
+        lines.append(f"- {lg}: **{n}** matches")
     lines.append("")
     lines.append("## Summary (n=%d)" % summary["full"]["n"])
     lines.append("")
@@ -170,28 +190,20 @@ def _report(full: List[Dict[str, Any]], base: List[Dict[str, Any]], summary: Dic
             f"{r['d1']:+.2f}/{r['dx']:+.2f}/{r['d2']:+.2f} |"
         )
     lines.append("")
-    lines.append("## Notes")
-    lines.append("")
-    lines.append(
-        "UI «Рассчитать линию» can differ: it trains on the loaded season sample and uses "
-        "Combined Legacy 1X2 + Auto AH/OU with a fixed league training margin (~3% LL), "
-        "not match-specific overround on all-history FULL."
-    )
-    lines.append("")
     return "\n".join(lines)
 
 
-def main() -> None:
-    print("loading history…")
-    rows = parse_rows(fetch_all_view_rows())
-    by_league = defaultdict(list)
+def run_once(rows: Sequence, *, season: Optional[str]) -> Dict[str, Any]:
+    tag = _tag(season)
+    by_league: Dict[str, List] = defaultdict(list)
     for fx in FIXTURES:
         by_league[fx["league"]].append(fx)
 
     models: Dict[str, gmt.TrainedModel] = {}
+    train_n: Dict[str, int] = {}
     for league in by_league:
-        print(f"train {league}…")
-        models[league] = _train(league, rows)
+        print(f"train {league} season={season or 'ALL'}…")
+        models[league], train_n[league] = _train(league, rows, season=season)
 
     full_rows: List[Dict[str, Any]] = []
     base_rows: List[Dict[str, Any]] = []
@@ -215,17 +227,42 @@ def main() -> None:
             f"1X2 {_fmt_odds(full_rows[-1]['b1m'])}/{_fmt_odds(full_rows[-1]['bxm'])}/{_fmt_odds(full_rows[-1]['b2m'])}"
         )
 
-    summary = {"full": _summary(full_rows), "base": _summary(base_rows), "n_fixtures": len(FIXTURES)}
-    _write_csv(OUT / "compare_full_margined.csv", full_rows)
-    _write_csv(OUT / "compare_base_margined.csv", base_rows)
-    _write_csv(REPO_OUT / "compare_full_margined.csv", full_rows)
-    _write_csv(REPO_OUT / "compare_base_margined.csv", base_rows)
-    (OUT / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    (REPO_OUT / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    report = _report(full_rows, base_rows, summary)
-    (OUT / "REPORT.md").write_text(report, encoding="utf-8")
-    (REPO_OUT / "REPORT.md").write_text(report, encoding="utf-8")
+    summary = {
+        "train_season": season or "ALL",
+        "train_n": train_n,
+        "full": _summary(full_rows),
+        "base": _summary(base_rows),
+        "n_fixtures": len(FIXTURES),
+    }
+    prefix = f"compare_{tag}"
+    for dest in (OUT, REPO_OUT):
+        _write_csv(dest / f"{prefix}_full_margined.csv", full_rows)
+        _write_csv(dest / f"{prefix}_base_margined.csv", base_rows)
+        (dest / f"summary_{tag}.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        report = _report(full_rows, summary, season=season, train_n=train_n)
+        (dest / f"REPORT_{tag}.md").write_text(report, encoding="utf-8")
+        # keep default names pointing at the requested primary run
+        if season == "2025-26":
+            _write_csv(dest / "compare_full_margined.csv", full_rows)
+            _write_csv(dest / "compare_base_margined.csv", base_rows)
+            (dest / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+            (dest / "REPORT.md").write_text(report, encoding="utf-8")
     print(json.dumps(summary, indent=2))
+    return summary
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--season",
+        default="2025-26",
+        help="Train season label, or 'ALL' for full history (default: 2025-26)",
+    )
+    args = ap.parse_args()
+    season = None if str(args.season).upper() in {"ALL", "*", "NONE", ""} else str(args.season)
+    print("loading history…")
+    rows = parse_rows(fetch_all_view_rows())
+    run_once(rows, season=season)
     print("wrote", OUT)
 
 
