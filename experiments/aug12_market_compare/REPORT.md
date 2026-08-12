@@ -23,8 +23,12 @@ Source: uploaded «кэфы на 12 августа.docx» (book screenshots).
 
 | arm | MAE AH | |ΔAH|≥0.5 | MAE Tot | MAE p1 pp | MAE odds 1 |
 |---|---:|---:|---:|---:|---:|
-| FULL | 0.243 | 6 | 0.154 | 5.23 | 0.641 |
-| BASE | 0.103 | 2 | 0.110 | 2.25 | 0.223 |
+| FULL (2025–26 only) | 0.243 | 6 | 0.154 | 5.23 | 0.641 |
+| BASE (2025–26 only) | 0.103 | 2 | 0.110 | 2.25 | 0.223 |
+| FULL (all history, prior) | 0.243 | 6 | 0.132 | 5.22 | 0.579 |
+| BASE (all history, prior) | 0.132 | 2 | 0.140 | 3.01 | 0.241 |
+
+Single-season BASE is closer to the book (AH MAE 0.10 vs 0.13). FULL AH MAE unchanged — early-season Dynamic D still drives most big AH misses. Alaves–Getafe 1X2 with margin ≈ **2.10 / 2.98 / 4.54** (UI ~2.12 / 2.94 / 4.58).
 
 ## Per match — FULL with margin
 
