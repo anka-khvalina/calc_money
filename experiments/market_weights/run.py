@@ -39,6 +39,8 @@ SCHEMES_CORE = [
 
 
 def main() -> int:
+    import logging
+    logging.disable(logging.WARNING)
     OUT.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     print("EXP-041..044 market information weights (read-only DB, no prod edits)", flush=True)
@@ -63,9 +65,13 @@ def main() -> int:
     for c in sorted(corr, key=lambda x: -(abs(x["pearson"]) if x["pearson"] is not None else -1)):
         print(f"  {c['feature']:24} n={c['n']:5} r={c['pearson']}", flush=True)
 
+    # Prefer market-dynamics features; season_stage confounds w_time
+    exclude = {"season_stage"}
     best_feat = None
     best_abs = 0.0
     for c in corr:
+        if c["feature"] in exclude:
+            continue
         if c["pearson"] is None:
             continue
         if abs(c["pearson"]) > best_abs:
