@@ -1,25 +1,28 @@
-# Market information weights (EXP-041 … 044)
+# Market Information Model (offline, side-branch)
 
-Offline experiments on a **side branch**. Production UI/API/configs are untouched.
+Production UI/API/configs are untouched.
 
-## Baseline (kept ON)
+## Status
 
-- DB `match_weight` as-is (incl. Soft 0.6/0.8/1.0 where set)
-- Dynamic D, S-EMA, SFA, SFTC from `web/model_config.json`
-- Expanding monthly refit
-- Each new weight tested **alone** as multiplier on top of baseline
+| EXP | Status |
+|---|---|
+| 041–044 bucket weights | **CLOSED** — crude multipliers NO EFFECT / FAIL on baseline |
+| 045 Stage 1 revaluation prediction | **NEXT / this package** |
+| 046 learned weighting | only if 045 PASS |
 
 ## Run
 
 ```bash
-mkdir -p /opt/cursor/artifacts/exp041_044
-PYTHONPATH=app:. python3 -m experiments.market_weights
+# closed bucket study (041–044)
+PYTHONPATH=app:. python3 -m experiments.market_weights run
+
+# EXP-045 Stage 1 — predict future market revaluation (no weighting)
+PYTHONPATH=app:. python3 -m experiments.market_weights 045
 ```
 
-Artifacts: `/opt/cursor/artifacts/exp041_044/` and `experiments/market_weights/REPORT.md`.
+Artifacts: `/opt/cursor/artifacts/exp041_044/`, `/opt/cursor/artifacts/exp045/`.
 
-## Data limits
+## Narrow conclusion from 041–044
 
-- No opening lines in DB → `open_close_*` features skipped
-- PL/BL 2023-24 & 2024-25 fixtures without odds → excluded from train/eval
-- Verdict metrics: closing AH/Total MAE (not FT)
+> Crude manual multipliers on top of the current saturated baseline do not add OOS closing signal.
+> Direction remains: learn whether informative matches are **predictable**, then maybe a weighting policy.
