@@ -221,6 +221,12 @@ class ModelConfig:
     d_correction_cache_fallback: str = dcorr.FALLBACK_LAST_LOCAL
     d_correction_cache_versions_to_keep: int = 2
     d_correction_publish_cache: bool = False  # opt-in filesystem publish after train
+    d_correction_state_aging_enabled: bool = False
+    d_correction_state_aging_half_life_days: float = 60.0
+
+    # S-EMA state aging (independent half-life from Dynamic D)
+    s_momentum_state_aging_enabled: bool = False
+    s_momentum_state_aging_half_life_days: float = 60.0
 
     # Regularized hierarchical WLS (rating.mode); default keeps current WLS
     rating_mode: str = hwls.MODE_STANDARD
@@ -2076,6 +2082,10 @@ def resolve_d_correction_config(cfg: ModelConfig) -> dcorr.DCorrectionConfig:
             fallback=cfg.d_correction_cache_fallback,
             versions_to_keep=cfg.d_correction_cache_versions_to_keep,
         ),
+        state_aging=dcorr.StateAgingConfig(
+            enabled=cfg.d_correction_state_aging_enabled,
+            half_life_days=cfg.d_correction_state_aging_half_life_days,
+        ),
     ).validated()
 
 
@@ -2103,6 +2113,8 @@ def apply_d_correction_config_from_mapping(
         d_correction_total_max_abs=parsed.total_max_abs_correction,
         d_correction_cache_fallback=parsed.cache.fallback,
         d_correction_cache_versions_to_keep=parsed.cache.versions_to_keep,
+        d_correction_state_aging_enabled=parsed.state_aging.enabled,
+        d_correction_state_aging_half_life_days=parsed.state_aging.half_life_days,
     )
 
 
@@ -2220,11 +2232,29 @@ def resolve_s_momentum_config(
         max_abs_correction=cfg.s_momentum_max_abs_correction,
         lambda_min=cfg.s_momentum_lambda_min,
         reset_on_new_season=cfg.s_momentum_reset_on_new_season,
+        state_aging=smom.StateAgingConfig(
+            enabled=cfg.s_momentum_state_aging_enabled,
+            half_life_days=cfg.s_momentum_state_aging_half_life_days,
+        ),
     )
     overrides = cfg.s_momentum_by_league or {}
     for key in (league_id, league_name, str(league_id or ""), str(league_name or "")):
         if key and key in overrides and isinstance(overrides[key], dict):
             o = overrides[key]
+            aging = base.state_aging
+            aging_raw = o.get("state_aging") if isinstance(o.get("state_aging"), dict) else (
+                o.get("stateAging") if isinstance(o.get("stateAging"), dict) else None
+            )
+            if isinstance(aging_raw, dict):
+                aging = smom.StateAgingConfig(
+                    enabled=bool(aging_raw["enabled"]) if "enabled" in aging_raw else aging.enabled,
+                    half_life_days=float(
+                        aging_raw.get(
+                            "half_life_days",
+                            aging_raw.get("halfLifeDays", aging.half_life_days),
+                        )
+                    ),
+                )
             base = smom.SMomentumConfig(
                 enabled=bool(o["enabled"]) if "enabled" in o else base.enabled,
                 alpha=float(o["alpha"]) if "alpha" in o else base.alpha,
@@ -2254,9 +2284,42 @@ def resolve_s_momentum_config(
                 reset_on_new_season=bool(
                     o.get("reset_on_new_season", o.get("resetOnNewSeason", base.reset_on_new_season))
                 ),
+                state_aging=aging,
             )
             break
     return base.validated()
+
+
+def apply_s_momentum_config_from_mapping(
+    cfg: ModelConfig,
+    raw: Optional[Dict[str, Any]],
+) -> ModelConfig:
+    """Наложить блок dynamic_s_ema из model_config.json на ModelConfig."""
+    if not raw:
+        return cfg
+    parsed = smom.s_momentum_config_from_mapping(raw)
+    by = {}
+    block = None
+    for key in ("dynamic_s_ema", "sMomentum", "s_momentum"):
+        if isinstance(raw.get(key), dict):
+            block = raw[key]
+            break
+    if isinstance(block, dict):
+        by = block.get("byLeague") or block.get("by_league") or {}
+    return replace(
+        cfg,
+        s_momentum_enabled=parsed.enabled,
+        s_momentum_alpha=parsed.alpha,
+        s_momentum_k=parsed.k,
+        s_momentum_min_matches=parsed.min_team_matches,
+        s_momentum_max_abs_team_ema=parsed.max_abs_team_ema,
+        s_momentum_max_abs_correction=parsed.max_abs_correction,
+        s_momentum_lambda_min=parsed.lambda_min,
+        s_momentum_reset_on_new_season=parsed.reset_on_new_season,
+        s_momentum_by_league=dict(by) if isinstance(by, dict) else cfg.s_momentum_by_league,
+        s_momentum_state_aging_enabled=parsed.state_aging.enabled,
+        s_momentum_state_aging_half_life_days=parsed.state_aging.half_life_days,
+    )
 
 
 def build_s_momentum_book_for_matches(
@@ -2778,34 +2841,23 @@ def predict_match(
 
     if mode == dcorr.MODE_SLOW_FAST and apply_momentum:
         book_sf = model.d_correction_book
+        aging_as_of = match_date if match_date is not None else date.today()
         if book_sf is not None:
             key = dcorr.match_key(match_date, home_id, away_id) if match_date else None
             rec = book_sf.records.get(key) if (use_momentum_lookup and key) else None
             if rec is not None:
-                dcorr_snap = dcorr.DCorrectionSnapshot(
+                dcorr_snap = replace(
+                    rec.as_snapshot(),
                     d_model_base=d_model_base,
-                    slow_bias_home=rec.slow_bias_home,
-                    slow_bias_away=rec.slow_bias_away,
                     d_slow=d_model_base + rec.slow_bias_home - rec.slow_bias_away,
-                    fast_bias_home=rec.fast_bias_home,
-                    fast_bias_away=rec.fast_bias_away,
-                    d_fast_correction=rec.d_fast_correction,
                     d_model_dynamic=d_model_base + rec.total_correction,
-                    total_correction=rec.total_correction,
-                    mode=rec.mode,
-                    slow_observations_home=rec.slow_observations_home,
-                    slow_observations_away=rec.slow_observations_away,
-                    fast_observations_home=rec.fast_observations_home,
-                    fast_observations_away=rec.fast_observations_away,
-                    slow_shrink_factor_home=rec.slow_shrink_factor_home,
-                    slow_shrink_factor_away=rec.slow_shrink_factor_away,
-                    fast_shrink_factor_home=rec.fast_shrink_factor_home,
-                    fast_shrink_factor_away=rec.fast_shrink_factor_away,
-                    clamped_total=rec.clamped_total,
                 )
             else:
                 dcorr_snap = book_sf.peek(
-                    home_id=home_id, away_id=away_id, d_model_base=d_model_base,
+                    home_id=home_id,
+                    away_id=away_id,
+                    d_model_base=d_model_base,
+                    match_date=aging_as_of,
                 )
             d_for_cal = dcorr_snap.d_model_dynamic
         else:
@@ -2814,6 +2866,7 @@ def predict_match(
                 dcorr.TeamCorrectionState(),
                 dcorr.TeamCorrectionState(),
                 dcorr_cfg,
+                match_date=aging_as_of,
             )
             d_for_cal = d_model_base
         # legacy momentum snapshot left empty / zero for compatibility
@@ -2873,21 +2926,51 @@ def predict_match(
     s_for_cal = s_model_base
     s_book = model.s_momentum_book
     scfg = model.s_momentum_cfg or resolve_s_momentum_config(cfg)
+    aging_as_of_s = match_date if match_date is not None else date.today()
     if apply_s_momentum and s_book is not None:
         key_s = smom.match_key(match_date, home_id, away_id) if match_date else None
         rec_s = s_book.records.get(key_s) if (use_momentum_lookup and key_s) else None
         if rec_s is not None:
-            s_mom_snap = smom.apply_s_momentum(
-                s_model_base,
-                rec_s.ema_home_before,
-                rec_s.ema_away_before,
-                scfg,
-                home_matches=rec_s.home_matches_count,
-                away_matches=rec_s.away_matches_count,
+            # Record already includes aged correction from walk; re-base on current S_model_base.
+            s_mom_snap = smom.SMomentumSnapshot(
+                ema_home_before=rec_s.ema_home_before,
+                ema_away_before=rec_s.ema_away_before,
+                ema_home_effective=rec_s.ema_home_effective,
+                ema_away_effective=rec_s.ema_away_effective,
+                home_matches_count=rec_s.home_matches_count,
+                away_matches_count=rec_s.away_matches_count,
+                s_momentum=rec_s.s_momentum,
+                dynamic_correction_raw=rec_s.dynamic_correction_raw,
+                dynamic_correction=rec_s.dynamic_correction,
+                s_model_base=s_model_base,
+                s_model_dynamic=s_model_base + rec_s.dynamic_correction,
+                correction_clamped=rec_s.correction_clamped,
+                ema_home_clamped=rec_s.ema_home_clamped,
+                ema_away_clamped=rec_s.ema_away_clamped,
+                enabled=rec_s.enabled,
+                alpha=rec_s.alpha,
+                k=rec_s.k,
+                max_abs_team_ema=rec_s.max_abs_team_ema,
+                max_abs_correction=rec_s.max_abs_correction,
+                lambda_min=rec_s.lambda_min,
+                home_days_since_previous_match=rec_s.home_days_since_previous_match,
+                away_days_since_previous_match=rec_s.away_days_since_previous_match,
+                home_dynamic_aging_factor=rec_s.home_dynamic_aging_factor,
+                away_dynamic_aging_factor=rec_s.away_dynamic_aging_factor,
+                home_dynamic_before_aging=rec_s.home_dynamic_before_aging,
+                away_dynamic_before_aging=rec_s.away_dynamic_before_aging,
+                home_dynamic_after_aging=rec_s.home_dynamic_after_aging,
+                away_dynamic_after_aging=rec_s.away_dynamic_after_aging,
+                s_correction_before_aging=rec_s.s_correction_before_aging,
+                s_correction_after_aging=rec_s.s_correction_after_aging,
+                state_aging_enabled=rec_s.state_aging_enabled,
             )
         else:
             s_mom_snap = s_book.peek(
-                home_id=home_id, away_id=away_id, s_model_base=s_model_base,
+                home_id=home_id,
+                away_id=away_id,
+                s_model_base=s_model_base,
+                match_date=aging_as_of_s,
             )
         s_for_cal = s_mom_snap.s_model_dynamic
     elif not apply_s_momentum:
@@ -2899,6 +2982,7 @@ def predict_match(
                 max_abs_team_ema=scfg.max_abs_team_ema,
                 max_abs_correction=scfg.max_abs_correction,
                 lambda_min=scfg.lambda_min,
+                state_aging=scfg.state_aging,
             ),
             home_matches=0, away_matches=0,
         )

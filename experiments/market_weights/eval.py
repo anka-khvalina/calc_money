@@ -42,6 +42,7 @@ def load_baseline_config(season_weights: List[gmt.SeasonWeight]) -> gmt.ModelCon
     cfg = replace(cfg, rating_mode="standard_wls", rating_by_league={}, derby_min_matches=10**9)
     se = doc.get("dynamic_s_ema") or {}
     if se:
+        sa = se.get("state_aging") or se.get("stateAging") or {}
         cfg = replace(
             cfg,
             s_momentum_enabled=bool(se.get("enabled", False)),
@@ -49,6 +50,10 @@ def load_baseline_config(season_weights: List[gmt.SeasonWeight]) -> gmt.ModelCon
             s_momentum_k=float(se.get("k", 1.0)),
             s_momentum_min_matches=int(se.get("min_team_matches", 1) or 1),
             s_momentum_reset_on_new_season=bool(se.get("reset_on_new_season", True)),
+            s_momentum_state_aging_enabled=bool(sa.get("enabled", False)) if sa else False,
+            s_momentum_state_aging_half_life_days=float(
+                sa.get("half_life_days", sa.get("halfLifeDays", 60.0))
+            ) if sa else 60.0,
         )
     mom = doc.get("momentum") or {}
     if mom:

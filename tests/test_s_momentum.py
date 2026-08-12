@@ -180,3 +180,65 @@ def test_config_from_mapping():
     assert cfg.enabled is True
     assert abs(cfg.k - 1.0) < 1e-12
     assert cfg.max_abs_team_ema is None
+
+
+def test_s_state_aging_factor_and_independence():
+    """AC-6: H_S independent from H_D; S aging formula."""
+    import pytest
+
+    cfg_s = sm.SMomentumConfig(
+        enabled=True, alpha=0.5, k=1.0, min_team_matches=1,
+        state_aging=sm.StateAgingConfig(enabled=True, half_life_days=30),
+    ).validated()
+    assert sm.state_aging_factor(30, cfg_s.state_aging) == pytest.approx(0.5)
+
+    # Build book with gap
+    walk = [
+        sm.SMomentumWalkMatch(date(2026, 1, i), "H", "A", 2.5, 3.0)
+        for i in range(1, 6)
+    ]
+    book = sm.build_s_momentum_walk(walk, cfg_s)
+    snap30 = book.peek(home_id="H", away_id="A", s_model_base=2.5, match_date=date(2026, 2, 4))
+    assert snap30.home_days_since_previous_match == 30
+    assert snap30.home_dynamic_aging_factor == pytest.approx(0.5)
+    assert abs(snap30.s_correction_after_aging) <= abs(snap30.s_correction_before_aging) + 1e-12
+
+    # Different half-life changes S only
+    cfg_s2 = sm.SMomentumConfig(
+        enabled=True, alpha=0.5, k=1.0, min_team_matches=1,
+        state_aging=sm.StateAgingConfig(enabled=True, half_life_days=60),
+    ).validated()
+    book2 = sm.build_s_momentum_walk(walk, cfg_s2)
+    snap60 = book2.peek(home_id="H", away_id="A", s_model_base=2.5, match_date=date(2026, 2, 4))
+    assert snap60.home_dynamic_aging_factor == pytest.approx(2 ** (-30 / 60))
+    assert snap30.home_dynamic_aging_factor != pytest.approx(snap60.home_dynamic_aging_factor)
+
+
+def test_s_aging_off_identity():
+    import pytest
+
+    cfg = sm.SMomentumConfig(
+        enabled=True, alpha=0.5, k=1.0, min_team_matches=1,
+        state_aging=sm.StateAgingConfig(enabled=False, half_life_days=60),
+    ).validated()
+    walk = [
+        sm.SMomentumWalkMatch(date(2026, 1, i), "H", "A", 2.5, 3.2)
+        for i in range(1, 5)
+    ]
+    book = sm.build_s_momentum_walk(walk, cfg)
+    snap = book.peek(home_id="H", away_id="A", s_model_base=2.5, match_date=date(2026, 6, 1))
+    assert snap.home_dynamic_aging_factor == pytest.approx(1.0)
+    assert snap.s_correction_after_aging == pytest.approx(snap.s_correction_before_aging)
+
+
+def test_s_config_parses_state_aging():
+    import pytest
+
+    cfg = sm.s_momentum_config_from_mapping({
+        "dynamic_s_ema": {
+            "enabled": True,
+            "state_aging": {"enabled": True, "halfLifeDays": 40},
+        }
+    })
+    assert cfg.state_aging.enabled is True
+    assert cfg.state_aging.half_life_days == pytest.approx(40.0)
