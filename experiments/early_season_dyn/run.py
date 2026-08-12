@@ -59,9 +59,14 @@ def _pack_pred(
     arm: str,
     mode: str,
 ) -> Dict[str, Any]:
+    from .metrics import model_odds_with_market_margin
+
     r = t.row
     mk = pred.markets
     shin = market_1x2_probs(r.home_odds, r.draw_odds, r.away_odds)
+    p1 = float(pred.home_probability_final)
+    px = float(pred.draw_probability_final)
+    p2 = float(pred.away_probability_final)
     out: Dict[str, Any] = {
         "mode": mode,
         "arm": arm,
@@ -78,14 +83,36 @@ def _pack_pred(
         "tot_mkt": r.closing_total_line,
         "ah_pred": float(mk.main_ah.line),
         "tot_pred": float(mk.main_total.line),
-        "p1": float(pred.home_probability_final),
-        "px": float(pred.draw_probability_final),
-        "p2": float(pred.away_probability_final),
+        "p1": p1,
+        "px": px,
+        "p2": p2,
+        "o1": r.home_odds,
+        "ox": r.draw_odds,
+        "o2": r.away_odds,
     }
     if shin is not None:
         out["m1"], out["mx"], out["m2"] = shin
     else:
         out["m1"] = out["mx"] = out["m2"] = None
+    # Margined model odds vs market quotes (same overround)
+    if (
+        r.home_odds is not None
+        and r.draw_odds is not None
+        and r.away_odds is not None
+        and min(r.home_odds, r.draw_odds, r.away_odds) > 1.0
+    ):
+        b1, bx, b2, over = model_odds_with_market_margin(
+            p1, px, p2, float(r.home_odds), float(r.draw_odds), float(r.away_odds)
+        )
+        out["b1m"], out["bxm"], out["b2m"] = b1, bx, b2
+        out["overround"] = over
+        out["d1_odds"] = b1 - float(r.home_odds)
+        out["dx_odds"] = bx - float(r.draw_odds)
+        out["d2_odds"] = b2 - float(r.away_odds)
+    else:
+        out["b1m"] = out["bxm"] = out["b2m"] = None
+        out["overround"] = None
+        out["d1_odds"] = out["dx_odds"] = out["d2_odds"] = None
     return out
 
 
@@ -263,8 +290,12 @@ def run() -> Dict[str, Any]:
     (OUT / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     # also copy report-friendly markdown stub path under experiments
-    print("\n===== POLICY (AH) =====", flush=True)
-    print(f"{'bucket':8} {'arm':6} {'n':>4} {'MAE_AH':>7} {'≥0.5':>5} {'≥0.75':>5} {'MAE_Tot':>8} {'≥0.5T':>5} {'MAE_P1':>7}", flush=True)
+    print("\n===== POLICY (AH + margined 1X2) =====", flush=True)
+    print(
+        f"{'bucket':8} {'arm':6} {'n':>4} {'MAE_AH':>7} {'≥0.5':>5} {'≥0.75':>5} "
+        f"{'MAE_Tot':>8} {'≥0.5T':>5} {'P1pp':>6} {'oddsFav':>8}",
+        flush=True,
+    )
     for sm in policy_table:
         if sm.get("n", 0) == 0:
             continue
@@ -272,7 +303,8 @@ def run() -> Dict[str, Any]:
             f"{sm['bucket']:8} {sm['arm']:6} {sm['n']:4} "
             f"{sm['mae_AH']:.3f}   {sm['n_ah_ge_0_5']:5} {sm['n_ah_ge_0_75']:5} "
             f"{sm['mae_Tot']:.3f}    {sm['n_tot_ge_0_5']:5} "
-            f"{(100*sm['mae_P1']) if sm.get('mae_P1') is not None else float('nan'):6.2f}",
+            f"{(100*sm['mae_P1']) if sm.get('mae_P1') is not None else float('nan'):6.2f} "
+            f"{(sm['mae_odds_fav']) if sm.get('mae_odds_fav') is not None else float('nan'):8.3f}",
             flush=True,
         )
 

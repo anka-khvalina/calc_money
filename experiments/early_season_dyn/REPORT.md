@@ -82,7 +82,27 @@ Best scale by **MAE AH** / **MAE Tot**:
 
 **Crossover signal:** around **GW6** full dynamic becomes competitive on AH and preferred on Total. Through GW5, ×0.50 still better on AH. Total prefers full dynamic from GW5 onward.
 
-## Verdict (offline only)
+## Margin rule (1X2)
+
+Market 1/X/2 quotes include ~5% overround. Comparisons never mix fair model odds with margined market quotes.
+
+| What | How |
+|---|---|
+| **AH / Total (primary)** | closing **lines** vs model lines — margin N/A |
+| **1X2 probs (monitor)** | Shin-devig market → fair probs vs model fair probs |
+| **1X2 odds (monitor)** | model fair probs × **same match overround**, then MAE vs market quotes; also `mae_odds_fav` on the shorter side |
+
+### GW1–4 1X2 with margin accounted for (n=230)
+
+| Arm | MAE P1/PX/P2 (pp, Shin) | MAE odds 1/X/2 (margined) | MAE odds fav |
+|---|---:|---:|---:|
+| BASE | 4.86 / 1.99 / 4.22 | 0.435 / 0.358 / 1.066 | 0.229 |
+| A | 4.63 / 1.79 / 3.88 | 0.410 / 0.323 / 0.750 | 0.212 |
+| B | 4.26 / 1.73 / 3.61 | 0.371 / 0.311 / 0.696 | 0.194 |
+| **C** | **4.15 / 1.74 / 3.60** | **0.367 / 0.310 / 0.728** | **0.191** |
+
+Same ranking as AH: C/B beat BASE once margin is matched.
+
 
 1. Production mid-season path is fine; **season-open carry of Dynamic D / S-EMA hurts GW1 especially**.
 2. Among policy arms on GW1–4, **C (×0.50)** or **B (×0.25)** beat BASE on AH and Tot; OFF (A) fixes GW1 but loses from GW2–4.
