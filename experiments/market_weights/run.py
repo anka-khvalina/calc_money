@@ -23,8 +23,8 @@ OUT = Path("/opt/cursor/artifacts/exp041_044")
 REPO_REPORT = Path("/workspace/experiments/market_weights/REPORT.md")
 
 # Expanding monthly holdout window (closing-odds coverage)
-FROM_MONTH = "2025-11"
-TO_MONTH = "2026-03"
+FROM_MONTH = "2025-12"
+TO_MONTH = "2026-02"
 
 # Run order: cheap first, then 042, then 041 weight if correlation ok
 SCHEMES_CORE = [
@@ -55,11 +55,11 @@ def main() -> int:
     print(f"features computed: {len(feats)}", flush=True)
 
     # --- EXP-041 correlation study (train cut = first holdout month) ---
-    train_to = date(2025, 11, 1)
+    train_to = date(int(FROM_MONTH[:4]), int(FROM_MONTH[5:7]), 1)
     corr = correlation_study(rows, feats, train_to=train_to)
     # also overall with labels before train_to
     (OUT / "exp041_correlation.json").write_text(json.dumps(corr, indent=2), encoding="utf-8")
-    print("\nEXP-041 correlation (features vs future_reval_max, train < 2025-11):", flush=True)
+    print(f"\nEXP-041 correlation (features vs future_reval_max, train < {FROM_MONTH}):", flush=True)
     for c in sorted(corr, key=lambda x: -(abs(x["pearson"]) if x["pearson"] is not None else -1)):
         print(f"  {c['feature']:24} n={c['n']:5} r={c['pearson']}", flush=True)
 
