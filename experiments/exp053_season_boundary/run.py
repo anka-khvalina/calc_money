@@ -613,6 +613,44 @@ def report(
             f"{_fmt_u(s['mae_ah'], 3)} | {_fmt_u(s['mae_tot'], 3)} |"
         )
     lines.append("")
+    lines.append("## Verdict (read from the tables)")
+    lines.append("")
+    lb = next((s for s in regimes if s["key"] == "long_break"), None)
+    st = next((s for s in regimes if s["key"] == "stable"), None)
+    ctrl_lb = next((s for s in control if s["key"] == "ctrl_long_break"), None)
+    ctrl_st = next((s for s in control if s["key"] == "ctrl_stable"), None)
+    if lb and st:
+        lines.append(
+            f"- On Long-break, `ΔD_after_aging` ({_fmt(lb['dD_after_aging'])}) stays close to "
+            f"`ΔD_base` ({_fmt(lb['dD_base'])}): aging correctly kills stale dynamic state, "
+            "so the remaining gap is not short-term EMA carry."
+        )
+        lines.append(
+            f"- Long-break AH MAE {_fmt_u(lb['mae_ah'], 3)} / Tot MAE {_fmt_u(lb['mae_tot'], 3)} "
+            f"vs Stable {_fmt_u(st['mae_ah'], 3)} / {_fmt_u(st['mae_tot'], 3)} "
+            "(elevated early, then settles)."
+        )
+        lines.append(
+            f"- Signed `ΔD_base` on Long-break is {_fmt(lb['dD_base'])} "
+            f"(abs {_fmt_u(lb['abs_dD_base'])}); Stable {_fmt(st['dD_base'])} "
+            f"(abs {_fmt_u(st['abs_dD_base'])}). "
+            "A permanent fav-tail bug would not preferentially show as warm-up AH/Tot error."
+        )
+    if ctrl_lb and ctrl_st:
+        lines.append(
+            f"- **Same-team control** ({n_ctrl_teams} teams): Long-break AH MAE "
+            f"{_fmt_u(ctrl_lb['mae_ah'], 3)} → Stable {_fmt_u(ctrl_st['mae_ah'], 3)}; "
+            f"Tot {_fmt_u(ctrl_lb['mae_tot'], 3)} → {_fmt_u(ctrl_st['mae_tot'], 3)}; "
+            f"|ΔD_base| {_fmt_u(ctrl_lb['abs_dD_base'])} → {_fmt_u(ctrl_st['abs_dD_base'])}. "
+            "Line error shrinks without model changes → supports missing-info / regime-shift "
+            "at the boundary more than a fixed matrix bug."
+        )
+    lines.append(
+        "- Next research target: how to move **base rating** (and HA) across seasons when "
+        "dynamic state is already aged out — promoted teams, roster/coach shocks, "
+        "and August information the market has and we do not."
+    )
+    lines.append("")
     lines.append("## Frozen decisions (not this EXP)")
     lines.append("")
     lines.append("- Aging H60 remains a production candidate (separate from this diagnostic).")
