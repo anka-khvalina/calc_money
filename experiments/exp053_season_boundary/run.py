@@ -78,13 +78,14 @@ def train_model(raw: Sequence[gmt.RawMatch]) -> gmt.TrainedModel:
         s_momentum_state_aging_enabled=True,
         s_momentum_state_aging_half_life_days=HALF_LIFE,
     )
-    old = sys.stdout
-    sys.stdout = open("/dev/null", "w")
+    old_out, old_err = sys.stdout, sys.stderr
+    devnull = open("/dev/null", "w")
+    sys.stdout = sys.stderr = devnull
     try:
         model, _ = gmt.train_full_model(list(raw), cfg)
     finally:
-        sys.stdout.close()
-        sys.stdout = old
+        sys.stdout, sys.stderr = old_out, old_err
+        devnull.close()
     return model
 
 
@@ -412,6 +413,8 @@ def team_side_rows(match_rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]
                 "dD_after_aging": r["dD_after_aging"],
                 "dD_final": r["dD_final"],
                 "abs_dD_base": r["abs_dD_base"],
+                "abs_dD_after_aging": r["abs_dD_after_aging"],
+                "abs_dD_final": r["abs_dD_final"],
                 "dS": r["dS"],
                 "dP_fav": r["dP_fav"],
                 "dP_x": r["dP_x"],
@@ -627,13 +630,36 @@ def report(
     return "\n".join(lines)
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--leagues", nargs="*", default=None)
-    args = ap.parse_args()
-    print("loading history…", flush=True)
-    rows = parse_rows(fetch_all_view_rows())
-    flat = run(rows, limit_leagues=args.leagues)
+def load_preds_csv(path: Path) -> List[Dict[str, Any]]:
+    with path.open(newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    float_keys = {
+        "fav_odds", "days_h", "days_a", "mslb_h", "mslb_a", "mslb",
+        "d_market", "s_market", "d_base", "d_after_aging", "d_final", "s_model",
+        "dD_base", "dD_after_aging", "dD_final", "dS",
+        "abs_dD_base", "abs_dD_after_aging", "abs_dD_final",
+        "dP_fav", "dP_x", "dP_dog",
+        "ah_mkt", "ah_pred", "tot_mkt", "tot_pred", "abs_dah", "abs_dtot", "month",
+    }
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        item: Dict[str, Any] = dict(r)
+        for k in float_keys:
+            if k in item and item[k] not in ("", None):
+                item[k] = float(item[k])
+            elif k in item:
+                item[k] = None
+        for k in ("mslb", "mslb_h", "mslb_a", "month"):
+            if item.get(k) is not None:
+                item[k] = int(item[k])
+        for k in ("regime", "regime_h", "regime_a"):
+            if item.get(k) == "":
+                item[k] = None
+        out.append(item)
+    return out
+
+
+def write_outputs(flat: List[Dict[str, Any]]) -> str:
     regimes = by_regime(flat)
     seasons = by_regime_season(flat)
     leagues = by_regime_league(flat)
@@ -664,6 +690,28 @@ def main() -> None:
             encoding="utf-8",
         )
         (dest / "REPORT.md").write_text(text, encoding="utf-8")
+    return text
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--leagues", nargs="*", default=None)
+    ap.add_argument("--from-csv", type=Path, default=None,
+                    help="Reuse preds_flat.csv and only re-aggregate")
+    args = ap.parse_args()
+    if args.from_csv is not None:
+        print(f"loading preds from {args.from_csv}…", flush=True)
+        flat = load_preds_csv(args.from_csv)
+    else:
+        print("loading history…", flush=True)
+        rows = parse_rows(fetch_all_view_rows())
+        flat = run(rows, limit_leagues=args.leagues)
+        # persist immediately so aggregation bugs do not lose the OOS run
+        for dest in (OUT, REPO):
+            dest.mkdir(parents=True, exist_ok=True)
+            write_csv(dest / "preds_flat.csv", flat)
+        print(f"wrote {len(flat)} preds; aggregating…", flush=True)
+    text = write_outputs(flat)
     print(text)
 
 
