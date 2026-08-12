@@ -233,11 +233,19 @@
     "max_abs_correction": null,
     "lambda_min": 0.05,
     "reset_on_new_season": true,
-    "state_aging": {
-      "enabled": true,
-      "half_life_days": 60
-    },
     "byLeague": {}
+  },
+  "dynamic_d": {
+    "state_aging": {
+      "enabled": false,
+      "half_life_days": 60
+    }
+  },
+  "dynamic_s": {
+    "state_aging": {
+      "enabled": false,
+      "half_life_days": 60
+    }
   },
   "dynamic_dc_gamma": {
     "enabled": true,
@@ -283,10 +291,6 @@
     },
     "total": {
       "max_abs_correction": 0.6
-    },
-    "state_aging": {
-      "enabled": true,
-      "half_life_days": 60
     },
     "cache": {
       "fallback": "last_local",

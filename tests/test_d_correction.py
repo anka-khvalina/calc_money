@@ -333,23 +333,6 @@ def test_ac3_per_team_aging():
     assert snap.home_dynamic_aging_factor != snap.away_dynamic_aging_factor
 
 
-def test_ac4_feature_off_matches_legacy():
-    """AC-4: state_aging.enabled=false → identical to no aging."""
-    base_cfg = _cfg()
-    aged_off = _cfg(state_aging=dcorr.StateAgingConfig(enabled=False, half_life_days=60))
-    hist = [
-        dcorr.DCorrectionWalkMatch(date(2026, 1, i), "H", "A", 0.0, 0.7)
-        for i in range(1, 8)
-    ]
-    b0 = dcorr.build_d_correction_walk(hist, base_cfg)
-    b1 = dcorr.build_d_correction_walk(hist, aged_off)
-    s0 = b0.peek(home_id="H", away_id="A", d_model_base=0.2, match_date=date(2026, 5, 1))
-    s1 = b1.peek(home_id="H", away_id="A", d_model_base=0.2, match_date=date(2026, 5, 1))
-    assert s0.total_correction == pytest.approx(s1.total_correction)
-    assert s0.d_model_dynamic == pytest.approx(s1.d_model_dynamic)
-    assert s1.home_dynamic_aging_factor == pytest.approx(1.0)
-
-
 def test_ac5_new_match_updates_without_gw_multiplier():
     """AC-5: after long pause, new match updates via existing EMA (no GW multiplier)."""
     cfg = _cfg(state_aging=dcorr.StateAgingConfig(enabled=True, half_life_days=60))
@@ -376,10 +359,47 @@ def test_ac5_new_match_updates_without_gw_multiplier():
 
 def test_config_parses_state_aging():
     cfg = dcorr.d_correction_config_from_mapping({
-        "d_correction": {
-            "mode": "slow_fast",
+        "dynamic_d": {
             "state_aging": {"enabled": True, "half_life_days": 45},
-        }
+        },
+        "d_correction": {"mode": "slow_fast"},
     })
     assert cfg.state_aging.enabled is True
     assert cfg.state_aging.half_life_days == pytest.approx(45.0)
+
+
+def test_config_dynamic_d_preferred_over_nested():
+    cfg = dcorr.d_correction_config_from_mapping({
+        "dynamic_d": {"stateAging": {"enabled": False, "halfLifeDays": 90}},
+        "d_correction": {
+            "mode": "slow_fast",
+            "state_aging": {"enabled": True, "half_life_days": 45},
+        },
+    })
+    assert cfg.state_aging.enabled is False
+    assert cfg.state_aging.half_life_days == pytest.approx(90.0)
+
+
+def test_config_default_aging_off_is_current():
+    cfg = dcorr.d_correction_config_from_mapping({"d_correction": {"mode": "slow_fast"}})
+    assert cfg.state_aging.enabled is False
+
+
+def test_ac4_feature_off_matches_legacy():
+    """AC-4: state_aging.enabled=false → identical to no aging (CURRENT rollback)."""
+    base_cfg = _cfg()
+    aged_off = _cfg(state_aging=dcorr.StateAgingConfig(enabled=False, half_life_days=60))
+    hist = [
+        dcorr.DCorrectionWalkMatch(date(2026, 1, i), "H", "A", 0.0, 0.7)
+        for i in range(1, 8)
+    ]
+    b0 = dcorr.build_d_correction_walk(hist, base_cfg)
+    b1 = dcorr.build_d_correction_walk(hist, aged_off)
+    s0 = b0.peek(home_id="H", away_id="A", d_model_base=0.2, match_date=date(2026, 5, 1))
+    s1 = b1.peek(home_id="H", away_id="A", d_model_base=0.2, match_date=date(2026, 5, 1))
+    assert s0.total_correction == pytest.approx(s1.total_correction)
+    assert s0.d_model_dynamic == pytest.approx(s1.d_model_dynamic)
+    assert s0.slow_bias_home == pytest.approx(s1.slow_bias_home)
+    assert s0.fast_bias_home == pytest.approx(s1.fast_bias_home)
+    assert s1.home_dynamic_aging_factor == pytest.approx(1.0)
+    assert s1.d_correction_after_aging == pytest.approx(s1.d_correction_before_aging)

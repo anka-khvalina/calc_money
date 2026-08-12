@@ -134,7 +134,7 @@ class StateAgingConfig:
         h = float(self.half_life_days)
         if h <= 0:
             raise ValueError(
-                f"d_correction.state_aging.half_life_days must be > 0, got {h}"
+                f"dynamic_d.state_aging.half_life_days must be > 0, got {h}"
             )
         return StateAgingConfig(enabled=bool(self.enabled), half_life_days=h)
 
@@ -202,8 +202,46 @@ def _layer_from_mapping(raw: Optional[Mapping[str, Any]], *, slow: bool) -> Mapp
     return raw if isinstance(raw, Mapping) else {}
 
 
+def state_aging_from_root_mapping(raw: Optional[Mapping[str, Any]]) -> StateAgingConfig:
+    """Primary: dynamic_d.state_aging / dynamicD.stateAging.
+    Fallback: d_correction.state_aging (legacy nesting).
+    Default: enabled=false (CURRENT / rollback).
+    half_life_days is a tunable research candidate (e.g. 60), not a locked prod constant.
+    """
+    if not isinstance(raw, Mapping):
+        return StateAgingConfig()
+    block: Dict[str, Any] = {}
+    for key in ("dynamic_d", "dynamicD"):
+        top = raw.get(key)
+        if isinstance(top, Mapping):
+            block = dict(top)
+            break
+    aging_raw: Mapping[str, Any] = {}
+    if isinstance(block.get("state_aging"), Mapping):
+        aging_raw = block["state_aging"]  # type: ignore[assignment]
+    elif isinstance(block.get("stateAging"), Mapping):
+        aging_raw = block["stateAging"]  # type: ignore[assignment]
+    if not aging_raw:
+        dc = raw.get("d_correction") if isinstance(raw.get("d_correction"), Mapping) else {}
+        if isinstance(dc, Mapping):
+            if isinstance(dc.get("state_aging"), Mapping):
+                aging_raw = dc["state_aging"]  # type: ignore[assignment]
+            elif isinstance(dc.get("stateAging"), Mapping):
+                aging_raw = dc["stateAging"]  # type: ignore[assignment]
+    if not isinstance(aging_raw, Mapping) or not aging_raw:
+        return StateAgingConfig()
+    return StateAgingConfig(
+        enabled=bool(aging_raw["enabled"]) if "enabled" in aging_raw else False,
+        half_life_days=float(
+            aging_raw["half_life_days"]
+            if "half_life_days" in aging_raw
+            else aging_raw.get("halfLifeDays", 60.0)
+        ),
+    ).validated()
+
+
 def d_correction_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> DCorrectionConfig:
-    """Читает d_correction из model_config (top-level)."""
+    """Читает d_correction из model_config (top-level); aging — из dynamic_d."""
     block: Dict[str, Any] = {}
     if isinstance(raw, Mapping):
         dc = raw.get("d_correction")
@@ -216,9 +254,6 @@ def d_correction_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> DCorre
     fast_raw = _layer_from_mapping(block.get("fast"), slow=False)
     total_raw = block.get("total") if isinstance(block.get("total"), Mapping) else {}
     cache_raw = block.get("cache") if isinstance(block.get("cache"), Mapping) else {}
-    aging_raw = block.get("state_aging") if isinstance(block.get("state_aging"), Mapping) else {}
-    if not aging_raw and isinstance(block.get("stateAging"), Mapping):
-        aging_raw = block.get("stateAging")  # type: ignore[assignment]
 
     def _f(m: Mapping[str, Any], *keys: str, default: Any) -> Any:
         for k in keys:
@@ -251,12 +286,7 @@ def d_correction_config_from_mapping(raw: Optional[Mapping[str, Any]]) -> DCorre
         versions_to_keep=int(_f(cache_raw, "versions_to_keep", "versionsToKeep", default=2)),
         root_dir=_f(cache_raw, "root_dir", "rootDir", default=None),
     )
-    state_aging = StateAgingConfig(
-        enabled=bool(_f(aging_raw, "enabled", default=False)),
-        half_life_days=float(
-            _f(aging_raw, "half_life_days", "halfLifeDays", default=60.0)
-        ),
-    )
+    state_aging = state_aging_from_root_mapping(raw if isinstance(raw, Mapping) else None)
     return DCorrectionConfig(
         mode=str(block.get("mode", MODE_SLOW_FAST)),
         slow=slow,

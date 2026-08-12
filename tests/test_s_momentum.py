@@ -235,10 +235,35 @@ def test_s_config_parses_state_aging():
     import pytest
 
     cfg = sm.s_momentum_config_from_mapping({
-        "dynamic_s_ema": {
-            "enabled": True,
+        "dynamic_s": {
             "state_aging": {"enabled": True, "halfLifeDays": 40},
-        }
+        },
+        "dynamic_s_ema": {"enabled": True},
     })
     assert cfg.state_aging.enabled is True
     assert cfg.state_aging.half_life_days == pytest.approx(40.0)
+
+
+def test_s_config_default_aging_off():
+    import pytest
+
+    cfg = sm.s_momentum_config_from_mapping({"dynamic_s_ema": {"enabled": True}})
+    assert cfg.state_aging.enabled is False
+
+
+def test_s_hd_hs_independent():
+    """AC-6: changing H_S does not require / affect Dynamic D half-life config."""
+    import pytest
+
+    d_cfg = __import__("d_correction", fromlist=["*"])
+    d = d_cfg.d_correction_config_from_mapping({
+        "dynamic_d": {"state_aging": {"enabled": True, "half_life_days": 60}},
+        "d_correction": {"mode": "slow_fast"},
+    })
+    s = sm.s_momentum_config_from_mapping({
+        "dynamic_s": {"state_aging": {"enabled": True, "half_life_days": 30}},
+        "dynamic_s_ema": {"enabled": True},
+    })
+    assert d.state_aging.half_life_days == pytest.approx(60.0)
+    assert s.state_aging.half_life_days == pytest.approx(30.0)
+    assert d.state_aging.half_life_days != s.state_aging.half_life_days

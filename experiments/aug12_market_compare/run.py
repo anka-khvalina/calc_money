@@ -169,7 +169,11 @@ def _report(
     lines.append("## Method")
     lines.append("")
     lines.append("- **Model:** production FULL (`train_full_model` + `predict_match`), Dynamic D + S-EMA on.")
-    lines.append("- **Dynamic State Aging:** ON (`H_D=H_S=60` from `model_config`), `match_date=2026-08-12`.")
+    lines.append(
+        "- **Dynamic State Aging:** separate `dynamic_d` / `dynamic_s` configs "
+        "(default **OFF** = CURRENT; research candidate half-life e.g. 60). "
+        f"`match_date={MATCH_DATE.isoformat()}` when enabled."
+    )
     lines.append(f"- **Train:** {train_desc}.")
     lines.append("- **1X2 odds:** fair model probs × **same match overround** as the book (маржа рынка).")
     lines.append("- **AH / Tot:** compare **main lines**.")

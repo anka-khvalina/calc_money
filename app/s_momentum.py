@@ -28,7 +28,7 @@ class StateAgingConfig:
         h = float(self.half_life_days)
         if h <= 0:
             raise ValueError(
-                f"dynamic_s_ema.state_aging.half_life_days must be > 0, got {h}"
+                f"dynamic_s.state_aging.half_life_days must be > 0, got {h}"
             )
         return StateAgingConfig(enabled=bool(self.enabled), half_life_days=h)
 
@@ -108,7 +108,9 @@ def s_momentum_config_from_mapping(
     league_id: Optional[str] = None,
     league_name: Optional[str] = None,
 ) -> SMomentumConfig:
-    """Читает dynamic_s_ema / sMomentum / s_momentum из model_config."""
+    """Читает dynamic_s_ema / sMomentum / s_momentum из model_config.
+    Aging — отдельно: dynamic_s.state_aging / dynamicS.stateAging (fallback: nested in dynamic_s_ema).
+    """
     base: Dict[str, Any] = {}
     if raw:
         for block in (
@@ -149,24 +151,50 @@ def s_momentum_config_from_mapping(
             if "reset_on_new_season" in base
             else base.get("resetOnNewSeason", True)
         ),
-        state_aging=_state_aging_from_mapping(base),
+        state_aging=state_aging_from_root_mapping(raw if isinstance(raw, Mapping) else None, ema_base=base),
+    ).validated()
+
+
+def state_aging_from_root_mapping(
+    raw: Optional[Mapping[str, Any]],
+    *,
+    ema_base: Optional[Mapping[str, Any]] = None,
+) -> StateAgingConfig:
+    """Primary: dynamic_s.state_aging / dynamicS.stateAging.
+    Fallback: nested state_aging under dynamic_s_ema block.
+    Default: enabled=false (CURRENT / rollback).
+    """
+    aging_raw: Mapping[str, Any] = {}
+    if isinstance(raw, Mapping):
+        for key in ("dynamic_s", "dynamicS"):
+            top = raw.get(key)
+            if isinstance(top, Mapping):
+                if isinstance(top.get("state_aging"), Mapping):
+                    aging_raw = top["state_aging"]  # type: ignore[assignment]
+                    break
+                if isinstance(top.get("stateAging"), Mapping):
+                    aging_raw = top["stateAging"]  # type: ignore[assignment]
+                    break
+    if not aging_raw and isinstance(ema_base, Mapping):
+        if isinstance(ema_base.get("state_aging"), Mapping):
+            aging_raw = ema_base["state_aging"]  # type: ignore[assignment]
+        elif isinstance(ema_base.get("stateAging"), Mapping):
+            aging_raw = ema_base["stateAging"]  # type: ignore[assignment]
+    if not isinstance(aging_raw, Mapping) or not aging_raw:
+        return StateAgingConfig()
+    return StateAgingConfig(
+        enabled=bool(aging_raw["enabled"]) if "enabled" in aging_raw else False,
+        half_life_days=float(
+            aging_raw["half_life_days"]
+            if "half_life_days" in aging_raw
+            else aging_raw.get("halfLifeDays", 60.0)
+        ),
     ).validated()
 
 
 def _state_aging_from_mapping(base: Mapping[str, Any]) -> StateAgingConfig:
-    aging = base.get("state_aging") if isinstance(base.get("state_aging"), Mapping) else None
-    if aging is None and isinstance(base.get("stateAging"), Mapping):
-        aging = base.get("stateAging")  # type: ignore[assignment]
-    if not isinstance(aging, Mapping):
-        return StateAgingConfig()
-    return StateAgingConfig(
-        enabled=bool(aging["enabled"]) if "enabled" in aging else False,
-        half_life_days=float(
-            aging["half_life_days"]
-            if "half_life_days" in aging
-            else aging.get("halfLifeDays", 60.0)
-        ),
-    )
+    """Legacy helper: nested state_aging inside an S-EMA block."""
+    return state_aging_from_root_mapping(None, ema_base=base)
 
 
 @dataclass

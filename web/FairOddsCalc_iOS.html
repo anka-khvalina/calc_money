@@ -3423,6 +3423,8 @@ bash scripts/update_and_serve.sh --start</div>
           || t.strongFavouriteTotalCorrection
           || {},
         dynamic_s_ema: raw.dynamic_s_ema || raw.sMomentum || {},
+        dynamic_d: raw.dynamic_d || raw.dynamicD || {},
+        dynamic_s: raw.dynamic_s || raw.dynamicS || {},
         dynamic_dc_gamma: raw.dynamic_dc_gamma || raw.dynamicDcGamma || {},
         configSource: 'model_config.json',
       });
@@ -6056,7 +6058,13 @@ bash scripts/update_and_serve.sh --start</div>
       const slow = raw.slow || {};
       const fast = raw.fast || {};
       const total = raw.total || {};
-      const aging = raw.state_aging || raw.stateAging || {};
+      // Primary: dynamic_d.state_aging / dynamicD.stateAging (independent of S). Fallback: nested under d_correction.
+      const root = GM_MODEL_CFG || GM_MATRIX_CFG || {};
+      const dynD = root.dynamic_d || root.dynamicD
+        || (GM_MATRIX_CFG && (GM_MATRIX_CFG.dynamic_d || GM_MATRIX_CFG.dynamicD))
+        || {};
+      const aging = dynD.state_aging || dynD.stateAging
+        || raw.state_aging || raw.stateAging || {};
       return {
         mode: String(raw.mode || 'slow_fast').toLowerCase(),
         slow: {
@@ -6076,7 +6084,9 @@ bash scripts/update_and_serve.sh --start</div>
         totalMaxAbs: total.max_abs_correction != null ? Number(total.max_abs_correction)
           : (raw.total_max_abs_correction != null ? Number(raw.total_max_abs_correction) : 0.60),
         stateAging: {
+          // OFF by default = CURRENT / rollback
           enabled: aging.enabled === true || aging.enabled === 'true',
+          // halfLifeDays is a research candidate (e.g. 60), not a locked production constant
           halfLifeDays: aging.half_life_days != null ? Number(aging.half_life_days)
             : (aging.halfLifeDays != null ? Number(aging.halfLifeDays) : 60),
         },
@@ -6296,7 +6306,12 @@ bash scripts/update_and_serve.sh --start</div>
     function gmSMomentumCfgFromGlobal(leagueId, leagueName){
       const raw = (GM_MATRIX_CFG && GM_MATRIX_CFG.dynamic_s_ema) || (GM_MODEL_CFG && GM_MODEL_CFG.dynamic_s_ema) || {};
       const ov = (typeof window !== 'undefined' && window.__IR_S_EMA_OVERRIDE) ? window.__IR_S_EMA_OVERRIDE : null;
-      const agingRaw = raw.state_aging || raw.stateAging || {};
+      // Primary: dynamic_s.state_aging / dynamicS.stateAging (independent of D). Fallback: nested under dynamic_s_ema.
+      const root = GM_MODEL_CFG || GM_MATRIX_CFG || {};
+      const dynS = root.dynamic_s || root.dynamicS
+        || (GM_MATRIX_CFG && (GM_MATRIX_CFG.dynamic_s || GM_MATRIX_CFG.dynamicS))
+        || {};
+      const agingRaw = dynS.state_aging || dynS.stateAging || raw.state_aging || raw.stateAging || {};
       let base = {
         enabled: raw.enabled === true || raw.enabled === 'true',
         alpha: raw.alpha != null ? Number(raw.alpha) : 0.30,

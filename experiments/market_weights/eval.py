@@ -42,7 +42,11 @@ def load_baseline_config(season_weights: List[gmt.SeasonWeight]) -> gmt.ModelCon
     cfg = replace(cfg, rating_mode="standard_wls", rating_by_league={}, derby_min_matches=10**9)
     se = doc.get("dynamic_s_ema") or {}
     if se:
-        sa = se.get("state_aging") or se.get("stateAging") or {}
+        # Prefer top-level dynamic_s.state_aging; fallback nested under dynamic_s_ema.
+        dyn_s = doc.get("dynamic_s") or doc.get("dynamicS") or {}
+        sa = (dyn_s.get("state_aging") if isinstance(dyn_s, dict) else None) or (
+            dyn_s.get("stateAging") if isinstance(dyn_s, dict) else None
+        ) or se.get("state_aging") or se.get("stateAging") or {}
         cfg = replace(
             cfg,
             s_momentum_enabled=bool(se.get("enabled", False)),
