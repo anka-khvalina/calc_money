@@ -11,6 +11,7 @@ Production UI/API/configs are untouched.
 | 045A/B/C diagnostics | **DONE** — best `L3` + `next_5` → `r≈0.147`, still below stop-rule |
 | MIM / weighting mine | **CLOSE_MIM** |
 | 046 learned weighting | **BLOCKED** |
+| Bias audit (post-model calibration) | **NO_KNOB** — corrections do not transfer OOS |
 
 ## Run
 
@@ -23,6 +24,9 @@ PYTHONPATH=app:. python3 -m experiments.market_weights 045
 
 # EXP-045A/B/C last diagnostic round (label / horizon / features)
 PYTHONPATH=app:. python3 -m experiments.market_weights 045diag
+
+# Bias audit over existing artifacts (no DB): league / |D| / S buckets + knob test
+PYTHONPATH=app:. python3 -c 'from experiments.market_weights.bias_audit import main; main()'
 ```
 
 Artifacts: `/opt/cursor/artifacts/exp041_044/`, `/opt/cursor/artifacts/exp045/`, `/opt/cursor/artifacts/exp045_diag/`.
