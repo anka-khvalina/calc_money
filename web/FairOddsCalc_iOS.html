@@ -1323,32 +1323,39 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <section id="tab-help" class="panel help">
       <h2>FairOddsCalc — что это</h2>
       <p>Приложение строит футбольную линию из <b>исторических closing-коэффициентов</b>.
-      Итог — <b>комбинация двух моделей</b>: <b>1X2 = Legacy</b> (Poisson + Dixon–Coles),
-      <b>AH/OU = Auto</b> (Marginals + Gaussian Copula).</p>
+      Итог — <b>комбинация двух независимых моделей</b> на одной active-выборке:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Рынок в UI</th><th>Модель</th><th>Матрица</th></tr></thead>
+        <tbody>
+          <tr><td><b>1X2</b> (П1 / X / П2)</td><td><b>Legacy</b></td><td>Poisson + Dixon–Coles (γ)</td></tr>
+          <tr><td><b>AH / OU</b> (фора и тотал)</td><td><b>Auto</b></td><td>Marginals (α) + Gaussian Copula (ρ)</td></tr>
+        </tbody>
+      </table></div>
       <div class="help-flow">
-        active closing → общие веса → Legacy (1X2) + Auto (AH/OU) → <b>одна итоговая линия</b>
+        active closing → общие веса → <b>обучить Legacy + Auto</b> → прогноз → <b>1X2 из Legacy · AH/OU из Auto</b>
       </div>
-      <p class="small">λ<sub>h</sub>, λ<sub>a</sub> — ожидаемые голы хозяев/гостей; S = λ<sub>h</sub>+λ<sub>a</sub>; D = λ<sub>h</sub>−λ<sub>a</sub>.</p>
+      <p class="small">Пользователь <b>не выбирает</b> «победителя»: обе модели обучаются одной кнопкой, в результат попадают разные рынки.
+      λ<sub>h</sub>, λ<sub>a</sub> — ожидаемые голы хозяев/гостей; S = λ<sub>h</sub>+λ<sub>a</sub>; D = λ<sub>h</sub>−λ<sub>a</sub>.</p>
 
       <h2>Вкладки</h2>
       <ul>
-        <li><b>Линия</b> — обучение обеих моделей и расчёт комбинированной линии матча.</li>
+        <li><b>Линия</b> — загрузка active-матчей, обучение <b>обеих</b> моделей, расчёт комбинированной линии.</li>
         <li><b>Справочник</b> — команды по лигам (и логотипы).</li>
-        <li><b>История</b> — сезоны и матчи Supabase.</li>
-        <li><b>Отчёты</b> — calculated vs closing на inactive: 1X2 Legacy, AH/OU Auto. Без сравнения моделей.</li>
+        <li><b>История</b> — сезоны и матчи Supabase (правки → потом перезагрузка и переобучение).</li>
+        <li><b>Отчёты</b> — calculated vs closing на inactive / motivation=нет: те же правила (1X2 Legacy, AH/OU Auto).</li>
         <li><b>Справка</b> — этот раздел.</li>
       </ul>
 
       <h2>Порядок работы</h2>
       <div class="help-card">
         <ol>
-          <li><span class="badge">1</span> <b>Линия</b> → блок «Данные из Supabase»: выберите лигу и один или несколько сезонов (или «Все сезоны») → <b>«Загрузить из БД»</b>.</li>
-          <li><span class="badge">2</span> При необходимости задайте <b>веса сезонов</b> в таблице справа → <b>«Обучить модель»</b>. Внизу появятся рейтинги и сводка.</li>
-          <li><span class="badge">3</span> Выберите <b>лигу справочника</b>, <b>Хозяев</b> и <b>Гостей</b>, флаги (нейтраль/дерби/маржа) → <b>«Рассчитать линию»</b>.</li>
-          <li><span class="badge">4</span> <b>История</b> — просмотр и правка матчей в Supabase (линии, веса, коэффициенты 1X2).</li>
+          <li><span class="badge">1</span> <b>Линия</b> → лига и сезоны → <b>«Загрузить из БД»</b> (только <code>active</code>, без <code>motivation=нет</code>).</li>
+          <li><span class="badge">2</span> При необходимости — <b>веса сезонов</b> → <b>«Обучить модель»</b> (внутри обучаются <b>Legacy и Auto</b> независимо на одной выборке).</li>
+          <li><span class="badge">3</span> Лига справочника, хозяева/гости, флаги (нейтраль/дерби/маржа) → <b>«Рассчитать линию»</b>.</li>
+          <li><span class="badge">4</span> На экране: <b>1X2 — Legacy</b>, <b>AH и Total — Auto</b>. Отчёт использует ту же комбинацию.</li>
         </ol>
       </div>
-      <p class="small">Изменили настройки или веса сезонов — снова нажмите «Обучить модель».</p>
+      <p class="small">Изменили веса или строки в Истории — снова «Загрузить из БД» → «Обучить модель». Обученная модель живёт в памяти вкладки.</p>
 
       <h2>Поля матча (Supabase → модель)</h2>
       <p>Для обучения из <code>v_matches_full</code> используются closing-линии и веса:</p>
@@ -1382,7 +1389,16 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
 
       <h2>Как обучается модель</h2>
-      <p>Цепочка для <b>каждого матча</b> истории, затем сводная регрессия по всей выборке.</p>
+      <p>Кнопка <b>«Обучить модель»</b> запускает <b>два независимых пайплайна</b> на <b>одной</b> active-выборке и одних весах
+      (<code>season × match_weight × neutral × training_weight</code>). Рейтинги Legacy и Auto <b>не общие</b> — у каждой модели свой fit.</p>
+      <div class="help-card">
+        <ol>
+          <li><b>Общая подготовка матчей</b> (Shin → market S/D → веса) — одинаковая логика для обеих.</li>
+          <li><b>Legacy</b> (<code>calculateLegacyModel</code>): сила r → атака/оборона → калибровка S/D → подбор <b>γ</b> Dixon–Coles → книги Dynamic D / S-EMA / SFA.</li>
+          <li><b>Auto</b> (<code>calculateAutoModel</code> / <code>gmTrain</code>): сила r → атака/оборона → калибровка S/D → подбор <b>α, ρ</b> → Auto 1X2-калибровка (только внутри Auto) → те же динамические книги.</li>
+        </ol>
+      </div>
+      <p class="small">В UI рейтинги/сводка обычно берутся из Auto; чипы показывают «1X2 Legacy» и «AH/OU Auto», когда оба train прошли.</p>
 
       <h3>0. Что должно быть в матче</h3>
       <p>Обязательно: <b>фора + AH1/AH2 + тотал + Over/Under</b>. Без этого матч не идёт в обучение.  
@@ -1414,15 +1430,20 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 log λ<sub>a</sub> = μ + A<sub>гости</sub> − Df<sub>хозяева</sub>
 <span class="m"># Σ A = 0, Σ Df = 0; A — атака, Df — оборона</span></div>
 
-      <h3>5. Калибровка под 1X2</h3>
-      <div class="formula">D<sub>final</sub> = a + b·D<sub>модель</sub>
-S<sub>final</sub> = c + d·S<sub>модель</sub></div>
+      <h3>5. Калибровка под 1X2 (у каждой модели своя)</h3>
+      <div class="formula">D<sub>cal</sub> = dA + dB·D<sub>модель</sub>
+S<sub>cal</sub> = sA + sB·S<sub>модель</sub></div>
+      <p class="small">Legacy дополнительно подбирает <b>γ</b> Dixon–Coles. Auto — без DC; после выбора α/ρ может перекалибровать dA/dB (и при необходимости sA/sB) на joint matrix (<code>auto1x2Calib</code>). Это улучшает Auto для AH/OU; <b>итоговый 1X2 в UI всё равно из Legacy</b>.</p>
 
-      <h3>6. Единая score matrix (Auto)</h3>
-      <div class="formula">λ<sub>h</sub>, λ<sub>a</sub> → Auto Marginals (Poisson при α=0 / NegBin при α&gt;0)
-→ Gaussian Copula (ρ) → joint P(i,j)
-P<sub>X</sub> = Σ<sub>i</sub> P(i,i)</div>
-      <p>Параметры α и ρ калибруются автоматически по лиге/сезону. Dixon–Coles и отдельная модель ничьи не используются.</p>
+      <h3>6. Score matrix — две разные</h3>
+      <div class="formula"><span class="m"># Legacy (для 1X2)</span>
+λ<sub>h</sub>, λ<sub>a</sub> → Poisson → Dixon–Coles(γ) → P(i,j)
+P1 / PX / P2 = треугольники + диагональ
+
+<span class="m"># Auto (для AH / OU)</span>
+λ<sub>h</sub>, λ<sub>a</sub> → Marginals (Poisson при α=0 / NegBin при α&gt;0)
+→ Gaussian Copula (ρ) → joint P(i,j)</div>
+      <p>α и ρ калибруются автоматически по лиге. Отдельная draw-model в продукте выключена.</p>
 
       <h3>Политика весов при обучении</h3>
       <div class="formula">w<sub>base</sub> = W<sub>сезон</sub> × match_weight × neutral_mult × w<sub>rotation</sub>
@@ -1455,30 +1476,71 @@ w<sub>line тотал</sub> = clamp( 1 / (1 + α<sub>тотала</sub>·(S−S�
       <p class="small">Прогноз и расчёт коэффициентов не меняются. Huber по-прежнему ослабляет выбросы на обучении D. Экстремальный тотал по-прежнему режет вес на этапе S.</p>
 
       <h2>Прогноз («Рассчитать линию»)</h2>
+      <p>Кнопка считает <b>два прогноза</b> с одним набором флагов (нейтраль/дерби/дата/сезон), затем склеивает рынки:</p>
       <div class="help-card">
         <ol>
-          <li>Берём рейтинги <b>r</b>, атаку/оборону <b>A, Df</b> обученной модели.</li>
-          <li>Считаем <b>H<sub>eff</sub></b> (нейтраль → 0; дерби → shrink(H+δ); иначе H<sub>league</sub>).</li>
-          <li>Считаем <b>D<sub>pred</sub> = r<sub>h</sub>−r<sub>a</sub> + H<sub>eff</sub></b>.</li>
-          <li>Считаем <b>S<sub>pred</sub></b> из log-модели голов + калибровка <b>dA,dB / sA,sB</b>.</li>
-          <li><b>λ<sub>h</sub>, λ<sub>a</sub></b> → Auto Marginals + Gaussian Copula → единая матрица P(i,j).</li>
-          <li>Из <b>одной</b> матрицы: 1X2, тоталы, форы, BTTS, ИТ, exact score.</li>
+          <li><b>Общий core внутри каждой модели</b> (<code>gmCoreSdLambdas</code>): рейтинги → Dynamic D → S-EMA → калибровка → SFA (на D) → SFTC (на S) → λ<sub>h</sub>, λ<sub>a</sub>.</li>
+          <li><b>Legacy</b> (<code>irPredictLegacy</code>): Poisson(λ) → Dixon–Coles(γ, в т.ч. dynamic γ по |D|) → <b>1X2</b>.</li>
+          <li><b>Auto</b> (<code>gmPredict</code>): Marginals(α) + Copula(ρ) → <b>AH и OU</b> (центральные линии).</li>
+          <li><b>Комбинация</b> (<code>gmCombinePredictions</code>): П1/X/П2 из Legacy; фора и тотал из Auto. Без подмены рынков между моделями.</li>
         </ol>
       </div>
-      <div class="formula">P(i,j) = CopulaΔ(F<sub>h</sub>, F<sub>a</sub>; ρ)   <span class="m"># при ρ=0: F<sub>h</sub>′·F<sub>a</sub>′</span>
-П1 = Σ<sub>i&gt;j</sub> P ,  X = Σ<sub>i=j</sub> P ,  П2 = Σ<sub>i&lt;j</sub> P
-K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+маржа%))</div>
+      <div class="formula">H<sub>eff</sub> = 0 | H<sub>league</sub> | shrink(H+δ)   <span class="m"># нейтраль / обычный / дерби</span>
+D<sub>base</sub> = r<sub>h</sub> − r<sub>a</sub> + H<sub>eff</sub>
+D<sub>dyn</sub> / S<sub>dyn</sub>  <span class="m"># см. блок «Dynamic D и State Aging» ниже</span>
+→ cal → SFA(D) → SFTC(S) → λ → матрица модели</div>
+      <div class="formula">K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+маржа%))</div>
       <p>Команда не участвовала в обучении → рейтинг <b>новичка</b> (среднее N слабейших). Имена — из <b>Справочника</b>.  
-      «Центральная» фора/тотал — линия с примерно равными кэфами (поиск по матрице).</p>
+      «Центральная» фора/тотал — линия с примерно равными кэфами (поиск по <b>Auto</b>-матрице).</p>
+
+      <h2>Dynamic D и State Aging (подбор D)</h2>
+      <p>После базового рейтинга к D добавляется <b>Dynamic D</b> — slow/fast EMA остатков рынка.
+      Aging ослабляет эти EMA, если команда долго не играла (длинный перерыв / старт сезона).</p>
+      <div class="help-card">
+        <ol>
+          <li><span class="badge">1</span> <b>D<sub>base</sub></b> = r<sub>h</sub> − r<sub>a</sub> + H<sub>eff</sub> (рейтинги не стареют).</li>
+          <li><span class="badge">2</span> У каждой команды в книге Dynamic D две EMA: <b>slow</b> (α≈0.12) и <b>fast</b> (α≈0.40), walk-forward по истории.</li>
+          <li><span class="badge">3</span> Bias слоя: <code>bias = clamp(EMA · n/(n+K), ±maxAbs)</code> (shrink + min_observations).</li>
+          <li><span class="badge">4</span> <b>Aging</b> (если <code>dynamic_d.state_aging.enabled</code>): для каждой команды
+            <code>AF = 2^(−days / H)</code>, затем <code>EMA_aged = EMA × AF</code> (и slow, и fast).
+            <code>days</code> = дней с <b>прошлого матча этой команды</b> до даты расчёта;
+            на «Линии» дата = inactive-сравнение или <b>сегодня</b>. H = <code>half_life_days</code> (сейчас <b>60</b>).</li>
+          <li><span class="badge">5</span> Поправка матча:
+            <code>ΔD = (slow<sub>h</sub>−slow<sub>a</sub>) + (fast<sub>h</sub>−fast<sub>a</sub>)</code>,
+            clamp по <code>total.max_abs</code> (≈0.60) → <b>D<sub>dyn</sub> = D<sub>base</sub> + ΔD</b>.</li>
+          <li><span class="badge">6</span> Дальше как обычно: калибровка dA/dB → SFA → λ. Aging <b>не</b> трогает r, A/Df, cal, SFA.</li>
+        </ol>
+      </div>
+      <div class="formula">AF = 2<sup>−days/H</sup>     <span class="m"># H=60 → через 60 дней AF=0.5; через 120 → 0.25</span>
+EMA<sub>aged</sub> = EMA · AF   <span class="m"># отдельно home/away, slow и fast</span>
+D<sub>dyn</sub> = D<sub>base</sub> + ΔD(EMA<sub>aged</sub>)</div>
+      <p class="small">Конфиг: <code>d_correction</code> (slow/fast) + <code>dynamic_d.state_aging</code>.
+      Аналогично для тоталов: <code>dynamic_s</code> / S-EMA × свой AF (<code>dynamic_s.state_aging</code>).
+      Если aging выключен — AF=1, поведение как раньше (только Dynamic D без старения).</p>
+
+      <h2>Когда Legacy, когда Auto</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Где</th><th>Legacy</th><th>Auto</th></tr></thead>
+        <tbody>
+          <tr><td>Обучение</td><td>всегда (вместе с Auto)</td><td>всегда (вместе с Legacy)</td></tr>
+          <tr><td>1X2 на «Линии» / в Отчёте</td><td><b>да</b></td><td>нет (в UI не показывается)</td></tr>
+          <tr><td>AH / OU</td><td>нет</td><td><b>да</b></td></tr>
+          <tr><td>Dixon–Coles γ</td><td>да</td><td>нет</td></tr>
+          <tr><td>α / ρ (NB + Copula)</td><td>нет</td><td>да</td></tr>
+          <tr><td>Dynamic D / S-EMA / aging / SFA</td><td>да (свой fit)</td><td>да (свой fit)</td></tr>
+          <tr><td>SFTC (поправка тотала Strong Fav)</td><td>считается, но OU в UI — из Auto</td><td><b>влияет на тотал в UI</b></td></tr>
+        </tbody>
+      </table></div>
 
       <h2>Справочник настроек («Линия»)</h2>
       <div class="table-wrap"><table>
         <thead><tr><th>Настройка</th><th>На что влияет</th></tr></thead>
         <tbody>
-          <tr><td>Режим модели Auto</td><td>α (дисперсия) и ρ (зависимость голов) подбираются автоматически по лиге. Ручной выбор Poisson/NB/DC недоступен.</td></tr>
-          <tr><td>Веса сезонов</td><td>Множитель для каждого выбранного сезона при загрузке из Supabase.</td></tr>
-          <tr><td>match_weight / neutral_weight</td><td>Веса матча (▼ Веса). Дерби меняет H при прогнозе, не вес.</td></tr>
-          <tr><td>Нейтраль / Дерби / Маржа</td><td>Параметры конкретного прогноза: без домашнего преимущества / дерби / кэфы с маржой.</td></tr>
+          <tr><td>Режим Combined</td><td>1X2 = Legacy, AH/OU = Auto. Ручного выбора Poisson/NB/DC нет.</td></tr>
+          <tr><td>Веса сезонов</td><td>Множитель для каждого выбранного сезона при обучении обеих моделей.</td></tr>
+          <tr><td>match_weight / neutral_weight / ротация</td><td>Веса матча (▼ Веса / rotation). Дерби меняет H при прогнозе, не вес.</td></tr>
+          <tr><td>Нейтраль / Дерби / Маржа</td><td>Параметры конкретного прогноза: без H / дерби H_eff / кэфы с маржой.</td></tr>
+          <tr><td>model_config.json</td><td>α/ρ-пороги, Dynamic D/S, state aging, SFA, SFTC, lineWeight и т.д.</td></tr>
         </tbody>
       </table></div>
 
@@ -1499,12 +1561,13 @@ bash scripts/update_and_serve.sh --start</div>
         <li><b>Нейтральное поле</b> и <b>Нейтр. вес</b> — разные вещи: первое отключает H, второе ослабляет вклад строки при обучении.</li>
         <li><b>Дерби</b> по умолчанию выключено у всех матчей. Отметьте в Истории → ▼ Веса → перезагрузите и переобучите модель.</li>
         <li>Низкая мотивация → <b>Мотивация = нет</b> в Истории (матч вне обучения; на Отчёте серый, без MAE). Мягко ослабить вклад: уменьшите <b>match_weight</b>.</li>
-        <li>После правок в <b>Истории</b> — «Загрузить из БД», затем снова <b>«Обучить модель»</b> (каждое нажатие пересчитывает коэффициенты по текущим данным).</li>
+        <li>После правок в <b>Истории</b> — «Загрузить из БД», затем снова <b>«Обучить модель»</b> (пересчитываются <b>и Legacy, и Auto</b>).</li>
         <li>«Нужно ≥2 матчей» — мало загруженных матчей или не заполнены обязательные рынки.</li>
-        <li><b>Где хранятся данные:</b> матчи, коэффициенты и веса — в <b>Supabase</b> (общие для всех устройств с доступом к БД). Локально в Safari (localStorage) — только логотипы команд, история расчётов на «Линии» и мелкие настройки UI. Обученная модель живёт в памяти вкладки — после перезагрузки страницы снова «Загрузить из БД» → «Обучить модель».</li>
+        <li><b>1X2 «из Auto» в UI нет</b> — Auto может калиброваться по 1X2 внутри себя, но на экране П1/X/П2 всегда из Legacy.</li>
+        <li><b>Где хранятся данные:</b> матчи, коэффициенты и веса — в <b>Supabase</b>. Локально в Safari (localStorage) — логотипы, история расчётов на «Линии», мелкие UI-настройки. Обученная модель — в памяти вкладки: после F5 снова «Загрузить из БД» → «Обучить модель».</li>
         <li>Открывайте в Safari напрямую, не во встроенном браузере мессенджера.</li>
       </ul>
-      <p class="small" style="margin-top:14px">Версия: goal-model-v1</p>
+      <p class="small" style="margin-top:14px">Версия: combined Legacy+Auto · docs train/calc</p>
     </section>
   </div>
 

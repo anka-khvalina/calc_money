@@ -2,14 +2,18 @@
 
 Только формулы, используемые в текущем коде (`goal_model.py`, `goal_matrix_auto.py`, `goal_model_train.py`, `FairOddsCalc_iOS.html`, `match_shin_calc.py`).
 
-**Web / iOS (вкладка «Линия»):** две независимые score matrix на одной обучающей выборке:
+**Web / iOS (вкладка «Линия»):** две **независимые** модели на одной active-выборке; рынки в UI комбинируются:
 
-| Рынок | Модель | Матрица |
-|-------|--------|---------|
-| 1X2 | Legacy | Poisson + Dixon–Coles (`useDraw=false`, PX = диагональ) |
-| AH / OU | Auto | Marginals (α) + Gaussian Copula (ρ) |
+| Рынок | Модель | Матрица | Обучение |
+|-------|--------|---------|----------|
+| 1X2 | Legacy | Poisson + Dixon–Coles (`useDraw=false`, PX = диагональ) | `calculateLegacyModel` |
+| AH / OU | Auto | Marginals (α) + Gaussian Copula (ρ) | `calculateAutoModel` / `gmTrain` |
 
 Параметры α/ρ — в runtime-конфиге `model_config.json` (БД не меняем). Итоговый 1X2 из Auto пользователю не отдаётся.
+
+Перед матрицей у **каждой** модели общий predict-core (`gmCoreSdLambdas`):  
+`D_base → Dynamic D (± state aging) → S_base → S-EMA (± aging) → cal → SFA → SFTC → λ`.  
+Подробно: [training-and-calculation.md](training-and-calculation.md).
 
 ---
 

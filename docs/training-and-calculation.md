@@ -1,32 +1,38 @@
 # Обучение и расчёт линии — подробная справка
 
 Полное описание голевой модели во вкладке **«Линия»** (web/iOS и desktop).  
-Краткие формулы: [calculation.md](calculation.md). Маппинги БД: [reference.md](reference.md).
+Краткие формулы: [calculation.md](calculation.md). Маппинги БД: [reference.md](reference.md).  
+Встроенная копия для пользователя: вкладка **«Справка»** в `FairOddsCalc_iOS.html`.
 
 ---
 
-## 1. Идея
+## 1. Идея: когда Legacy, когда Auto
 
-Из **closing-коэффициентов** прошлых матчей программа учит две независимые модели на **одной** active-выборке (одинаковые `training_weight`):
+Из **closing-коэффициентов** прошлых матчей программа учит **две независимые модели** на **одной** active-выборке (одинаковые веса):
 
-| Рынок | Модель | Матрица |
-|-------|--------|---------|
-| Home / Draw / Away | **Legacy** | Poisson + Dixon–Coles |
-| Asian Handicap | **Auto** | Marginals + Gaussian Copula |
-| Over / Under | **Auto** | Marginals + Gaussian Copula |
+| Рынок в UI | Модель | Матрица | Когда используется |
+|------------|--------|---------|-------------------|
+| Home / Draw / Away | **Legacy** | Poisson + Dixon–Coles (γ) | «Рассчитать линию», Отчёт |
+| Asian Handicap | **Auto** | Marginals (α) + Gaussian Copula (ρ) | «Рассчитать линию», Отчёт |
+| Over / Under | **Auto** | то же | «Рассчитать линию», Отчёт |
 
-Итоговая линия — **комбинация** двух score matrix. Пользователь не выбирает «победителя».
+Пользователь **не выбирает** «победителя». Одна кнопка **«Обучить модель»** запускает оба пайплайна; **«Рассчитать линию»** считает оба прогноза и **склеивает рынки**.
 
 ```text
-История матчей (Supabase, active)
-    → Shin de-vig → market S/D → общие веса (сезон × quality × neutral × training_weight)
-    ├── Legacy: strength → A/D → cal D → Poisson+DC → 1X2
-    └── Auto:   strength → A/D → α/ρ → joint matrix → AH / OU
+История матчей (Supabase, active, без motivation=нет)
+    → Shin de-vig → market S/D → общие веса
+    ├── Legacy train (свой r, A/Df, cal, γ, Dynamic D/S, SFA)
+    └── Auto   train (свой r, A/Df, cal, α/ρ, Dynamic D/S, SFA)
+
 Прогноз матча
-    → 1X2 из Legacy matrix; AH и OU из Auto matrix
+    → у каждой модели: gmCoreSdLambdas (D/S dynamics → cal → SFA → SFTC → λ)
+    ├── Legacy matrix → 1X2 в UI
+    └── Auto matrix   → AH / OU в UI
 ```
 
-Вкладка **«Отчет»** сравнивает рассчитанную комбинированную линию с closing на `active=false` и на `motivation=false` (серые строки; кэфы считаются, MAE/выводы — без них). Обучение на Отчёте и на «Линии» не берёт `motivation=false`.
+**Важно:** рейтинги Legacy и Auto **не общие** — это два независимых fit на одних данных. λ (и SFA) могут чуть отличаться; в комбинированном результате 1X2 берётся из Legacy, AH/OU — из Auto.
+
+Вкладка **«Отчет»** сравнивает ту же комбинированную линию с closing на `active=false` и на `motivation=false` (серые строки; кэфы считаются, MAE/выводы — без них). Обучение на Отчёте и на «Линии» не берёт `motivation=false`.
 
 ---
 
@@ -48,7 +54,7 @@
 
 | Поле | Зачем |
 |------|--------|
-| `home_odds`, `draw_odds`, `away_odds` | калибровка S/D под 1X2; модель ничьи |
+| `home_odds`, `draw_odds`, `away_odds` | калибровка S/D под 1X2; качество выборки |
 | `is_neutral` | без домашнего преимущества в этом матче (`H_eff = 0`) |
 | `match_weight` | качество матча (мягкое ослабление, напр. 0.5) |
 | `motivation` | `false`/«нет» → матч **вне обучения**; на Отчёте серый (кэфы да, MAE нет). `null` = в обучении |
@@ -98,11 +104,20 @@ margin > 0 → хозяева покрыли (с учётом push на целы
 
 ## 4. Обучение — по шагам
 
-### Шаг 0. Загрузка
+### Шаг 0. Загрузка и двойной train
 
 1. Лига + сезоны → **«Загрузить из БД»**.
 2. Проверка: внизу число матчей «к обучению допущено».
 3. При необходимости — веса сезонов → **«Обучить модель»**.
+
+Внутри `goalRunTrain`:
+
+```text
+gmModelLegacy = calculateLegacyModel(raw, cfg_legacy, inactive)
+gmModelAuto   = calculateAutoModel(raw, cfg_auto, inactive)
+```
+
+Обе модели строятся на **одной** active-выборке. Inactive подтягиваются в книги динамики (история EMA), но не в WLS-обучение силы.
 
 ### Шаг 1. Shin de-vig (каждый матч)
 
@@ -186,7 +201,7 @@ D ← clamp(D, −S+ε, S−ε)
 **Базовый вес:**
 
 ```text
-w_base = season_weight × match_weight × neutral_mult
+w_base = season_weight × match_weight × neutral_mult × w_rotation
 
 neutral_mult = is_neutral ? neutral_weight : 1.0
 ```
@@ -196,6 +211,7 @@ neutral_mult = is_neutral ? neutral_weight : 1.0
 | `season_weight` | таблица на «Линии» | прошлый сезон 0.7 |
 | `match_weight` | БД / «История» → Вес | низкая мотивация 0.5 |
 | `neutral_weight` | БД, если нейтральное поле = да | 0.8 |
+| `w_rotation` | rotation codes + config | none=1, middle=0.7, high=0 |
 
 **Дерби не входит в вес.** В БД колонка `derby_weight` хранит флаг: **1** = дерби, **0** или пусто = не дерби.  
 По умолчанию у всех матчей дерби **выключено**, пока не отметите в блоке **▼ Веса** на «Истории».
@@ -289,7 +305,7 @@ Loss = Σ w · (log λ − pred)² + λ_A · Σ A² + λ_Df · Σ Df²
 
 Defaults: `λ_A = λ_Df = 0.10`. На рейтинги силы `r` отдельно: `λ_r = 0.10`.
 
-### Шаг 6. Калибровка под 1X2
+### Шаг 6. Калибровка S/D под 1X2
 
 Если есть 1X2 в истории:
 
@@ -301,7 +317,9 @@ S_cal = sA + sB · S_model
 ```
 
 Имена: **dA/dB** — intercept/slope для D; **sA/sB** — для S (в конфиге режимы `dCalMode` / `sCalMode`). При `sCalMode=off` → sA=0, sB=1.
-Подгонка по Shin-вероятностям 1X2. **Dixon–Coles не используется.**
+
+- **Legacy:** калибровка + подбор **γ** Dixon–Coles.  
+- **Auto:** калибровка **без** DC.
 
 **Контроль стабильности:** ожидается `dA≈0`, `dB≈1`, `sA≈0`, `sB≈1`. Сильные отклонения — сигнал, что база S/D слабая или мало данных.
 
@@ -315,11 +333,20 @@ S_cal = sA + sB · S_model
 - сумма |bias| по P1/PX/P2 уменьшилась;
 - AH/OU не ухудшились больше чем `ahOuDegradeMaxPct` (default 5%).
 
-Иначе остаётся baseline. Конфиг: `auto1x2Calib` в `model_config.json`. 1X2 всегда = треугольники + диагональ матрицы.
+Иначе остаётся baseline. Конфиг: `auto1x2Calib` в `model_config.json`.
 
-### Шаг 7. Auto Marginals + Gaussian Copula
+Это улучшает **Auto-матрицу для AH/OU**. **Итоговый 1X2 в UI / Отчёте всегда из Legacy**, не из Auto.
 
-После калибровки S/D программа подбирает `alpha_final` и `rho_final` (конфиг `goal_matrix.json`, без записи в БД):
+### Шаг 7. Score matrix
+
+#### Legacy
+
+```text
+λ_h, λ_a → Poisson → Dixon–Coles(γ)
+P1 / PX / P2 из треугольников и диагонали
+```
+
+#### Auto Marginals + Gaussian Copula
 
 ```text
 α=0 → Poisson-like; α>0 → Negative Binomial
@@ -330,6 +357,19 @@ P_draw = Σ_i P(i,i)   # без отдельной модели ничьи
 NB (α) включается только если улучшение ≥ `nbMinImprovementPct` (default 1%) и матчей ≥ `minMatchesForLeagueAlpha` (default 200).
 Copula (ρ) имеет **отдельный** порог `minMatchesForLeagueRho` (default 100): при 199 матчах α=0, но ρ всё ещё калибруется. Оба параметра обнуляются только если `n` ниже обоих порогов.
 
+### Шаг 8. Динамические книги (после fit)
+
+У **обеих** моделей строятся walk-forward книги:
+
+| Книга | На что влияет при прогнозе |
+|-------|----------------------------|
+| **Dynamic D** (slow/fast EMA) | поправка к `D_base` |
+| **S-EMA** | поправка к `S_base` |
+| **SFA book** | Strong Favorite Adjustment на D |
+| (опц.) inactive history | EMA видит прошлые матчи inactive, если переданы |
+
+Конфиг: `d_correction` / `dynamic_d`, `dynamic_s_ema` / `dynamic_s` в `model_config.json`.
+
 ---
 
 ## 5. Прогноз матча («Рассчитать линию»)
@@ -337,53 +377,89 @@ Copula (ρ) имеет **отдельный** порог `minMatchesForLeagueRho
 ### Вход
 
 - Лига справочника, хозяева, гости (из **Справочника**).  
-- Флаги: **нейтраль** (`H_eff = 0`), **дерби** (другое `H_eff`), **маржа %**.
+- Флаги: **нейтраль** (`H_eff = 0`), **дерби** (другое `H_eff`), **маржа %**.  
+- `matchDate`: дата inactive-сравнения, если есть пара в БД; иначе **сегодня** (для aging).
 
-### Расчёт λ
+### Общий core (у каждой модели свой fit)
+
+Один путь `gmCoreSdLambdas` (Линия и Отчёт не расходятся по S/D/λ внутри модели):
 
 ```text
 H_eff = effective_home_advantage(H_league, δ_derby, флаги)
-D_pred = r_home − r_away + H_eff
-S_pred = из модели атаки/обороны + калибровка
-
-D_final = dA + dB · D_pred
-S_final = sA + sB · S_pred
-
-λ_h = (S_final + D_final) / 2
-λ_a = (S_final − D_final) / 2
+D_base = r_home − r_away + H_eff
+D_dyn  = D_base + DynamicD(slow/fast EMA × state_aging AF)
+S_base = λ_h_AD + λ_a_AD          # из A/Df
+S_dyn  = S_base + S_EMA × AF
+D_cal  = dA + dB · D_dyn
+S_cal  = sA + sB · S_dyn
+D_final = SFA(D_cal)              # Strong Favorite Adjustment
+S_final = SFTC(S_cal)             # Strong Favourite Total Correction (OU)
+λ_h, λ_a = из (S_final, D_final), с λ_min
 ```
 
 **H_eff при дерби:**
 
 ```text
 H_eff = shrink(H_league + δ_used)     # если δ оценена (≥3 дерби в обучении)
-H_eff = derbyDefaultFactor × H_league      # мало дерби в обучении (default 0.7; 0.4 — агрессивно)
+H_eff = derbyDefaultFactor × H_league # мало дерби в обучении (default 0.7)
 H_eff = H_league                      # не дерби
 H_eff = 0                             # нейтраль
 ```
 
 Команда без матчей в обучении → рейтинг **новичка** (среднее N слабейших в лиге).
 
-### Матрица и рынки
+### Dynamic State Aging (подбор D после перерыва)
+
+После `D_base` к разнице голов добавляется **Dynamic D** (`d_correction.mode=slow_fast`). Aging ослабляет EMA, если команда долго не играла.
 
 ```text
-P(i,j) = CopulaΔ(F_h(i), F_a(j); ρ)   # при ρ=0: marginal_h(i)·marginal_a(j)
+1. D_base = r_h − r_a + H_eff          # рейтинги не стареют
+2. Книга команд: EMA_slow (α≈0.12), EMA_fast (α≈0.40), walk-forward
+3. bias_layer = clamp( EMA · n/(n+K) , ±maxAbs )   # shrink_k, min_observations
+4. Если dynamic_d.state_aging.enabled:
+       days = matchDate − lastMatchDate(team)      # на Линии: inactive или сегодня
+       AF   = 2^(−days / H)                        # H = half_life_days (сейчас 60)
+       EMA_aged = EMA × AF                         # slow и fast, home и away отдельно
+5. ΔD = (slow_h − slow_a) + (fast_h − fast_a)
+   clamp |ΔD| ≤ total.max_abs (≈0.60)
+   D_dyn = D_base + ΔD
+6. Далее: dA/dB → SFA → λ
 ```
 
-Из одной матрицы:
+Аналогично для тоталов: S-EMA × `dynamic_s.state_aging` (свой AF).  
+Aging **не** трогает: `r`, A/Df, калибровку, SFA/SFTC. Если `enabled=false` → AF=1 (только Dynamic D без старения).
 
-| Рынок | Как |
-|-------|-----|
-| 1X2 | Σ по треугольникам; ничья = диагональ |
-| Тоталы | Over/Under по сумме i+j |
-| Форы | покрытие с линией в **букмекерской** конвенции |
-| BTTS | i>0 и j>0 |
-| ИТ | тотал одной команды |
-| Топ счетов | максимальные P(i,j) |
+Конфиг:
 
-**Центральная линия** — где кэфы сторон ≈ равны (бинарный поиск).
+```json
+"d_correction": { "mode": "slow_fast", "slow": {…}, "fast": {…}, "total": {…} },
+"dynamic_d": { "state_aging": { "enabled": true, "half_life_days": 60 } },
+"dynamic_s": { "state_aging": { "enabled": true, "half_life_days": 60 } }
+```
+
+Пример: H=60 → через 60 дней AF=0.5, через 120 → 0.25. На длинном летнем перерыве Dynamic D почти обнуляется, `D_dyn ≈ D_base`.
+
+### Матрицы и склейка рынков
+
+```text
+predL = irPredictLegacy(gmModelLegacy, …)   # Poisson + DC(γ)
+predA = gmPredict(gmModelAuto, …)           # Marginals + Copula
+combined = gmCombinePredictions(predL, predA)
+```
+
+| Рынок | Источник |
+|-------|----------|
+| 1X2 | Legacy matrix |
+| AH line + odds | Auto matrix |
+| OU line + odds | Auto matrix |
+
+Программа **не** пересчитывает AH/OU на Legacy и **не** отдаёт 1X2 из Auto в пользовательский результат.
+
+**Центральная линия** AH/OU — где кэфы сторон ≈ равны (поиск по Auto-матрице).
 
 **С маржой:** `K = 1 / (p · (1 + margin))`.
+
+SFTC влияет на **тотал Auto** (и показывается в мета-блоке прогноза). SFA для подписи 1X2 берётся в первую очередь из Legacy.
 
 ---
 
@@ -391,9 +467,9 @@ P(i,j) = CopulaΔ(F_h(i), F_a(j); ρ)   # при ρ=0: marginal_h(i)·marginal_a
 
 | Параметр | Default | Эффект |
 |----------|---------|--------|
-| Режим модели | Auto | α/ρ подбираются автоматически |
-| Конфиг матрицы | `goal_matrix.config.json` | кандидаты α/ρ, пороги, lambda_min (не БД) |
-| Веса сезонов | UI | множитель сезона при загрузке из Supabase |
+| Режим | Combined | 1X2 Legacy + AH/OU Auto |
+| Конфиг | `model_config.json` | α/ρ, dynamics, aging, SFA, SFTC, … |
+| Веса сезонов | UI | множитель сезона при обучении обеих моделей |
 | Нейтраль / Дерби / Маржа % | прогноз | H_eff и маржа на кэфы |
 
 ---
@@ -420,7 +496,13 @@ P(i,j) = CopulaΔ(F_h(i), F_a(j); ρ)   # при ρ=0: marginal_h(i)·marginal_a
 Вкладка **История** → строка матча → **▼ Веса** → **Дерби = да**. В БД пишется `derby_weight = 1`. По умолчанию у всех матчей дерби **нет** (`0`).
 
 **Переобучение после правок в Истории?**  
-Да: снова «Загрузить из БД» → «Обучить модель».
+Да: снова «Загрузить из БД» → «Обучить модель» (оба пайплайна).
+
+**Почему 1X2 и тотал «из разных моделей»?**  
+Так задумано: Legacy лучше отдаёт 1X2 с DC; Auto лучше AH/OU с α/ρ. Auto может калиброваться по 1X2 внутри себя — это не меняет то, что на экране 1X2 = Legacy.
+
+**Работает ли aging на вкладке «Линия»?**  
+Да, если включён в `model_config.json`: тот же `gmCoreSdLambdas`, `matchDate` = inactive или сегодня.
 
 ---
 
@@ -428,8 +510,13 @@ P(i,j) = CopulaΔ(F_h(i), F_a(j); ρ)   # при ρ=0: marginal_h(i)·marginal_a
 
 | Этап | Python | Web (JS) |
 |------|--------|----------|
-| Shin, S, D, рынки | `app/goal_model.py` | `fair_price_model_over`, `fair_price_model_ah_home`, `gmFairPriceOver`, `gmFairPriceAhHome`, … |
-| Полный train | `app/goal_model_train.py` | `gmTrain`, `gmPrepare` |
+| Shin, S, D, рынки | `app/goal_model.py` | `fair_price_model_over`, `gmFairPriceAhHome`, … |
+| Legacy train | — | `irTrainLegacy`, `calculateLegacyModel` |
+| Auto train | `app/goal_model_train.py` | `gmTrain`, `calculateAutoModel` |
+| Общий predict core | — | `gmCoreSdLambdas` |
+| Legacy predict | — | `irPredictLegacy` |
+| Auto predict | — | `gmPredict` |
+| Склейка рынков | — | `gmCombinePredictions` |
 | Тесты | `tests/test_goal_model.py` | — |
 
 Пример CSV: `docs/examples/closing_lines_serie_a_sample.csv`.

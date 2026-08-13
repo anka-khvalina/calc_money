@@ -46,17 +46,20 @@ Desktop дополнительно: Калькулятор A, Рейтинг 1X2
 
 ## Голевая модель (вкладка «Линия»)
 
-Итоговая линия — **комбинация двух независимых моделей** на одной active-выборке:
+Итоговая линия — **комбинация двух независимых моделей** на одной active-выборке.
+«Обучить модель» обучает **обе**; «Рассчитать линию» считает оба прогноза и склеивает рынки:
 
 ```text
 closing → de-vig → S/D → общие веса (в т.ч. training_weight)
-       ├── Legacy: Poisson + Dixon–Coles → 1X2
-       └── Auto:   Marginals (α) + Copula (ρ) → AH, OU
+       ├── Legacy train/predict: Poisson + Dixon–Coles → 1X2 в UI
+       └── Auto   train/predict: Marginals (α) + Copula (ρ) → AH, OU в UI
+
+predict-core (у каждой модели): ratings → Dynamic D/S (± aging) → cal → SFA → SFTC → λ
 ```
 
 α/ρ калибруются автоматически (`model_config.json`). Пользователь не выбирает модель-победителя.  
-Вкладка **«Отчет»** сравнивает комбинированную линию с closing (без Legacy-vs-Auto).  
-Подробные формулы: [calculation.md](calculation.md), [training-and-calculation.md](training-and-calculation.md).
+Вкладка **«Отчет»** сравнивает ту же комбинированную линию с closing (без Legacy-vs-Auto).  
+Подробно: [training-and-calculation.md](training-and-calculation.md), [calculation.md](calculation.md).
 
 ### Вес матча при обучении
 
