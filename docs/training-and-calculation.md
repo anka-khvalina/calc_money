@@ -408,16 +408,36 @@ H_eff = 0                             # нейтраль
 
 Команда без матчей в обучении → рейтинг **новичка** (среднее N слабейших в лиге).
 
-### Dynamic State Aging
+### Dynamic State Aging (подбор D после перерыва)
 
-Если `dynamic_d.state_aging.enabled` / `dynamic_s.state_aging.enabled` (сейчас в деплое aging-on: **ON**, `half_life_days=60`):
+После `D_base` к разнице голов добавляется **Dynamic D** (`d_correction.mode=slow_fast`). Aging ослабляет EMA, если команда долго не играла.
 
 ```text
-AF = 2^(−days_since_previous_match / H)
-EMA_aged = EMA × AF
+1. D_base = r_h − r_a + H_eff          # рейтинги не стареют
+2. Книга команд: EMA_slow (α≈0.12), EMA_fast (α≈0.40), walk-forward
+3. bias_layer = clamp( EMA · n/(n+K) , ±maxAbs )   # shrink_k, min_observations
+4. Если dynamic_d.state_aging.enabled:
+       days = matchDate − lastMatchDate(team)      # на Линии: inactive или сегодня
+       AF   = 2^(−days / H)                        # H = half_life_days (сейчас 60)
+       EMA_aged = EMA × AF                         # slow и fast, home и away отдельно
+5. ΔD = (slow_h − slow_a) + (fast_h − fast_a)
+   clamp |ΔD| ≤ total.max_abs (≈0.60)
+   D_dyn = D_base + ΔD
+6. Далее: dA/dB → SFA → λ
 ```
 
-Старение применяется **только** к Dynamic D и S-EMA. Не трогает: рейтинги `r`, A/Df, калибровку dA/dB/sA/sB, SFA/SFTC thresholds.
+Аналогично для тоталов: S-EMA × `dynamic_s.state_aging` (свой AF).  
+Aging **не** трогает: `r`, A/Df, калибровку, SFA/SFTC. Если `enabled=false` → AF=1 (только Dynamic D без старения).
+
+Конфиг:
+
+```json
+"d_correction": { "mode": "slow_fast", "slow": {…}, "fast": {…}, "total": {…} },
+"dynamic_d": { "state_aging": { "enabled": true, "half_life_days": 60 } },
+"dynamic_s": { "state_aging": { "enabled": true, "half_life_days": 60 } }
+```
+
+Пример: H=60 → через 60 дней AF=0.5, через 120 → 0.25. На длинном летнем перерыве Dynamic D почти обнуляется, `D_dyn ≈ D_base`.
 
 ### Матрицы и склейка рынков
 

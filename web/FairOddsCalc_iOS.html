@@ -1487,16 +1487,36 @@ w<sub>line тотал</sub> = clamp( 1 / (1 + α<sub>тотала</sub>·(S−S�
       </div>
       <div class="formula">H<sub>eff</sub> = 0 | H<sub>league</sub> | shrink(H+δ)   <span class="m"># нейтраль / обычный / дерби</span>
 D<sub>base</sub> = r<sub>h</sub> − r<sub>a</sub> + H<sub>eff</sub>
-D<sub>dyn</sub>  = D<sub>base</sub> + DynamicD (slow/fast EMA × aging AF)
-S<sub>base</sub> = λ<sub>h</sub><sup>AD</sup> + λ<sub>a</sub><sup>AD</sup>
-S<sub>dyn</sub>  = S<sub>base</sub> + S‑EMA × aging AF
+D<sub>dyn</sub> / S<sub>dyn</sub>  <span class="m"># см. блок «Dynamic D и State Aging» ниже</span>
 → cal → SFA(D) → SFTC(S) → λ → матрица модели</div>
-      <p><b>Dynamic State Aging</b> (если включено в <code>model_config.json</code> → <code>dynamic_d</code> / <code>dynamic_s</code> → <code>state_aging</code>):
-      EMA команд умножаются на <code>AF = 2^(−days / H)</code>, где <code>days</code> — дней с прошлого матча команды до даты расчёта
-      (на «Линии» — дата inactive-сравнения или <b>сегодня</b>). Рейтинги r / A / Df / калибровка / SFA aging <b>не</b> трогает.</p>
       <div class="formula">K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+маржа%))</div>
       <p>Команда не участвовала в обучении → рейтинг <b>новичка</b> (среднее N слабейших). Имена — из <b>Справочника</b>.  
       «Центральная» фора/тотал — линия с примерно равными кэфами (поиск по <b>Auto</b>-матрице).</p>
+
+      <h2>Dynamic D и State Aging (подбор D)</h2>
+      <p>После базового рейтинга к D добавляется <b>Dynamic D</b> — slow/fast EMA остатков рынка.
+      Aging ослабляет эти EMA, если команда долго не играла (длинный перерыв / старт сезона).</p>
+      <div class="help-card">
+        <ol>
+          <li><span class="badge">1</span> <b>D<sub>base</sub></b> = r<sub>h</sub> − r<sub>a</sub> + H<sub>eff</sub> (рейтинги не стареют).</li>
+          <li><span class="badge">2</span> У каждой команды в книге Dynamic D две EMA: <b>slow</b> (α≈0.12) и <b>fast</b> (α≈0.40), walk-forward по истории.</li>
+          <li><span class="badge">3</span> Bias слоя: <code>bias = clamp(EMA · n/(n+K), ±maxAbs)</code> (shrink + min_observations).</li>
+          <li><span class="badge">4</span> <b>Aging</b> (если <code>dynamic_d.state_aging.enabled</code>): для каждой команды
+            <code>AF = 2^(−days / H)</code>, затем <code>EMA_aged = EMA × AF</code> (и slow, и fast).
+            <code>days</code> = дней с <b>прошлого матча этой команды</b> до даты расчёта;
+            на «Линии» дата = inactive-сравнение или <b>сегодня</b>. H = <code>half_life_days</code> (сейчас <b>60</b>).</li>
+          <li><span class="badge">5</span> Поправка матча:
+            <code>ΔD = (slow<sub>h</sub>−slow<sub>a</sub>) + (fast<sub>h</sub>−fast<sub>a</sub>)</code>,
+            clamp по <code>total.max_abs</code> (≈0.60) → <b>D<sub>dyn</sub> = D<sub>base</sub> + ΔD</b>.</li>
+          <li><span class="badge">6</span> Дальше как обычно: калибровка dA/dB → SFA → λ. Aging <b>не</b> трогает r, A/Df, cal, SFA.</li>
+        </ol>
+      </div>
+      <div class="formula">AF = 2<sup>−days/H</sup>     <span class="m"># H=60 → через 60 дней AF=0.5; через 120 → 0.25</span>
+EMA<sub>aged</sub> = EMA · AF   <span class="m"># отдельно home/away, slow и fast</span>
+D<sub>dyn</sub> = D<sub>base</sub> + ΔD(EMA<sub>aged</sub>)</div>
+      <p class="small">Конфиг: <code>d_correction</code> (slow/fast) + <code>dynamic_d.state_aging</code>.
+      Аналогично для тоталов: <code>dynamic_s</code> / S-EMA × свой AF (<code>dynamic_s.state_aging</code>).
+      Если aging выключен — AF=1, поведение как раньше (только Dynamic D без старения).</p>
 
       <h2>Когда Legacy, когда Auto</h2>
       <div class="table-wrap"><table>
