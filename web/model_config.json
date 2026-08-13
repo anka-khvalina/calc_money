@@ -237,13 +237,13 @@
   },
   "dynamic_d": {
     "state_aging": {
-      "enabled": false,
+      "enabled": true,
       "half_life_days": 60
     }
   },
   "dynamic_s": {
     "state_aging": {
-      "enabled": false,
+      "enabled": true,
       "half_life_days": 60
     }
   },
