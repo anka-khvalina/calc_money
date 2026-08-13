@@ -1,33 +1,6 @@
-# Aug-12 market cards vs production model (season_202526)
+# Aug-12 — 1X2: рынок vs наши (Dynamic State Aging H60 + маржа)
 
-Source: uploaded «кэфы на 12 августа.docx» (book screenshots).
-
-## Method
-
-- **Model:** production FULL (`train_full_model` + `predict_match`), Dynamic D + S-EMA on.
-- **Dynamic State Aging:** forced **ON**, `H_D = H_S = 60` (research candidate; prod default remains OFF). `match_date=2026-08-12`.
-- **Train:** only season **2025-26** per league (UI-like window).
-- **1X2 odds:** fair model probs × **same match overround** as the book (маржа рынка).
-- **AH / Tot:** compare **main lines**.
-- **BASE:** same ratings, Dynamic D / S-EMA off.
-- Excluded brand-new clubs (Racing Santander, Deportivo, Málaga, Troyes, Le Mans, …).
-
-### Train sizes
-
-- Bundesliga: **296** matches
-- La Liga: **371** matches
-- Ligue 1: **303** matches
-- Premier League: **367** matches
-- Serie A: **370** matches
-
-## Summary (n=34)
-
-| arm | MAE AH | |ΔAH|≥0.5 | MAE Tot | MAE p1 pp | MAE odds 1 |
-|---|---:|---:|---:|---:|---:|
-| FULL | 0.103 | 0 | 0.118 | 2.51 | 0.317 |
-| BASE | 0.103 | 2 | 0.110 | 2.25 | 0.223 |
-
-## 1X2 — рынок vs наши (aging H60 + маржа)
+match_date = 2026-08-12; aging ON `H=60`; наши кэфы = fair probs × overround того же матча.
 
 | Лига | Матч | Рынок 1 | X | 2 | Наши+маржа 1 | X | 2 | Δ1 | ΔX | Δ2 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -65,5 +38,3 @@ Source: uploaded «кэфы на 12 августа.docx» (book screenshots).
 | Ligue 1 | Angers–Lille | 5.00 | 3.81 | 1.69 | 6.31 | 3.85 | 1.57 | +1.31 | +0.04 | -0.12 |
 | Ligue 1 | Le Havre–Monaco | 3.51 | 3.98 | 1.93 | 4.71 | 4.06 | 1.68 | +1.20 | +0.08 | -0.25 |
 | Ligue 1 | Paris SG–Rennes | 1.41 | 5.34 | 6.24 | 1.32 | 5.69 | 8.05 | -0.09 | +0.35 | +1.81 |
-
-Δ = наши (fair × overround матча) − рынок. Положительная Δ2 на сильном фаворите = мы даём андердогу более длинный кэф (занижаем вероятность dog).

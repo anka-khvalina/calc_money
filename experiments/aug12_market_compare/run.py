@@ -38,7 +38,13 @@ OUT.mkdir(parents=True, exist_ok=True)
 REPO_OUT = ROOT / "experiments" / "aug12_market_compare"
 
 
+# Research candidate used for Aug-12 cards (prod default remains OFF).
+AGING_HALF_LIFE = 60.0
+
+
 def _train(league: str, rows, *, season: Optional[str]) -> tuple[gmt.TrainedModel, int]:
+    from dataclasses import replace
+
     league_rows = [r for r in rows if r.league_name == league]
     if season:
         league_rows = [r for r in league_rows if str(r.season_label) == season]
@@ -46,13 +52,22 @@ def _train(league: str, rows, *, season: Optional[str]) -> tuple[gmt.TrainedMode
     if len(raw) < 80:
         raise ValueError(f"{league}: too few rows {len(raw)} (season={season})")
     cfg = load_baseline_config(season_weights_for(raw))
-    old = sys.stdout
-    sys.stdout = open("/dev/null", "w")
+    # Force Dynamic State Aging H60 for this card compare.
+    cfg = replace(
+        cfg,
+        d_correction_state_aging_enabled=True,
+        d_correction_state_aging_half_life_days=AGING_HALF_LIFE,
+        s_momentum_state_aging_enabled=True,
+        s_momentum_state_aging_half_life_days=AGING_HALF_LIFE,
+    )
+    old_out, old_err = sys.stdout, sys.stderr
+    devnull = open("/dev/null", "w")
+    sys.stdout = sys.stderr = devnull
     try:
         model, _ = gmt.train_full_model(raw, cfg)
     finally:
-        sys.stdout.close()
-        sys.stdout = old
+        sys.stdout, sys.stderr = old_out, old_err
+        devnull.close()
     return model, len(raw)
 
 
@@ -170,9 +185,9 @@ def _report(
     lines.append("")
     lines.append("- **Model:** production FULL (`train_full_model` + `predict_match`), Dynamic D + S-EMA on.")
     lines.append(
-        "- **Dynamic State Aging:** separate `dynamic_d` / `dynamic_s` configs "
-        "(default **OFF** = CURRENT; research candidate half-life e.g. 60). "
-        f"`match_date={MATCH_DATE.isoformat()}` when enabled."
+        f"- **Dynamic State Aging:** forced **ON**, `H_D = H_S = {AGING_HALF_LIFE:.0f}` "
+        f"(research candidate; prod default remains OFF). "
+        f"`match_date={MATCH_DATE.isoformat()}`."
     )
     lines.append(f"- **Train:** {train_desc}.")
     lines.append("- **1X2 odds:** fair model probs × **same match overround** as the book (маржа рынка).")
@@ -196,31 +211,44 @@ def _report(
             f"{s['mae_p1_pp']:.2f} | {s['mae_odds_1']:.3f} |"
         )
     lines.append("")
-    lines.append("## Per match — FULL with margin")
+    lines.append("## 1X2 — рынок vs наши (aging H60 + маржа)")
     lines.append("")
-    lines.append("| League | Match | days H/A | af_D H/A | AH mkt→mod | Tot mkt→mod | Mkt 1X2 | Model+margin 1X2 | Δodds |")
-    lines.append("|---|---|---|---|---|---|---|---|---|")
+    lines.append("| Лига | Матч | Рынок 1 | X | 2 | Наши+маржа 1 | X | 2 | Δ1 | ΔX | Δ2 |")
+    lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for r in full:
-        dh = r.get("home_days_since_prev")
-        da = r.get("away_days_since_prev")
-        ahf = r.get("home_d_aging")
-        aaf = r.get("away_d_aging")
-        days = f"{dh if dh is not None else '—'}/{da if da is not None else '—'}"
-        afs = (
-            f"{ahf:.2f}/{aaf:.2f}"
-            if ahf is not None and aaf is not None
-            else "—/—"
-        )
         lines.append(
-            f"| {r['league']} | {r['home']}–{r['away']} | {days} | {afs} | "
-            f"{r['ah_mkt']:+.2f}→{r['ah_pred']:+.2f} | "
-            f"{r['tot_mkt']:.2f}→{r['tot_pred']:.2f} | "
-            f"{_fmt_odds(r['o1'])}/{_fmt_odds(r['ox'])}/{_fmt_odds(r['o2'])} | "
-            f"{_fmt_odds(r['b1m'])}/{_fmt_odds(r['bxm'])}/{_fmt_odds(r['b2m'])} | "
-            f"{r['d1']:+.2f}/{r['dx']:+.2f}/{r['d2']:+.2f} |"
+            f"| {r['league']} | {r['home']}–{r['away']} | "
+            f"{_fmt_odds(r['o1'])} | {_fmt_odds(r['ox'])} | {_fmt_odds(r['o2'])} | "
+            f"{_fmt_odds(r['b1m'])} | {_fmt_odds(r['bxm'])} | {_fmt_odds(r['b2m'])} | "
+            f"{r['d1']:+.2f} | {r['dx']:+.2f} | {r['d2']:+.2f} |"
         )
+    lines.append("")
+    lines.append("Δ = наши (fair × overround матча) − рынок. Положительная Δ2 на сильном фаворите = "
+                 "мы даём андердогу более длинный кэф (занижаем вероятность dog).")
     lines.append("")
     return "\n".join(lines)
+
+
+def write_1x2_table(full: List[Dict[str, Any]], dest: Path) -> None:
+    """Focused 1X2 card: market vs aging+margin model + deltas."""
+    lines = [
+        "# Aug-12 — 1X2: рынок vs наши (Dynamic State Aging H60 + маржа)",
+        "",
+        f"match_date = {MATCH_DATE.isoformat()}; aging ON `H=60`; "
+        "наши кэфы = fair probs × overround того же матча.",
+        "",
+        "| Лига | Матч | Рынок 1 | X | 2 | Наши+маржа 1 | X | 2 | Δ1 | ΔX | Δ2 |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for r in full:
+        lines.append(
+            f"| {r['league']} | {r['home']}–{r['away']} | "
+            f"{_fmt_odds(r['o1'])} | {_fmt_odds(r['ox'])} | {_fmt_odds(r['o2'])} | "
+            f"{_fmt_odds(r['b1m'])} | {_fmt_odds(r['bxm'])} | {_fmt_odds(r['b2m'])} | "
+            f"{r['d1']:+.2f} | {r['dx']:+.2f} | {r['d2']:+.2f} |"
+        )
+    lines.append("")
+    dest.write_text("\n".join(lines), encoding="utf-8")
 
 
 def run_once(rows: Sequence, *, season: Optional[str]) -> Dict[str, Any]:
@@ -271,12 +299,34 @@ def run_once(rows: Sequence, *, season: Optional[str]) -> Dict[str, Any]:
         (dest / f"summary_{tag}.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
         report = _report(full_rows, summary, season=season, train_n=train_n)
         (dest / f"REPORT_{tag}.md").write_text(report, encoding="utf-8")
+        write_1x2_table(full_rows, dest / f"TABLE_1X2_{tag}.md")
         # keep default names pointing at the requested primary run
         if season == "2025-26":
             _write_csv(dest / "compare_full_margined.csv", full_rows)
             _write_csv(dest / "compare_base_margined.csv", base_rows)
             (dest / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
             (dest / "REPORT.md").write_text(report, encoding="utf-8")
+            write_1x2_table(full_rows, dest / "TABLE_1X2.md")
+            # also a flat CSV for the 1X2 card
+            slim = [
+                {
+                    "league": r["league"],
+                    "home": r["home"],
+                    "away": r["away"],
+                    "mkt_1": r["o1"],
+                    "mkt_x": r["ox"],
+                    "mkt_2": r["o2"],
+                    "ours_1": r["b1m"],
+                    "ours_x": r["bxm"],
+                    "ours_2": r["b2m"],
+                    "d1": r["d1"],
+                    "dx": r["dx"],
+                    "d2": r["d2"],
+                    "overround_pct": r["overround_pct"],
+                }
+                for r in full_rows
+            ]
+            _write_csv(dest / "table_1x2.csv", slim)
     print(json.dumps(summary, indent=2))
     return summary
 
