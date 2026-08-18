@@ -48,19 +48,30 @@ sys.path.insert(0, str(ROOT / "app"))
 import userbet_odds as ubo  # noqa: E402
 from supabase_history import MatchFull, fetch_matches, patch_match  # noqa: E402
 
-OUT = Path("/opt/cursor/artifacts/epl2425_userbet_fill")
+ART_ROOT = Path("/opt/cursor/artifacts")
 REPO = Path(__file__).resolve().parent
-OUT.mkdir(parents=True, exist_ok=True)
 
 EPL_LEAGUE_ID = "2613ee27-7e8d-4d18-bd5e-e3f525121848"
 EPL_SEASON_ID = 3  # 2024-25
 EPL_SEASON_LABEL = "2024-25"
+SEASON_LABELS = {3: "2024-25", 4: "2025-26", 15: "2023-24"}
 
 ARCHIVE_URL = "https://userbet.info/user/arhive/"
+HISTORY_URL = "https://userbet.info/user/load_lineups_odds_histoty/"  # upstream typo
+CURRENT_URL = "https://userbet.info/user/get_current_lineups_odds/"
+BOOK = 70
 UA = {
     "User-Agent": "Mozilla/5.0 (compatible; FairOddsCalc/epl-fill)",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
+POST_HEADERS = {
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "X-Requested-With": "XMLHttpRequest",
+    "Accept": "application/json, text/html, */*",
+    "User-Agent": UA["User-Agent"],
+}
+_COMMON_TOTALS = [2.5, 2.25, 2.75, 3.0, 2.0, 3.25, 1.5, 3.5, 2.75, 4.0, 1.75]
+_COMMON_AH = [0.0, -0.25, 0.25, -0.5, 0.5, -0.75, 0.75, -1.0, 1.0, -1.25, 1.25, -1.5, 1.5, -1.75, 1.75, -2.0, 2.0, -2.25, 2.25]
 
 # FairOddsCalc History name → userbet archive name(s)
 NAME_ALIASES: Dict[str, Tuple[str, ...]] = {
@@ -84,6 +95,9 @@ NAME_ALIASES: Dict[str, Tuple[str, ...]] = {
     "Arsenal": ("Arsenal",),
     "Liverpool": ("Liverpool",),
     "Southampton": ("Southampton",),
+    "Burnley": ("Burnley",),
+    "Luton": ("Luton", "Luton Town"),
+    "Sheffield United": ("Sheffield Utd", "Sheffield United", "Sheff Utd"),
 }
 
 
@@ -157,8 +171,8 @@ def parse_england_premier_league(html: str, day: str) -> List[ArchiveRow]:
             date_m = re.search(r'mt_date="([^"]+)"', block)
             slug_m = re.search(r'lineups_fixture/([^/]+)/(\d+)/', block)
             names = re.findall(r'<div class="fxlogo"[^>]*></div>\s*([^<]+)', block)
-            ps = re.findall(r'ps_id="(\d+)"', block)
-            if not ps or len(names) < 2:
+            ps = [p for p in re.findall(r'ps_id="(\d+)"', block) if p and p != "0"]
+            if len(names) < 2:
                 continue
             rows.append(
                 ArchiveRow(
@@ -166,7 +180,7 @@ def parse_england_premier_league(html: str, day: str) -> List[ArchiveRow]:
                     home=unescape(names[0]).strip(),
                     away=unescape(names[1]).strip(),
                     fid=fid,
-                    ps_id=ps[0],
+                    ps_id=ps[0] if ps else "",
                     slug=slug_m.group(1) if slug_m else "",
                     id_tournament=tid,
                 )
@@ -223,6 +237,172 @@ def match_archive_to_supabase(
     return joined, unmatched_sb, unmatched_ar
 
 
+_lock = None
+_last_post = 0.0
+MIN_POST_INTERVAL = 0.35
+
+
+def _post_form(url: str, data: Dict[str, str], *, timeout: float = 45.0) -> str:
+    global _last_post
+    now = time.monotonic()
+    wait = MIN_POST_INTERVAL - (now - _last_post)
+    if wait > 0:
+        time.sleep(wait)
+    body = urllib.parse.urlencode(data).encode("utf-8")
+    req = urllib.request.Request(url, data=body, method="POST", headers=dict(POST_HEADERS))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    finally:
+        _last_post = time.monotonic()
+
+
+def _odds_ok(val: Any) -> bool:
+    try:
+        return float(val) > 1.0
+    except (TypeError, ValueError):
+        return False
+
+
+def _fmt_ah(line: float) -> str:
+    if abs(line) < 1e-12:
+        return "+0"
+    return f"{line:g}" if line < 0 else f"+{line:g}"
+
+
+def _hist_close(ps_id: str, *, market: int, label: str, handicap: str = "", total: str = "") -> Optional[float]:
+    html = _post_form(
+        HISTORY_URL,
+        {
+            "id_fixture": ps_id,
+            "starting_at_ux": str(int(time.time()) + 10**9),
+            "id_market": str(market),
+            "id_bookmaker": str(BOOK),
+            "handicap": handicap,
+            "total": total,
+            "label": label,
+        },
+    )
+    if "not found odds" in html.lower():
+        return None
+    rows = re.findall(r'<td class="ev">\s*([0-9.]+)', html)
+    if not rows:
+        return None
+    try:
+        v = float(rows[0])
+    except ValueError:
+        return None
+    return v if v > 1.0 else None
+
+
+def _parse_current_loose(ps_id: str) -> Dict[str, float]:
+    """Best-effort current snapshot; older seasons often have 1X2=0 or missing OU."""
+    raw = _post_form(CURRENT_URL, {"id_fixture": ps_id})
+    try:
+        rows = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(rows, list) or not rows:
+        return {}
+    filtered = ubo.filter_by_bookmaker(rows)
+    by_m: Dict[int, List[dict]] = {}
+    for row in filtered:
+        try:
+            by_m.setdefault(int(row["m"]), []).append(dict(row))
+        except (KeyError, TypeError, ValueError):
+            continue
+    out: Dict[str, float] = {}
+    # 1X2 is usually m=1
+    for m_val, group in by_m.items():
+        labels = {str(r.get("l", "")).strip().lower() for r in group}
+        if {"1", "x", "2"} <= labels:
+            try:
+                out.update(ubo._parse_1x2(group))
+            except Exception:
+                pass
+        if {"o", "u"} <= labels:
+            try:
+                out.update(ubo._parse_total(group))
+            except Exception:
+                pass
+        if {"1", "2"} <= labels and any(str(r.get("h", "")).strip() for r in group):
+            try:
+                out.update(ubo._parse_ah(group))
+            except Exception:
+                pass
+    return {k: v for k, v in out.items() if k in ubo.ODDS_PATCH_FIELDS}
+
+
+def fetch_closing_odds(ps_id: str) -> Dict[str, float]:
+    """Closing line for History: current snapshot, then archive history for zeros/missing."""
+    if not ps_id or ps_id == "0":
+        raise RuntimeError("no ps_id")
+    out = _parse_current_loose(ps_id)
+    # 1X2 from history if current is empty/zero
+    if not all(_odds_ok(out.get(k)) for k in ("home_odds", "draw_odds", "away_odds")):
+        h1 = _hist_close(ps_id, market=1, label="1")
+        hx = _hist_close(ps_id, market=1, label="x")
+        h2 = _hist_close(ps_id, market=1, label="2")
+        if h1 and hx and h2:
+            out["home_odds"] = round(h1, 2)
+            out["draw_odds"] = round(hx, 2)
+            out["away_odds"] = round(h2, 2)
+    # OU: probe common lines if missing
+    if not all(_odds_ok(out.get(k)) for k in ("over_odds", "under_odds")) or out.get("closing_total_line") is None:
+        best = None
+        best_diff = 1e9
+        for tot in _COMMON_TOTALS:
+            t = f"{tot:g}"
+            o = _hist_close(ps_id, market=12, label="o", total=t)
+            u = _hist_close(ps_id, market=12, label="u", total=t)
+            if o and u:
+                diff = abs(o - u)
+                if diff < best_diff:
+                    best_diff = diff
+                    best = (float(tot), round(o, 2), round(u, 2))
+        if best:
+            out["closing_total_line"] = best[0]
+            out["over_odds"] = best[1]
+            out["under_odds"] = best[2]
+    # AH: probe if missing / invalid prices
+    if not all(_odds_ok(out.get(k)) for k in ("ah_home_odds", "ah_away_odds")) or out.get("closing_ah_home") is None:
+        best = None
+        best_diff = 1e9
+        for ah in _COMMON_AH:
+            hcap = _fmt_ah(ah)
+            a1 = _hist_close(ps_id, market=28, label="1", handicap=hcap)
+            a2 = _hist_close(ps_id, market=28, label="2", handicap=hcap)
+            if a1 and a2:
+                diff = abs(a1 - a2)
+                if diff < best_diff:
+                    best_diff = diff
+                    best = (float(ah), round(a1, 2), round(a2, 2))
+        if best:
+            out["closing_ah_home"] = best[0]
+            out["ah_home_odds"] = best[1]
+            out["ah_away_odds"] = best[2]
+    needed = (
+        "home_odds",
+        "draw_odds",
+        "away_odds",
+        "closing_ah_home",
+        "ah_home_odds",
+        "ah_away_odds",
+        "closing_total_line",
+        "over_odds",
+        "under_odds",
+    )
+    missing = [k for k in needed if k not in out or (k in ubo.ODDS_PATCH_FIELDS and k.endswith("odds") and not _odds_ok(out.get(k)))]
+    # closing lines can be 0 / negative
+    line_ok = out.get("closing_ah_home") is not None and out.get("closing_total_line") is not None
+    price_ok = all(_odds_ok(out.get(k)) for k in (
+        "home_odds", "draw_odds", "away_odds", "ah_home_odds", "ah_away_odds", "over_odds", "under_odds"
+    ))
+    if not (line_ok and price_ok):
+        raise RuntimeError(f"incomplete closing odds missing={missing} got={ {k: out.get(k) for k in needed} }")
+    return {k: out[k] for k in needed}
+
+
 def odds_already_filled(m: MatchFull) -> bool:
     fields = (
         m.home_odds,
@@ -259,9 +439,15 @@ def main() -> None:
     ap.add_argument("--no-skip-filled", action="store_false", dest="skip_filled")
     ap.add_argument("--cpid", type=int, default=5, help="archive chip (5=Premier League highlight)")
     ap.add_argument("--sleep-archive", type=float, default=0.4)
+    ap.add_argument("--prefix", default="", help="artifact filename prefix (default epl{label})")
     args = ap.parse_args()
 
-    print(f"Loading Supabase {args.league_id} season {args.season_id}…")
+    label = SEASON_LABELS.get(args.season_id, str(args.season_id))
+    prefix = args.prefix or f"epl{label.replace('-', '')}"
+    out_dir = ART_ROOT / f"{prefix}_userbet_fill"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Loading Supabase {args.league_id} season {args.season_id} ({label})…")
     matches = fetch_matches(args.league_id, args.season_id)
     if args.from_date:
         matches = [m for m in matches if str(m.match_date)[:10] >= args.from_date]
@@ -285,7 +471,7 @@ def main() -> None:
 
     joined, miss_sb, miss_ar = match_archive_to_supabase(matches, all_arch)
     print(f"Joined {len(joined)} / {len(matches)}; unmatched SB={len(miss_sb)} archive leftover={len(miss_ar)}")
-    map_path = OUT / "epl2425_id_map.csv"
+    map_path = out_dir / f"{prefix}_id_map.csv"
     write_csv(
         map_path,
         joined,
@@ -302,11 +488,11 @@ def main() -> None:
             "lineups_url",
         ],
     )
-    (REPO / "epl2425_id_map.csv").write_text(map_path.read_text(encoding="utf-8"), encoding="utf-8")
+    (REPO / f"{prefix}_id_map.csv").write_text(map_path.read_text(encoding="utf-8"), encoding="utf-8")
     print(f"Wrote {map_path}")
 
     if miss_sb:
-        miss_path = OUT / "unmatched_supabase.csv"
+        miss_path = out_dir / f"{prefix}_unmatched_supabase.csv"
         write_csv(
             miss_path,
             [
@@ -334,8 +520,12 @@ def main() -> None:
         if args.skip_filled and odds_already_filled(m):
             results.append({**row, "status": "skipped_filled", "error": ""})
             continue
+        if not row.get("ps_id"):
+            results.append({**row, "status": "error", "error": "no ps_id (archive graph id=0)"})
+            print(f"[{i+1}/{len(todo)}] ERROR {row['home_team']}–{row['away_team']}: no ps_id")
+            continue
         try:
-            odds = ubo.fetch_odds(row["ps_id"])
+            odds = fetch_closing_odds(row["ps_id"])
             status = "ok"
             err = ""
             if args.write:
@@ -347,7 +537,7 @@ def main() -> None:
             results.append({**row, "status": "error", "error": str(exc)})
             print(f"[{i+1}/{len(todo)}] ERROR {row['home_team']}–{row['away_team']}: {exc}")
 
-    res_path = OUT / "epl2425_fill_results.csv"
+    res_path = out_dir / f"{prefix}_fill_results.csv"
     fields = list(joined[0].keys()) + sorted(ubo.ODDS_PATCH_FIELDS) + ["status", "error"] if joined else ["status"]
     # unique preserve
     seen_f = []
@@ -355,18 +545,22 @@ def main() -> None:
         if f not in seen_f:
             seen_f.append(f)
     write_csv(res_path, results, seen_f)
-    (REPO / "epl2425_fill_results.csv").write_text(res_path.read_text(encoding="utf-8"), encoding="utf-8")
+    (REPO / f"{prefix}_fill_results.csv").write_text(res_path.read_text(encoding="utf-8"), encoding="utf-8")
     print(f"Results → {res_path}")
     summary = {
+        "season_id": args.season_id,
+        "season_label": label,
         "joined": len(joined),
         "attempted": len(todo),
         "ok": sum(1 for r in results if r.get("status") in ("ok", "written")),
         "written": sum(1 for r in results if r.get("status") == "written"),
+        "skipped_filled": sum(1 for r in results if r.get("status") == "skipped_filled"),
         "errors": sum(1 for r in results if r.get("status") == "error"),
         "unmatched_supabase": len(miss_sb),
         "write": bool(args.write),
     }
-    (OUT / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (out_dir / f"{prefix}_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (REPO / f"{prefix}_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
 
 
