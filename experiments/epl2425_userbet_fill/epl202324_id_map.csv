@@ -1,0 +1,381 @@
+match_id,match_date,home_team,away_team,ps_id,fid,userbet_home,userbet_away,slug,lineups_url
+12690,2023-08-11,Burnley,Man City,1576675061,315576,Burnley,Manchester City,premier_league-burnley-manchester_city,https://userbet.info/lineups_fixture/premier_league-burnley-manchester_city/315576/
+12691,2023-08-12,Arsenal,Nott'm Forest,,316152,Arsenal,Nottingham,premier_league-arsenal_-nottingham,https://userbet.info/lineups_fixture/premier_league-arsenal_-nottingham/316152/
+12694,2023-08-12,Everton,Fulham,1576716011,316155,Everton,Fulham,premier_league-everton-fulham,https://userbet.info/lineups_fixture/premier_league-everton-fulham/316155/
+12695,2023-08-12,Sheffield United,Crystal Palace,1576716277,316156,Sheffield Utd,Crystal Palace,premier_league-sheffield_utd-crystal_palace,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-crystal_palace/316156/
+12693,2023-08-12,Brighton,Luton,1576716543,316154,Brighton,Luton,premier_league-brighton-luton,https://userbet.info/lineups_fixture/premier_league-brighton-luton/316154/
+12696,2023-08-12,Newcastle,Aston Villa,1576729237,316157,Newcastle,Aston Villa,premier_league-newcastle-aston_villa,https://userbet.info/lineups_fixture/premier_league-newcastle-aston_villa/316157/
+12692,2023-08-12,Bournemouth,West Ham,1576715745,316153,Bournemouth,West Ham,premier_league-bournemouth-west_ham,https://userbet.info/lineups_fixture/premier_league-bournemouth-west_ham/316153/
+12697,2023-08-13,Brentford,Tottenham,1576793855,317246,Brentford,Tottenham,premier_league-brentford-tottenham,https://userbet.info/lineups_fixture/premier_league-brentford-tottenham/317246/
+12698,2023-08-13,Chelsea,Liverpool,1576806047,317247,Chelsea,Liverpool,premier_league-chelsea-liverpool,https://userbet.info/lineups_fixture/premier_league-chelsea-liverpool/317247/
+12699,2023-08-14,Man United,Wolves,1576851611,317795,Manchester Utd,Wolves,premier_league-manchester_utd-wolves,https://userbet.info/lineups_fixture/premier_league-manchester_utd-wolves/317795/
+12700,2023-08-18,Nott'm Forest,Sheffield United,1577094341,319251,Nottingham,Sheffield Utd,premier_league-nottingham-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-nottingham-sheffield_utd/319251/
+12705,2023-08-19,Man City,Newcastle,1577165158,319958,Manchester City,Newcastle,premier_league-manchester_city-newcastle,https://userbet.info/lineups_fixture/premier_league-manchester_city-newcastle/319958/
+12703,2023-08-19,Wolves,Brighton,1577144147,319956,Wolves,Brighton,premier_league-wolves-brighton,https://userbet.info/lineups_fixture/premier_league-wolves-brighton/319956/
+12704,2023-08-19,Tottenham,Man United,1577155549,319957,Tottenham,Manchester Utd,premier_league-tottenham-manchester_utd,https://userbet.info/lineups_fixture/premier_league-tottenham-manchester_utd/319957/
+12701,2023-08-19,Fulham,Brentford,1577143881,319953,Fulham,Brentford,premier_league-fulham-brentford,https://userbet.info/lineups_fixture/premier_league-fulham-brentford/319953/
+12702,2023-08-19,Liverpool,Bournemouth,1577144413,319954,Liverpool,Bournemouth,premier_league-liverpool-bournemouth,https://userbet.info/lineups_fixture/premier_league-liverpool-bournemouth/319954/
+12707,2023-08-20,West Ham,Chelsea,1577215124,321409,West Ham,Chelsea,premier_league-west_ham-chelsea,https://userbet.info/lineups_fixture/premier_league-west_ham-chelsea/321409/
+12706,2023-08-20,Aston Villa,Everton,1577203824,321408,Aston Villa,Everton,premier_league-aston_villa-everton,https://userbet.info/lineups_fixture/premier_league-aston_villa-everton/321408/
+12708,2023-08-21,Crystal Palace,Arsenal,1577270151,322423,Crystal Palace,Arsenal,premier_league-crystal_palace-arsenal_,https://userbet.info/lineups_fixture/premier_league-crystal_palace-arsenal_/322423/
+12709,2023-08-25,Chelsea,Luton,1577518125,323498,Chelsea,Luton,premier_league-chelsea-luton,https://userbet.info/lineups_fixture/premier_league-chelsea-luton/323498/
+12714,2023-08-26,Man United,Nott'm Forest,1577572309,324213,Manchester Utd,Nottingham,premier_league-manchester_utd-nottingham,https://userbet.info/lineups_fixture/premier_league-manchester_utd-nottingham/324213/
+12715,2023-08-26,Brighton,West Ham,1577584023,324214,Brighton,West Ham,premier_league-brighton-west_ham,https://userbet.info/lineups_fixture/premier_league-brighton-west_ham/324214/
+12710,2023-08-26,Bournemouth,Tottenham,1577562231,324209,Bournemouth,Tottenham,premier_league-bournemouth-tottenham,https://userbet.info/lineups_fixture/premier_league-bournemouth-tottenham/324209/
+12711,2023-08-26,Arsenal,Fulham,1577572843,324210,Arsenal,Fulham,premier_league-arsenal_-fulham,https://userbet.info/lineups_fixture/premier_league-arsenal_-fulham/324210/
+12712,2023-08-26,Brentford,Crystal Palace,1577572575,324211,Brentford,Crystal Palace,premier_league-brentford-crystal_palace,https://userbet.info/lineups_fixture/premier_league-brentford-crystal_palace/324211/
+12713,2023-08-26,Everton,Wolves,1577572841,324212,Everton,Wolves,premier_league-everton-wolves,https://userbet.info/lineups_fixture/premier_league-everton-wolves/324212/
+12718,2023-08-27,Newcastle,Liverpool,1577653968,325582,Newcastle,Liverpool,premier_league-newcastle-liverpool,https://userbet.info/lineups_fixture/premier_league-newcastle-liverpool/325582/
+12717,2023-08-27,Sheffield United,Man City,1577642245,325581,Sheffield Utd,Manchester City,premier_league-sheffield_utd-manchester_city,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-manchester_city/325581/
+12716,2023-08-27,Burnley,Aston Villa,1577689661,325580,Burnley,Aston Villa,premier_league-burnley-aston_villa,https://userbet.info/lineups_fixture/premier_league-burnley-aston_villa/325580/
+12719,2023-09-01,Luton,West Ham,1577958249,327681,Luton,West Ham,premier_league-luton-west_ham,https://userbet.info/lineups_fixture/premier_league-luton-west_ham/327681/
+12721,2023-09-02,Brentford,Bournemouth,1577995748,328495,Brentford,Bournemouth,premier_league-brentford-bournemouth,https://userbet.info/lineups_fixture/premier_league-brentford-bournemouth/328495/
+12720,2023-09-02,Sheffield United,Everton,1577988957,328494,Sheffield Utd,Everton,premier_league-sheffield_utd-everton,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-everton/328494/
+12722,2023-09-02,Burnley,Tottenham,1577996280,328496,Burnley,Tottenham,premier_league-burnley-tottenham,https://userbet.info/lineups_fixture/premier_league-burnley-tottenham/328496/
+12723,2023-09-02,Chelsea,Nott'm Forest,1577995482,328497,Chelsea,Nottingham,premier_league-chelsea-nottingham,https://userbet.info/lineups_fixture/premier_league-chelsea-nottingham/328497/
+12724,2023-09-02,Man City,Fulham,1577996014,328498,Manchester City,Fulham,premier_league-manchester_city-fulham,https://userbet.info/lineups_fixture/premier_league-manchester_city-fulham/328498/
+12725,2023-09-02,Brighton,Newcastle,1578004667,328499,Brighton,Newcastle,premier_league-brighton-newcastle,https://userbet.info/lineups_fixture/premier_league-brighton-newcastle/328499/
+12726,2023-09-03,Crystal Palace,Wolves,1578045816,329926,Crystal Palace,Wolves,premier_league-crystal_palace-wolves,https://userbet.info/lineups_fixture/premier_league-crystal_palace-wolves/329926/
+12727,2023-09-03,Liverpool,Aston Villa,1578045550,329927,Liverpool,Aston Villa,premier_league-liverpool-aston_villa,https://userbet.info/lineups_fixture/premier_league-liverpool-aston_villa/329927/
+12728,2023-09-03,Arsenal,Man United,1578059079,329928,Arsenal,Manchester Utd,premier_league-arsenal_-manchester_utd,https://userbet.info/lineups_fixture/premier_league-arsenal_-manchester_utd/329928/
+12733,2023-09-16,Tottenham,Sheffield United,1578693854,336536,Tottenham,Sheffield Utd,premier_league-tottenham-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-tottenham-sheffield_utd/336536/
+12734,2023-09-16,West Ham,Man City,1578693319,336537,West Ham,Manchester City,premier_league-west_ham-manchester_city,https://userbet.info/lineups_fixture/premier_league-west_ham-manchester_city/336537/
+12735,2023-09-16,Newcastle,Brentford,1578706962,336538,Newcastle,Brentford,premier_league-newcastle-brentford,https://userbet.info/lineups_fixture/premier_league-newcastle-brentford/336538/
+12730,2023-09-16,Aston Villa,Crystal Palace,1578692787,336533,Aston Villa,Crystal Palace,premier_league-aston_villa-crystal_palace,https://userbet.info/lineups_fixture/premier_league-aston_villa-crystal_palace/336533/
+12731,2023-09-16,Fulham,Luton,1578693588,336534,Fulham,Luton,premier_league-fulham-luton,https://userbet.info/lineups_fixture/premier_league-fulham-luton/336534/
+12732,2023-09-16,Man United,Brighton,1578693053,336535,Manchester Utd,Brighton,premier_league-manchester_utd-brighton,https://userbet.info/lineups_fixture/premier_league-manchester_utd-brighton/336535/
+12729,2023-09-16,Wolves,Liverpool,1578681816,336532,Wolves,Liverpool,premier_league-wolves-liverpool,https://userbet.info/lineups_fixture/premier_league-wolves-liverpool/336532/
+12737,2023-09-17,Everton,Arsenal,1578776222,338064,Everton,Arsenal,premier_league-everton-arsenal_,https://userbet.info/lineups_fixture/premier_league-everton-arsenal_/338064/
+12736,2023-09-17,Bournemouth,Chelsea,1578765942,338063,Bournemouth,Chelsea,premier_league-bournemouth-chelsea,https://userbet.info/lineups_fixture/premier_league-bournemouth-chelsea/338063/
+12738,2023-09-18,Nott'm Forest,Burnley,1578835540,339168,Nottingham,Burnley,premier_league-nottingham-burnley,https://userbet.info/lineups_fixture/premier_league-nottingham-burnley/339168/
+12743,2023-09-23,Burnley,Man United,1579180787,341167,Burnley,Manchester Utd,premier_league-burnley-manchester_utd,https://userbet.info/lineups_fixture/premier_league-burnley-manchester_utd/341167/
+12740,2023-09-23,Luton,Wolves,1579156428,341164,Luton,Wolves,premier_league-luton-wolves,https://userbet.info/lineups_fixture/premier_league-luton-wolves/341164/
+12739,2023-09-23,Crystal Palace,Fulham,1579155896,341163,Crystal Palace,Fulham,premier_league-crystal_palace-fulham,https://userbet.info/lineups_fixture/premier_league-crystal_palace-fulham/341163/
+12741,2023-09-23,Man City,Nott'm Forest,1579156162,341165,Manchester City,Nottingham,premier_league-manchester_city-nottingham,https://userbet.info/lineups_fixture/premier_league-manchester_city-nottingham/341165/
+12742,2023-09-23,Brentford,Everton,1579168772,341166,Brentford,Everton,premier_league-brentford-everton,https://userbet.info/lineups_fixture/premier_league-brentford-everton/341166/
+12744,2023-09-24,Arsenal,Tottenham,1579225985,342706,Arsenal,Tottenham,premier_league-arsenal_-tottenham,https://userbet.info/lineups_fixture/premier_league-arsenal_-tottenham/342706/
+12745,2023-09-24,Brighton,Bournemouth,1579226517,342707,Brighton,Bournemouth,premier_league-brighton-bournemouth,https://userbet.info/lineups_fixture/premier_league-brighton-bournemouth/342707/
+12746,2023-09-24,Chelsea,Aston Villa,1579226783,342708,Chelsea,Aston Villa,premier_league-chelsea-aston_villa,https://userbet.info/lineups_fixture/premier_league-chelsea-aston_villa/342708/
+12747,2023-09-24,Liverpool,West Ham,1579226251,342709,Liverpool,West Ham,premier_league-liverpool-west_ham,https://userbet.info/lineups_fixture/premier_league-liverpool-west_ham/342709/
+12748,2023-09-24,Sheffield United,Newcastle,1579240214,342710,Sheffield Utd,Newcastle,premier_league-sheffield_utd-newcastle,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-newcastle/342710/
+12754,2023-09-30,West Ham,Sheffield United,1579620613,345839,West Ham,Sheffield Utd,premier_league-west_ham-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-west_ham-sheffield_utd/345839/
+12753,2023-09-30,Newcastle,Burnley,1579621145,345838,Newcastle,Burnley,premier_league-newcastle-burnley,https://userbet.info/lineups_fixture/premier_league-newcastle-burnley/345838/
+12756,2023-09-30,Tottenham,Liverpool,1579629745,345841,Tottenham,Liverpool,premier_league-tottenham-liverpool,https://userbet.info/lineups_fixture/premier_league-tottenham-liverpool/345841/
+12755,2023-09-30,Wolves,Man City,1579617595,345840,Wolves,Manchester City,premier_league-wolves-manchester_city,https://userbet.info/lineups_fixture/premier_league-wolves-manchester_city/345840/
+12749,2023-09-30,Aston Villa,Brighton,1579603592,345834,Aston Villa,Brighton,premier_league-aston_villa-brighton,https://userbet.info/lineups_fixture/premier_league-aston_villa-brighton/345834/
+12750,2023-09-30,Bournemouth,Arsenal,1579617329,345835,Bournemouth,Arsenal,premier_league-bournemouth-arsenal_,https://userbet.info/lineups_fixture/premier_league-bournemouth-arsenal_/345835/
+12751,2023-09-30,Everton,Luton,1579620879,345836,Everton,Luton,premier_league-everton-luton,https://userbet.info/lineups_fixture/premier_league-everton-luton/345836/
+12752,2023-09-30,Man United,Crystal Palace,1579617063,345837,Manchester Utd,Crystal Palace,premier_league-manchester_utd-crystal_palace,https://userbet.info/lineups_fixture/premier_league-manchester_utd-crystal_palace/345837/
+12757,2023-10-01,Nott'm Forest,Brentford,1579691984,347321,Nottingham,Brentford,premier_league-nottingham-brentford,https://userbet.info/lineups_fixture/premier_league-nottingham-brentford/347321/
+12758,2023-10-02,Fulham,Chelsea,1579755624,348450,Fulham,Chelsea,premier_league-fulham-chelsea,https://userbet.info/lineups_fixture/premier_league-fulham-chelsea/348450/
+12759,2023-10-03,Luton,Burnley,1579787077,319955,Luton,Burnley,premier_league-luton-burnley,https://userbet.info/lineups_fixture/premier_league-luton-burnley/319955/
+12764,2023-10-07,Man United,Brentford,1580035336,350294,Manchester Utd,Brentford,premier_league-manchester_utd-brentford,https://userbet.info/lineups_fixture/premier_league-manchester_utd-brentford/350294/
+12765,2023-10-07,Crystal Palace,Nott'm Forest,1580047655,350295,Crystal Palace,Nottingham,premier_league-crystal_palace-nottingham,https://userbet.info/lineups_fixture/premier_league-crystal_palace-nottingham/350295/
+12762,2023-10-07,Everton,Bournemouth,1580035602,350292,Everton,Bournemouth,premier_league-everton-bournemouth,https://userbet.info/lineups_fixture/premier_league-everton-bournemouth/350292/
+12763,2023-10-07,Fulham,Sheffield United,1580036134,350293,Fulham,Sheffield Utd,premier_league-fulham-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-fulham-sheffield_utd/350293/
+12761,2023-10-07,Burnley,Chelsea,1580035868,350291,Burnley,Chelsea,premier_league-burnley-chelsea,https://userbet.info/lineups_fixture/premier_league-burnley-chelsea/350291/
+12760,2023-10-07,Luton,Tottenham,1580026373,350290,Luton,Tottenham,premier_league-luton-tottenham,https://userbet.info/lineups_fixture/premier_league-luton-tottenham/350290/
+12767,2023-10-08,West Ham,Newcastle,1580085631,351847,West Ham,Newcastle,premier_league-west_ham-newcastle,https://userbet.info/lineups_fixture/premier_league-west_ham-newcastle/351847/
+12766,2023-10-08,Brighton,Liverpool,1580085365,351846,Brighton,Liverpool,premier_league-brighton-liverpool,https://userbet.info/lineups_fixture/premier_league-brighton-liverpool/351846/
+12768,2023-10-08,Wolves,Aston Villa,1580085099,351848,Wolves,Aston Villa,premier_league-wolves-aston_villa,https://userbet.info/lineups_fixture/premier_league-wolves-aston_villa/351848/
+12769,2023-10-08,Arsenal,Man City,1580096923,351849,Arsenal,Manchester City,premier_league-arsenal_-manchester_city,https://userbet.info/lineups_fixture/premier_league-arsenal_-manchester_city/351849/
+12773,2023-10-21,Man City,Brighton,1579747265,357904,Manchester City,Brighton,premier_league-manchester_city-brighton,https://userbet.info/lineups_fixture/premier_league-manchester_city-brighton/357904/
+12770,2023-10-21,Liverpool,Everton,1580602483,357901,Liverpool,Everton,premier_league-liverpool-everton,https://userbet.info/lineups_fixture/premier_league-liverpool-everton/357901/
+12771,2023-10-21,Bournemouth,Wolves,1580616983,357902,Bournemouth,Wolves,premier_league-bournemouth-wolves,https://userbet.info/lineups_fixture/premier_league-bournemouth-wolves/357902/
+12772,2023-10-21,Brentford,Burnley,1580617515,357903,Brentford,Burnley,premier_league-brentford-burnley,https://userbet.info/lineups_fixture/premier_league-brentford-burnley/357903/
+12774,2023-10-21,Newcastle,Crystal Palace,1580616717,357905,Newcastle,Crystal Palace,premier_league-newcastle-crystal_palace,https://userbet.info/lineups_fixture/premier_league-newcastle-crystal_palace/357905/
+12775,2023-10-21,Nott'm Forest,Luton,1580617781,357906,Nottingham,Luton,premier_league-nottingham-luton,https://userbet.info/lineups_fixture/premier_league-nottingham-luton/357906/
+12776,2023-10-21,Chelsea,Arsenal,1580628981,357907,Chelsea,Arsenal,premier_league-chelsea-arsenal_,https://userbet.info/lineups_fixture/premier_league-chelsea-arsenal_/357907/
+12777,2023-10-21,Sheffield United,Man United,1580637078,357908,Sheffield Utd,Manchester Utd,premier_league-sheffield_utd-manchester_utd,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-manchester_utd/357908/
+12778,2023-10-22,Aston Villa,West Ham,1580696255,359289,Aston Villa,West Ham,premier_league-aston_villa-west_ham,https://userbet.info/lineups_fixture/premier_league-aston_villa-west_ham/359289/
+12779,2023-10-23,Tottenham,Fulham,1580737577,360431,Tottenham,Fulham,premier_league-tottenham-fulham,https://userbet.info/lineups_fixture/premier_league-tottenham-fulham/360431/
+12780,2023-10-27,Crystal Palace,Tottenham,1581007354,361381,Crystal Palace,Tottenham,premier_league-crystal_palace-tottenham,https://userbet.info/lineups_fixture/premier_league-crystal_palace-tottenham/361381/
+12782,2023-10-28,Arsenal,Sheffield United,1581054855,362045,Arsenal,Sheffield Utd,premier_league-arsenal_-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-arsenal_-sheffield_utd/362045/
+12783,2023-10-28,Bournemouth,Burnley,1581054589,362046,Bournemouth,Burnley,premier_league-bournemouth-burnley,https://userbet.info/lineups_fixture/premier_league-bournemouth-burnley/362046/
+12784,2023-10-28,Wolves,Newcastle,1581065386,362047,Wolves,Newcastle,premier_league-wolves-newcastle,https://userbet.info/lineups_fixture/premier_league-wolves-newcastle/362047/
+12781,2023-10-28,Chelsea,Brentford,1581043729,362044,Chelsea,Brentford,premier_league-chelsea-brentford,https://userbet.info/lineups_fixture/premier_league-chelsea-brentford/362044/
+12789,2023-10-29,Man United,Man City,1581129873,363512,Manchester Utd,Manchester City,premier_league-manchester_utd-manchester_city,https://userbet.info/lineups_fixture/premier_league-manchester_utd-manchester_city/363512/
+12785,2023-10-29,West Ham,Everton,1581115038,363508,West Ham,Everton,premier_league-west_ham-everton,https://userbet.info/lineups_fixture/premier_league-west_ham-everton/363508/
+12787,2023-10-29,Brighton,Fulham,1581121939,363510,Brighton,Fulham,premier_league-brighton-fulham,https://userbet.info/lineups_fixture/premier_league-brighton-fulham/363510/
+12786,2023-10-29,Aston Villa,Luton,1581123272,363509,Aston Villa,Luton,premier_league-aston_villa-luton,https://userbet.info/lineups_fixture/premier_league-aston_villa-luton/363509/
+12788,2023-10-29,Liverpool,Nott'm Forest,1581122205,363511,Liverpool,Nottingham,premier_league-liverpool-nottingham,https://userbet.info/lineups_fixture/premier_league-liverpool-nottingham/363511/
+12791,2023-11-04,Brentford,West Ham,1581470052,366374,Brentford,West Ham,premier_league-brentford-west_ham,https://userbet.info/lineups_fixture/premier_league-brentford-west_ham/366374/
+12790,2023-11-04,Fulham,Man United,1581459426,366373,Fulham,Manchester Utd,premier_league-fulham-manchester_utd,https://userbet.info/lineups_fixture/premier_league-fulham-manchester_utd/366373/
+12792,2023-11-04,Burnley,Crystal Palace,1581470584,366375,Burnley,Crystal Palace,premier_league-burnley-crystal_palace,https://userbet.info/lineups_fixture/premier_league-burnley-crystal_palace/366375/
+12793,2023-11-04,Everton,Brighton,1581469786,366376,Everton,Brighton,premier_league-everton-brighton,https://userbet.info/lineups_fixture/premier_league-everton-brighton/366376/
+12794,2023-11-04,Man City,Bournemouth,1580673698,366377,Manchester City,Bournemouth,premier_league-manchester_city-bournemouth,https://userbet.info/lineups_fixture/premier_league-manchester_city-bournemouth/366377/
+12795,2023-11-04,Sheffield United,Wolves,1581470850,366378,Sheffield Utd,Wolves,premier_league-sheffield_utd-wolves,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-wolves/366378/
+12796,2023-11-04,Newcastle,Arsenal,1581481828,366379,Newcastle,Arsenal,premier_league-newcastle-arsenal_,https://userbet.info/lineups_fixture/premier_league-newcastle-arsenal_/366379/
+12797,2023-11-05,Nott'm Forest,Aston Villa,1581532651,367714,Nottingham,Aston Villa,premier_league-nottingham-aston_villa,https://userbet.info/lineups_fixture/premier_league-nottingham-aston_villa/367714/
+12798,2023-11-05,Luton,Liverpool,1581543312,367715,Luton,Liverpool,premier_league-luton-liverpool,https://userbet.info/lineups_fixture/premier_league-luton-liverpool/367715/
+12799,2023-11-06,Tottenham,Chelsea,1581591097,368882,Tottenham,Chelsea,premier_league-tottenham-chelsea,https://userbet.info/lineups_fixture/premier_league-tottenham-chelsea/368882/
+12802,2023-11-11,Crystal Palace,Everton,1581881512,370320,Crystal Palace,Everton,premier_league-crystal_palace-everton,https://userbet.info/lineups_fixture/premier_league-crystal_palace-everton/370320/
+12803,2023-11-11,Man United,Luton,1581881778,370321,Manchester Utd,Luton,premier_league-manchester_utd-luton,https://userbet.info/lineups_fixture/premier_league-manchester_utd-luton/370321/
+12801,2023-11-11,Arsenal,Burnley,1581882044,370319,Arsenal,Burnley,premier_league-arsenal_-burnley,https://userbet.info/lineups_fixture/premier_league-arsenal_-burnley/370319/
+12804,2023-11-11,Bournemouth,Newcastle,1581892012,370322,Bournemouth,Newcastle,premier_league-bournemouth-newcastle,https://userbet.info/lineups_fixture/premier_league-bournemouth-newcastle/370322/
+12800,2023-11-11,Wolves,Tottenham,1581875212,370318,Wolves,Tottenham,premier_league-wolves-tottenham,https://userbet.info/lineups_fixture/premier_league-wolves-tottenham/370318/
+12805,2023-11-12,Aston Villa,Fulham,1581936248,371624,Aston Villa,Fulham,premier_league-aston_villa-fulham,https://userbet.info/lineups_fixture/premier_league-aston_villa-fulham/371624/
+12807,2023-11-12,Liverpool,Brentford,1581935714,371626,Liverpool,Brentford,premier_league-liverpool-brentford,https://userbet.info/lineups_fixture/premier_league-liverpool-brentford/371626/
+12808,2023-11-12,West Ham,Nott'm Forest,1581935980,371627,West Ham,Nottingham,premier_league-west_ham-nottingham,https://userbet.info/lineups_fixture/premier_league-west_ham-nottingham/371627/
+12809,2023-11-12,Chelsea,Man City,1581948206,371628,Chelsea,Manchester City,premier_league-chelsea-manchester_city,https://userbet.info/lineups_fixture/premier_league-chelsea-manchester_city/371628/
+12806,2023-11-12,Brighton,Sheffield United,1581937593,371625,Brighton,Sheffield Utd,premier_league-brighton-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-brighton-sheffield_utd/371625/
+12814,2023-11-25,Nott'm Forest,Brighton,1582493483,376637,Nottingham,Brighton,premier_league-nottingham-brighton,https://userbet.info/lineups_fixture/premier_league-nottingham-brighton/376637/
+12815,2023-11-25,Sheffield United,Bournemouth,1582494015,376638,Sheffield Utd,Bournemouth,premier_league-sheffield_utd-bournemouth,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-bournemouth/376638/
+12816,2023-11-25,Brentford,Arsenal,1582506609,376639,Brentford,Arsenal,premier_league-brentford-arsenal_,https://userbet.info/lineups_fixture/premier_league-brentford-arsenal_/376639/
+12812,2023-11-25,Luton,Crystal Palace,1582494281,376635,Luton,Crystal Palace,premier_league-luton-crystal_palace,https://userbet.info/lineups_fixture/premier_league-luton-crystal_palace/376635/
+12811,2023-11-25,Burnley,West Ham,1582493749,376634,Burnley,West Ham,premier_league-burnley-west_ham,https://userbet.info/lineups_fixture/premier_league-burnley-west_ham/376634/
+12813,2023-11-25,Newcastle,Chelsea,1582494547,376636,Newcastle,Chelsea,premier_league-newcastle-chelsea,https://userbet.info/lineups_fixture/premier_league-newcastle-chelsea/376636/
+12810,2023-11-25,Man City,Liverpool,1582483122,376633,Manchester City,Liverpool,premier_league-manchester_city-liverpool,https://userbet.info/lineups_fixture/premier_league-manchester_city-liverpool/376633/
+12817,2023-11-26,Tottenham,Aston Villa,1582557989,377811,Tottenham,Aston Villa,premier_league-tottenham-aston_villa,https://userbet.info/lineups_fixture/premier_league-tottenham-aston_villa/377811/
+12818,2023-11-26,Everton,Man United,1582567879,377812,Everton,Manchester Utd,premier_league-everton-manchester_utd,https://userbet.info/lineups_fixture/premier_league-everton-manchester_utd/377812/
+12819,2023-11-27,Fulham,Wolves,1582606082,378745,Fulham,Wolves,premier_league-fulham-wolves,https://userbet.info/lineups_fixture/premier_league-fulham-wolves/378745/
+12822,2023-12-02,Burnley,Sheffield United,1582864543,379878,Burnley,Sheffield Utd,premier_league-burnley-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-burnley-sheffield_utd/379878/
+12820,2023-12-02,Arsenal,Wolves,1582865075,379876,Arsenal,Wolves,premier_league-arsenal_-wolves,https://userbet.info/lineups_fixture/premier_league-arsenal_-wolves/379876/
+12821,2023-12-02,Brentford,Luton,1582046319,379877,Brentford,Luton,premier_league-brentford-luton,https://userbet.info/lineups_fixture/premier_league-brentford-luton/379877/
+12823,2023-12-02,Nott'm Forest,Everton,1582875382,379879,Nottingham,Everton,premier_league-nottingham-everton,https://userbet.info/lineups_fixture/premier_league-nottingham-everton/379879/
+12824,2023-12-02,Newcastle,Man United,1582885231,379880,Newcastle,Manchester Utd,premier_league-newcastle-manchester_utd,https://userbet.info/lineups_fixture/premier_league-newcastle-manchester_utd/379880/
+12829,2023-12-03,Man City,Tottenham,1582936490,380944,Manchester City,Tottenham,premier_league-manchester_city-tottenham,https://userbet.info/lineups_fixture/premier_league-manchester_city-tottenham/380944/
+12828,2023-12-03,West Ham,Crystal Palace,1582926333,380943,West Ham,Crystal Palace,premier_league-west_ham-crystal_palace,https://userbet.info/lineups_fixture/premier_league-west_ham-crystal_palace/380943/
+12827,2023-12-03,Liverpool,Fulham,1582925796,380942,Liverpool,Fulham,premier_league-liverpool-fulham,https://userbet.info/lineups_fixture/premier_league-liverpool-fulham/380942/
+12826,2023-12-03,Chelsea,Brighton,1582926063,380941,Chelsea,Brighton,premier_league-chelsea-brighton,https://userbet.info/lineups_fixture/premier_league-chelsea-brighton/380941/
+12825,2023-12-03,Bournemouth,Aston Villa,1582925530,380940,Bournemouth,Aston Villa,premier_league-bournemouth-aston_villa,https://userbet.info/lineups_fixture/premier_league-bournemouth-aston_villa/380940/
+12831,2023-12-05,Luton,Arsenal,1583004544,381862,Luton,Arsenal,premier_league-luton-arsenal_,https://userbet.info/lineups_fixture/premier_league-luton-arsenal_/381862/
+12830,2023-12-05,Wolves,Burnley,1583003365,381861,Wolves,Burnley,premier_league-wolves-burnley,https://userbet.info/lineups_fixture/premier_league-wolves-burnley/381861/
+12836,2023-12-06,Aston Villa,Man City,1582578092,382150,Aston Villa,Manchester City,premier_league-aston_villa-manchester_city,https://userbet.info/lineups_fixture/premier_league-aston_villa-manchester_city/382150/
+12837,2023-12-06,Man United,Chelsea,1582578080,382151,Manchester Utd,Chelsea,premier_league-manchester_utd-chelsea,https://userbet.info/lineups_fixture/premier_league-manchester_utd-chelsea/382151/
+12834,2023-12-06,Fulham,Nott'm Forest,1582578094,382148,Fulham,Nottingham,premier_league-fulham-nottingham,https://userbet.info/lineups_fixture/premier_league-fulham-nottingham/382148/
+12835,2023-12-06,Sheffield United,Liverpool,1582578086,382149,Sheffield Utd,Liverpool,premier_league-sheffield_utd-liverpool,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-liverpool/382149/
+12832,2023-12-06,Brighton,Brentford,1582578089,382146,Brighton,Brentford,premier_league-brighton-brentford,https://userbet.info/lineups_fixture/premier_league-brighton-brentford/382146/
+12833,2023-12-06,Crystal Palace,Bournemouth,1582578097,382147,Crystal Palace,Bournemouth,premier_league-crystal_palace-bournemouth,https://userbet.info/lineups_fixture/premier_league-crystal_palace-bournemouth/382147/
+12839,2023-12-07,Tottenham,West Ham,1582578098,382356,Tottenham,West Ham,premier_league-tottenham-west_ham,https://userbet.info/lineups_fixture/premier_league-tottenham-west_ham/382356/
+12838,2023-12-07,Everton,Newcastle,1582578083,382355,Everton,Newcastle,premier_league-everton-newcastle,https://userbet.info/lineups_fixture/premier_league-everton-newcastle/382355/
+12844,2023-12-09,Wolves,Nott'm Forest,1582911653,382791,Wolves,Nottingham,premier_league-wolves-nottingham,https://userbet.info/lineups_fixture/premier_league-wolves-nottingham/382791/
+12840,2023-12-09,Crystal Palace,Liverpool,1582911661,382787,Crystal Palace,Liverpool,premier_league-crystal_palace-liverpool,https://userbet.info/lineups_fixture/premier_league-crystal_palace-liverpool/382787/
+12841,2023-12-09,Brighton,Burnley,1582913031,382788,Brighton,Burnley,premier_league-brighton-burnley,https://userbet.info/lineups_fixture/premier_league-brighton-burnley/382788/
+12842,2023-12-09,Man United,Bournemouth,1582911647,382789,Manchester Utd,Bournemouth,premier_league-manchester_utd-bournemouth,https://userbet.info/lineups_fixture/premier_league-manchester_utd-bournemouth/382789/
+12843,2023-12-09,Sheffield United,Brentford,1582911663,382790,Sheffield Utd,Brentford,premier_league-sheffield_utd-brentford,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-brentford/382790/
+12845,2023-12-09,Aston Villa,Arsenal,1582913036,382792,Aston Villa,Arsenal,premier_league-aston_villa-arsenal_,https://userbet.info/lineups_fixture/premier_league-aston_villa-arsenal_/382792/
+12849,2023-12-10,Tottenham,Newcastle,1582911642,383544,Tottenham,Newcastle,premier_league-tottenham-newcastle,https://userbet.info/lineups_fixture/premier_league-tottenham-newcastle/383544/
+12846,2023-12-10,Everton,Chelsea,1582911646,383541,Everton,Chelsea,premier_league-everton-chelsea,https://userbet.info/lineups_fixture/premier_league-everton-chelsea/383541/
+12847,2023-12-10,Fulham,West Ham,1582911643,383542,Fulham,West Ham,premier_league-fulham-west_ham,https://userbet.info/lineups_fixture/premier_league-fulham-west_ham/383542/
+12848,2023-12-10,Luton,Man City,1582913033,383543,Luton,Manchester City,premier_league-luton-manchester_city,https://userbet.info/lineups_fixture/premier_league-luton-manchester_city/383543/
+12850,2023-12-15,Nott'm Forest,Tottenham,1583101023,384809,Nottingham,Tottenham,premier_league-nottingham-tottenham,https://userbet.info/lineups_fixture/premier_league-nottingham-tottenham/384809/
+12851,2023-12-16,Chelsea,Sheffield United,1583101027,385073,Chelsea,Sheffield Utd,premier_league-chelsea-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-chelsea-sheffield_utd/385073/
+12852,2023-12-16,Man City,Crystal Palace,1583101024,385074,Manchester City,Crystal Palace,premier_league-manchester_city-crystal_palace,https://userbet.info/lineups_fixture/premier_league-manchester_city-crystal_palace/385074/
+12853,2023-12-16,Newcastle,Fulham,1583101025,385075,Newcastle,Fulham,premier_league-newcastle-fulham,https://userbet.info/lineups_fixture/premier_league-newcastle-fulham/385075/
+12854,2023-12-16,Burnley,Everton,1583118861,385076,Burnley,Everton,premier_league-burnley-everton,https://userbet.info/lineups_fixture/premier_league-burnley-everton/385076/
+12855,2023-12-17,Arsenal,Brighton,1583103006,385768,Arsenal,Brighton,premier_league-arsenal_-brighton,https://userbet.info/lineups_fixture/premier_league-arsenal_-brighton/385768/
+12856,2023-12-17,Brentford,Aston Villa,1583103002,385769,Brentford,Aston Villa,premier_league-brentford-aston_villa,https://userbet.info/lineups_fixture/premier_league-brentford-aston_villa/385769/
+12857,2023-12-17,West Ham,Wolves,1583103005,385770,West Ham,Wolves,premier_league-west_ham-wolves,https://userbet.info/lineups_fixture/premier_league-west_ham-wolves/385770/
+12858,2023-12-17,Liverpool,Man United,1583102365,385771,Liverpool,Manchester Utd,premier_league-liverpool-manchester_utd,https://userbet.info/lineups_fixture/premier_league-liverpool-manchester_utd/385771/
+12859,2023-12-21,Crystal Palace,Brighton,1583204944,387018,Crystal Palace,Brighton,premier_league-crystal_palace-brighton,https://userbet.info/lineups_fixture/premier_league-crystal_palace-brighton/387018/
+12860,2023-12-22,Aston Villa,Sheffield United,1583247987,387145,Aston Villa,Sheffield Utd,premier_league-aston_villa-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-aston_villa-sheffield_utd/387145/
+12865,2023-12-23,Tottenham,Everton,1583246345,387335,Tottenham,Everton,premier_league-tottenham-everton,https://userbet.info/lineups_fixture/premier_league-tottenham-everton/387335/
+12866,2023-12-23,Liverpool,Arsenal,1583247989,387336,Liverpool,Arsenal,premier_league-liverpool-arsenal_,https://userbet.info/lineups_fixture/premier_league-liverpool-arsenal_/387336/
+12863,2023-12-23,Luton,Newcastle,1583247986,387332,Luton,Newcastle,premier_league-luton-newcastle,https://userbet.info/lineups_fixture/premier_league-luton-newcastle/387332/
+12864,2023-12-23,Nott'm Forest,Bournemouth,1583246344,387334,Nottingham,Bournemouth,premier_league-nottingham-bournemouth,https://userbet.info/lineups_fixture/premier_league-nottingham-bournemouth/387334/
+12862,2023-12-23,Fulham,Burnley,1583246346,387331,Fulham,Burnley,premier_league-fulham-burnley,https://userbet.info/lineups_fixture/premier_league-fulham-burnley/387331/
+12861,2023-12-23,West Ham,Man United,1583246347,387330,West Ham,Manchester Utd,premier_league-west_ham-manchester_utd,https://userbet.info/lineups_fixture/premier_league-west_ham-manchester_utd/387330/
+12867,2023-12-24,Wolves,Chelsea,1583247997,387698,Wolves,Chelsea,premier_league-wolves-chelsea,https://userbet.info/lineups_fixture/premier_league-wolves-chelsea/387698/
+12872,2023-12-26,Man United,Aston Villa,1583538114,387889,Manchester Utd,Aston Villa,premier_league-manchester_utd-aston_villa,https://userbet.info/lineups_fixture/premier_league-manchester_utd-aston_villa/387889/
+12871,2023-12-26,Burnley,Liverpool,1583538117,387888,Burnley,Liverpool,premier_league-burnley-liverpool,https://userbet.info/lineups_fixture/premier_league-burnley-liverpool/387888/
+12868,2023-12-26,Newcastle,Nott'm Forest,1583538119,387885,Newcastle,Nottingham,premier_league-newcastle-nottingham,https://userbet.info/lineups_fixture/premier_league-newcastle-nottingham/387885/
+12869,2023-12-26,Bournemouth,Fulham,1583538121,387886,Bournemouth,Fulham,premier_league-bournemouth-fulham,https://userbet.info/lineups_fixture/premier_league-bournemouth-fulham/387886/
+12870,2023-12-26,Sheffield United,Luton,1583538120,387887,Sheffield Utd,Luton,premier_league-sheffield_utd-luton,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-luton/387887/
+12873,2023-12-27,Brentford,Wolves,1583538407,388098,Brentford,Wolves,premier_league-brentford-wolves,https://userbet.info/lineups_fixture/premier_league-brentford-wolves/388098/
+12875,2023-12-27,Everton,Man City,1583538406,388100,Everton,Manchester City,premier_league-everton-manchester_city,https://userbet.info/lineups_fixture/premier_league-everton-manchester_city/388100/
+12874,2023-12-27,Chelsea,Crystal Palace,1583538113,388099,Chelsea,Crystal Palace,premier_league-chelsea-crystal_palace,https://userbet.info/lineups_fixture/premier_league-chelsea-crystal_palace/388099/
+12877,2023-12-28,Arsenal,West Ham,1583538116,388223,Arsenal,West Ham,premier_league-arsenal_-west_ham,https://userbet.info/lineups_fixture/premier_league-arsenal_-west_ham/388223/
+12876,2023-12-28,Brighton,Tottenham,1583538408,388222,Brighton,Tottenham,premier_league-brighton-tottenham,https://userbet.info/lineups_fixture/premier_league-brighton-tottenham/388222/
+12882,2023-12-30,Wolves,Everton,1583765371,388460,Wolves,Everton,premier_league-wolves-everton,https://userbet.info/lineups_fixture/premier_league-wolves-everton/388460/
+12883,2023-12-30,Nott'm Forest,Man United,1583765370,388461,Nottingham,Manchester Utd,premier_league-nottingham-manchester_utd,https://userbet.info/lineups_fixture/premier_league-nottingham-manchester_utd/388461/
+12880,2023-12-30,Crystal Palace,Brentford,1583765374,388458,Crystal Palace,Brentford,premier_league-crystal_palace-brentford,https://userbet.info/lineups_fixture/premier_league-crystal_palace-brentford/388458/
+12879,2023-12-30,Aston Villa,Burnley,1583765372,388457,Aston Villa,Burnley,premier_league-aston_villa-burnley,https://userbet.info/lineups_fixture/premier_league-aston_villa-burnley/388457/
+12878,2023-12-30,Luton,Chelsea,1583765367,388456,Luton,Chelsea,premier_league-luton-chelsea,https://userbet.info/lineups_fixture/premier_league-luton-chelsea/388456/
+12881,2023-12-30,Man City,Sheffield United,1583765379,388459,Manchester City,Sheffield Utd,premier_league-manchester_city-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-manchester_city-sheffield_utd/388459/
+12884,2023-12-31,Fulham,Arsenal,1583765378,388733,Fulham,Arsenal,premier_league-fulham-arsenal_,https://userbet.info/lineups_fixture/premier_league-fulham-arsenal_/388733/
+12885,2023-12-31,Tottenham,Bournemouth,1583765380,388734,Tottenham,Bournemouth,premier_league-tottenham-bournemouth,https://userbet.info/lineups_fixture/premier_league-tottenham-bournemouth/388734/
+12886,2024-01-01,Liverpool,Newcastle,1583765373,388798,Liverpool,Newcastle,premier_league-liverpool-newcastle,https://userbet.info/lineups_fixture/premier_league-liverpool-newcastle/388798/
+12887,2024-01-02,West Ham,Brighton,1583765368,388950,West Ham,Brighton,premier_league-west_ham-brighton,https://userbet.info/lineups_fixture/premier_league-west_ham-brighton/388950/
+12888,2024-01-12,Burnley,Luton,1584109693,392459,Burnley,Luton,premier_league-burnley-luton,https://userbet.info/lineups_fixture/premier_league-burnley-luton/392459/
+12889,2024-01-13,Chelsea,Fulham,1583869376,391148,Chelsea,Fulham,premier_league-chelsea-fulham,https://userbet.info/lineups_fixture/premier_league-chelsea-fulham/391148/
+12890,2024-01-13,Newcastle,Man City,1583869367,391149,Newcastle,Manchester City,premier_league-newcastle-manchester_city,https://userbet.info/lineups_fixture/premier_league-newcastle-manchester_city/391149/
+12892,2024-01-14,Man United,Tottenham,1583869373,391861,Manchester Utd,Tottenham,premier_league-manchester_utd-tottenham,https://userbet.info/lineups_fixture/premier_league-manchester_utd-tottenham/391861/
+12891,2024-01-14,Everton,Aston Villa,1583869375,391860,Everton,Aston Villa,premier_league-everton-aston_villa,https://userbet.info/lineups_fixture/premier_league-everton-aston_villa/391860/
+12893,2024-01-20,Arsenal,Crystal Palace,1583869379,393681,Arsenal,Crystal Palace,premier_league-arsenal_-crystal_palace,https://userbet.info/lineups_fixture/premier_league-arsenal_-crystal_palace/393681/
+12894,2024-01-20,Brentford,Nott'm Forest,1583869371,393682,Brentford,Nottingham,premier_league-brentford-nottingham,https://userbet.info/lineups_fixture/premier_league-brentford-nottingham/393682/
+12895,2024-01-21,Sheffield United,West Ham,1583869369,394519,Sheffield Utd,West Ham,premier_league-sheffield_utd-west_ham,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-west_ham/394519/
+12896,2024-01-21,Bournemouth,Liverpool,1583869368,394520,Bournemouth,Liverpool,premier_league-bournemouth-liverpool,https://userbet.info/lineups_fixture/premier_league-bournemouth-liverpool/394520/
+12897,2024-01-22,Brighton,Wolves,1583869377,395197,Brighton,Wolves,premier_league-brighton-wolves,https://userbet.info/lineups_fixture/premier_league-brighton-wolves/395197/
+12902,2024-01-30,Aston Villa,Newcastle,1583986869,398344,Aston Villa,Newcastle,premier_league-aston_villa-newcastle,https://userbet.info/lineups_fixture/premier_league-aston_villa-newcastle/398344/
+12899,2024-01-30,Fulham,Everton,1583986892,398341,Fulham,Everton,premier_league-fulham-everton,https://userbet.info/lineups_fixture/premier_league-fulham-everton/398341/
+12900,2024-01-30,Luton,Brighton,1583986870,398342,Luton,Brighton,premier_league-luton-brighton,https://userbet.info/lineups_fixture/premier_league-luton-brighton/398342/
+12901,2024-01-30,Crystal Palace,Sheffield United,1583986868,398343,Crystal Palace,Sheffield Utd,premier_league-crystal_palace-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-crystal_palace-sheffield_utd/398343/
+12898,2024-01-30,Nott'm Forest,Arsenal,1583986874,398340,Nottingham,Arsenal,premier_league-nottingham-arsenal_,https://userbet.info/lineups_fixture/premier_league-nottingham-arsenal_/398340/
+12903,2024-01-31,Man City,Burnley,1583986890,398625,Manchester City,Burnley,premier_league-manchester_city-burnley,https://userbet.info/lineups_fixture/premier_league-manchester_city-burnley/398625/
+12904,2024-01-31,Tottenham,Brentford,1583986873,398626,Tottenham,Brentford,premier_league-tottenham-brentford,https://userbet.info/lineups_fixture/premier_league-tottenham-brentford/398626/
+12905,2024-01-31,Liverpool,Chelsea,1583986889,398627,Liverpool,Chelsea,premier_league-liverpool-chelsea,https://userbet.info/lineups_fixture/premier_league-liverpool-chelsea/398627/
+12907,2024-02-01,Wolves,Man United,1583986865,399014,Wolves,Manchester Utd,premier_league-wolves-manchester_utd,https://userbet.info/lineups_fixture/premier_league-wolves-manchester_utd/399014/
+12906,2024-02-01,West Ham,Bournemouth,1583986891,399013,West Ham,Bournemouth,premier_league-west_ham-bournemouth,https://userbet.info/lineups_fixture/premier_league-west_ham-bournemouth/399013/
+12912,2024-02-03,Sheffield United,Aston Villa,1584600354,399769,Sheffield Utd,Aston Villa,premier_league-sheffield_utd-aston_villa,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-aston_villa/399769/
+12910,2024-02-03,Burnley,Fulham,1584600358,399767,Burnley,Fulham,premier_league-burnley-fulham,https://userbet.info/lineups_fixture/premier_league-burnley-fulham/399767/
+12909,2024-02-03,Brighton,Crystal Palace,1584600353,399766,Brighton,Crystal Palace,premier_league-brighton-crystal_palace,https://userbet.info/lineups_fixture/premier_league-brighton-crystal_palace/399766/
+12908,2024-02-03,Everton,Tottenham,1584600355,399765,Everton,Tottenham,premier_league-everton-tottenham,https://userbet.info/lineups_fixture/premier_league-everton-tottenham/399765/
+12911,2024-02-03,Newcastle,Luton,1584600361,399768,Newcastle,Luton,premier_league-newcastle-luton,https://userbet.info/lineups_fixture/premier_league-newcastle-luton/399768/
+12915,2024-02-04,Man United,West Ham,1584600359,400749,Manchester Utd,West Ham,premier_league-manchester_utd-west_ham,https://userbet.info/lineups_fixture/premier_league-manchester_utd-west_ham/400749/
+12913,2024-02-04,Bournemouth,Nott'm Forest,1584600356,400747,Bournemouth,Nottingham,premier_league-bournemouth-nottingham,https://userbet.info/lineups_fixture/premier_league-bournemouth-nottingham/400747/
+12914,2024-02-04,Chelsea,Wolves,1584600360,400748,Chelsea,Wolves,premier_league-chelsea-wolves,https://userbet.info/lineups_fixture/premier_league-chelsea-wolves/400748/
+12916,2024-02-04,Arsenal,Liverpool,1584600357,400750,Arsenal,Liverpool,premier_league-arsenal_-liverpool,https://userbet.info/lineups_fixture/premier_league-arsenal_-liverpool/400750/
+12917,2024-02-05,Brentford,Man City,1584618968,401475,Brentford,Manchester City,premier_league-brentford-manchester_city,https://userbet.info/lineups_fixture/premier_league-brentford-manchester_city/401475/
+12922,2024-02-10,Tottenham,Brighton,1585079082,403173,Tottenham,Brighton,premier_league-tottenham-brighton,https://userbet.info/lineups_fixture/premier_league-tottenham-brighton/403173/
+12923,2024-02-10,Wolves,Brentford,1585079086,403174,Wolves,Brentford,premier_league-wolves-brentford,https://userbet.info/lineups_fixture/premier_league-wolves-brentford/403174/
+12924,2024-02-10,Nott'm Forest,Newcastle,1585079085,403175,Nottingham,Newcastle,premier_league-nottingham-newcastle,https://userbet.info/lineups_fixture/premier_league-nottingham-newcastle/403175/
+12921,2024-02-10,Luton,Sheffield United,1585079089,403172,Luton,Sheffield Utd,premier_league-luton-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-luton-sheffield_utd/403172/
+12920,2024-02-10,Liverpool,Burnley,1585079095,403171,Liverpool,Burnley,premier_league-liverpool-burnley,https://userbet.info/lineups_fixture/premier_league-liverpool-burnley/403171/
+12919,2024-02-10,Fulham,Bournemouth,1585079093,403170,Fulham,Bournemouth,premier_league-fulham-bournemouth,https://userbet.info/lineups_fixture/premier_league-fulham-bournemouth/403170/
+12918,2024-02-10,Man City,Everton,1585079091,403169,Manchester City,Everton,premier_league-manchester_city-everton,https://userbet.info/lineups_fixture/premier_league-manchester_city-everton/403169/
+12926,2024-02-11,Aston Villa,Man United,1585079401,404096,Aston Villa,Manchester Utd,premier_league-aston_villa-manchester_utd,https://userbet.info/lineups_fixture/premier_league-aston_villa-manchester_utd/404096/
+12925,2024-02-11,West Ham,Arsenal,1585079090,404095,West Ham,Arsenal,premier_league-west_ham-arsenal_,https://userbet.info/lineups_fixture/premier_league-west_ham-arsenal_/404095/
+12927,2024-02-12,Crystal Palace,Chelsea,1585079094,404781,Crystal Palace,Chelsea,premier_league-crystal_palace-chelsea,https://userbet.info/lineups_fixture/premier_league-crystal_palace-chelsea/404781/
+12932,2024-02-17,Nott'm Forest,West Ham,1585204402,406690,Nottingham,West Ham,premier_league-nottingham-west_ham,https://userbet.info/lineups_fixture/premier_league-nottingham-west_ham/406690/
+12933,2024-02-17,Tottenham,Wolves,1585204404,406691,Tottenham,Wolves,premier_league-tottenham-wolves,https://userbet.info/lineups_fixture/premier_league-tottenham-wolves/406691/
+12934,2024-02-17,Man City,Chelsea,1585205839,406692,Manchester City,Chelsea,premier_league-manchester_city-chelsea,https://userbet.info/lineups_fixture/premier_league-manchester_city-chelsea/406692/
+12929,2024-02-17,Burnley,Arsenal,1585204396,406687,Burnley,Arsenal,premier_league-burnley-arsenal_,https://userbet.info/lineups_fixture/premier_league-burnley-arsenal_/406687/
+12930,2024-02-17,Fulham,Aston Villa,1585204392,406688,Fulham,Aston Villa,premier_league-fulham-aston_villa,https://userbet.info/lineups_fixture/premier_league-fulham-aston_villa/406688/
+12931,2024-02-17,Newcastle,Bournemouth,1585204399,406689,Newcastle,Bournemouth,premier_league-newcastle-bournemouth,https://userbet.info/lineups_fixture/premier_league-newcastle-bournemouth/406689/
+12928,2024-02-17,Brentford,Liverpool,1585204401,406686,Brentford,Liverpool,premier_league-brentford-liverpool,https://userbet.info/lineups_fixture/premier_league-brentford-liverpool/406686/
+12935,2024-02-18,Sheffield United,Brighton,1585205840,407788,Sheffield Utd,Brighton,premier_league-sheffield_utd-brighton,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-brighton/407788/
+12936,2024-02-18,Luton,Man United,1585209372,407789,Luton,Manchester Utd,premier_league-luton-manchester_utd,https://userbet.info/lineups_fixture/premier_league-luton-manchester_utd/407789/
+12937,2024-02-19,Everton,Crystal Palace,1585238538,408656,Everton,Crystal Palace,premier_league-everton-crystal_palace,https://userbet.info/lineups_fixture/premier_league-everton-crystal_palace/408656/
+12938,2024-02-20,Man City,Brentford,1585238569,387333,Manchester City,Brentford,premier_league-manchester_city-brentford,https://userbet.info/lineups_fixture/premier_league-manchester_city-brentford/387333/
+12939,2024-02-21,Liverpool,Luton,1585540507,409289,Liverpool,Luton,premier_league-liverpool-luton,https://userbet.info/lineups_fixture/premier_league-liverpool-luton/409289/
+12941,2024-02-24,Brighton,Everton,1585540140,410759,Brighton,Everton,premier_league-brighton-everton,https://userbet.info/lineups_fixture/premier_league-brighton-everton/410759/
+12945,2024-02-24,Arsenal,Newcastle,1585537948,410763,Arsenal,Newcastle,premier_league-arsenal_-newcastle,https://userbet.info/lineups_fixture/premier_league-arsenal_-newcastle/410763/
+12940,2024-02-24,Aston Villa,Nott'm Forest,1585537953,410758,Aston Villa,Nottingham,premier_league-aston_villa-nottingham,https://userbet.info/lineups_fixture/premier_league-aston_villa-nottingham/410758/
+12942,2024-02-24,Crystal Palace,Burnley,1585540142,410760,Crystal Palace,Burnley,premier_league-crystal_palace-burnley,https://userbet.info/lineups_fixture/premier_league-crystal_palace-burnley/410760/
+12943,2024-02-24,Man United,Fulham,1585537954,410761,Manchester Utd,Fulham,premier_league-manchester_utd-fulham,https://userbet.info/lineups_fixture/premier_league-manchester_utd-fulham/410761/
+12944,2024-02-24,Bournemouth,Man City,1585537949,410762,Bournemouth,Manchester City,premier_league-bournemouth-manchester_city,https://userbet.info/lineups_fixture/premier_league-bournemouth-manchester_city/410762/
+12946,2024-02-25,Wolves,Sheffield United,1585537945,411872,Wolves,Sheffield Utd,premier_league-wolves-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-wolves-sheffield_utd/411872/
+12947,2024-02-26,West Ham,Brentford,1585583101,412735,West Ham,Brentford,premier_league-west_ham-brentford,https://userbet.info/lineups_fixture/premier_league-west_ham-brentford/412735/
+12952,2024-03-02,Nott'm Forest,Liverpool,1585953273,414524,Nottingham,Liverpool,premier_league-nottingham-liverpool,https://userbet.info/lineups_fixture/premier_league-nottingham-liverpool/414524/
+12953,2024-03-02,Tottenham,Crystal Palace,1585953283,414525,Tottenham,Crystal Palace,premier_league-tottenham-crystal_palace,https://userbet.info/lineups_fixture/premier_league-tottenham-crystal_palace/414525/
+12954,2024-03-02,Luton,Aston Villa,1585953289,414526,Luton,Aston Villa,premier_league-luton-aston_villa,https://userbet.info/lineups_fixture/premier_league-luton-aston_villa/414526/
+12950,2024-03-02,Fulham,Brighton,1585953277,414522,Fulham,Brighton,premier_league-fulham-brighton,https://userbet.info/lineups_fixture/premier_league-fulham-brighton/414522/
+12951,2024-03-02,Newcastle,Wolves,1585953272,414523,Newcastle,Wolves,premier_league-newcastle-wolves,https://userbet.info/lineups_fixture/premier_league-newcastle-wolves/414523/
+12948,2024-03-02,Brentford,Chelsea,1585953281,414520,Brentford,Chelsea,premier_league-brentford-chelsea,https://userbet.info/lineups_fixture/premier_league-brentford-chelsea/414520/
+12949,2024-03-02,Everton,West Ham,1585952108,414521,Everton,West Ham,premier_league-everton-west_ham,https://userbet.info/lineups_fixture/premier_league-everton-west_ham/414521/
+12955,2024-03-03,Burnley,Bournemouth,1585953271,415815,Burnley,Bournemouth,premier_league-burnley-bournemouth,https://userbet.info/lineups_fixture/premier_league-burnley-bournemouth/415815/
+12956,2024-03-03,Man City,Man United,1585953286,415816,Manchester City,Manchester Utd,premier_league-manchester_city-manchester_utd,https://userbet.info/lineups_fixture/premier_league-manchester_city-manchester_utd/415816/
+12957,2024-03-04,Sheffield United,Arsenal,1586008488,416849,Sheffield Utd,Arsenal,premier_league-sheffield_utd-arsenal_,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-arsenal_/416849/
+12962,2024-03-09,Arsenal,Brentford,1586385854,418624,Arsenal,Brentford,premier_league-arsenal_-brentford,https://userbet.info/lineups_fixture/premier_league-arsenal_-brentford/418624/
+12959,2024-03-09,Bournemouth,Sheffield United,1586385827,418621,Bournemouth,Sheffield Utd,premier_league-bournemouth-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-bournemouth-sheffield_utd/418621/
+12958,2024-03-09,Man United,Everton,1586385826,418620,Manchester Utd,Everton,premier_league-manchester_utd-everton,https://userbet.info/lineups_fixture/premier_league-manchester_utd-everton/418620/
+12960,2024-03-09,Crystal Palace,Luton,1586385824,418622,Crystal Palace,Luton,premier_league-crystal_palace-luton,https://userbet.info/lineups_fixture/premier_league-crystal_palace-luton/418622/
+12961,2024-03-09,Wolves,Fulham,1586385823,418623,Wolves,Fulham,premier_league-wolves-fulham,https://userbet.info/lineups_fixture/premier_league-wolves-fulham/418623/
+12963,2024-03-10,Aston Villa,Tottenham,1586385860,420031,Aston Villa,Tottenham,premier_league-aston_villa-tottenham,https://userbet.info/lineups_fixture/premier_league-aston_villa-tottenham/420031/
+12964,2024-03-10,Brighton,Nott'm Forest,1586385852,420032,Brighton,Nottingham,premier_league-brighton-nottingham,https://userbet.info/lineups_fixture/premier_league-brighton-nottingham/420032/
+12965,2024-03-10,West Ham,Burnley,1586402920,420033,West Ham,Burnley,premier_league-west_ham-burnley,https://userbet.info/lineups_fixture/premier_league-west_ham-burnley/420033/
+12966,2024-03-10,Liverpool,Man City,1586385859,420034,Liverpool,Manchester City,premier_league-liverpool-manchester_city,https://userbet.info/lineups_fixture/premier_league-liverpool-manchester_city/420034/
+12967,2024-03-11,Chelsea,Newcastle,1586426161,420990,Chelsea,Newcastle,premier_league-chelsea-newcastle,https://userbet.info/lineups_fixture/premier_league-chelsea-newcastle/420990/
+12968,2024-03-13,Bournemouth,Luton,1586426173,385072,Bournemouth,Luton,premier_league-bournemouth-luton,https://userbet.info/lineups_fixture/premier_league-bournemouth-luton/385072/
+12971,2024-03-16,Fulham,Tottenham,1586660647,422759,Fulham,Tottenham,premier_league-fulham-tottenham,https://userbet.info/lineups_fixture/premier_league-fulham-tottenham/422759/
+12970,2024-03-16,Luton,Nott'm Forest,1586660650,422756,Luton,Nottingham,premier_league-luton-nottingham,https://userbet.info/lineups_fixture/premier_league-luton-nottingham/422756/
+12969,2024-03-16,Burnley,Brentford,1586660642,422754,Burnley,Brentford,premier_league-burnley-brentford,https://userbet.info/lineups_fixture/premier_league-burnley-brentford/422754/
+12972,2024-03-17,West Ham,Aston Villa,1586660651,424213,West Ham,Aston Villa,premier_league-west_ham-aston_villa,https://userbet.info/lineups_fixture/premier_league-west_ham-aston_villa/424213/
+12977,2024-03-30,Sheffield United,Fulham,1587357603,430798,Sheffield Utd,Fulham,premier_league-sheffield_utd-fulham,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-fulham/430798/
+12978,2024-03-30,Tottenham,Luton,1587357590,430799,Tottenham,Luton,premier_league-tottenham-luton,https://userbet.info/lineups_fixture/premier_league-tottenham-luton/430799/
+12979,2024-03-30,Aston Villa,Wolves,1587357612,430800,Aston Villa,Wolves,premier_league-aston_villa-wolves,https://userbet.info/lineups_fixture/premier_league-aston_villa-wolves/430800/
+12980,2024-03-30,Brentford,Man United,1587357608,430801,Brentford,Manchester Utd,premier_league-brentford-manchester_utd,https://userbet.info/lineups_fixture/premier_league-brentford-manchester_utd/430801/
+12973,2024-03-30,Newcastle,West Ham,1587357591,430794,Newcastle,West Ham,premier_league-newcastle-west_ham,https://userbet.info/lineups_fixture/premier_league-newcastle-west_ham/430794/
+12974,2024-03-30,Bournemouth,Everton,1587357594,430795,Bournemouth,Everton,premier_league-bournemouth-everton,https://userbet.info/lineups_fixture/premier_league-bournemouth-everton/430795/
+12976,2024-03-30,Nott'm Forest,Crystal Palace,1587357595,430797,Nottingham,Crystal Palace,premier_league-nottingham-crystal_palace,https://userbet.info/lineups_fixture/premier_league-nottingham-crystal_palace/430797/
+12975,2024-03-30,Chelsea,Burnley,1587357593,430796,Chelsea,Burnley,premier_league-chelsea-burnley,https://userbet.info/lineups_fixture/premier_league-chelsea-burnley/430796/
+12982,2024-03-31,Man City,Arsenal,1587357604,431982,Manchester City,Arsenal,premier_league-manchester_city-arsenal_,https://userbet.info/lineups_fixture/premier_league-manchester_city-arsenal_/431982/
+12981,2024-03-31,Liverpool,Brighton,1587357607,431981,Liverpool,Brighton,premier_league-liverpool-brighton,https://userbet.info/lineups_fixture/premier_league-liverpool-brighton/431981/
+12984,2024-04-02,Nott'm Forest,Fulham,1587775877,432898,Nottingham,Fulham,premier_league-nottingham-fulham,https://userbet.info/lineups_fixture/premier_league-nottingham-fulham/432898/
+12985,2024-04-02,Bournemouth,Crystal Palace,1587775872,432899,Bournemouth,Crystal Palace,premier_league-bournemouth-crystal_palace,https://userbet.info/lineups_fixture/premier_league-bournemouth-crystal_palace/432899/
+12986,2024-04-02,Burnley,Wolves,1587775838,432900,Burnley,Wolves,premier_league-burnley-wolves,https://userbet.info/lineups_fixture/premier_league-burnley-wolves/432900/
+12987,2024-04-02,West Ham,Tottenham,1587775845,432901,West Ham,Tottenham,premier_league-west_ham-tottenham,https://userbet.info/lineups_fixture/premier_league-west_ham-tottenham/432901/
+12983,2024-04-02,Newcastle,Everton,1587775876,432897,Newcastle,Everton,premier_league-newcastle-everton,https://userbet.info/lineups_fixture/premier_league-newcastle-everton/432897/
+12988,2024-04-03,Arsenal,Luton,1587775860,483336,Arsenal,Luton,premier_league-arsenal_-luton,https://userbet.info/lineups_fixture/premier_league-arsenal_-luton/483336/
+12990,2024-04-03,Man City,Aston Villa,1587775875,483338,Manchester City,Aston Villa,premier_league-manchester_city-aston_villa,https://userbet.info/lineups_fixture/premier_league-manchester_city-aston_villa/483338/
+12989,2024-04-03,Brentford,Brighton,1587775837,483337,Brentford,Brighton,premier_league-brentford-brighton,https://userbet.info/lineups_fixture/premier_league-brentford-brighton/483337/
+12992,2024-04-04,Chelsea,Man United,1587787464,970643,Chelsea,Manchester Utd,premier_league-chelsea-manchester_utd,https://userbet.info/lineups_fixture/premier_league-chelsea-manchester_utd/970643/
+12991,2024-04-04,Liverpool,Sheffield United,1587787465,970641,Liverpool,Sheffield Utd,premier_league-liverpool-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-liverpool-sheffield_utd/970641/
+12997,2024-04-06,Luton,Bournemouth,1588071622,2458407,Luton,Bournemouth,premier_league-luton-bournemouth,https://userbet.info/lineups_fixture/premier_league-luton-bournemouth/2458407/
+12998,2024-04-06,Wolves,West Ham,1588071628,2458409,Wolves,West Ham,premier_league-wolves-west_ham,https://userbet.info/lineups_fixture/premier_league-wolves-west_ham/2458409/
+12999,2024-04-06,Brighton,Arsenal,1588071629,2458410,Brighton,Arsenal,premier_league-brighton-arsenal_,https://userbet.info/lineups_fixture/premier_league-brighton-arsenal_/2458410/
+12995,2024-04-06,Everton,Burnley,1588071625,2458405,Everton,Burnley,premier_league-everton-burnley,https://userbet.info/lineups_fixture/premier_league-everton-burnley/2458405/
+12996,2024-04-06,Fulham,Newcastle,1588071623,2458406,Fulham,Newcastle,premier_league-fulham-newcastle,https://userbet.info/lineups_fixture/premier_league-fulham-newcastle/2458406/
+12993,2024-04-06,Crystal Palace,Man City,1588071609,2458403,Crystal Palace,Manchester City,premier_league-crystal_palace-manchester_city,https://userbet.info/lineups_fixture/premier_league-crystal_palace-manchester_city/2458403/
+12994,2024-04-06,Aston Villa,Brentford,1588071624,2458404,Aston Villa,Brentford,premier_league-aston_villa-brentford,https://userbet.info/lineups_fixture/premier_league-aston_villa-brentford/2458404/
+13001,2024-04-07,Sheffield United,Chelsea,1588080101,3249576,Sheffield Utd,Chelsea,premier_league-sheffield_utd-chelsea,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-chelsea/3249576/
+13002,2024-04-07,Tottenham,Nott'm Forest,1588082027,3249577,Tottenham,Nottingham,premier_league-tottenham-nottingham,https://userbet.info/lineups_fixture/premier_league-tottenham-nottingham/3249577/
+13000,2024-04-07,Man United,Liverpool,1588077894,3249575,Manchester Utd,Liverpool,premier_league-manchester_utd-liverpool,https://userbet.info/lineups_fixture/premier_league-manchester_utd-liverpool/3249575/
+13003,2024-04-13,Newcastle,Tottenham,1588819816,6519660,Newcastle,Tottenham,premier_league-newcastle-tottenham,https://userbet.info/lineups_fixture/premier_league-newcastle-tottenham/6519660/
+13004,2024-04-13,Brentford,Sheffield United,1588819818,6519662,Brentford,Sheffield Utd,premier_league-brentford-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-brentford-sheffield_utd/6519662/
+13005,2024-04-13,Burnley,Brighton,1588819828,6519664,Burnley,Brighton,premier_league-burnley-brighton,https://userbet.info/lineups_fixture/premier_league-burnley-brighton/6519664/
+13006,2024-04-13,Man City,Luton,1588819826,6519665,Manchester City,Luton,premier_league-manchester_city-luton,https://userbet.info/lineups_fixture/premier_league-manchester_city-luton/6519665/
+13007,2024-04-13,Nott'm Forest,Wolves,1588819831,6519667,Nottingham,Wolves,premier_league-nottingham-wolves,https://userbet.info/lineups_fixture/premier_league-nottingham-wolves/6519667/
+13008,2024-04-13,Bournemouth,Man United,1588819815,6519668,Bournemouth,Manchester Utd,premier_league-bournemouth-manchester_utd,https://userbet.info/lineups_fixture/premier_league-bournemouth-manchester_utd/6519668/
+13010,2024-04-14,West Ham,Fulham,1588819829,7546185,West Ham,Fulham,premier_league-west_ham-fulham,https://userbet.info/lineups_fixture/premier_league-west_ham-fulham/7546185/
+13011,2024-04-14,Arsenal,Aston Villa,1588819827,7546187,Arsenal,Aston Villa,premier_league-arsenal_-aston_villa,https://userbet.info/lineups_fixture/premier_league-arsenal_-aston_villa/7546187/
+13009,2024-04-14,Liverpool,Crystal Palace,1588819817,7546184,Liverpool,Crystal Palace,premier_league-liverpool-crystal_palace,https://userbet.info/lineups_fixture/premier_league-liverpool-crystal_palace/7546184/
+13012,2024-04-15,Chelsea,Everton,1588819814,8621719,Chelsea,Everton,premier_league-chelsea-everton,https://userbet.info/lineups_fixture/premier_league-chelsea-everton/8621719/
+13013,2024-04-20,Luton,Brentford,1588976410,11458584,Luton,Brentford,premier_league-luton-brentford,https://userbet.info/lineups_fixture/premier_league-luton-brentford/11458584/
+13014,2024-04-20,Sheffield United,Burnley,1588976422,11458585,Sheffield Utd,Burnley,premier_league-sheffield_utd-burnley,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-burnley/11458585/
+13015,2024-04-20,Wolves,Arsenal,1588976421,11458586,Wolves,Arsenal,premier_league-wolves-arsenal_,https://userbet.info/lineups_fixture/premier_league-wolves-arsenal_/11458586/
+13019,2024-04-21,Fulham,Liverpool,1589004976,12740910,Fulham,Liverpool,premier_league-fulham-liverpool,https://userbet.info/lineups_fixture/premier_league-fulham-liverpool/12740910/
+13016,2024-04-21,Everton,Nott'm Forest,1588990234,12740907,Everton,Nottingham,premier_league-everton-nottingham,https://userbet.info/lineups_fixture/premier_league-everton-nottingham/12740907/
+13017,2024-04-21,Aston Villa,Bournemouth,1589002100,12740908,Aston Villa,Bournemouth,premier_league-aston_villa-bournemouth,https://userbet.info/lineups_fixture/premier_league-aston_villa-bournemouth/12740908/
+13018,2024-04-21,Crystal Palace,West Ham,1589002119,12740909,Crystal Palace,West Ham,premier_league-crystal_palace-west_ham,https://userbet.info/lineups_fixture/premier_league-crystal_palace-west_ham/12740909/
+13020,2024-04-23,Arsenal,Chelsea,1589524732,422753,Arsenal,Chelsea,premier_league-arsenal_-chelsea,https://userbet.info/lineups_fixture/premier_league-arsenal_-chelsea/422753/
+13024,2024-04-24,Man United,Sheffield United,1589526552,422757,Manchester Utd,Sheffield Utd,premier_league-manchester_utd-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-manchester_utd-sheffield_utd/422757/
+13023,2024-04-24,Everton,Liverpool,1589524712,424212,Everton,Liverpool,premier_league-everton-liverpool,https://userbet.info/lineups_fixture/premier_league-everton-liverpool/424212/
+13022,2024-04-24,Crystal Palace,Newcastle,1589524720,422755,Crystal Palace,Newcastle,premier_league-crystal_palace-newcastle,https://userbet.info/lineups_fixture/premier_league-crystal_palace-newcastle/422755/
+13021,2024-04-24,Wolves,Bournemouth,1589522773,422758,Wolves,Bournemouth,premier_league-wolves-bournemouth,https://userbet.info/lineups_fixture/premier_league-wolves-bournemouth/422758/
+13025,2024-04-25,Brighton,Man City,1589522761,424214,Brighton,Manchester City,premier_league-brighton-manchester_city,https://userbet.info/lineups_fixture/premier_league-brighton-manchester_city/424214/
+13030,2024-04-27,Wolves,Luton,1590006624,17162563,Wolves,Luton,premier_league-wolves-luton,https://userbet.info/lineups_fixture/premier_league-wolves-luton/17162563/
+13026,2024-04-27,West Ham,Liverpool,1590006622,17162559,West Ham,Liverpool,premier_league-west_ham-liverpool,https://userbet.info/lineups_fixture/premier_league-west_ham-liverpool/17162559/
+13027,2024-04-27,Fulham,Crystal Palace,1590001915,17162560,Fulham,Crystal Palace,premier_league-fulham-crystal_palace,https://userbet.info/lineups_fixture/premier_league-fulham-crystal_palace/17162560/
+13028,2024-04-27,Man United,Burnley,1590006615,17162561,Manchester Utd,Burnley,premier_league-manchester_utd-burnley,https://userbet.info/lineups_fixture/premier_league-manchester_utd-burnley/17162561/
+13029,2024-04-27,Newcastle,Sheffield United,1590006616,17162562,Newcastle,Sheffield Utd,premier_league-newcastle-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-newcastle-sheffield_utd/17162562/
+13031,2024-04-27,Everton,Brentford,1590006620,17162564,Everton,Brentford,premier_league-everton-brentford,https://userbet.info/lineups_fixture/premier_league-everton-brentford/17162564/
+13032,2024-04-27,Aston Villa,Chelsea,1590006619,17162565,Aston Villa,Chelsea,premier_league-aston_villa-chelsea,https://userbet.info/lineups_fixture/premier_league-aston_villa-chelsea/17162565/
+13033,2024-04-28,Bournemouth,Brighton,1590001909,18315986,Bournemouth,Brighton,premier_league-bournemouth-brighton,https://userbet.info/lineups_fixture/premier_league-bournemouth-brighton/18315986/
+13034,2024-04-28,Tottenham,Arsenal,1590006625,18315987,Tottenham,Arsenal,premier_league-tottenham-arsenal_,https://userbet.info/lineups_fixture/premier_league-tottenham-arsenal_/18315987/
+13035,2024-04-28,Nott'm Forest,Man City,1590006623,18315988,Nottingham,Manchester City,premier_league-nottingham-manchester_city,https://userbet.info/lineups_fixture/premier_league-nottingham-manchester_city/18315988/
+13036,2024-05-02,Chelsea,Tottenham,1590298749,409985,Chelsea,Tottenham,premier_league-chelsea-tottenham,https://userbet.info/lineups_fixture/premier_league-chelsea-tottenham/409985/
+13037,2024-05-03,Luton,Everton,1589901277,21061390,Luton,Everton,premier_league-luton-everton,https://userbet.info/lineups_fixture/premier_league-luton-everton/21061390/
+13042,2024-05-04,Man City,Wolves,1589901291,21062355,Manchester City,Wolves,premier_league-manchester_city-wolves,https://userbet.info/lineups_fixture/premier_league-manchester_city-wolves/21062355/
+13041,2024-05-04,Sheffield United,Nott'm Forest,1589901293,21062354,Sheffield Utd,Nottingham,premier_league-sheffield_utd-nottingham,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-nottingham/21062354/
+13040,2024-05-04,Burnley,Newcastle,1589901295,21062353,Burnley,Newcastle,premier_league-burnley-newcastle,https://userbet.info/lineups_fixture/premier_league-burnley-newcastle/21062353/
+13039,2024-05-04,Brentford,Fulham,1589901273,21062352,Brentford,Fulham,premier_league-brentford-fulham,https://userbet.info/lineups_fixture/premier_league-brentford-fulham/21062352/
+13038,2024-05-04,Arsenal,Bournemouth,1589901294,21062351,Arsenal,Bournemouth,premier_league-arsenal_-bournemouth,https://userbet.info/lineups_fixture/premier_league-arsenal_-bournemouth/21062351/
+13045,2024-05-05,Liverpool,Tottenham,1589901301,21063596,Liverpool,Tottenham,premier_league-liverpool-tottenham,https://userbet.info/lineups_fixture/premier_league-liverpool-tottenham/21063596/
+13044,2024-05-05,Chelsea,West Ham,1589901275,21063595,Chelsea,West Ham,premier_league-chelsea-west_ham,https://userbet.info/lineups_fixture/premier_league-chelsea-west_ham/21063595/
+13043,2024-05-05,Brighton,Aston Villa,1589901276,21063594,Brighton,Aston Villa,premier_league-brighton-aston_villa,https://userbet.info/lineups_fixture/premier_league-brighton-aston_villa/21063594/
+13046,2024-05-06,Crystal Palace,Man United,1589901274,21064531,Crystal Palace,Manchester Utd,premier_league-crystal_palace-manchester_utd,https://userbet.info/lineups_fixture/premier_league-crystal_palace-manchester_utd/21064531/
+13051,2024-05-11,Tottenham,Burnley,1590563858,21066808,Tottenham,Burnley,premier_league-tottenham-burnley,https://userbet.info/lineups_fixture/premier_league-tottenham-burnley/21066808/
+13052,2024-05-11,West Ham,Luton,1590563845,21066809,West Ham,Luton,premier_league-west_ham-luton,https://userbet.info/lineups_fixture/premier_league-west_ham-luton/21066809/
+13053,2024-05-11,Wolves,Crystal Palace,1590563832,21066810,Wolves,Crystal Palace,premier_league-wolves-crystal_palace,https://userbet.info/lineups_fixture/premier_league-wolves-crystal_palace/21066810/
+13054,2024-05-11,Nott'm Forest,Chelsea,1590563852,21066811,Nottingham,Chelsea,premier_league-nottingham-chelsea,https://userbet.info/lineups_fixture/premier_league-nottingham-chelsea/21066811/
+13047,2024-05-11,Fulham,Man City,1590563850,21066804,Fulham,Manchester City,premier_league-fulham-manchester_city,https://userbet.info/lineups_fixture/premier_league-fulham-manchester_city/21066804/
+13048,2024-05-11,Bournemouth,Brentford,1590563849,21066805,Bournemouth,Brentford,premier_league-bournemouth-brentford,https://userbet.info/lineups_fixture/premier_league-bournemouth-brentford/21066805/
+13049,2024-05-11,Everton,Sheffield United,1590563828,21066806,Everton,Sheffield Utd,premier_league-everton-sheffield_utd,https://userbet.info/lineups_fixture/premier_league-everton-sheffield_utd/21066806/
+13050,2024-05-11,Newcastle,Brighton,1590563822,21066807,Newcastle,Brighton,premier_league-newcastle-brighton,https://userbet.info/lineups_fixture/premier_league-newcastle-brighton/21066807/
+13055,2024-05-12,Man United,Arsenal,1590563847,21068079,Manchester Utd,Arsenal,premier_league-manchester_utd-arsenal_,https://userbet.info/lineups_fixture/premier_league-manchester_utd-arsenal_/21068079/
+13056,2024-05-13,Aston Villa,Liverpool,1590563861,21069005,Aston Villa,Liverpool,premier_league-aston_villa-liverpool,https://userbet.info/lineups_fixture/premier_league-aston_villa-liverpool/21069005/
+13057,2024-05-14,Tottenham,Man City,1591018818,21069177,Tottenham,Manchester City,premier_league-tottenham-manchester_city,https://userbet.info/lineups_fixture/premier_league-tottenham-manchester_city/21069177/
+13059,2024-05-15,Man United,Newcastle,1591018805,21069424,Manchester Utd,Newcastle,premier_league-manchester_utd-newcastle,https://userbet.info/lineups_fixture/premier_league-manchester_utd-newcastle/21069424/
+13058,2024-05-15,Brighton,Chelsea,1591018811,21069423,Brighton,Chelsea,premier_league-brighton-chelsea,https://userbet.info/lineups_fixture/premier_league-brighton-chelsea/21069423/
+13064,2024-05-19,Chelsea,Bournemouth,1591470839,21072033,Chelsea,Bournemouth,premier_league-chelsea-bournemouth,https://userbet.info/lineups_fixture/premier_league-chelsea-bournemouth/21072033/
+13065,2024-05-19,Crystal Palace,Aston Villa,1591470834,21072034,Crystal Palace,Aston Villa,premier_league-crystal_palace-aston_villa,https://userbet.info/lineups_fixture/premier_league-crystal_palace-aston_villa/21072034/
+13066,2024-05-19,Liverpool,Wolves,1591470843,21072035,Liverpool,Wolves,premier_league-liverpool-wolves,https://userbet.info/lineups_fixture/premier_league-liverpool-wolves/21072035/
+13067,2024-05-19,Luton,Fulham,1591470837,21072036,Luton,Fulham,premier_league-luton-fulham,https://userbet.info/lineups_fixture/premier_league-luton-fulham/21072036/
+13068,2024-05-19,Man City,West Ham,1591470836,21072037,Manchester City,West Ham,premier_league-manchester_city-west_ham,https://userbet.info/lineups_fixture/premier_league-manchester_city-west_ham/21072037/
+13069,2024-05-19,Sheffield United,Tottenham,1591470840,21072038,Sheffield Utd,Tottenham,premier_league-sheffield_utd-tottenham,https://userbet.info/lineups_fixture/premier_league-sheffield_utd-tottenham/21072038/
+13060,2024-05-19,Arsenal,Everton,1591470833,21072029,Arsenal,Everton,premier_league-arsenal_-everton,https://userbet.info/lineups_fixture/premier_league-arsenal_-everton/21072029/
+13062,2024-05-19,Brighton,Man United,1591470842,21072031,Brighton,Manchester Utd,premier_league-brighton-manchester_utd,https://userbet.info/lineups_fixture/premier_league-brighton-manchester_utd/21072031/
+13061,2024-05-19,Brentford,Newcastle,1591470841,21072030,Brentford,Newcastle,premier_league-brentford-newcastle,https://userbet.info/lineups_fixture/premier_league-brentford-newcastle/21072030/
+13063,2024-05-19,Burnley,Nott'm Forest,1591470838,21072032,Burnley,Nottingham,premier_league-burnley-nottingham,https://userbet.info/lineups_fixture/premier_league-burnley-nottingham/21072032/

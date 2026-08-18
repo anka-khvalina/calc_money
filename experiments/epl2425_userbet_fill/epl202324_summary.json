@@ -1,0 +1,12 @@
+{
+  "season_id": 15,
+  "season_label": "2023-24",
+  "joined": 380,
+  "attempted": 380,
+  "ok": 370,
+  "written": 370,
+  "skipped_filled": 9,
+  "errors": 1,
+  "unmatched_supabase": 0,
+  "write": true
+}
