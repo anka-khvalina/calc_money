@@ -8682,13 +8682,6 @@ bash scripts/update_and_serve.sh --start</div>
       return 0.5;
     }
 
-    /** Минимум матчей с полной линией, чтобы сезон получил ненулевой вес. */
-    const GOAL_MIN_TRAINABLE_SEASON = 50;
-
-    function goalSeasonEligibleForWeight(cnt){
-      return (cnt || 0) >= GOAL_MIN_TRAINABLE_SEASON;
-    }
-
     function goalDbMatchToRaw(m){
       const homeName = String(m.home_team || '').trim();
       const awayName = String(m.away_team || '').trim();
@@ -8792,7 +8785,7 @@ bash scripts/update_and_serve.sh --start</div>
       let weightIdx = 0;
       ordered.forEach((sid) => {
         const cnt = goalTrainableBySeason[sid] || 0;
-        if (!goalSeasonEligibleForWeight(cnt)){
+        if (!cnt){
           next[sid] = 0;
           return;
         }
@@ -9111,7 +9104,7 @@ bash scripts/update_and_serve.sh --start</div>
             + `<td class="num goal-sw-n">${escapeHtml(String(cnt))}</td>`
             + `<td class="num"><input class="goal-season-w" data-sid="${escapeHtml(String(sid))}" value="${escapeHtml(String(w).replace('.', ','))}" /></td></tr>`;
         }).join('') + '</tbody></table></div>'
-        + '<div class="hint" style="margin-top:6px">Сезон с &lt;50 матчей с кэфами → вес 0. После смены веса нажмите <b>«Обучить модель»</b>.</div>';
+        + '<div class="hint" style="margin-top:6px">Календарь без кэфов (0 в колонке) → вес 0. После смены веса нажмите <b>«Обучить модель»</b>.</div>';
     }
 
     async function goalOnLeagueChange(){
