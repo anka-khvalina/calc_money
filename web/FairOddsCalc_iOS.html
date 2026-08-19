@@ -8168,6 +8168,7 @@ bash scripts/update_and_serve.sh --start</div>
     let goalLoadedMeta = null;
     let goalLineSeasons = [];
     let goalSeasonWeightById = {};
+    let goalSeasonWeightsLeagueId = null;
     let goalTrainableBySeason = {};
     let goalLineLeaguesLoaded = false;
     let goalTrainState = { trainedAt: null, loadedAt: null, priorUsed: false };
@@ -8606,8 +8607,8 @@ bash scripts/update_and_serve.sh --start</div>
       window.__IR_S_EMA_OVERRIDE = null;
       window.__IR_D_EMA_OVERRIDE = null;
       goalReadSeasonWeightsFromUI();
-      goalApplyTrainableSeasonWeights(goalLoadedRaw, { reset: false });
-      goalApplySeasonWeightsFromTrainableCounts({ resetDefaults: false });
+      goalUpdateTrainableBySeasonFromRaw(goalLoadedRaw);
+      goalSyncSeasonWeightsFromTrainable({ initMissingDefaults: false });
       const seasonIds=[...new Set(goalLoadedRaw.map(r=>r.seasonId).filter(s=>s!=null))];
       const leagueId = goalLoadedMeta && goalLoadedMeta.leagueId;
       const weights = {};
@@ -8765,7 +8766,7 @@ bash scripts/update_and_serve.sh --start</div>
       try {
         await loadSupabaseConfig();
         goalTrainableBySeason = await sbFetchTrainableMatchCounts(leagueId, seasonIds);
-        goalApplySeasonWeightsFromTrainableCounts({ resetDefaults: true });
+        goalSyncSeasonWeightsFromTrainable({ initMissingDefaults: true });
       } catch (e){
         console.error('goalRefreshTrainableCounts', e);
       } finally {
@@ -8775,23 +8776,43 @@ bash scripts/update_and_serve.sh --start</div>
       }
     }
 
-    function goalApplySeasonWeightsFromTrainableCounts({ resetDefaults = false } = {}){
+    function goalUpdateTrainableBySeasonFromRaw(raw){
+      const bySid = {};
+      for (const r of raw || []){
+        const k = goalNormSeasonId(r.seasonId);
+        bySid[k] = (bySid[k] || 0) + 1;
+      }
+      goalTrainableBySeason = bySid;
+    }
+
+    /** Синхронизация весов: только обнулить сезоны без кэфов; ручной ввод не трогаем. */
+    function goalSyncSeasonWeightsFromTrainable({ initMissingDefaults = false } = {}){
+      if (document.querySelector('.goal-season-w')) goalReadSeasonWeightsFromUI();
       const ids = goalSelectedSeasonIds().map(goalNormSeasonId);
       const byId = new Map(goalLineSeasons.map(s => [goalNormSeasonId(s.season_id), s]));
       const ordered = ids.slice().sort((a, b) =>
         String(byId.get(b)?.season_label || b).localeCompare(String(byId.get(a)?.season_label || a))
       );
-      const next = resetDefaults ? {} : { ...goalSeasonWeightById };
+      const next = { ...goalSeasonWeightById };
       let weightIdx = 0;
       ordered.forEach((sid) => {
         const cnt = goalTrainableBySeason[sid] || 0;
         if (!cnt){
           next[sid] = 0;
+          next[String(sid)] = 0;
           return;
         }
-        const prev = resetDefaults ? null : goalLookupSeasonWeight(goalSeasonWeightById, sid, null);
-        next[sid] = (prev != null && prev > 0) ? prev : goalDefaultSeasonWeight(weightIdx);
-        weightIdx += 1;
+        const prev = goalLookupSeasonWeight(next, sid, null);
+        if (prev != null && isFinite(Number(prev))){
+          weightIdx += 1;
+          return;
+        }
+        if (initMissingDefaults){
+          const w = goalDefaultSeasonWeight(weightIdx);
+          next[sid] = w;
+          next[String(sid)] = w;
+          weightIdx += 1;
+        }
       });
       goalSeasonWeightById = next;
     }
@@ -9070,14 +9091,9 @@ bash scripts/update_and_serve.sh --start</div>
       return sum;
     }
 
-    function goalApplyTrainableSeasonWeights(raw, { reset = false } = {}){
-      const bySid = {};
-      for (const r of raw){
-        const k = goalNormSeasonId(r.seasonId);
-        bySid[k] = (bySid[k] || 0) + 1;
-      }
-      goalTrainableBySeason = bySid;
-      goalApplySeasonWeightsFromTrainableCounts({ resetDefaults: reset });
+    function goalApplyTrainableSeasonWeights(raw){
+      goalUpdateTrainableBySeasonFromRaw(raw);
+      goalSyncSeasonWeightsFromTrainable({ initMissingDefaults: false });
     }
 
     function goalRenderSeasonWeights(){
@@ -9095,16 +9111,17 @@ bash scripts/update_and_serve.sh --start</div>
         + ids.map(sid => {
           const s = byId.get(sid);
           if (!s) return '';
-          const w = goalLookupSeasonWeight(goalSeasonWeightById, sid, 1);
+          const w = goalLookupSeasonWeight(goalSeasonWeightById, sid, null);
+          const wShow = w != null ? w : '';
           const sidKey = goalNormSeasonId(sid);
           const trainable = goalTrainableBySeason[sidKey];
           const cnt = goalTrainableCountsLoading ? '…'
             : (trainable != null ? trainable : '—');
           return `<tr><td class="goal-sw-season" title="${escapeHtml(s.season_label)}">${escapeHtml(s.season_label)}</td>`
             + `<td class="num goal-sw-n">${escapeHtml(String(cnt))}</td>`
-            + `<td class="num"><input class="goal-season-w" data-sid="${escapeHtml(String(sid))}" value="${escapeHtml(String(w).replace('.', ','))}" /></td></tr>`;
+            + `<td class="num"><input class="goal-season-w" data-sid="${escapeHtml(String(sid))}" value="${escapeHtml(wShow === '' ? '' : String(wShow).replace('.', ','))}" placeholder="авто" /></td></tr>`;
         }).join('') + '</tbody></table></div>'
-        + '<div class="hint" style="margin-top:6px">Календарь без кэфов (0 в колонке) → вес 0. После смены веса нажмите <b>«Обучить модель»</b>.</div>';
+        + '<div class="hint" style="margin-top:6px">Календарь без кэфов (0) → вес 0 автоматически. Ваши веса сохраняются — после правки нажмите <b>«Обучить модель»</b>.</div>';
     }
 
     async function goalOnLeagueChange(){
@@ -9112,9 +9129,14 @@ bash scripts/update_and_serve.sh --start</div>
       const seasonSel = document.getElementById('goalSrcSeasons');
       if (!leagueId){
         goalLineSeasons = [];
+        goalSeasonWeightsLeagueId = null;
         if (seasonSel) seasonSel.innerHTML = '';
         goalRenderSeasonWeights();
         return;
+      }
+      if (goalSeasonWeightsLeagueId !== leagueId){
+        goalSeasonWeightById = {};
+        goalSeasonWeightsLeagueId = leagueId;
       }
       try {
         await loadSupabaseConfig();
@@ -9220,7 +9242,8 @@ bash scripts/update_and_serve.sh --start</div>
           inactiveTotal: inactiveParsed.total, inactiveValid: inactiveParsed.valid,
         };
         goalTrainState.loadedAt = new Date().toISOString();
-        goalApplyTrainableSeasonWeights(parsed.raw, { reset: true });
+        goalReadSeasonWeightsFromUI();
+        goalApplyTrainableSeasonWeights(parsed.raw);
         goalRenderSeasonWeights();
         goalUpdateTrainUI();
         goalSyncPredLeagueFromTrain();
