@@ -2,7 +2,7 @@
   "version": 1,
   "next_seq": {
     "bundesliga": 19,
-    "epl": 21,
+    "epl": 24,
     "la_liga": 21,
     "ligue_1": 19,
     "serie_a": 21
@@ -273,6 +273,27 @@
       "name": "Wolves",
       "created_at": "2026-06-04T11:05:48+00:00",
       "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "epl:21",
+      "league": "epl",
+      "name": "Coventry",
+      "created_at": "2026-08-19T15:45:00+00:00",
+      "updated_at": "2026-08-19T15:45:00+00:00"
+    },
+    {
+      "id": "epl:22",
+      "league": "epl",
+      "name": "Hull City",
+      "created_at": "2026-08-19T15:45:00+00:00",
+      "updated_at": "2026-08-19T15:45:00+00:00"
+    },
+    {
+      "id": "epl:23",
+      "league": "epl",
+      "name": "Ipswich",
+      "created_at": "2026-08-19T15:45:00+00:00",
+      "updated_at": "2026-08-19T15:45:00+00:00"
     },
     {
       "id": "la_liga:1",

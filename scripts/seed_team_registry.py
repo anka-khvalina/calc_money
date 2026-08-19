@@ -55,6 +55,9 @@ LEAGUE_TEAMS: dict[str, list[str]] = {
         "Tottenham",
         "West Ham",
         "Wolves",
+        "Coventry",
+        "Hull City",
+        "Ipswich",
     ],
     "la_liga": [
         "Alaves",
