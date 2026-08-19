@@ -1101,7 +1101,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       for(let c=0;c<n;c++){
         let piv=c;
         for(let r=c+1;r<n;r++) if(Math.abs(A[r][c])>Math.abs(A[piv][c])) piv=r;
-        if (Math.abs(A[piv][c])<1e-12) throw new Error('Система вырождена (недостаточно связности матчей)');
+        if (Math.abs(A[piv][c])<1e-12) throw new Error('Система вырождена (недостаточно связности матчей для решения)');
         [A[c],A[piv]]=[A[piv],A[c]]; [b[c],b[piv]]=[b[piv],b[c]];
         const pv=A[c][c];
         for(let j=c;j<n;j++) A[c][j]/=pv; b[c]/=pv;
@@ -2848,9 +2848,47 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       return ms;
     }
     function gmTeams(ms,pred){ const s=new Set(); ms.forEach(m=>{ if(pred(m)){ s.add(m.home); s.add(m.away); } }); return [...s].sort(); }
+    function gmMatchComponents(edges){
+      const g = new Map();
+      const touch = (t) => { if (!g.has(t)) g.set(t, new Set()); return g.get(t); };
+      for (const [h, a] of edges){
+        touch(h).add(a);
+        touch(a).add(h);
+      }
+      const seen = new Set();
+      const comps = [];
+      for (const start of g.keys()){
+        if (seen.has(start)) continue;
+        const stack = [start];
+        const comp = new Set();
+        while (stack.length){
+          const t = stack.pop();
+          if (seen.has(t)) continue;
+          seen.add(t);
+          comp.add(t);
+          for (const nb of g.get(t) || []) if (!seen.has(nb)) stack.push(nb);
+        }
+        comps.push(comp);
+      }
+      return comps;
+    }
+
+    function gmEnsureConnected(edges, ctx){
+      const comps = gmMatchComponents(edges);
+      if (comps.length <= 1) return;
+      const sizes = comps.map(c => c.size).sort((a, b) => b - a);
+      const sample = comps.filter(c => c.size <= 3).slice(0, 3).map(c => [...c].sort().join('–')).join('; ');
+      throw new Error(
+        `Система вырождена (${ctx}): команды разбиты на ${comps.length} несвязанных группы (${sizes.join(', ')} команд). `
+        + (sample ? `Примеры: ${sample}. ` : '')
+        + 'Нужен связный граф матчей с линией форы/тотала — добавьте полноценные сезоны (2024-25, 2025-26) или не обучайтесь только на календаре 2026-27.'
+      );
+    }
+
     function gmFitStrength(ms,cfg){
       const used=ms.filter(m=>m.D!=null);
-      if(used.length<2) throw new Error('Мало матчей с D');
+      if(used.length<2) throw new Error('Мало матчей с D (нужны тотал и линия форы)');
+      gmEnsureConnected(used.map(m => [m.home, m.away]), 'рейтинг сил');
       const teams=[...new Set(used.flatMap(m=>[m.home,m.away]))].sort();
       const idx=new Map(teams.map((t,i)=>[t,i])); const p=teams.length+1;
       const coeffs=[],tg=[];
@@ -2869,7 +2907,8 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     }
     function gmFitAD(ms,cfg){
       const used=ms.filter(m=>m.lh>0&&m.la>0);
-      if(used.length<2) throw new Error('Мало матчей с λ');
+      if(used.length<2) throw new Error('Мало матчей с λ (нужны тотал и линия форы)');
+      gmEnsureConnected(used.map(m => [m.home, m.away]), 'атака/оборона');
       const teams=[...new Set(used.flatMap(m=>[m.home,m.away]))].sort(); const nt=teams.length;
       const ai=new Map(teams.map((t,i)=>[t,i])), di=new Map(teams.map((t,i)=>[t,nt+i])); const mu=2*nt, hg=2*nt+1, p=2*nt+2;
       const rows=[],tg=[],bw=[];
