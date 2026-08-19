@@ -8727,6 +8727,71 @@ bash scripts/update_and_serve.sh --start</div>
         && r.ovr != null && r.und != null);
     }
 
+    function sbDbMatchHasFullLine(m){
+      return m.closing_ah_home != null && m.closing_total_line != null
+        && m.ah_home_odds != null && m.ah_away_odds != null
+        && m.over_odds != null && m.under_odds != null;
+    }
+
+    async function sbFetchTrainableMatchCounts(leagueId, seasonIds){
+      const counts = {};
+      if (!leagueId || !seasonIds.length) return counts;
+      const ids = seasonIds.map(s => encodeURIComponent(String(s))).join(',');
+      const q = 'select=season_id,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds'
+        + `&league_id=eq.${encodeURIComponent(leagueId)}&season_id=in.(${ids})&active=eq.true`;
+      const rows = await sbFetchAllRows(`/v_matches_full?${q}`);
+      if (!Array.isArray(rows)) return counts;
+      rows.forEach(m => {
+        if (!sbDbMatchHasFullLine(m)) return;
+        const k = goalNormSeasonId(m.season_id);
+        counts[k] = (counts[k] || 0) + 1;
+      });
+      return counts;
+    }
+
+    let goalTrainableCountsLoading = false;
+
+    async function goalRefreshTrainableCounts(){
+      const leagueId = document.getElementById('goalSrcLeague')?.value;
+      const seasonIds = goalSelectedSeasonIds();
+      if (!leagueId || !seasonIds.length){
+        goalTrainableBySeason = {};
+        goalRenderSeasonWeights();
+        return;
+      }
+      goalTrainableCountsLoading = true;
+      goalRenderSeasonWeights();
+      try {
+        await loadSupabaseConfig();
+        goalTrainableBySeason = await sbFetchTrainableMatchCounts(leagueId, seasonIds);
+        goalApplySeasonWeightsFromTrainableCounts({ resetDefaults: true });
+      } catch (e){
+        console.error('goalRefreshTrainableCounts', e);
+      } finally {
+        goalTrainableCountsLoading = false;
+        goalRenderSeasonMulti({ refreshCounts: false });
+      }
+    }
+
+    function goalApplySeasonWeightsFromTrainableCounts({ resetDefaults = false } = {}){
+      const ids = goalSelectedSeasonIds().map(goalNormSeasonId);
+      const byId = new Map(goalLineSeasons.map(s => [goalNormSeasonId(s.season_id), s]));
+      const ordered = ids.slice().sort((a, b) =>
+        String(byId.get(b)?.season_label || b).localeCompare(String(byId.get(a)?.season_label || a))
+      );
+      const next = resetDefaults ? {} : { ...goalSeasonWeightById };
+      ordered.forEach((sid, i) => {
+        const cnt = goalTrainableBySeason[sid] || 0;
+        if (!cnt){
+          next[sid] = 0;
+          return;
+        }
+        const prev = resetDefaults ? null : goalLookupSeasonWeight(goalSeasonWeightById, sid, null);
+        next[sid] = (prev != null && prev > 0) ? prev : goalDefaultSeasonWeight(i);
+      });
+      goalSeasonWeightById = next;
+    }
+
     function goalMatchesToRaw(matches, opts){
       const ignoreRotation = !!(opts && opts.ignoreRotation);
       const total = matches.length;
@@ -8837,7 +8902,8 @@ bash scripts/update_and_serve.sh --start</div>
       if (prev && leagues.some(l => l.id === prev)) sel.value = prev;
     }
 
-    function goalRenderSeasonMulti(){
+    function goalRenderSeasonMulti(opts = {}){
+      const refreshCounts = opts.refreshCounts !== false;
       const sel = document.getElementById('goalSrcSeasons');
       if (!sel) return;
       const all = document.getElementById('goalSrcAllSeasons');
@@ -8848,10 +8914,16 @@ bash scripts/update_and_serve.sh --start</div>
         return;
       }
       sel.innerHTML = goalLineSeasons.map(s => {
-        const n = sbSeasonActiveCount(s);
-        const partial = s.active_matches_count === 0 && Number(s.matches_count) > 0;
-        const suffix = partial ? ` (${Number(s.matches_count)} в БД)` : ' активных';
-        return `<option value="${escapeHtml(String(s.season_id))}">${escapeHtml(s.season_label)} — ${escapeHtml(String(n))}${suffix}</option>`;
+        const active = Number(s.active_matches_count) || 0;
+        const total = Number(s.matches_count) || 0;
+        const sidKey = goalNormSeasonId(s.season_id);
+        const withOdds = goalTrainableBySeason[sidKey];
+        let nLabel;
+        if (withOdds != null) nLabel = `${withOdds} с кэфами`;
+        else if (active > 0) nLabel = `${active} активных`;
+        else if (total > 0) nLabel = `${total} в БД`;
+        else nLabel = '0';
+        return `<option value="${escapeHtml(String(s.season_id))}">${escapeHtml(s.season_label)} — ${escapeHtml(nLabel)}</option>`;
       }).join('');
       sel.disabled = !!useAll;
       if (useAll){
@@ -8859,8 +8931,8 @@ bash scripts/update_and_serve.sh --start</div>
       } else if (sel.options.length){
         sel.options[0].selected = true;
       }
-      goalApplyDefaultSeasonWeights();
-      goalRenderSeasonWeights();
+      if (refreshCounts) goalRefreshTrainableCounts();
+      else goalRenderSeasonWeights();
     }
 
     function goalSelectedSeasonIds(){
@@ -8982,18 +9054,7 @@ bash scripts/update_and_serve.sh --start</div>
         bySid[k] = (bySid[k] || 0) + 1;
       }
       goalTrainableBySeason = bySid;
-      const ids = goalSelectedSeasonIds().map(goalNormSeasonId);
-      const byId = new Map(goalLineSeasons.map(s => [goalNormSeasonId(s.season_id), s]));
-      const ordered = ids.slice().sort((a, b) =>
-        String(byId.get(b)?.season_label || b).localeCompare(String(byId.get(a)?.season_label || a))
-      );
-      const next = reset ? {} : { ...goalSeasonWeightById };
-      ordered.forEach((sid, i) => {
-        const cnt = bySid[sid] || 0;
-        if (!cnt) next[sid] = 0;
-        else if (reset || next[sid] == null) next[sid] = goalDefaultSeasonWeight(i);
-      });
-      goalSeasonWeightById = next;
+      goalApplySeasonWeightsFromTrainableCounts({ resetDefaults: reset });
     }
 
     function goalRenderSeasonWeights(){
@@ -9012,8 +9073,10 @@ bash scripts/update_and_serve.sh --start</div>
           const s = byId.get(sid);
           if (!s) return '';
           const w = goalLookupSeasonWeight(goalSeasonWeightById, sid, 1);
-          const trainable = goalTrainableBySeason[goalNormSeasonId(sid)];
-          const cnt = trainable != null ? trainable : sbSeasonActiveCount(s);
+          const sidKey = goalNormSeasonId(sid);
+          const trainable = goalTrainableBySeason[sidKey];
+          const cnt = goalTrainableCountsLoading ? '…'
+            : (trainable != null ? trainable : '—');
           return `<tr><td class="goal-sw-season" title="${escapeHtml(s.season_label)}">${escapeHtml(s.season_label)}</td>`
             + `<td class="num goal-sw-n">${escapeHtml(String(cnt))}</td>`
             + `<td class="num"><input class="goal-season-w" data-sid="${escapeHtml(String(sid))}" value="${escapeHtml(String(w).replace('.', ','))}" /></td></tr>`;
@@ -9087,8 +9150,7 @@ bash scripts/update_and_serve.sh --start</div>
     document.getElementById('goalSrcSeasons').addEventListener('change', () => {
       document.getElementById('goalSrcAllSeasons').checked = false;
       goalClearLoadedData('Сезоны изменены — нажмите «Загрузить из БД».');
-      goalApplyDefaultSeasonWeights();
-      goalRenderSeasonWeights();
+      goalRefreshTrainableCounts();
     });
     document.getElementById('goalSeasonWeightsTable').addEventListener('input', e => {
       const inp = e.target.closest('.goal-season-w');
