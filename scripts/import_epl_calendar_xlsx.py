@@ -121,7 +121,7 @@ def _match_payload(season_id: int, match_date: str, home_id: int, away_id: int) 
         "away_team_id": away_id,
         "is_neutral": False,
         "match_weight": 1.0,
-        "derby_weight": 0.0,
+        "derby_weight": 1.0,
         "neutral_weight": 1.0,
         "active": True,
         "home_rotation_code": "none",

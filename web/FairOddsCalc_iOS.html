@@ -2822,6 +2822,17 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     };
     function gmNumKey(s){ return String(s).trim().toLowerCase().replace(/[^a-z0-9_а-я]/gi,''); }
     function gmF(v){ if(v==null) return null; const t=String(v).trim().replace(',','.'); if(!t) return null; const n=parseFloat(t); return isNaN(n)?null:n; }
+    /** match_weight: null→1, 0→исключить. derby/neutral: null или 0→1 (0 в БД = «не дерби», legacy импорт). */
+    function gmDbMatchWeight(v){
+      const n = gmF(v);
+      if (n == null) return 1.0;
+      return n;
+    }
+    function gmDbOptionalMult(v){
+      const n = gmF(v);
+      if (n == null || n <= 0) return 1.0;
+      return n;
+    }
     function gmB(v){ return ['1','true','yes','y','да'].includes(String(v).trim().toLowerCase()); }
     function gmParseCsv(text){
       const lines=text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
@@ -2844,9 +2855,9 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       return out;
     }
     function gmMatchWeight(r, cfg){
-      const wq = r.mw != null ? r.mw : 1.0;
-      const wd = r.derw != null ? r.derw : 1.0;
-      const wn = r.neu ? (r.neuw != null ? r.neuw : 1.0) : 1.0;
+      const wq = gmDbMatchWeight(r.mw);
+      const wd = gmDbOptionalMult(r.derw);
+      const wn = r.neu ? gmDbOptionalMult(r.neuw) : 1.0;
       const ws = gmSeasonWeight(r, cfg);
       return ws * wq * wd * wn;
     }
@@ -3702,9 +3713,9 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         dо: gmF(m.draw_odds),
         ao: gmF(m.away_odds),
         neu: !!m.is_neutral,
-        mw: gmF(m.match_weight) != null ? gmF(m.match_weight) : 1.0,
-        derw: gmF(m.derby_weight) != null ? gmF(m.derby_weight) : 1.0,
-        neuw: gmF(m.neutral_weight) != null ? gmF(m.neutral_weight) : 1.0,
+        mw: gmDbMatchWeight(m.match_weight),
+        derw: gmDbOptionalMult(m.derby_weight),
+        neuw: gmDbOptionalMult(m.neutral_weight),
         seasonId: m.season_id,
         seasonLabel: m.season_label || '',
         matchId: m.match_id,

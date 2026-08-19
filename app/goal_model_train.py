@@ -258,11 +258,24 @@ def _match_weight(flag: bool, weight: Optional[float]) -> float:
     return 1.0 if weight is None else weight
 
 
+def _match_weight_mult(weight: Optional[float]) -> float:
+    if weight is None:
+        return 1.0
+    return weight
+
+
+def _optional_mult(weight: Optional[float]) -> float:
+    """derby/neutral: NULL или 0 → 1 (0 в БД = «не дерби», не «исключить»)."""
+    if weight is None or weight <= 0:
+        return 1.0
+    return weight
+
+
 def base_weight(m: RawMatch, cfg: ModelConfig) -> float:
     w_s = season_weight(m.date, cfg)
-    w_m = 1.0 if m.quality_match_weight is None else m.quality_match_weight
-    w_d = 1.0 if m.derby_match_weight is None else m.derby_match_weight
-    w_n = 1.0 if m.neutral_match_weight is None else m.neutral_match_weight
+    w_m = _match_weight_mult(m.quality_match_weight)
+    w_d = _optional_mult(m.derby_match_weight)
+    w_n = _optional_mult(m.neutral_match_weight)
     return w_s * w_m * w_d * w_n
 
 
