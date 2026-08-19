@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Import EPL fixture calendar from top-5 leagues Excel into Supabase."""
+"""Import fixture calendars from top-5 leagues Excel into Supabase."""
 
 from __future__ import annotations
 
 import argparse
 import sys
 import urllib.parse
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -15,16 +16,52 @@ sys.path.insert(0, str(ROOT / "app"))
 import openpyxl  # noqa: E402
 from supabase_teams import SupabaseError, _request, fetch_teams  # noqa: E402
 
-EPL_LEAGUE_ID = "2613ee27-7e8d-4d18-bd5e-e3f525121848"
-SHEET_EPL = "АПЛ"
 DEFAULT_SEASON = "2026-27"
 
 
-def read_epl_fixtures(xlsx_path: Path) -> list[tuple[str, str, str]]:
+@dataclass(frozen=True)
+class LeagueImport:
+    sheet: str
+    league_id: str
+    label: str
+
+
+LEAGUE_IMPORTS: dict[str, LeagueImport] = {
+    "epl": LeagueImport(
+        sheet="АПЛ",
+        league_id="2613ee27-7e8d-4d18-bd5e-e3f525121848",
+        label="Premier League",
+    ),
+    "la_liga": LeagueImport(
+        sheet="Ла Лига",
+        league_id="8a33ea15-b5e2-4962-8196-a31c8b9fa8fe",
+        label="La Liga",
+    ),
+    "bundesliga": LeagueImport(
+        sheet="Бундеслига",
+        league_id="0e928134-ae08-48fd-8d2c-3539a994b054",
+        label="Bundesliga",
+    ),
+    "serie_a": LeagueImport(
+        sheet="Серия A",
+        league_id="c95e9c68-5679-41ca-ac92-b5b3975bfb02",
+        label="Serie A",
+    ),
+    "ligue_1": LeagueImport(
+        sheet="Лига 1",
+        league_id="f89e6854-2836-4540-9d82-b3ff4019dc6a",
+        label="Ligue 1",
+    ),
+}
+
+DEFAULT_LEAGUE = "epl"
+
+
+def read_sheet_fixtures(xlsx_path: Path, sheet: str) -> list[tuple[str, str, str]]:
     wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
-    if SHEET_EPL not in wb.sheetnames:
-        raise ValueError(f"Лист {SHEET_EPL!r} не найден. Доступны: {wb.sheetnames}")
-    ws = wb[SHEET_EPL]
+    if sheet not in wb.sheetnames:
+        raise ValueError(f"Лист {sheet!r} не найден. Доступны: {wb.sheetnames}")
+    ws = wb[sheet]
     out: list[tuple[str, str, str]] = []
     for row in ws.iter_rows(min_row=2, values_only=True):
         if not row or len(row) < 3:
@@ -39,7 +76,7 @@ def read_epl_fixtures(xlsx_path: Path) -> list[tuple[str, str, str]]:
         out.append((date_str, str(home).strip(), str(away).strip()))
     wb.close()
     if not out:
-        raise ValueError(f"На листе {SHEET_EPL!r} нет матчей")
+        raise ValueError(f"На листе {sheet!r} нет матчей")
     return out
 
 
@@ -125,27 +162,108 @@ def insert_matches(
     return inserted
 
 
+def import_league(
+    xlsx_path: Path,
+    cfg: LeagueImport,
+    *,
+    season_label: str,
+    replace: bool,
+    skip_existing: bool,
+    dry_run: bool,
+) -> dict[str, object]:
+    fixtures = read_sheet_fixtures(xlsx_path, cfg.sheet)
+    team_map = team_name_map(cfg.league_id)
+    teams_used = sorted({n for _, h, a in fixtures for n in (h, a)})
+    unknown = [t for t in teams_used if t not in team_map]
+
+    print(f"\n=== {cfg.label} ({cfg.sheet}) ===")
+    print(f"Матчей: {len(fixtures)}, команд: {len(teams_used)}")
+    if unknown:
+        raise ValueError(f"{cfg.label}: не найдены в Supabase: {', '.join(unknown)}")
+
+    existing_id = fetch_season_id(cfg.league_id, season_label)
+    existing_count = count_season_matches(existing_id) if existing_id else 0
+    if existing_id:
+        print(f"Сезон {season_label}: season_id={existing_id}, матчей={existing_count}")
+    else:
+        print(f"Сезон {season_label} ещё не создан")
+
+    if dry_run:
+        print("Dry-run: запись не выполнялась")
+        return {
+            "league": cfg.label,
+            "matches": len(fixtures),
+            "season_id": existing_id,
+            "imported": 0,
+            "dry_run": True,
+        }
+
+    if existing_id and existing_count:
+        if skip_existing and not replace:
+            print(f"Пропуск: сезон уже заполнен ({existing_count} матчей)")
+            return {
+                "league": cfg.label,
+                "matches": len(fixtures),
+                "season_id": existing_id,
+                "imported": 0,
+                "skipped": True,
+                "dry_run": dry_run,
+            }
+        if not replace:
+            raise ValueError(
+                f"{cfg.label}: сезон {season_label} уже содержит {existing_count} матчей. "
+                "Используйте --replace."
+            )
+        _request("DELETE", f"/matches?season_id=eq.{existing_id}")
+        print(f"Удалено матчей: {existing_count}")
+
+    season_id = existing_id or create_season(cfg.league_id, season_label)
+    if not existing_id:
+        print(f"Создан season_id={season_id}")
+
+    n = insert_matches(season_id, fixtures, team_map)
+    final_count = count_season_matches(season_id)
+    print(f"Импортировано: {n} (всего в сезоне: {final_count})")
+    print(f"Первый: {fixtures[0][0]} {fixtures[0][1]} vs {fixtures[0][2]}")
+    print(f"Последний: {fixtures[-1][0]} {fixtures[-1][1]} vs {fixtures[-1][2]}")
+    return {
+        "league": cfg.label,
+        "matches": len(fixtures),
+        "season_id": season_id,
+        "imported": n,
+        "dry_run": False,
+    }
+
+
 def main() -> None:
+    league_keys = ", ".join(LEAGUE_IMPORTS)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "xlsx",
-        type=Path,
-        help="Excel с календарём (лист АПЛ)",
-    )
+    parser.add_argument("xlsx", type=Path, help="Excel с календарями топ-5 лиг")
     parser.add_argument(
         "--season-label",
         default=DEFAULT_SEASON,
         help=f"Метка сезона (default: {DEFAULT_SEASON})",
     )
     parser.add_argument(
-        "--league-id",
-        default=EPL_LEAGUE_ID,
-        help="UUID лиги в Supabase",
+        "--league",
+        choices=sorted(LEAGUE_IMPORTS),
+        default=DEFAULT_LEAGUE,
+        help=f"Лига для импорта (default: {DEFAULT_LEAGUE})",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Импортировать все 5 лиг из файла",
     )
     parser.add_argument(
         "--replace",
         action="store_true",
         help="Удалить существующие матчи сезона перед импортом",
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Пропустить лиги, у которых сезон уже содержит матчи",
     )
     parser.add_argument(
         "--dry-run",
@@ -157,51 +275,40 @@ def main() -> None:
     if not args.xlsx.is_file():
         raise SystemExit(f"Файл не найден: {args.xlsx}")
 
-    fixtures = read_epl_fixtures(args.xlsx)
-    team_map = team_name_map(args.league_id)
-    teams_used = sorted({n for _, h, a in fixtures for n in (h, a)})
-    unknown = [t for t in teams_used if t not in team_map]
-
+    keys = sorted(LEAGUE_IMPORTS) if args.all else [args.league]
     print(f"Файл: {args.xlsx.name}")
     print(f"Сезон: {args.season_label}")
-    print(f"Матчей в Excel: {len(fixtures)}")
-    print(f"Команд: {len(teams_used)}")
-    if unknown:
-        raise SystemExit(
-            "Не найдены в Supabase: " + ", ".join(unknown)
-        )
+    print(f"Лиги: {', '.join(keys)}")
 
-    existing_id = fetch_season_id(args.league_id, args.season_label)
-    existing_count = count_season_matches(existing_id) if existing_id else 0
-    if existing_id:
-        print(f"Сезон уже есть: season_id={existing_id}, матчей={existing_count}")
-    else:
-        print("Сезон в Supabase ещё не создан")
-
-    if args.dry_run:
-        print("Dry-run: запись не выполнялась")
-        return
-
-    if existing_id and existing_count:
-        if not args.replace:
-            raise SystemExit(
-                f"Сезон {args.season_label} уже содержит {existing_count} матчей. "
-                "Используйте --replace для перезаписи."
+    results: list[dict[str, object]] = []
+    errors: list[str] = []
+    for key in keys:
+        cfg = LEAGUE_IMPORTS[key]
+        try:
+            results.append(
+                import_league(
+                    args.xlsx,
+                    cfg,
+                    season_label=args.season_label,
+                    replace=args.replace,
+                    skip_existing=args.skip_existing,
+                    dry_run=args.dry_run,
+                )
             )
-        _request("DELETE", f"/matches?season_id=eq.{existing_id}")
-        print(f"Удалено матчей: {existing_count}")
+        except (ValueError, SupabaseError) as exc:
+            body = getattr(exc, "body", "")[:200] if isinstance(exc, SupabaseError) else ""
+            msg = f"{cfg.label}: {exc}" + (f" ({body})" if body else "")
+            errors.append(msg)
+            print(f"ОШИБКА: {msg}")
 
-    season_id = existing_id or create_season(args.league_id, args.season_label)
-    if not existing_id:
-        print(f"Создан season_id={season_id}")
-
-    try:
-        n = insert_matches(season_id, fixtures, team_map)
-    except SupabaseError as exc:
-        raise SystemExit(f"Ошибка Supabase: {exc} ({exc.body[:300]})") from exc
-
-    final_count = count_season_matches(season_id)
-    print(f"Импортировано: {n} матчей (всего в сезоне: {final_count})")
+    print("\n--- Итог ---")
+    for r in results:
+        print(
+            f"{r['league']}: {r['matches']} матчей, "
+            f"season_id={r['season_id']}, imported={r['imported']}"
+        )
+    if errors:
+        raise SystemExit(f"Ошибки ({len(errors)}): " + "; ".join(errors))
 
 
 if __name__ == "__main__":
