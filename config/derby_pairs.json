@@ -1,0 +1,34 @@
+{
+  "_comment": "Нормализованные пары команд (имена как в справочнике). Скрипт restore_derby_flags.py проставляет derby_weight=1.",
+  "epl": [
+    ["Arsenal", "Tottenham"],
+    ["Chelsea", "Fulham"],
+    ["Liverpool", "Everton"],
+    ["Man City", "Man United"],
+    ["West Ham", "Tottenham"],
+    ["Brentford", "Fulham"]
+  ],
+  "la_liga": [
+    ["Barcelona", "Real Madrid"],
+    ["Barcelona", "Espanyol"],
+    ["Real Madrid", "Ath Madrid"],
+    ["Sevilla", "Betis"],
+    ["Ath Bilbao", "Sociedad"],
+    ["Valencia", "Levante"],
+    ["Valencia", "Villarreal"]
+  ],
+  "serie_a": [
+    ["Inter", "Milan"],
+    ["Roma", "Lazio"],
+    ["Juventus", "Torino"]
+  ],
+  "bundesliga": [
+    ["Dortmund", "Schalke 04"],
+    ["Bayern Munich", "Dortmund"]
+  ],
+  "ligue_1": [
+    ["Paris SG", "Marseille"],
+    ["Lyon", "Marseille"],
+    ["Monaco", "Nice"]
+  ]
+}
