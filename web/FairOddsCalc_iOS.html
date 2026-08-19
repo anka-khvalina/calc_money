@@ -271,7 +271,7 @@
             document.body.classList.toggle('tab-goal-wide', id === 'goal');
             if (id === 'hist' && window.sbInitHistTab) window.sbInitHistTab();
             if (id === 'goal') {
-              if (window.goalInitTab) window.goalInitTab();
+              if (window.goalInitTab) window.goalInitTab(true);
               if (window.refreshGoalTeams) window.refreshGoalTeams();
             }
             if (id === 'teams') {
@@ -562,11 +562,14 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </div>
         <div class="goal-src-action">
           <button type="button" id="goalLoadHist" class="btn primary">Загрузить из БД</button>
+          <button type="button" id="goalRefreshSeasons" class="btn" style="margin-top:6px">Обновить сезоны</button>
         </div>
       </div>
       <div class="hint" style="margin-top:8px">
         Данные из Supabase (<code>v_matches_full</code>). Вес матча:
         <b>вес сезона × match_weight × derby_weight × neutral_weight</b>.
+        Сезоны-календари (без closing-кэфов) видны в списке, но в обучение не попадают —
+        нужны AH, тотал и odds Over/Under.
       </div>
       <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
         <div class="field" style="min-width:150px;flex:1">
@@ -3743,7 +3746,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         }).join('') + '</tbody></table></div>';
     }
 
-    async function goalOnLeagueChange(){
+    async function goalOnLeagueChange(forceRefresh){
       const leagueId = document.getElementById('goalSrcLeague').value;
       const seasonSel = document.getElementById('goalSrcSeasons');
       if (!leagueId){
@@ -3755,6 +3758,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       try {
         await loadSupabaseConfig();
         goalLineSeasons = await sbLoadSeasonsForLeague(leagueId);
+        if (forceRefresh) goalSeasonWeightById = {};
         goalRenderSeasonMulti();
       } catch (e){
         console.error('goalOnLeagueChange', e);
@@ -3772,7 +3776,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       });
     }
 
-    async function goalInitTab(){
+    async function goalInitTab(forceRefresh){
       try {
         await loadSupabaseConfig();
         if (!goalLineLeaguesLoaded || !(window.__SB.leagues || []).length){
@@ -3781,7 +3785,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         }
         goalPopulateLeagueSelect();
         const leagueId = document.getElementById('goalSrcLeague').value;
-        if (leagueId && !goalLineSeasons.length) await goalOnLeagueChange();
+        if (leagueId && (forceRefresh || !goalLineSeasons.length)) await goalOnLeagueChange(forceRefresh);
       } catch (e){
         console.error('goalInitTab', e);
         const sel = document.getElementById('goalSrcLeague');
@@ -3789,7 +3793,8 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       }
     }
 
-    document.getElementById('goalSrcLeague').addEventListener('change', () => { goalOnLeagueChange(); });
+    document.getElementById('goalSrcLeague').addEventListener('change', () => { goalOnLeagueChange(true); });
+    document.getElementById('goalRefreshSeasons').addEventListener('click', () => { goalOnLeagueChange(true); });
     document.getElementById('goalSrcAllSeasons').addEventListener('change', () => { goalRenderSeasonMulti(); });
     document.getElementById('goalSrcSeasons').addEventListener('change', () => {
       document.getElementById('goalSrcAllSeasons').checked = false;
@@ -3814,7 +3819,15 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         const matches = await sbLoadMatchesForSeasons(leagueId, seasonIds);
         if (!matches.length){ alert('В БД нет матчей по выбранным сезонам'); return; }
         const parsed = goalMatchesToRaw(matches);
-        if (!parsed.valid){ alert('Недостаточно матчей с полной линией для обучения модели'); return; }
+        if (!parsed.valid){
+          const labels = goalLineSeasons.filter(s => seasonIds.includes(s.season_id)).map(s => s.season_label);
+          const msg = parsed.total
+            ? `Выбрано ${parsed.total} матчей (${labels.join(', ')}), но ни у одного нет полной closing-линии (AH, тотал, Over/Under). `
+              + 'Сезоны 2026-27 загружены как календарь — заполните кэфы на вкладке «История» или выберите прошлые сезоны с closing-линиями.'
+            : 'Недостаточно матчей с полной линией для обучения модели';
+          alert(msg);
+          return;
+        }
         goalLoadedRaw = parsed.raw;
         const league = (window.__SB.leagues || []).find(l => l.id === leagueId);
         const leagueName = league ? league.name : leagueId;
