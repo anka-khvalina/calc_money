@@ -566,10 +566,9 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </div>
       </div>
       <div class="hint" style="margin-top:8px">
-        Данные из Supabase (<code>v_matches_full</code>). Вес матча:
+        Данные из Supabase (<code>v_matches_full</code>). В обучение попадают матчи с
+        <b>ненулевыми кэфами</b> (AH1/AH2, Over/Under, 1/X/2). Вес матча:
         <b>вес сезона × match_weight × derby_weight × neutral_weight</b>.
-        Сезоны-календари (без closing-кэфов) видны в списке, но в обучение не попадают —
-        нужны AH, тотал и odds Over/Under.
       </div>
       <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-start;">
         <div class="field" style="min-width:150px;flex:1">
@@ -3628,11 +3627,20 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       };
     }
 
-    function goalRawHasFullLine(r){
-      return !!(r.home && r.away
-        && r.ah != null && r.tot != null
-        && r.aho != null && r.aha != null
-        && r.ovr != null && r.und != null);
+    const GOAL_ODDS_KEYS = ['aho', 'aha', 'ovr', 'und', 'ho', 'dо', 'ao'];
+
+    function goalOddsNum(v){
+      if (v == null) return null;
+      const t = String(v).trim().replace(',', '.');
+      if (!t) return null;
+      const n = parseFloat(t);
+      return (isNaN(n) || n <= 0) ? null : n;
+    }
+
+    /** Матч участвует в обучении, если есть хотя бы один ненулевой кэф. */
+    function goalRawHasTrainableOdds(r){
+      if (!r.home || !r.away) return false;
+      return GOAL_ODDS_KEYS.some(k => goalOddsNum(r[k]) != null);
     }
 
     function goalMatchesToRaw(matches){
@@ -3641,7 +3649,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       let excluded = 0;
       matches.forEach(m => {
         const r = goalDbMatchToRaw(m);
-        if (!goalRawHasFullLine(r)){ excluded++; return; }
+        if (!goalRawHasTrainableOdds(r)){ excluded++; return; }
         raw.push(r);
       });
       return { raw, total, excluded, valid: raw.length };
@@ -3822,9 +3830,9 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         if (!parsed.valid){
           const labels = goalLineSeasons.filter(s => seasonIds.includes(s.season_id)).map(s => s.season_label);
           const msg = parsed.total
-            ? `Выбрано ${parsed.total} матчей (${labels.join(', ')}), но ни у одного нет полной closing-линии (AH, тотал, Over/Under). `
-              + 'Сезоны 2026-27 загружены как календарь — заполните кэфы на вкладке «История» или выберите прошлые сезоны с closing-линиями.'
-            : 'Недостаточно матчей с полной линией для обучения модели';
+            ? `К обучению: 0 матчей (${labels.join(', ')} — ${parsed.total} в календаре, кэфы не заполнены). `
+              + 'Заполните кэфы на вкладке «История» или выберите сезоны с closing-линиями.'
+            : 'Нет матчей с ненулевыми кэфами для обучения';
           alert(msg);
           return;
         }
@@ -3838,9 +3846,9 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         };
         goalApplyDefaultSeasonWeights();
         goalRenderSeasonWeights();
-        const excl = parsed.excluded ? `, исключено ${parsed.excluded} из-за неполной линии` : '';
+        const skip = parsed.excluded ? ` (пропущено ${parsed.excluded} без кэфов)` : '';
         document.getElementById('goalMeta').textContent =
-          `Загружено ${parsed.total} матчей, к обучению допущено ${parsed.valid}${excl}. Лига: ${leagueName}, сезоны: ${seasonLabels.join(', ')}. Нажмите «Обучить модель».`;
+          `К обучению: ${parsed.valid} матчей${skip}. Лига: ${leagueName}, сезоны: ${seasonLabels.join(', ')}. Нажмите «Обучить модель».`;
       } catch (e){
         console.error('goalLoadHist', e);
         alert('Не удалось загрузить матчи из Supabase');
@@ -3852,7 +3860,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         if (!goalLoadedRaw || !goalLoadedRaw.length){
           throw new Error('Сначала загрузите матчи из БД.');
         }
-        if (goalLoadedRaw.length < 2) throw new Error('Недостаточно матчей с полной линией для обучения модели');
+        if (goalLoadedRaw.length < 2) throw new Error('Недостаточно матчей с кэфами для обучения модели');
         goalReadSeasonWeightsFromUI();
         const cfg = gmCfg();
         gmModel = gmTrain(goalLoadedRaw, cfg);
@@ -3860,9 +3868,9 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         const rk = Object.entries(st.ratings).sort((a, b) => b[1] - a[1])
           .map(([t, r]) => `  ${t}: r=${r.toFixed(3)} A=${(gl.attack[t] || 0).toFixed(3)} Df=${(gl.defense[t] || 0).toFixed(3)}`).join('\n');
         const meta = goalLoadedMeta;
-        const excl = meta && meta.excluded ? ` (исключено ${meta.excluded} с неполной линией)` : '';
+        const skip = meta && meta.excluded ? ` (из ${meta.total} в выборке, ${meta.excluded} без кэфов)` : '';
         document.getElementById('goalMeta').textContent =
-          `Обучено на ${goalLoadedRaw.length} матчах из Supabase${excl}. Команд: ${Object.keys(st.ratings).length}  H=${st.H.toFixed(3)}\n` +
+          `Обучено на ${goalLoadedRaw.length} матчах${skip}. Команд: ${Object.keys(st.ratings).length}  H=${st.H.toFixed(3)}\n` +
           `μ=${gl.mu.toFixed(3)} H_g=${gl.hg.toFixed(3)}  калибр a=${cal.a.toFixed(3)} b=${cal.b.toFixed(3)} c=${cal.c.toFixed(3)} d=${cal.d.toFixed(3)} γ=${cal.gamma.toFixed(4)}  ничья:${draw.source}`;
         document.getElementById('goalOut').textContent = 'Рейтинги (сила / атака / оборона):\n' + rk;
         gmFillTeams();
