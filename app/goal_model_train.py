@@ -1113,6 +1113,9 @@ def fit_hierarchical_strength_ratings(
     idx = {t: i for i, t in enumerate(teams)}
     n_derby = sum(_derby_home_indicator(m) for m in used)
     use_derby_coef = n_derby >= cfg.derby_min_matches
+    if use_derby_coef and used and (n_derby / len(used)) > 0.85:
+        use_derby_coef = False
+        n_derby = 0
     p = len(teams) + (2 if use_derby_coef else 1)
     h_col = p - 2 if use_derby_coef else p - 1
     d_col = p - 1 if use_derby_coef else None
@@ -1301,6 +1304,9 @@ def fit_strength_ratings(
     idx = {t: i for i, t in enumerate(teams)}
     n_derby = sum(_derby_home_indicator(m) for m in used)
     use_derby_coef = n_derby >= cfg.derby_min_matches
+    if use_derby_coef and used and (n_derby / len(used)) > 0.85:
+        use_derby_coef = False
+        n_derby = 0
     p = len(teams) + (2 if use_derby_coef else 1)
     h_col = p - 2 if use_derby_coef else p - 1
     d_col = p - 1 if use_derby_coef else None
