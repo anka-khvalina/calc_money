@@ -8759,7 +8759,9 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function sbSeasonActiveCount(season){
       if (!season) return 0;
-      if (season.active_matches_count != null) return Number(season.active_matches_count) || 0;
+      const active = season.active_matches_count != null ? Number(season.active_matches_count) : NaN;
+      if (Number.isFinite(active) && active > 0) return active;
+      // Fallback: v_season_summary.matches_count (календарь без active-счётчика)
       return Number(season.matches_count) || 0;
     }
 
@@ -8771,9 +8773,10 @@ bash scripts/update_and_serve.sh --start</div>
         sbFetchActiveMatchCounts(leagueId),
       ]);
       const list = Array.isArray(rows) ? rows : [];
+      // Показываем все сезоны из summary; не отфильтровывать из‑за cap 1000 в active-счётчике
       return list
         .map(s => Object.assign({}, s, { active_matches_count: activeCounts[s.season_id] || 0 }))
-        .filter(s => sbSeasonActiveCount(s) > 0);
+        .filter(s => Number(s.matches_count) > 0);
     }
 
     async function sbLoadMatchesForSeasons(leagueId, seasonIds){
@@ -8798,7 +8801,7 @@ bash scripts/update_and_serve.sh --start</div>
       if (!seasonIds.length) return [];
       const ids = seasonIds.map(s => encodeURIComponent(String(s))).join(',');
       const q = `select=${SB_INACTIVE_TRAIN_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=in.(${ids})&order=match_date.asc`;
-      const rows = await sbFetch(`/v_inactive_matches_full?${q}`);
+      const rows = await sbFetchAllRows(`/v_inactive_matches_full?${q}`);
       return Array.isArray(rows) ? rows : [];
     }
 
@@ -8815,7 +8818,7 @@ bash scripts/update_and_serve.sh --start</div>
         + `&home_team_id=eq.${encodeURIComponent(homeTeamId)}`
         + `&away_team_id=eq.${encodeURIComponent(awayTeamId)}`
         + '&order=match_date.desc&limit=1';
-      const rows = await sbFetch(`/v_inactive_matches_full?${q}`);
+      const rows = await sbFetchAllRows(`/v_inactive_matches_full?${q}`);
       return Array.isArray(rows) && rows.length ? rows[0] : null;
     }
 
@@ -8844,9 +8847,12 @@ bash scripts/update_and_serve.sh --start</div>
         goalRenderSeasonWeights();
         return;
       }
-      sel.innerHTML = goalLineSeasons.map(s =>
-        `<option value="${escapeHtml(String(s.season_id))}">${escapeHtml(s.season_label)} — ${escapeHtml(String(sbSeasonActiveCount(s)))} активных</option>`
-      ).join('');
+      sel.innerHTML = goalLineSeasons.map(s => {
+        const n = sbSeasonActiveCount(s);
+        const partial = s.active_matches_count === 0 && Number(s.matches_count) > 0;
+        const suffix = partial ? ` (${Number(s.matches_count)} в БД)` : ' активных';
+        return `<option value="${escapeHtml(String(s.season_id))}">${escapeHtml(s.season_label)} — ${escapeHtml(String(n))}${suffix}</option>`;
+      }).join('');
       sel.disabled = !!useAll;
       if (useAll){
         Array.from(sel.options).forEach(o => { o.selected = true; });
