@@ -871,9 +871,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
                 <label class="block-label" for="goalSrcSeasons">Сезоны</label>
                 <select id="goalSrcSeasons" multiple size="3"></select>
                 <label class="goal-all-seasons">
-                  <input id="goalSrcAllSeasons" type="checkbox" />
+                  <input id="goalSrcAllSeasons" type="checkbox" checked />
                   <span>Все сезоны</span>
                 </label>
+                <button type="button" id="goalRefreshSeasons" class="btn" style="margin-top:6px;font-size:12px">Обновить сезоны</button>
                 <div class="goal-seasons-hint">Ctrl/Cmd + клик · несколько сезонов</div>
               </div>
             </div>
@@ -2030,6 +2031,19 @@ bash scripts/update_and_serve.sh --start</div>
       if (res.status === 204) return null;
       const raw = await res.text();
       return raw ? JSON.parse(raw) : null;
+    }
+
+    /** Supabase REST отдаёт не более ~1000 строк — догружаем постранично. */
+    async function sbFetchAllRows(path, { pageSize = 500 } = {}){
+      const out = [];
+      const join = path.includes('?') ? '&' : '?';
+      for (let offset = 0; ; offset += pageSize){
+        const rows = await sbFetch(`${path}${join}offset=${offset}&limit=${pageSize}`);
+        if (!Array.isArray(rows) || !rows.length) break;
+        out.push(...rows);
+        if (rows.length < pageSize) break;
+      }
+      return out;
     }
 
     function sbLeagueName(leagueId){
@@ -7003,7 +7017,7 @@ bash scripts/update_and_serve.sh --start</div>
 
     async function sbLoadSeasonMatches(leagueId, seasonId){
       const q = `select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=eq.${encodeURIComponent(seasonId)}&order=match_date.asc`;
-      const rows = await sbFetch(`/v_matches_full?${q}`);
+      const rows = await sbFetchAllRows(`/v_matches_full?${q}`);
       const list = Array.isArray(rows) ? rows : [];
       sbApplyRotationFromView(list);
       const key = sbSeasonKey(leagueId, seasonId);
@@ -7348,7 +7362,7 @@ bash scripts/update_and_serve.sh --start</div>
     }
     async function sbFetchMatchFromDb(mid){
       const q = `select=${SB_MATCH_VIEW_SELECT}&match_id=eq.${encodeURIComponent(mid)}`;
-      const rows = await sbFetch(`/v_matches_full?${q}`);
+      const rows = await sbFetchAllRows(`/v_matches_full?${q}`);
       if (!Array.isArray(rows) || !rows.length) throw new Error('match not found');
       sbApplyRotationFromView(rows);
       return rows[0];
@@ -8148,6 +8162,7 @@ bash scripts/update_and_serve.sh --start</div>
     let goalLoadedMeta = null;
     let goalLineSeasons = [];
     let goalSeasonWeightById = {};
+    let goalTrainableBySeason = {};
     let goalLineLeaguesLoaded = false;
     let goalTrainState = { trainedAt: null, loadedAt: null, priorUsed: false };
     const GOAL_LEAGUE_MARGIN_LS_KEY = 'goalLeagueMargin1x2';
@@ -8573,6 +8588,13 @@ bash scripts/update_and_serve.sh --start</div>
         throw new Error('Сначала загрузите матчи из БД.');
       }
       if (goalLoadedRaw.length < 2) throw new Error('Недостаточно матчей с полной линией для обучения модели');
+      if (goalLoadedMeta?.seasonIds?.length){
+        const curIds = goalSelectedSeasonIds().map(goalNormSeasonId).slice().sort((a, b) => Number(a) - Number(b));
+        const loadedIds = (goalLoadedMeta.seasonIds || []).map(goalNormSeasonId).slice().sort((a, b) => Number(a) - Number(b));
+        if (loadedIds.length && JSON.stringify(curIds) !== JSON.stringify(loadedIds)){
+          throw new Error('Выбор сезонов изменился — нажмите «Загрузить из БД» заново.');
+        }
+      }
       await loadGoalMatrixConfig();
       // Line train must not inherit Reports lab EMA overrides
       window.__IR_S_EMA_OVERRIDE = null;
@@ -8600,6 +8622,8 @@ bash scripts/update_and_serve.sh --start</div>
       });
       // Persist normalized map back into weight inputs
       try{ goalRenderSeasonWeights(); }catch(_e){}
+      const cfgPreflight = irBaselineCfg(weights, 'legacy');
+      const sum = goalPreflightTraining(goalLoadedRaw, cfgPreflight);
       const inactiveRaw = goalLoadedInactiveRaw || [];
       // Independent pipelines on the same active sample + training_weight (same core as Reports)
       let errL=null, errA=null;
@@ -8723,7 +8747,7 @@ bash scripts/update_and_serve.sh --start</div>
 
     async function sbFetchActiveMatchCounts(leagueId){
       const q = `select=season_id&league_id=eq.${encodeURIComponent(leagueId)}&active=eq.true`;
-      const rows = await sbFetch(`/v_matches_full?${q}`);
+      const rows = await sbFetchAllRows(`/v_matches_full?${q}`);
       const counts = {};
       if (!Array.isArray(rows)) return counts;
       rows.forEach(r => {
@@ -8756,7 +8780,7 @@ bash scripts/update_and_serve.sh --start</div>
       if (!seasonIds.length) return [];
       const ids = seasonIds.map(s => encodeURIComponent(String(s))).join(',');
       const q = `select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=in.(${ids})&active=eq.true&order=match_date.asc`;
-      const rows = await sbFetch(`/v_matches_full?${q}`);
+      const rows = await sbFetchAllRows(`/v_matches_full?${q}`);
       const list = Array.isArray(rows) ? rows : [];
       sbApplyRotationFromView(list);
       return list;
@@ -8857,6 +8881,115 @@ bash scripts/update_and_serve.sh --start</div>
       goalSeasonWeightById = next;
     }
 
+    function goalNormSeasonId(sid){
+      if (sid == null) return null;
+      const n = Number(sid);
+      return Number.isFinite(n) ? n : String(sid);
+    }
+
+    function goalClearLoadedData(hint){
+      goalLoadedRaw = null;
+      goalLoadedInactiveRaw = null;
+      goalLoadedMeta = null;
+      goalInvalidateTrainedModels('данные изменены');
+      const banner = document.getElementById('goalTrainBanner');
+      if (banner && hint) banner.textContent = hint;
+    }
+
+    const GM_MIN_MATCH_WEIGHT = 1e-9;
+
+    function gmMatchComponents(edges){
+      const g = new Map();
+      const touch = (t) => { if (!g.has(t)) g.set(t, new Set()); return g.get(t); };
+      for (const [h, a] of edges){
+        touch(h).add(a);
+        touch(a).add(h);
+      }
+      const seen = new Set();
+      const comps = [];
+      for (const start of g.keys()){
+        if (seen.has(start)) continue;
+        const stack = [start];
+        const comp = new Set();
+        while (stack.length){
+          const t = stack.pop();
+          if (seen.has(t)) continue;
+          seen.add(t);
+          comp.add(t);
+          for (const nb of g.get(t) || []) if (!seen.has(nb)) stack.push(nb);
+        }
+        comps.push(comp);
+      }
+      return comps;
+    }
+
+    function gmMatchHasTrainableLine(m){
+      return m.D != null && (m.wBase || 0) > GM_MIN_MATCH_WEIGHT;
+    }
+
+    function goalSummarizeTraining(raw, cfg){
+      const ms = gmPrepare(raw, cfg);
+      const dLine = ms.filter(m => gmMatchHasTrainableLine(m));
+      const comps = gmMatchComponents(dLine.map(m => [m.home, m.away]));
+      const bySeason = {};
+      for (const m of dLine){
+        const sid = goalNormSeasonId(m.raw.seasonId);
+        bySeason[sid] = (bySeason[sid] || 0) + 1;
+      }
+      return {
+        dLine: dLine.length,
+        components: comps.length,
+        compSizes: comps.map(c => c.size).sort((a, b) => b - a),
+        bySeason,
+      };
+    }
+
+    function goalPreflightTraining(raw, cfg){
+      const sum = goalSummarizeTraining(raw, cfg);
+      if (sum.dLine < 2){
+        throw new Error(
+          'Мало матчей с полной линией форы/тотала и ненулевым весом сезона ('
+          + sum.dLine + '). Нужны closing AH + Over/Under. Заполните кэфы на вкладке «История» '
+          + 'или поднимите веса сезонов с данными.'
+        );
+      }
+      if (sum.components > 1){
+        const parts = Object.entries(sum.bySeason)
+          .map(([sid, n]) => {
+            const s = goalLineSeasons.find(x => goalNormSeasonId(x.season_id) === goalNormSeasonId(sid));
+            const w = goalLookupSeasonWeight(cfg && cfg.seasonWeightsById, sid, null);
+            return `${s ? s.season_label : sid}: ${n} матч., вес=${w != null ? w : 1}`;
+          }).join('; ');
+        throw new Error(
+          `Система вырождена: ${sum.components} несвязных группы команд (${sum.compSizes.join(', ')}). `
+          + `Матчи с весом>0 по сезонам: ${parts}. `
+          + 'Поднимите веса сезонов с данными или обнулите календарь без кэфов; проверьте match_weight в «Истории».'
+        );
+      }
+      return sum;
+    }
+
+    function goalApplyTrainableSeasonWeights(raw, { reset = false } = {}){
+      const bySid = {};
+      for (const r of raw){
+        const k = goalNormSeasonId(r.seasonId);
+        bySid[k] = (bySid[k] || 0) + 1;
+      }
+      goalTrainableBySeason = bySid;
+      const ids = goalSelectedSeasonIds().map(goalNormSeasonId);
+      const byId = new Map(goalLineSeasons.map(s => [goalNormSeasonId(s.season_id), s]));
+      const ordered = ids.slice().sort((a, b) =>
+        String(byId.get(b)?.season_label || b).localeCompare(String(byId.get(a)?.season_label || a))
+      );
+      const next = reset ? {} : { ...goalSeasonWeightById };
+      ordered.forEach((sid, i) => {
+        const cnt = bySid[sid] || 0;
+        if (!cnt) next[sid] = 0;
+        else if (reset || next[sid] == null) next[sid] = goalDefaultSeasonWeight(i);
+      });
+      goalSeasonWeightById = next;
+    }
+
     function goalRenderSeasonWeights(){
       const box = document.getElementById('goalSeasonWeightsTable');
       if (!box) return;
@@ -8867,17 +9000,19 @@ bash scripts/update_and_serve.sh --start</div>
       }
       const byId = new Map(goalLineSeasons.map(s => [s.season_id, s]));
       box.innerHTML = '<div class="table-wrap"><table class="goal-sw-table"><thead><tr>'
-        + '<th class="goal-sw-season">Сезон</th><th class="goal-sw-n">Активных</th><th class="goal-sw-w">Вес</th>'
+        + '<th class="goal-sw-season">Сезон</th><th class="goal-sw-n">С кэфами</th><th class="goal-sw-w">Вес</th>'
         + '</tr></thead><tbody>'
         + ids.map(sid => {
           const s = byId.get(sid);
           if (!s) return '';
           const w = goalLookupSeasonWeight(goalSeasonWeightById, sid, 1);
+          const trainable = goalTrainableBySeason[goalNormSeasonId(sid)];
+          const cnt = trainable != null ? trainable : sbSeasonActiveCount(s);
           return `<tr><td class="goal-sw-season" title="${escapeHtml(s.season_label)}">${escapeHtml(s.season_label)}</td>`
-            + `<td class="num goal-sw-n">${escapeHtml(String(sbSeasonActiveCount(s)))}</td>`
+            + `<td class="num goal-sw-n">${escapeHtml(String(cnt))}</td>`
             + `<td class="num"><input class="goal-season-w" data-sid="${escapeHtml(String(sid))}" value="${escapeHtml(String(w).replace('.', ','))}" /></td></tr>`;
         }).join('') + '</tbody></table></div>'
-        + '<div class="hint" style="margin-top:6px">После смены веса нажмите <b>«Обучить модель»</b> — иначе расчёт линии идёт по старой калибровке.</div>';
+        + '<div class="hint" style="margin-top:6px">Календарь без кэфов → вес 0. После смены веса нажмите <b>«Обучить модель»</b>.</div>';
     }
 
     async function goalOnLeagueChange(){
@@ -8934,12 +9069,18 @@ bash scripts/update_and_serve.sh --start</div>
     }
 
     document.getElementById('goalSrcLeague').addEventListener('change', () => {
+      goalClearLoadedData('Лига изменена — нажмите «Загрузить из БД».');
       goalOnLeagueChange();
       goalSyncPredLeagueFromTrain();
     });
-    document.getElementById('goalSrcAllSeasons').addEventListener('change', () => { goalRenderSeasonMulti(); });
+    document.getElementById('goalRefreshSeasons')?.addEventListener('click', () => { goalOnLeagueChange(); });
+    document.getElementById('goalSrcAllSeasons').addEventListener('change', () => {
+      goalClearLoadedData('Сезоны изменены — нажмите «Загрузить из БД».');
+      goalRenderSeasonMulti();
+    });
     document.getElementById('goalSrcSeasons').addEventListener('change', () => {
       document.getElementById('goalSrcAllSeasons').checked = false;
+      goalClearLoadedData('Сезоны изменены — нажмите «Загрузить из БД».');
       goalApplyDefaultSeasonWeights();
       goalRenderSeasonWeights();
     });
@@ -8988,11 +9129,24 @@ bash scripts/update_and_serve.sh --start</div>
           inactiveTotal: inactiveParsed.total, inactiveValid: inactiveParsed.valid,
         };
         goalTrainState.loadedAt = new Date().toISOString();
-        goalApplyDefaultSeasonWeights();
+        goalApplyTrainableSeasonWeights(parsed.raw, { reset: true });
         goalRenderSeasonWeights();
         goalUpdateTrainUI();
         goalSyncPredLeagueFromTrain();
         goalUpdateMarginLeagueUi();
+        const cfg = gmCfg();
+        const sum = goalSummarizeTraining(parsed.raw, cfg);
+        const skip = parsed.excluded ? ` (пропущено ${parsed.excluded} без кэфов)` : '';
+        const sparseHint = sum.dLine < parsed.valid
+          ? ` С линией D (AH+O/U): ${sum.dLine}.`
+          : '';
+        const banner = document.getElementById('goalTrainBanner');
+        if (banner){
+          banner.className = 'goal-train-banner idle';
+          banner.textContent =
+            `К обучению: ${parsed.valid} матчей${sparseHint}${skip}. Лига: ${leagueName}, сезоны: ${seasonLabels.join(', ')}. `
+            + 'Проверьте веса сезонов (календарь без кэфов → вес 0). Нажмите «Обучить модель».';
+        }
       } catch (e){
         console.error('goalLoadHist', e);
         alert('Не удалось загрузить матчи из Supabase');

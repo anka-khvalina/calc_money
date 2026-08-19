@@ -7,7 +7,7 @@
 #   bash scripts/update_and_serve.sh --no-pull    # только конфиг
 #
 # Переменные:
-#   FAIR_ODDS_BRANCH   ветка для git pull (default: cursor/bulk-match-weight-17b5)
+#   FAIR_ODDS_BRANCH   ветка для git pull (default: cursor/docs-train-calc-epl-fixes-17b5)
 #   FAIR_ODDS_WEB_PORT порт веб+прокси (default: 8080)
 #   HISTORY_API_PORT   порт History API на localhost (default: 8765)
 
