@@ -33,6 +33,9 @@ LEAGUE_TEAMS: dict[str, list[str]] = {
         "Union Berlin",
         "Werder Bremen",
         "Wolfsburg",
+        "Elversberg",
+        "Paderborn",
+        "Schalke 04",
     ],
     "epl": [
         "Arsenal",
@@ -55,6 +58,9 @@ LEAGUE_TEAMS: dict[str, list[str]] = {
         "Tottenham",
         "West Ham",
         "Wolves",
+        "Coventry",
+        "Hull City",
+        "Ipswich",
     ],
     "la_liga": [
         "Alaves",
@@ -77,6 +83,9 @@ LEAGUE_TEAMS: dict[str, list[str]] = {
         "Valencia",
         "Vallecano",
         "Villarreal",
+        "Deportivo",
+        "Malaga",
+        "Racing",
     ],
     "ligue_1": [
         "Angers",
@@ -97,6 +106,8 @@ LEAGUE_TEAMS: dict[str, list[str]] = {
         "Rennes",
         "Strasbourg",
         "Toulouse",
+        "Le Mans",
+        "Troyes",
     ],
     "serie_a": [
         "Atalanta",
@@ -119,6 +130,9 @@ LEAGUE_TEAMS: dict[str, list[str]] = {
         "Torino",
         "Udinese",
         "Verona",
+        "Frosinone",
+        "Monza",
+        "Venezia",
     ],
 }
 

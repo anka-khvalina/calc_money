@@ -1,11 +1,11 @@
 {
   "version": 1,
   "next_seq": {
-    "bundesliga": 19,
-    "epl": 21,
-    "la_liga": 21,
-    "ligue_1": 19,
-    "serie_a": 21
+    "bundesliga": 22,
+    "epl": 24,
+    "la_liga": 24,
+    "ligue_1": 21,
+    "serie_a": 24
   },
   "teams": [
     {
@@ -133,6 +133,27 @@
       "name": "Wolfsburg",
       "created_at": "2026-06-04T11:05:48+00:00",
       "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "bundesliga:19",
+      "league": "bundesliga",
+      "name": "Elversberg",
+      "created_at": "2026-08-19T15:50:00+00:00",
+      "updated_at": "2026-08-19T15:50:00+00:00"
+    },
+    {
+      "id": "bundesliga:20",
+      "league": "bundesliga",
+      "name": "Paderborn",
+      "created_at": "2026-08-19T15:50:00+00:00",
+      "updated_at": "2026-08-19T15:50:00+00:00"
+    },
+    {
+      "id": "bundesliga:21",
+      "league": "bundesliga",
+      "name": "Schalke 04",
+      "created_at": "2026-08-19T15:50:00+00:00",
+      "updated_at": "2026-08-19T15:50:00+00:00"
     },
     {
       "id": "epl:1",
@@ -275,6 +296,27 @@
       "updated_at": "2026-06-04T11:05:48+00:00"
     },
     {
+      "id": "epl:21",
+      "league": "epl",
+      "name": "Coventry",
+      "created_at": "2026-08-19T15:45:00+00:00",
+      "updated_at": "2026-08-19T15:45:00+00:00"
+    },
+    {
+      "id": "epl:22",
+      "league": "epl",
+      "name": "Hull City",
+      "created_at": "2026-08-19T15:45:00+00:00",
+      "updated_at": "2026-08-19T15:45:00+00:00"
+    },
+    {
+      "id": "epl:23",
+      "league": "epl",
+      "name": "Ipswich",
+      "created_at": "2026-08-19T15:45:00+00:00",
+      "updated_at": "2026-08-19T15:45:00+00:00"
+    },
+    {
       "id": "la_liga:1",
       "league": "la_liga",
       "name": "Alaves",
@@ -415,6 +457,27 @@
       "updated_at": "2026-06-04T11:05:48+00:00"
     },
     {
+      "id": "la_liga:21",
+      "league": "la_liga",
+      "name": "Deportivo",
+      "created_at": "2026-08-19T15:50:00+00:00",
+      "updated_at": "2026-08-19T15:50:00+00:00"
+    },
+    {
+      "id": "la_liga:22",
+      "league": "la_liga",
+      "name": "Malaga",
+      "created_at": "2026-08-19T15:50:00+00:00",
+      "updated_at": "2026-08-19T15:50:00+00:00"
+    },
+    {
+      "id": "la_liga:23",
+      "league": "la_liga",
+      "name": "Racing",
+      "created_at": "2026-08-19T15:50:00+00:00",
+      "updated_at": "2026-08-19T15:50:00+00:00"
+    },
+    {
       "id": "ligue_1:1",
       "league": "ligue_1",
       "name": "Angers",
@@ -539,6 +602,20 @@
       "name": "Toulouse",
       "created_at": "2026-06-04T11:05:48+00:00",
       "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "ligue_1:19",
+      "league": "ligue_1",
+      "name": "Le Mans",
+      "created_at": "2026-08-19T15:50:00+00:00",
+      "updated_at": "2026-08-19T15:50:00+00:00"
+    },
+    {
+      "id": "ligue_1:20",
+      "league": "ligue_1",
+      "name": "Troyes",
+      "created_at": "2026-08-19T15:50:00+00:00",
+      "updated_at": "2026-08-19T15:50:00+00:00"
     },
     {
       "id": "serie_a:1",
@@ -679,6 +756,27 @@
       "name": "Verona",
       "created_at": "2026-06-04T11:05:48+00:00",
       "updated_at": "2026-06-04T11:05:48+00:00"
+    },
+    {
+      "id": "serie_a:21",
+      "league": "serie_a",
+      "name": "Frosinone",
+      "created_at": "2026-08-19T15:50:00+00:00",
+      "updated_at": "2026-08-19T15:50:00+00:00"
+    },
+    {
+      "id": "serie_a:22",
+      "league": "serie_a",
+      "name": "Monza",
+      "created_at": "2026-08-19T15:50:00+00:00",
+      "updated_at": "2026-08-19T15:50:00+00:00"
+    },
+    {
+      "id": "serie_a:23",
+      "league": "serie_a",
+      "name": "Venezia",
+      "created_at": "2026-08-19T15:50:00+00:00",
+      "updated_at": "2026-08-19T15:50:00+00:00"
     }
   ]
 }
