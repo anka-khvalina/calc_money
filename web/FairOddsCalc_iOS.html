@@ -769,9 +769,12 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
 
       <h2>Вкладки</h2>
       <ul>
-        <li><b>Линия</b> — обучение модели и расчёт линии матча (главная вкладка).</li>
+        <li><b>Линия</b> — обучение модели, диагностика (RMSE, ошибки D/ничьи) и расчёт линии матча.</li>
+        <li><b>Кальк. A</b> — расчёт параметра A по парам кэфов.</li>
+        <li><b>Рейтинг</b> — рейтинг сил из CSV 1X2.</li>
+        <li><b>Счёт кэф</b> — Shin с подробным расчётом (источник данных, цепочка).</li>
         <li><b>Справочник</b> — команды по лигам (и логотипы). Списки команд в «Линии» берутся отсюда.</li>
-        <li><b>История</b> — просмотр сохранённых сезонов и матчей из Supabase. Отсюда данные можно загрузить в «Линию».</li>
+        <li><b>История</b> — просмотр и правка матчей в Supabase.</li>
         <li><b>Справка</b> — этот раздел.</li>
       </ul>
 
@@ -2958,7 +2961,8 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       const attack={},defense={}; teams.forEach(t=>{ attack[t]=sol[ai.get(t)]; defense[t]=sol[di.get(t)]; });
       const ma=Object.values(attack).reduce((a,b)=>a+b,0)/nt, md=Object.values(defense).reduce((a,b)=>a+b,0)/nt;
       teams.forEach(t=>{ attack[t]-=ma; defense[t]-=md; });
-      return {mu:sol[mu]+ma-md, attack, defense, hg:sol[hg]};
+      const rmse=Math.sqrt(res.reduce((a,e)=>a+e*e,0)/res.length);
+      return {mu:sol[mu]+ma-md, attack, defense, hg:sol[hg], rmse};
     }
     function gmNelder(f,x0){
       const n=x0.length; let simplex=[x0.slice()]; for(let i=0;i<n;i++){ const pt=x0.slice(); pt[i]+= pt[i]===0?0.2:0.2*Math.abs(pt[i]); simplex.push(pt); }
@@ -3035,11 +3039,101 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       if(cfg.useDraw){ dtarget=gmDrawTarget(draw,df,sf); [mat,diag]=gmAdjustDraw(mat,dtarget,cfg.qmin,cfg.qmax); }
       return {lh,la,df,sf,markets:gmMarkets(mat),drawTarget:dtarget,drawDiag:diag};
     }
+    function gmStrengthDiagnostics(ms, st){
+      const rows=[];
+      for (const m of ms){
+        if (!gmMatchHasTrainableLine(m)) continue;
+        if (st.ratings[m.home] == null || st.ratings[m.away] == null) continue;
+        const dModel = st.ratings[m.home] - st.ratings[m.away] + st.H * m.iHome;
+        rows.push({
+          date: m.raw.date || '',
+          home: m.home, away: m.away,
+          dMarket: m.D, dModel,
+          err: m.D - dModel,
+          w: m.wBase * (m.wLineAh || 1),
+        });
+      }
+      rows.sort((a, b) => Math.abs(b.err) - Math.abs(a.err));
+      return rows;
+    }
+
+    function gmDrawDiagRows(ms, draw, cfg){
+      const rows=[];
+      for (const m of ms){
+        if (m.px == null || m.D == null || m.S == null) continue;
+        const w1x2 = (m.raw.ho && m.raw.dо && m.raw.ao) ? 1.0 : 0.0;
+        const w = m.wBase * w1x2;
+        if (w <= GM_MIN_MATCH_WEIGHT) continue;
+        const pModel = gmDrawTarget(draw, m.D, m.S);
+        rows.push({
+          date: m.raw.date || '',
+          home: m.home, away: m.away,
+          pxShin: m.px, pxModel: pModel,
+          err: pModel - m.px,
+          w,
+        });
+      }
+      rows.sort((a, b) => Math.abs(b.err) - Math.abs(a.err));
+      return rows;
+    }
+
+    function gmMeanAbs(rows, key){
+      if (!rows.length) return 0;
+      return rows.reduce((a, r) => a + Math.abs(r[key]), 0) / rows.length;
+    }
+
+    function gmFormatTrainingReport(model, sum){
+      const { st, gl, cal, draw, prepared } = model;
+      const L=[];
+      L.push('═══ Диагностика обучения ═══');
+      L.push(`Матчей с линией D: ${sum.dLine}   команд: ${Object.keys(st.ratings).length}`);
+      L.push(`RMSE_D (сила): ${st.rmse.toFixed(4)}   RMSE_logλ (голы): ${(gl.rmse || 0).toFixed(4)}`);
+      L.push(`H=${st.H.toFixed(3)}  μ=${gl.mu.toFixed(3)}  H_g=${gl.hg.toFixed(3)}`);
+      L.push(`Калибровка: a=${cal.a.toFixed(3)} b=${cal.b.toFixed(3)} c=${cal.c.toFixed(3)} d=${cal.d.toFixed(3)} γ=${cal.gamma.toFixed(4)}`);
+      if (draw.source === 'fitted'){
+        L.push(`Ничья (fitted): α=${draw.alpha.toFixed(3)} β_D=${draw.betaD.toFixed(3)} β_S=${draw.betaS.toFixed(3)} β_S2=${draw.betaS2.toFixed(3)} β_DxS=${draw.betaDxS.toFixed(3)}`);
+      } else {
+        L.push(`Ничья: ${draw.source} (дефолтные коэффициенты)`);
+      }
+      const dRows = gmStrengthDiagnostics(prepared, st);
+      if (dRows.length){
+        L.push('');
+        L.push(`--- Ошибка D = D_market − D_model (MAE ${gmMeanAbs(dRows, 'err').toFixed(3)}, топ-15) ---`);
+        dRows.slice(0, 15).forEach(r => {
+          L.push(`  ${r.date}  ${r.home}–${r.away}  D_mkt=${r.dMarket.toFixed(2)}  D_mod=${r.dModel.toFixed(2)}  Δ=${r.err.toFixed(2)}  w=${r.w.toFixed(2)}`);
+        });
+      }
+      const xRows = gmDrawDiagRows(prepared, draw, model.cfg);
+      if (xRows.length){
+        L.push('');
+        L.push(`--- Ничья: P_model − P_Shin (MAE ${(gmMeanAbs(xRows, 'err') * 100).toFixed(2)} п.п., топ-10) ---`);
+        xRows.slice(0, 10).forEach(r => {
+          L.push(`  ${r.date}  ${r.home}–${r.away}  Shin ${(r.pxShin * 100).toFixed(1)}%  мод ${(r.pxModel * 100).toFixed(1)}%  Δ=${(r.err * 100).toFixed(1)} п.п.`);
+        });
+      }
+      if (sum.bySeason && Object.keys(sum.bySeason).length){
+        L.push('');
+        L.push('--- Матчей с D по season_id ---');
+        Object.entries(sum.bySeason).sort((a, b) => Number(b[0]) - Number(a[0])).forEach(([sid, n]) => {
+          const s = goalLineSeasons.find(x => goalNormSeasonId(x.season_id) === goalNormSeasonId(sid));
+          L.push(`  ${s ? s.season_label : sid}: ${n}`);
+        });
+      }
+      L.push('');
+      L.push('--- Рейтинги (сила / атака / оборона) ---');
+      Object.entries(st.ratings).sort((a, b) => b[1] - a[1]).forEach(([t, r]) => {
+        L.push(`  ${t}: r=${r.toFixed(3)}  A=${(gl.attack[t] || 0).toFixed(3)}  Df=${(gl.defense[t] || 0).toFixed(3)}`);
+      });
+      L.push('');
+      L.push('↓ Выберите команды ниже → «Рассчитать линию» (1X2, тоталы, форы, топ счетов).');
+      return L.join('\n');
+    }
+
     function gmTrain(raw,cfg){
       const ms=gmPrepare(raw,cfg);
       const st=gmFitStrength(ms,cfg), gl=gmFitAD(ms,cfg), cal=gmCalibrate(ms,st,gl,cfg);
       const draw=cfg.useDraw?gmFitDraw(ms,cfg):{alpha:-0.95,betaD:-0.55,betaS:0,betaS2:0,betaDxS:0,source:'default'};
-      return {st,gl,cal,draw,cfg,nMatches:ms.length};
+      return {st,gl,cal,draw,cfg,nMatches:ms.length,prepared:ms};
     }
     let gmModel=null;
     function gmFillTeams(){
@@ -4069,15 +4163,13 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         const sum = goalPreflightTraining(goalLoadedRaw, cfg);
         gmModel = gmTrain(goalLoadedRaw, cfg);
         const { st, gl, cal, draw } = gmModel;
-        const rk = Object.entries(st.ratings).sort((a, b) => b[1] - a[1])
-          .map(([t, r]) => `  ${t}: r=${r.toFixed(3)} A=${(gl.attack[t] || 0).toFixed(3)} Df=${(gl.defense[t] || 0).toFixed(3)}`).join('\n');
         const meta = goalLoadedMeta;
         const skip = meta && meta.excluded ? ` (из ${meta.total} в выборке, ${meta.excluded} без кэфов)` : '';
         document.getElementById('goalMeta').textContent =
-          `Обучено на ${sum.dLine} матчах с линией D${skip}. Команд: ${Object.keys(st.ratings).length}  H=${st.H.toFixed(3)}\n` +
-          `μ=${gl.mu.toFixed(3)} H_g=${gl.hg.toFixed(3)}  калибр a=${cal.a.toFixed(3)} b=${cal.b.toFixed(3)} c=${cal.c.toFixed(3)} d=${cal.d.toFixed(3)} γ=${cal.gamma.toFixed(4)}  ничья:${draw.source}`;
-        document.getElementById('goalOut').textContent = 'Рейтинги (сила / атака / оборона):\n' + rk
-          + '\n\n↓ Выберите команды ниже и нажмите «Рассчитать линию» для 1X2 / тоталов / фор.';
+          `Обучено на ${sum.dLine} матчах с линией D${skip}. Команд: ${Object.keys(st.ratings).length}  `
+          + `H=${st.H.toFixed(3)}  RMSE_D=${st.rmse.toFixed(3)}  RMSE_logλ=${(gl.rmse || 0).toFixed(3)}\n`
+          + `μ=${gl.mu.toFixed(3)} H_g=${gl.hg.toFixed(3)}  калибр a=${cal.a.toFixed(3)} b=${cal.b.toFixed(3)} c=${cal.c.toFixed(3)} d=${cal.d.toFixed(3)} γ=${cal.gamma.toFixed(4)}  ничья:${draw.source}`;
+        document.getElementById('goalOut').textContent = gmFormatTrainingReport(gmModel, sum);
         goalSyncPredictLeagueFromLoaded();
         gmFillTeams();
       } catch (e){ alert(e.message || e); }
@@ -4168,6 +4260,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
     });
     loadApiConfig().catch(e => console.error('API config preload failed', e));
     window.refreshGoalTeams = gmFillTeams;
+    window.refreshShinTeamSelects = refreshShinTeamSelects;
     goalInitTab().catch(e => console.error('goalInitTab failed', e));
     setJsStatus('Версия goal-model-v1 — Линия: Supabase → S/D → λ → матрица → рынки');
     } catch (err) {
