@@ -551,7 +551,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <label class="block-label" for="goalSrcSeasons">Сезоны</label>
           <select id="goalSrcSeasons" multiple size="5"></select>
           <label class="goal-all-seasons">
-            <input id="goalSrcAllSeasons" type="checkbox" />
+            <input id="goalSrcAllSeasons" type="checkbox" checked />
             <span>Все сезоны</span>
           </label>
           <div class="hint" style="margin-top:4px;font-size:11px">Ctrl/Cmd + клик</div>
@@ -1356,6 +1356,19 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       if (res.status === 204) return null;
       const raw = await res.text();
       return raw ? JSON.parse(raw) : null;
+    }
+
+    /** Supabase REST отдаёт не более ~1000 строк — догружаем постранично. */
+    async function sbFetchAllRows(path, { pageSize = 500 } = {}){
+      const out = [];
+      const join = path.includes('?') ? '&' : '?';
+      for (let offset = 0; ; offset += pageSize){
+        const rows = await sbFetch(`${path}${join}offset=${offset}&limit=${pageSize}`);
+        if (!Array.isArray(rows) || !rows.length) break;
+        out.push(...rows);
+        if (rows.length < pageSize) break;
+      }
+      return out;
     }
 
     function sbLeagueName(leagueId){
@@ -3070,7 +3083,7 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
 
     async function sbLoadSeasonMatches(leagueId, seasonId){
       const q = `select=${SB_MATCH_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=eq.${encodeURIComponent(seasonId)}&order=match_date.asc`;
-      const rows = await sbFetch(`/v_matches_full?${q}`);
+      const rows = await sbFetchAllRows(`/v_matches_full?${q}`);
       const key = sbSeasonKey(leagueId, seasonId);
       window.__SB.matchesBySeason[key] = Array.isArray(rows) ? rows : [];
       return window.__SB.matchesBySeason[key];
@@ -3705,8 +3718,15 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       if (!seasonIds.length) return [];
       const ids = seasonIds.map(s => encodeURIComponent(String(s))).join(',');
       const q = `select=${SB_MATCH_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&season_id=in.(${ids})&order=match_date.asc`;
-      const rows = await sbFetch(`/v_matches_full?${q}`);
+      const rows = await sbFetchAllRows(`/v_matches_full?${q}`);
       return Array.isArray(rows) ? rows : [];
+    }
+
+    function goalClearLoadedData(hint){
+      goalLoadedRaw = null;
+      goalLoadedMeta = null;
+      const meta = document.getElementById('goalMeta');
+      if (meta && hint) meta.textContent = hint;
     }
 
     function goalPopulateLeagueSelect(){
@@ -3840,11 +3860,18 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       }
     }
 
-    document.getElementById('goalSrcLeague').addEventListener('change', () => { goalOnLeagueChange(true); });
+    document.getElementById('goalSrcLeague').addEventListener('change', () => {
+      goalClearLoadedData('Лига изменена — нажмите «Загрузить из БД».');
+      goalOnLeagueChange(true);
+    });
     document.getElementById('goalRefreshSeasons').addEventListener('click', () => { goalOnLeagueChange(true); });
-    document.getElementById('goalSrcAllSeasons').addEventListener('change', () => { goalRenderSeasonMulti(); });
+    document.getElementById('goalSrcAllSeasons').addEventListener('change', () => {
+      goalClearLoadedData('Сезоны изменены — нажмите «Загрузить из БД».');
+      goalRenderSeasonMulti();
+    });
     document.getElementById('goalSrcSeasons').addEventListener('change', () => {
       document.getElementById('goalSrcAllSeasons').checked = false;
+      goalClearLoadedData('Сезоны изменены — нажмите «Загрузить из БД».');
       goalApplyDefaultSeasonWeights();
       goalRenderSeasonWeights();
     });
