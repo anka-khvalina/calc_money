@@ -256,7 +256,7 @@
         try {
           document.documentElement.addEventListener('touchstart', function () {}, { passive: true });
           document.body.addEventListener('touchstart', function () {}, { passive: true });
-          var TAB = { a: 'tab-a', rank: 'tab-rank', teams: 'tab-teams', shin: 'tab-shin', hist: 'tab-hist' };
+          var TAB = { a: 'tab-a', rank: 'tab-rank', teams: 'tab-teams', shin: 'tab-shin', hist: 'tab-hist', goal: 'tab-goal', help: 'tab-help' };
           function switchTab(id) {
             var btns = document.querySelectorAll('.tab-btn');
             for (var i = 0; i < btns.length; i++) {
@@ -274,9 +274,8 @@
               if (window.goalInitTab) window.goalInitTab(true);
               if (window.refreshGoalTeams) window.refreshGoalTeams();
             }
-            if (id === 'teams') {
-              if (window.sbInitTeamsTab) window.sbInitTeamsTab();
-            }
+            if (id === 'teams' && window.sbInitTeamsTab) window.sbInitTeamsTab();
+            if (id === 'shin' && window.refreshShinTeamSelects) window.refreshShinTeamSelects();
           }
           var tabsEl = document.querySelector('.tabs');
           function onTabActivate(e) {
@@ -303,6 +302,9 @@
     <div id="jsStatus" class="js-status">Инициализация…</div>
     <div class="tabs">
       <button type="button" class="tab-btn active" data-tab="goal">Линия</button>
+      <button type="button" class="tab-btn" data-tab="a">Кальк. A</button>
+      <button type="button" class="tab-btn" data-tab="rank">Рейтинг</button>
+      <button type="button" class="tab-btn" data-tab="shin">Счёт кэф</button>
       <button type="button" class="tab-btn" data-tab="teams">Справочник</button>
       <button type="button" class="tab-btn" data-tab="hist">История</button>
       <button type="button" class="tab-btn" data-tab="help">Справка</button>
@@ -3692,6 +3694,25 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
       return isNaN(n) ? String(sid) : n;
     }
 
+    function goalRegistryKeyFromMeta(meta){
+      if (!meta) return null;
+      const name = String(meta.leagueName || '').toLowerCase();
+      if (name.includes('premier') || name.includes('apl') || name === 'epl') return 'epl';
+      if (name.includes('la liga') || name.includes('laliga')) return 'la_liga';
+      if (name.includes('bundesliga')) return 'bundesliga';
+      if (name.includes('serie a')) return 'serie_a';
+      if (name.includes('ligue 1') || name.includes('ligue1')) return 'ligue_1';
+      return null;
+    }
+
+    function goalSyncPredictLeagueFromLoaded(){
+      const key = goalRegistryKeyFromMeta(goalLoadedMeta);
+      const sel = document.getElementById('goalLeague');
+      if (!key || !sel) return;
+      sel.value = key;
+      gmFillTeams();
+    }
+
     function goalDefaultSeasonWeight(index){
       if (index === 0) return 1;
       if (index === 1) return 0.7;
@@ -4055,7 +4076,9 @@ K<sub>честный</sub> = 1/P ,   K<sub>с маржой</sub> = 1 / (P·(1+м
         document.getElementById('goalMeta').textContent =
           `Обучено на ${sum.dLine} матчах с линией D${skip}. Команд: ${Object.keys(st.ratings).length}  H=${st.H.toFixed(3)}\n` +
           `μ=${gl.mu.toFixed(3)} H_g=${gl.hg.toFixed(3)}  калибр a=${cal.a.toFixed(3)} b=${cal.b.toFixed(3)} c=${cal.c.toFixed(3)} d=${cal.d.toFixed(3)} γ=${cal.gamma.toFixed(4)}  ничья:${draw.source}`;
-        document.getElementById('goalOut').textContent = 'Рейтинги (сила / атака / оборона):\n' + rk;
+        document.getElementById('goalOut').textContent = 'Рейтинги (сила / атака / оборона):\n' + rk
+          + '\n\n↓ Выберите команды ниже и нажмите «Рассчитать линию» для 1X2 / тоталов / фор.';
+        goalSyncPredictLeagueFromLoaded();
         gmFillTeams();
       } catch (e){ alert(e.message || e); }
     });
