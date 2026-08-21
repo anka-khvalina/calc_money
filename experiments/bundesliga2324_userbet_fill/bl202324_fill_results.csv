@@ -1,0 +1,4 @@
+match_id,match_date,home_team,away_team,ps_id,fid,userbet_home,userbet_away,slug,lineups_url,ah_away_odds,ah_home_odds,away_odds,closing_ah_home,closing_total_line,draw_odds,home_odds,over_odds,under_odds,status,error
+15131,2023-08-18,Werder Bremen,Bayern Munich,1577093662,319286,Werder Bremen,Bayern Munich,bundesliga-werder_bremen-bayern_munich,https://userbet.info/lineups_fixture/bundesliga-werder_bremen-bayern_munich/319286/,1.28,3.99,1.15,0.0,3.5,6.8,50.67,4.94,1.2,ok,
+15132,2023-08-19,Augsburg,M'gladbach,1577142154,320132,Augsburg,B. Monchengladbach,bundesliga-augsburg-b._monchengladbach,https://userbet.info/lineups_fixture/bundesliga-augsburg-b._monchengladbach/320132/,2.12,1.78,86.07,0.0,7.5,7.76,1.12,4.96,1.2,ok,
+15137,2023-08-19,Dortmund,FC Koln,1577154751,320137,Dortmund (Ger),FC Koln,bundesliga-dortmund_ger-fc_koln,https://userbet.info/lineups_fixture/bundesliga-dortmund_ger-fc_koln/320137/,2.77,1.49,9.73,0.0,1.5,1.32,5.26,4.77,1.21,ok,
