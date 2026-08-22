@@ -1,0 +1,422 @@
+Loading Supabase 0e928134-ae08-48fd-8d2c-3539a994b054 season 1 (2024-25)…
+  306 matches in window
+Scraping archive for 98 days (cpid=2)…
+  2024-08-23: 1 Bundesliga fixtures
+  2024-08-24: 6 Bundesliga fixtures
+  2024-08-25: 2 Bundesliga fixtures
+  2024-08-30: 1 Bundesliga fixtures
+  2024-08-31: 8 Bundesliga fixtures
+  2024-09-01: 4 Bundesliga fixtures
+  2024-09-13: 2 Bundesliga fixtures
+  2024-09-14: 8 Bundesliga fixtures
+  2024-09-15: 4 Bundesliga fixtures
+  2024-09-20: 2 Bundesliga fixtures
+  2024-09-21: 7 Bundesliga fixtures
+  2024-09-22: 5 Bundesliga fixtures
+  2024-09-27: 2 Bundesliga fixtures
+  2024-09-28: 8 Bundesliga fixtures
+  2024-09-29: 4 Bundesliga fixtures
+  2024-10-04: 2 Bundesliga fixtures
+  2024-10-05: 7 Bundesliga fixtures
+  2024-10-06: 5 Bundesliga fixtures
+  2024-10-18: 2 Bundesliga fixtures
+  2024-10-19: 8 Bundesliga fixtures
+  2024-10-20: 5 Bundesliga fixtures
+  2024-10-25: 1 Bundesliga fixtures
+  2024-10-26: 5 Bundesliga fixtures
+  2024-10-27: 3 Bundesliga fixtures
+  2024-11-01: 2 Bundesliga fixtures
+  2024-11-02: 8 Bundesliga fixtures
+  2024-11-03: 4 Bundesliga fixtures
+  2024-11-08: 2 Bundesliga fixtures
+  2024-11-09: 7 Bundesliga fixtures
+  2024-11-10: 5 Bundesliga fixtures
+  2024-11-22: 1 Bundesliga fixtures
+  2024-11-23: 6 Bundesliga fixtures
+  2024-11-24: 2 Bundesliga fixtures
+  2024-11-29: 1 Bundesliga fixtures
+  2024-11-30: 6 Bundesliga fixtures
+  2024-12-01: 2 Bundesliga fixtures
+  2024-12-06: 2 Bundesliga fixtures
+  2024-12-07: 8 Bundesliga fixtures
+  2024-12-08: 3 Bundesliga fixtures
+  2024-12-13: 2 Bundesliga fixtures
+  2024-12-14: 7 Bundesliga fixtures
+  2024-12-15: 5 Bundesliga fixtures
+  2024-12-20: 1 Bundesliga fixtures
+  2024-12-21: 6 Bundesliga fixtures
+  2024-12-22: 2 Bundesliga fixtures
+  2025-01-10: 1 Bundesliga fixtures
+  2025-01-11: 6 Bundesliga fixtures
+  2025-01-12: 2 Bundesliga fixtures
+  2025-01-14: 4 Bundesliga fixtures
+  2025-01-15: 5 Bundesliga fixtures
+  2025-01-17: 1 Bundesliga fixtures
+  2025-01-18: 6 Bundesliga fixtures
+  2025-01-19: 2 Bundesliga fixtures
+  2025-01-24: 1 Bundesliga fixtures
+  2025-01-25: 6 Bundesliga fixtures
+  2025-01-26: 4 Bundesliga fixtures
+  2025-01-31: 2 Bundesliga fixtures
+  2025-02-01: 7 Bundesliga fixtures
+  2025-02-02: 4 Bundesliga fixtures
+  2025-02-07: 2 Bundesliga fixtures
+  2025-02-08: 8 Bundesliga fixtures
+  2025-02-09: 4 Bundesliga fixtures
+  2025-02-14: 2 Bundesliga fixtures
+  2025-02-15: 7 Bundesliga fixtures
+  2025-02-16: 6 Bundesliga fixtures
+  2025-02-21: 1 Bundesliga fixtures
+  2025-02-22: 5 Bundesliga fixtures
+  2025-02-23: 3 Bundesliga fixtures
+  2025-02-28: 1 Bundesliga fixtures
+  2025-03-01: 6 Bundesliga fixtures
+  2025-03-02: 2 Bundesliga fixtures
+  2025-03-07: 2 Bundesliga fixtures
+  2025-03-08: 8 Bundesliga fixtures
+  2025-03-09: 4 Bundesliga fixtures
+  2025-03-14: 2 Bundesliga fixtures
+  2025-03-15: 7 Bundesliga fixtures
+  2025-03-16: 5 Bundesliga fixtures
+  2025-03-28: 2 Bundesliga fixtures
+  2025-03-29: 8 Bundesliga fixtures
+  2025-03-30: 5 Bundesliga fixtures
+  2025-04-04: 1 Bundesliga fixtures
+  2025-04-05: 6 Bundesliga fixtures
+  2025-04-06: 2 Bundesliga fixtures
+  2025-04-11: 2 Bundesliga fixtures
+  2025-04-12: 8 Bundesliga fixtures
+  2025-04-13: 4 Bundesliga fixtures
+  2025-04-19: 6 Bundesliga fixtures
+  2025-04-20: 3 Bundesliga fixtures
+  2025-04-25: 2 Bundesliga fixtures
+  2025-04-26: 8 Bundesliga fixtures
+  2025-04-27: 4 Bundesliga fixtures
+  2025-05-02: 2 Bundesliga fixtures
+  2025-05-03: 7 Bundesliga fixtures
+  2025-05-04: 5 Bundesliga fixtures
+  2025-05-09: 1 Bundesliga fixtures
+  2025-05-10: 5 Bundesliga fixtures
+  2025-05-11: 9 Bundesliga fixtures
+  2025-05-17: 9 Bundesliga fixtures
+Joined 306 / 306; unmatched SB=0 archive leftover=100
+Wrote /opt/cursor/artifacts/bl202425_userbet_fill/bl202425_id_map.csv
+[1/306] 2024-08-23 M'gladbach–Leverkusen ps_id=1593534691 → written (9 fields)
+[2/306] 2024-08-24 Augsburg–Werder Bremen ps_id=1593534690 → written (9 fields)
+[3/306] 2024-08-24 Mainz–Union Berlin ps_id=1593534696 → written (9 fields)
+[4/306] 2024-08-24 RB Leipzig–Bochum ps_id=1593534689 → written (9 fields)
+[5/306] 2024-08-24 Hoffenheim–Holstein Kiel ps_id=1593534688 → written (9 fields)
+[6/306] 2024-08-24 Dortmund–Ein Frankfurt ps_id=1593534692 → written (9 fields)
+[7/306] 2024-08-24 Freiburg–Stuttgart ps_id=1593534694 → written (9 fields)
+[8/306] 2024-08-25 St Pauli–Heidenheim ps_id=1593534693 → written (9 fields)
+[9/306] 2024-08-25 Wolfsburg–Bayern Munich ps_id=1593534695 → written (9 fields)
+[10/306] 2024-08-30 Union Berlin–St Pauli ps_id=1595525844 → written (9 fields)
+[11/306] 2024-08-31 Stuttgart–Mainz ps_id=1595514830 → written (9 fields)
+[12/306] 2024-08-31 Leverkusen–RB Leipzig ps_id=1595514828 → written (9 fields)
+[13/306] 2024-08-31 Werder Bremen–Dortmund ps_id=1595515933 → written (9 fields)
+[14/306] 2024-08-31 Bochum–M'gladbach ps_id=1595525841 → written (9 fields)
+[15/306] 2024-08-31 Ein Frankfurt–Hoffenheim ps_id=1595525842 → written (9 fields)
+[16/306] 2024-08-31 Holstein Kiel–Wolfsburg ps_id=1595525827 → written (9 fields)
+[17/306] 2024-09-01 Heidenheim–Augsburg ps_id=1595525825 → written (9 fields)
+[18/306] 2024-09-01 Bayern Munich–Freiburg ps_id=1595525819 → written (9 fields)
+[19/306] 2024-09-13 Dortmund–Heidenheim ps_id=1596236313 → written (9 fields)
+[20/306] 2024-09-14 Holstein Kiel–Bayern Munich ps_id=1596236270 → written (9 fields)
+[21/306] 2024-09-14 Freiburg–Bochum ps_id=1596236268 → written (9 fields)
+[22/306] 2024-09-14 Hoffenheim–Leverkusen ps_id=1596236261 → written (9 fields)
+[23/306] 2024-09-14 M'gladbach–Stuttgart ps_id=1596236266 → written (9 fields)
+[24/306] 2024-09-14 RB Leipzig–Union Berlin ps_id=1596236264 → written (9 fields)
+[25/306] 2024-09-14 Wolfsburg–Ein Frankfurt ps_id=1596236269 → written (9 fields)
+[26/306] 2024-09-15 Mainz–Werder Bremen ps_id=1596236287 → written (9 fields)
+[27/306] 2024-09-15 Augsburg–St Pauli ps_id=1596236265 → written (9 fields)
+[28/306] 2024-09-20 Augsburg–Mainz ps_id=1596725152 → written (9 fields)
+[29/306] 2024-09-21 Ein Frankfurt–M'gladbach ps_id=1596725379 → written (9 fields)
+[30/306] 2024-09-21 Heidenheim–Freiburg ps_id=1596725509 → written (9 fields)
+[31/306] 2024-09-21 Union Berlin–Hoffenheim ps_id=1596722767 → written (9 fields)
+[32/306] 2024-09-21 Werder Bremen–Bayern Munich ps_id=1596722771 → written (9 fields)
+[33/306] 2024-09-21 Bochum–Holstein Kiel ps_id=1596716594 → written (9 fields)
+[34/306] 2024-09-22 Stuttgart–Dortmund ps_id=1596727020 → written (9 fields)
+[35/306] 2024-09-22 Leverkusen–Wolfsburg ps_id=1596727019 → written (9 fields)
+[36/306] 2024-09-22 St Pauli–RB Leipzig ps_id=1596716726 → written (9 fields)
+[37/306] 2024-09-27 Dortmund–Bochum ps_id=1597183586 → written (9 fields)
+[38/306] 2024-09-28 Freiburg–St Pauli ps_id=1597183583 → written (9 fields)
+[39/306] 2024-09-28 Bayern Munich–Leverkusen ps_id=1597183533 → written (9 fields)
+[40/306] 2024-09-28 RB Leipzig–Augsburg ps_id=1597183534 → written (9 fields)
+[41/306] 2024-09-28 M'gladbach–Union Berlin ps_id=1597183536 → written (9 fields)
+[42/306] 2024-09-28 Wolfsburg–Stuttgart ps_id=1597183632 → written (9 fields)
+[43/306] 2024-09-28 Mainz–Heidenheim ps_id=1597183535 → written (9 fields)
+[44/306] 2024-09-29 Hoffenheim–Werder Bremen ps_id=1597183584 → written (9 fields)
+[45/306] 2024-09-29 Holstein Kiel–Ein Frankfurt ps_id=1597183589 → written (9 fields)
+[46/306] 2024-10-04 Augsburg–M'gladbach ps_id=1597648684 → written (9 fields)
+[47/306] 2024-10-05 Leverkusen–Holstein Kiel ps_id=1597648672 → written (9 fields)
+[48/306] 2024-10-05 Bochum–Wolfsburg ps_id=1597648696 → written (9 fields)
+[49/306] 2024-10-05 Union Berlin–Dortmund ps_id=1597648693 → written (9 fields)
+[50/306] 2024-10-05 Werder Bremen–Freiburg ps_id=1597648686 → written (9 fields)
+[51/306] 2024-10-05 St Pauli–Mainz ps_id=1597648690 → written (9 fields)
+[52/306] 2024-10-06 Stuttgart–Hoffenheim ps_id=1597648676 → written (9 fields)
+[53/306] 2024-10-06 Ein Frankfurt–Bayern Munich ps_id=1597648694 → written (9 fields)
+[54/306] 2024-10-06 Heidenheim–RB Leipzig ps_id=1597648675 → written (9 fields)
+[55/306] 2024-10-18 Dortmund–St Pauli ps_id=1598229675 → written (9 fields)
+[56/306] 2024-10-19 M'gladbach–Heidenheim ps_id=1598229676 → written (9 fields)
+[57/306] 2024-10-19 Leverkusen–Ein Frankfurt ps_id=1598229681 → written (9 fields)
+[58/306] 2024-10-19 Bayern Munich–Stuttgart ps_id=1598229673 → written (9 fields)
+[59/306] 2024-10-19 Mainz–RB Leipzig ps_id=1598229680 → written (9 fields)
+[60/306] 2024-10-19 Hoffenheim–Bochum ps_id=1598229674 → written (9 fields)
+[61/306] 2024-10-19 Freiburg–Augsburg ps_id=1598229678 → written (9 fields)
+[62/306] 2024-10-20 Wolfsburg–Werder Bremen ps_id=1598229672 → written (9 fields)
+[63/306] 2024-10-20 Holstein Kiel–Union Berlin ps_id=1598229677 → written (9 fields)
+[64/306] 2024-10-25 Mainz–M'gladbach ps_id=1598710918 → written (9 fields)
+[65/306] 2024-10-26 Stuttgart–Holstein Kiel ps_id=1598742323 → written (9 fields)
+[66/306] 2024-10-26 St Pauli–Wolfsburg ps_id=1598742336 → written (9 fields)
+[67/306] 2024-10-26 Augsburg–Dortmund ps_id=1598742302 → written (9 fields)
+[68/306] 2024-10-26 RB Leipzig–Freiburg ps_id=1598742307 → written (9 fields)
+[69/306] 2024-10-26 Werder Bremen–Leverkusen ps_id=1598742290 → written (9 fields)
+[70/306] 2024-10-27 Heidenheim–Hoffenheim ps_id=1598742289 → written (9 fields)
+[71/306] 2024-10-27 Union Berlin–Ein Frankfurt ps_id=1598742332 → written (9 fields)
+[72/306] 2024-10-27 Bochum–Bayern Munich ps_id=1598742303 → written (9 fields)
+[73/306] 2024-11-01 Leverkusen–Stuttgart ps_id=1599289840 → written (9 fields)
+[74/306] 2024-11-02 Holstein Kiel–Heidenheim ps_id=1599289830 → written (9 fields)
+[75/306] 2024-11-02 Ein Frankfurt–Bochum ps_id=1599289844 → written (9 fields)
+[76/306] 2024-11-02 Hoffenheim–St Pauli ps_id=1599289828 → written (9 fields)
+[77/306] 2024-11-02 Bayern Munich–Union Berlin ps_id=1599289827 → written (9 fields)
+[78/306] 2024-11-02 Dortmund–RB Leipzig ps_id=1599289841 → written (9 fields)
+[79/306] 2024-11-02 Wolfsburg–Augsburg ps_id=1599289836 → written (9 fields)
+[80/306] 2024-11-03 M'gladbach–Werder Bremen ps_id=1599289843 → written (9 fields)
+[81/306] 2024-11-03 Freiburg–Mainz ps_id=1599289839 → written (9 fields)
+[82/306] 2024-11-08 Union Berlin–Freiburg ps_id=1599734754 → written (9 fields)
+[83/306] 2024-11-09 St Pauli–Bayern Munich ps_id=1599734752 → written (9 fields)
+[84/306] 2024-11-09 Mainz–Dortmund ps_id=1599734751 → written (9 fields)
+[85/306] 2024-11-09 Bochum–Leverkusen ps_id=1599734749 → written (9 fields)
+[86/306] 2024-11-09 Werder Bremen–Holstein Kiel ps_id=1599734753 → written (9 fields)
+[87/306] 2024-11-09 RB Leipzig–M'gladbach ps_id=1599734767 → written (9 fields)
+[88/306] 2024-11-10 Heidenheim–Wolfsburg ps_id=1599734760 → written (9 fields)
+[89/306] 2024-11-10 Augsburg–Hoffenheim ps_id=1599734748 → written (9 fields)
+[90/306] 2024-11-10 Stuttgart–Ein Frankfurt ps_id=1599734757 → written (9 fields)
+[91/306] 2024-11-22 Bayern Munich–Augsburg ps_id=1600190490 → written (9 fields)
+[92/306] 2024-11-23 Ein Frankfurt–Werder Bremen ps_id=1600190482 → written (9 fields)
+[93/306] 2024-11-23 Dortmund–Freiburg ps_id=1600190489 → written (9 fields)
+[94/306] 2024-11-23 Hoffenheim–RB Leipzig ps_id=1600190477 → written (9 fields)
+[95/306] 2024-11-23 Leverkusen–Heidenheim ps_id=1600190519 → written (9 fields)
+[96/306] 2024-11-23 Stuttgart–Bochum ps_id=1600190500 → written (9 fields)
+[97/306] 2024-11-23 Wolfsburg–Union Berlin ps_id=1600190492 → written (9 fields)
+[98/306] 2024-11-24 Holstein Kiel–Mainz ps_id=1600190510 → written (9 fields)
+[99/306] 2024-11-24 M'gladbach–St Pauli ps_id=1600190505 → written (9 fields)
+[100/306] 2024-11-29 St Pauli–Holstein Kiel ps_id=1600830079 → written (9 fields)
+[101/306] 2024-11-30 Augsburg–Bochum ps_id=1600831716 → written (9 fields)
+[102/306] 2024-11-30 Union Berlin–Leverkusen ps_id=1600831359 → written (9 fields)
+[103/306] 2024-11-30 RB Leipzig–Wolfsburg ps_id=1600830081 → written (9 fields)
+[104/306] 2024-11-30 Freiburg–M'gladbach ps_id=1600831358 → written (9 fields)
+[105/306] 2024-11-30 Dortmund–Bayern Munich ps_id=1600831717 → written (9 fields)
+[106/306] 2024-11-30 Werder Bremen–Stuttgart ps_id=1600830082 → written (9 fields)
+[107/306] 2024-12-01 Heidenheim–Ein Frankfurt ps_id=1600830089 → written (9 fields)
+[108/306] 2024-12-01 Mainz–Hoffenheim ps_id=1600830088 → written (9 fields)
+[109/306] 2024-12-06 Stuttgart–Union Berlin ps_id=1601181886 → written (9 fields)
+[110/306] 2024-12-07 Ein Frankfurt–Augsburg ps_id=1601182906 → written (9 fields)
+[111/306] 2024-12-07 Bayern Munich–Heidenheim ps_id=1601182905 → written (9 fields)
+[112/306] 2024-12-07 Bochum–Werder Bremen ps_id=1601181807 → written (9 fields)
+[113/306] 2024-12-07 Holstein Kiel–RB Leipzig ps_id=1601181887 → written (9 fields)
+[114/306] 2024-12-07 Leverkusen–St Pauli ps_id=1601181808 → written (9 fields)
+[115/306] 2024-12-07 M'gladbach–Dortmund ps_id=1601181884 → written (9 fields)
+[116/306] 2024-12-08 Hoffenheim–Freiburg ps_id=1601181885 → written (9 fields)
+[117/306] 2024-12-08 Wolfsburg–Mainz ps_id=1601182907 → written (9 fields)
+[118/306] 2024-12-13 Freiburg–Wolfsburg ps_id=1601548533 → written (9 fields)
+[119/306] 2024-12-14 M'gladbach–Holstein Kiel ps_id=1601548534 → written (9 fields)
+[120/306] 2024-12-14 Augsburg–Leverkusen ps_id=1601545881 → written (9 fields)
+[121/306] 2024-12-14 Mainz–Bayern Munich ps_id=1601547027 → written (9 fields)
+[122/306] 2024-12-14 St Pauli–Werder Bremen ps_id=1601547031 → written (9 fields)
+[123/306] 2024-12-14 Union Berlin–Bochum ps_id=1601547030 → written (9 fields)
+[124/306] 2024-12-15 RB Leipzig–Ein Frankfurt ps_id=1601547029 → written (9 fields)
+[125/306] 2024-12-15 Dortmund–Hoffenheim ps_id=1601547028 → written (9 fields)
+[126/306] 2024-12-15 Heidenheim–Stuttgart ps_id=1601548535 → written (9 fields)
+[127/306] 2024-12-20 Bayern Munich–RB Leipzig ps_id=1601911503 → written (9 fields)
+[128/306] 2024-12-21 Stuttgart–St Pauli ps_id=1601911502 → written (9 fields)
+[129/306] 2024-12-21 Hoffenheim–M'gladbach ps_id=1601911504 → written (9 fields)
+[130/306] 2024-12-21 Holstein Kiel–Augsburg ps_id=1601909544 → written (9 fields)
+[131/306] 2024-12-21 Ein Frankfurt–Mainz ps_id=1601909547 → written (9 fields)
+[132/306] 2024-12-21 Werder Bremen–Union Berlin ps_id=1601909545 → written (9 fields)
+[133/306] 2024-12-21 Leverkusen–Freiburg ps_id=1601909546 → written (9 fields)
+[134/306] 2024-12-22 Wolfsburg–Dortmund ps_id=1601911501 → written (9 fields)
+[135/306] 2024-12-22 Bochum–Heidenheim ps_id=1601910935 → written (9 fields)
+[136/306] ERROR Dortmund–Leverkusen: no ps_id
+[137/306] 2025-01-11 Mainz–Bochum ps_id=1602216976 → written (9 fields)
+[138/306] 2025-01-11 M'gladbach–Bayern Munich ps_id=1602218019 → written (9 fields)
+[139/306] 2025-01-11 Hoffenheim–Wolfsburg ps_id=1602216977 → written (9 fields)
+[140/306] 2025-01-11 St Pauli–Ein Frankfurt ps_id=1602218318 → written (9 fields)
+[141/306] 2025-01-11 Heidenheim–Union Berlin ps_id=1602218018 → written (9 fields)
+[142/306] 2025-01-11 Freiburg–Holstein Kiel ps_id=1602218319 → written (9 fields)
+[143/306] 2025-01-12 Augsburg–Stuttgart ps_id=1602220677 → written (9 fields)
+[144/306] 2025-01-12 RB Leipzig–Werder Bremen ps_id=1602220676 → written (9 fields)
+[145/306] 2025-01-14 Ein Frankfurt–Freiburg ps_id=1602462734 → written (9 fields)
+[146/306] 2025-01-14 Wolfsburg–M'gladbach ps_id=1602463636 → written (9 fields)
+[147/306] 2025-01-14 Leverkusen–Mainz ps_id=1602462732 → written (9 fields)
+[148/306] 2025-01-14 Holstein Kiel–Dortmund ps_id=1602463635 → written (9 fields)
+[149/306] 2025-01-15 Bayern Munich–Hoffenheim ps_id=1602462630 → written (9 fields)
+[150/306] 2025-01-15 Werder Bremen–Heidenheim ps_id=1602462631 → written (9 fields)
+[151/306] 2025-01-15 Union Berlin–Augsburg ps_id=1602462632 → written (9 fields)
+[152/306] 2025-01-15 Stuttgart–RB Leipzig ps_id=1602462629 → written (9 fields)
+[153/306] 2025-01-15 Bochum–St Pauli ps_id=1602462733 → written (9 fields)
+[154/306] 2025-01-17 Ein Frankfurt–Dortmund ps_id=1602826114 → written (9 fields)
+[155/306] 2025-01-18 Leverkusen–M'gladbach ps_id=1602850677 → written (9 fields)
+[156/306] 2025-01-18 Bayern Munich–Wolfsburg ps_id=1602850635 → written (9 fields)
+[157/306] 2025-01-18 Heidenheim–St Pauli ps_id=1602849207 → written (9 fields)
+[158/306] 2025-01-18 Bochum–RB Leipzig ps_id=1602850634 → written (9 fields)
+[159/306] 2025-01-18 Holstein Kiel–Hoffenheim ps_id=1602849205 → written (9 fields)
+[160/306] 2025-01-18 Stuttgart–Freiburg ps_id=1602853581 → written (9 fields)
+[161/306] 2025-01-19 Union Berlin–Mainz ps_id=1602893602 → written (9 fields)
+[162/306] 2025-01-19 Werder Bremen–Augsburg ps_id=1602899213 → written (9 fields)
+[163/306] 2025-01-24 Wolfsburg–Holstein Kiel ps_id=1603087861 → written (9 fields)
+[164/306] 2025-01-25 RB Leipzig–Leverkusen ps_id=1603110930 → written (9 fields)
+[165/306] 2025-01-25 Dortmund–Werder Bremen ps_id=1603115029 → written (9 fields)
+[166/306] 2025-01-25 M'gladbach–Bochum ps_id=1603145659 → written (9 fields)
+[167/306] 2025-01-25 Freiburg–Bayern Munich ps_id=1603110585 → written (9 fields)
+[168/306] 2025-01-25 Mainz–Stuttgart ps_id=1603110929 → written (9 fields)
+[169/306] 2025-01-25 Augsburg–Heidenheim ps_id=1603115031 → written (9 fields)
+[170/306] 2025-01-26 Hoffenheim–Ein Frankfurt ps_id=1603162769 → written (9 fields)
+[171/306] 2025-01-26 St Pauli–Union Berlin ps_id=1603162770 → written (9 fields)
+[172/306] 2025-01-31 Werder Bremen–Mainz ps_id=1603305574 → written (9 fields)
+[173/306] 2025-02-01 St Pauli–Augsburg ps_id=1603307825 → written (9 fields)
+[174/306] 2025-02-01 Bochum–Freiburg ps_id=1603307826 → written (9 fields)
+[175/306] 2025-02-01 Heidenheim–Dortmund ps_id=1603305573 → written (9 fields)
+[176/306] 2025-02-01 Stuttgart–M'gladbach ps_id=1603307827 → written (9 fields)
+[177/306] 2025-02-01 Union Berlin–RB Leipzig ps_id=1603305572 → written (9 fields)
+[178/306] 2025-02-01 Bayern Munich–Holstein Kiel ps_id=1603312918 → written (9 fields)
+[179/306] 2025-02-02 Leverkusen–Hoffenheim ps_id=1603297757 → written (9 fields)
+[180/306] 2025-02-02 Ein Frankfurt–Wolfsburg ps_id=1603307824 → written (9 fields)
+[181/306] 2025-02-07 Bayern Munich–Werder Bremen ps_id=1603640983 → written (9 fields)
+[182/306] 2025-02-08 Dortmund–Stuttgart ps_id=1603639176 → written (9 fields)
+[183/306] 2025-02-08 M'gladbach–Ein Frankfurt ps_id=1603638017 → written (9 fields)
+[184/306] 2025-02-08 Hoffenheim–Union Berlin ps_id=1603639178 → written (9 fields)
+[185/306] 2025-02-08 Mainz–Augsburg ps_id=1603638015 → written (9 fields)
+[186/306] 2025-02-08 Wolfsburg–Leverkusen ps_id=1603638016 → written (9 fields)
+[187/306] 2025-02-08 Freiburg–Heidenheim ps_id=1603639177 → written (9 fields)
+[188/306] 2025-02-09 RB Leipzig–St Pauli ps_id=1603640985 → written (9 fields)
+[189/306] 2025-02-09 Holstein Kiel–Bochum ps_id=1603640984 → written (9 fields)
+[190/306] 2025-02-14 Augsburg–RB Leipzig ps_id=1603962828 → written (9 fields)
+[191/306] 2025-02-15 Union Berlin–M'gladbach ps_id=1603966495 → written (9 fields)
+[192/306] 2025-02-15 Leverkusen–Bayern Munich ps_id=1603962831 → written (9 fields)
+[193/306] 2025-02-15 St Pauli–Freiburg ps_id=1603962833 → written (9 fields)
+[194/306] 2025-02-15 Stuttgart–Wolfsburg ps_id=1603966496 → written (9 fields)
+[195/306] 2025-02-15 Bochum–Dortmund ps_id=1603962829 → written (9 fields)
+[196/306] 2025-02-16 Heidenheim–Mainz ps_id=1603965941 → written (9 fields)
+[197/306] 2025-02-16 Werder Bremen–Hoffenheim ps_id=1603962830 → written (9 fields)
+[198/306] 2025-02-16 Ein Frankfurt–Holstein Kiel ps_id=1603962832 → written (9 fields)
+[199/306] 2025-02-21 Freiburg–Werder Bremen ps_id=1604310990 → written (9 fields)
+[200/306] 2025-02-22 Wolfsburg–Bochum ps_id=1604314235 → written (9 fields)
+[201/306] 2025-02-22 M'gladbach–Augsburg ps_id=1604314233 → written (9 fields)
+[202/306] 2025-02-22 Dortmund–Union Berlin ps_id=1604317778 → written (9 fields)
+[203/306] 2025-02-22 Mainz–St Pauli ps_id=1604314234 → written (9 fields)
+[204/306] 2025-02-22 Holstein Kiel–Leverkusen ps_id=1604310989 → written (9 fields)
+[205/306] 2025-02-23 Bayern Munich–Ein Frankfurt ps_id=1604310988 → written (9 fields)
+[206/306] 2025-02-23 Hoffenheim–Stuttgart ps_id=1604317777 → written (9 fields)
+[207/306] 2025-02-23 RB Leipzig–Heidenheim ps_id=1604317776 → written (9 fields)
+[208/306] 2025-02-28 Stuttgart–Bayern Munich ps_id=1604691424 → written (9 fields)
+[209/306] 2025-03-01 Bochum–Hoffenheim ps_id=1604681855 → written (9 fields)
+[210/306] 2025-03-01 Ein Frankfurt–Leverkusen ps_id=1604681854 → written (9 fields)
+[211/306] 2025-03-01 Werder Bremen–Wolfsburg ps_id=1604684884 → written (9 fields)
+[212/306] 2025-03-01 Heidenheim–M'gladbach ps_id=1604684886 → written (9 fields)
+[213/306] 2025-03-01 RB Leipzig–Mainz ps_id=1604684885 → written (9 fields)
+[214/306] 2025-03-01 St Pauli–Dortmund ps_id=1604681856 → written (9 fields)
+[215/306] 2025-03-02 Union Berlin–Holstein Kiel ps_id=1604691423 → written (9 fields)
+[216/306] 2025-03-02 Augsburg–Freiburg ps_id=1604691422 → written (9 fields)
+[217/306] 2025-03-07 M'gladbach–Mainz ps_id=1605045352 → written (9 fields)
+[218/306] 2025-03-08 Wolfsburg–St Pauli ps_id=1605045675 → written (9 fields)
+[219/306] 2025-03-08 Bayern Munich–Bochum ps_id=1605045356 → written (9 fields)
+[220/306] 2025-03-08 Dortmund–Augsburg ps_id=1605045353 → written (9 fields)
+[221/306] 2025-03-08 Freiburg–RB Leipzig ps_id=1605039579 → written (9 fields)
+[222/306] 2025-03-08 Holstein Kiel–Stuttgart ps_id=1605045674 → written (9 fields)
+[223/306] 2025-03-08 Leverkusen–Werder Bremen ps_id=1605039578 → written (9 fields)
+[224/306] 2025-03-09 Ein Frankfurt–Union Berlin ps_id=1605045354 → written (9 fields)
+[225/306] 2025-03-09 Hoffenheim–Heidenheim ps_id=1605045355 → written (9 fields)
+[226/306] 2025-03-14 St Pauli–Hoffenheim ps_id=1605457433 → written (9 fields)
+[227/306] 2025-03-15 Augsburg–Wolfsburg ps_id=1605445639 → written (9 fields)
+[228/306] 2025-03-15 Werder Bremen–M'gladbach ps_id=1605452043 → written (9 fields)
+[229/306] 2025-03-15 Union Berlin–Bayern Munich ps_id=1605457435 → written (9 fields)
+[230/306] 2025-03-15 Mainz–Freiburg ps_id=1605457432 → written (9 fields)
+[231/306] 2025-03-15 RB Leipzig–Dortmund ps_id=1605457434 → written (9 fields)
+[232/306] 2025-03-16 Heidenheim–Holstein Kiel ps_id=1605452045 → written (9 fields)
+[233/306] 2025-03-16 Bochum–Ein Frankfurt ps_id=1605452044 → written (9 fields)
+[234/306] 2025-03-16 Stuttgart–Leverkusen ps_id=1605445638 → written (9 fields)
+[235/306] 2025-03-28 Leverkusen–Bochum ps_id=1605867496 → written (9 fields)
+[236/306] 2025-03-29 M'gladbach–RB Leipzig ps_id=1605863584 → written (9 fields)
+[237/306] 2025-03-29 Holstein Kiel–Werder Bremen ps_id=1605867495 → written (9 fields)
+[238/306] 2025-03-29 Hoffenheim–Augsburg ps_id=1605867498 → written (9 fields)
+[239/306] 2025-03-29 Bayern Munich–St Pauli ps_id=1605867497 → written (9 fields)
+[240/306] 2025-03-29 Ein Frankfurt–Stuttgart ps_id=1605863585 → written (9 fields)
+[241/306] 2025-03-29 Wolfsburg–Heidenheim ps_id=1605863586 → written (9 fields)
+[242/306] 2025-03-30 Dortmund–Mainz ps_id=1605863587 → written (9 fields)
+[243/306] 2025-03-30 Freiburg–Union Berlin ps_id=1605863583 → written (9 fields)
+[244/306] 2025-04-04 Augsburg–Bayern Munich ps_id=1606360705 → written (9 fields)
+[245/306] 2025-04-05 Bochum–Stuttgart ps_id=1606363173 → written (9 fields)
+[246/306] 2025-04-05 Heidenheim–Leverkusen ps_id=1606363175 → written (9 fields)
+[247/306] 2025-04-05 Werder Bremen–Ein Frankfurt ps_id=1606360707 → written (9 fields)
+[248/306] 2025-04-05 RB Leipzig–Hoffenheim ps_id=1606360706 → written (9 fields)
+[249/306] 2025-04-05 Mainz–Holstein Kiel ps_id=1606348706 → written (9 fields)
+[250/306] 2025-04-05 Freiburg–Dortmund ps_id=1606363174 → written (9 fields)
+[251/306] 2025-04-06 St Pauli–M'gladbach ps_id=1606363176 → written (9 fields)
+[252/306] 2025-04-06 Union Berlin–Wolfsburg ps_id=1606348707 → written (9 fields)
+[253/306] 2025-04-11 Wolfsburg–RB Leipzig ps_id=1606931369 → written (9 fields)
+[254/306] 2025-04-12 Leverkusen–Union Berlin ps_id=1606927631 → written (9 fields)
+[255/306] 2025-04-12 Holstein Kiel–St Pauli ps_id=1606930994 → written (9 fields)
+[256/306] 2025-04-12 Hoffenheim–Mainz ps_id=1606927565 → written (9 fields)
+[257/306] 2025-04-12 Bayern Munich–Dortmund ps_id=1606927632 → written (9 fields)
+[258/306] 2025-04-12 M'gladbach–Freiburg ps_id=1606931370 → written (9 fields)
+[259/306] 2025-04-12 Bochum–Augsburg ps_id=1606930993 → written (9 fields)
+[260/306] 2025-04-13 Ein Frankfurt–Heidenheim ps_id=1606930992 → written (9 fields)
+[261/306] 2025-04-13 Stuttgart–Werder Bremen ps_id=1606927630 → written (9 fields)
+[262/306] 2025-04-19 Werder Bremen–Bochum ps_id=1607248111 → written (9 fields)
+[263/306] 2025-04-19 Freiburg–Hoffenheim ps_id=1607248110 → written (9 fields)
+[264/306] 2025-04-19 Mainz–Wolfsburg ps_id=1607248114 → written (9 fields)
+[265/306] 2025-04-19 Heidenheim–Bayern Munich ps_id=1607248280 → written (9 fields)
+[266/306] 2025-04-19 RB Leipzig–Holstein Kiel ps_id=1607248113 → written (9 fields)
+[267/306] 2025-04-19 Union Berlin–Stuttgart ps_id=1607263646 → written (9 fields)
+[268/306] 2025-04-20 Dortmund–M'gladbach ps_id=1607347043 → written (9 fields)
+[269/306] 2025-04-20 Augsburg–Ein Frankfurt ps_id=1607339491 → written (9 fields)
+[270/306] 2025-04-20 St Pauli–Leverkusen ps_id=1607352793 → written (9 fields)
+[271/306] 2025-04-25 Stuttgart–Heidenheim ps_id=1607659210 → written (9 fields)
+[272/306] 2025-04-26 Holstein Kiel–M'gladbach ps_id=1607709100 → written (9 fields)
+[273/306] 2025-04-26 Ein Frankfurt–RB Leipzig ps_id=1607733432 → written (9 fields)
+[274/306] 2025-04-26 Bayern Munich–Mainz ps_id=1607709101 → written (9 fields)
+[275/306] 2025-04-26 Wolfsburg–Freiburg ps_id=1607707242 → written (9 fields)
+[276/306] 2025-04-26 Leverkusen–Augsburg ps_id=1607707239 → written (9 fields)
+[277/306] 2025-04-26 Hoffenheim–Dortmund ps_id=1607709102 → written (9 fields)
+[278/306] 2025-04-27 Bochum–Union Berlin ps_id=1607811556 → written (9 fields)
+[279/306] 2025-04-27 Werder Bremen–St Pauli ps_id=1607707241 → written (9 fields)
+[280/306] 2025-05-02 Heidenheim–Bochum ps_id=1608130358 → written (9 fields)
+[281/306] 2025-05-03 Dortmund–Wolfsburg ps_id=1608187623 → written (9 fields)
+[282/306] 2025-05-03 Union Berlin–Werder Bremen ps_id=1608175343 → written (9 fields)
+[283/306] 2025-05-03 St Pauli–Stuttgart ps_id=1608175345 → written (9 fields)
+[284/306] 2025-05-03 RB Leipzig–Bayern Munich ps_id=1608175342 → written (9 fields)
+[285/306] 2025-05-03 M'gladbach–Hoffenheim ps_id=1608177653 → written (9 fields)
+[286/306] 2025-05-04 Augsburg–Holstein Kiel ps_id=1608269321 → written (9 fields)
+[287/306] 2025-05-04 Mainz–Ein Frankfurt ps_id=1608284882 → written (9 fields)
+[288/306] 2025-05-04 Freiburg–Leverkusen ps_id=1608278106 → written (9 fields)
+[289/306] 2025-05-09 Wolfsburg–Hoffenheim ps_id=1608588566 → written (9 fields)
+[290/306] 2025-05-10 Holstein Kiel–Freiburg ps_id=1608638799 → written (9 fields)
+[291/306] 2025-05-10 Bayern Munich–M'gladbach ps_id=1608650365 → written (9 fields)
+[292/306] 2025-05-10 Werder Bremen–RB Leipzig ps_id=1608635045 → written (9 fields)
+[293/306] 2025-05-10 Union Berlin–Heidenheim ps_id=1608638798 → written (9 fields)
+[294/306] 2025-05-10 Bochum–Mainz ps_id=1608635044 → written (9 fields)
+[295/306] 2025-05-11 Leverkusen–Dortmund ps_id=1608732050 → written (9 fields)
+[296/306] 2025-05-11 Stuttgart–Augsburg ps_id=1608744840 → written (9 fields)
+[297/306] 2025-05-11 Ein Frankfurt–St Pauli ps_id=1608737155 → written (9 fields)
+[298/306] 2025-05-17 Hoffenheim–Bayern Munich ps_id=1609073131 → written (9 fields)
+[299/306] 2025-05-17 RB Leipzig–Stuttgart ps_id=1609066950 → written (9 fields)
+[300/306] 2025-05-17 M'gladbach–Wolfsburg ps_id=1609073132 → written (9 fields)
+[301/306] 2025-05-17 Mainz–Leverkusen ps_id=1609073133 → written (9 fields)
+[302/306] 2025-05-17 Augsburg–Union Berlin ps_id=1609059030 → written (9 fields)
+[303/306] 2025-05-17 Dortmund–Holstein Kiel ps_id=1609059031 → written (9 fields)
+[304/306] 2025-05-17 St Pauli–Bochum ps_id=1609066949 → written (9 fields)
+[305/306] 2025-05-17 Heidenheim–Werder Bremen ps_id=1609073130 → written (9 fields)
+[306/306] 2025-05-17 Freiburg–Ein Frankfurt ps_id=1609073129 → written (9 fields)
+Results → /opt/cursor/artifacts/bl202425_userbet_fill/bl202425_fill_results.csv
+{
+  "season_id": 1,
+  "season_label": "2024-25",
+  "joined": 306,
+  "attempted": 306,
+  "ok": 305,
+  "written": 305,
+  "skipped_filled": 0,
+  "errors": 1,
+  "unmatched_supabase": 0,
+  "write": true
+}
