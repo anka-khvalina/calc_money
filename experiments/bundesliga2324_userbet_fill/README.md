@@ -33,3 +33,5 @@ python3 experiments/bundesliga2324_userbet_fill/fill_bundesliga.py --limit 5
 ```
 
 Artifacts: `/opt/cursor/artifacts/bl{YYYYMM}_userbet_fill/` and copies in this folder.
+
+**2024-25 status:** 306/306 full odds (305 userbet + 1 football-data fallback for Dortmund–Leverkusen 2025-01-10 where userbet `ps_id=0`).

@@ -1,0 +1,13 @@
+{
+  "season_id": 1,
+  "season_label": "2024-25",
+  "joined": 306,
+  "attempted": 306,
+  "ok": 306,
+  "written": 306,
+  "skipped_filled": 0,
+  "errors": 0,
+  "unmatched_supabase": 0,
+  "write": true,
+  "notes": "305 from userbet archive; match 13205 (Dortmund–Leverkusen 2025-01-10) had ps_id=0 on userbet — filled from football-data B365 closing"
+}
