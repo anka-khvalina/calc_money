@@ -1251,7 +1251,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <input id="irMarginPct" type="text" value="3" />
             </div>
             <button type="button" id="irRunReport" class="btn primary">Сформировать</button>
-            <button type="button" id="irExportCsv" class="btn" disabled>Скачать CSV</button>
+            <button type="button" id="irExportExcel" class="btn">Экспорт в Excel</button>
           </div>
 
           <!-- D-EMA/S-EMA lab panel hidden: Report uses model_config like Line (no UI overrides). -->
@@ -9681,6 +9681,8 @@ bash scripts/update_and_serve.sh --start</div>
     let irReportRows = [];
     let irActiveCols = [];
     let irReportSummary = null;
+    let irLastReportKey = '';
+    let irExportBusy = false;
 
     const IR_COMBINED_COLS = [
       'Дата','Лига','Дома','Гости',
@@ -11008,25 +11010,176 @@ bash scripts/update_and_serve.sh --start</div>
       }).join('');
       wrap.style.display=rows.length?'block':'none';
     }
-    function irCsvEscape(v){
-      const s=v==null?'':String(v);
-      if(/[",;\n\r]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
-      return s;
+    function irReportFilterKey(){
+      const league=(document.getElementById('irLeagueFilter')||{}).value||'';
+      const season=String((document.getElementById('irSeasonFilter')||{}).value||'').trim();
+      const dFrom=(document.getElementById('irDateFrom')||{}).value||'';
+      const dTo=(document.getElementById('irDateTo')||{}).value||'';
+      const rot=(document.getElementById('irRotationFilter')||{}).value||'';
+      const margin=irUseMarginOn()?'m':'f';
+      const marginPct=String((document.getElementById('irMarginPct')||{}).value||'').trim();
+      const ignoreRot=!!(document.getElementById('irIgnoreRotation')||{}).checked;
+      return [league,season,dFrom,dTo,rot,margin,marginPct,ignoreRot].join('|');
     }
-    function irExportReportCsv(){
+    function irSlugFilenamePart(s){
+      return String(s||'').trim().toLowerCase()
+        .replace(/[^\w\u0400-\u04FF]+/g,'-')
+        .replace(/^-+|-+$/g,'') || 'all';
+    }
+    function irSelectedLeagueLabel(){
+      const sel=document.getElementById('irLeagueFilter');
+      if(!sel || !sel.value) return 'all-leagues';
+      const opt=sel.selectedOptions && sel.selectedOptions[0];
+      return (opt && opt.textContent) ? String(opt.textContent).trim() : 'league';
+    }
+    function irSelectedSeasonLabel(){
+      const sel=document.getElementById('irSeasonFilter');
+      if(!sel || !sel.value) return '';
+      const opt=sel.selectedOptions && sel.selectedOptions[0];
+      return String((opt && (opt.getAttribute('data-season-label') || opt.textContent)) || sel.value).trim();
+    }
+    function irSyncExportButtonState(){
+      const btn=document.getElementById('irExportExcel');
+      if(!btn) return;
+      btn.disabled = irExportBusy || !String((document.getElementById('irSeasonFilter')||{}).value||'').trim();
+    }
+    function irXmlEscape(v){
+      return String(v==null?'':v)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;');
+    }
+    function irExcelCell(val, col){
+      const raw=col==='Дата' && val!=null ? sbFmtDate(val) : val;
+      const txt=irFmtCell(raw,col);
+      if(txt==='') return '<Cell><Data ss:Type="String"></Data></Cell>';
+      const num=Number(String(txt).replace(',','.'));
+      if(!IR_TEXT_COLS.has(col) && isFinite(num) && String(txt).trim()!==''){
+        return `<Cell><Data ss:Type="Number">${num}</Data></Cell>`;
+      }
+      return `<Cell><Data ss:Type="String">${irXmlEscape(txt)}</Data></Cell>`;
+    }
+    function irExcelSummaryRows(summary){
+      if(!summary) return [['Сводка','—']];
+      const pct=(v)=> v==null||!isFinite(v)?'—':(100*v).toFixed(0)+'%';
+      const c=summary.combined||{};
+      const rows=[
+        ['Параметр','Значение'],
+        ['Строк в таблице', summary.n],
+        ['В MAE / выводах', summary.nMae],
+        ['Без мотивации (серые)', summary.nNoMotivation],
+        ['Active (обучение)', summary.nActive],
+        ['Effective training sample', summary.effectiveTrain],
+        ['1X2 MAE odds', c.mae1x2],
+        ['Home MAE', c.maeHome],
+        ['Draw MAE', c.maeDraw],
+        ['Away MAE', c.maeAway],
+        ['AH MAE @ market line', c.maeAh],
+        ['AH line MAE', c.maeAhLine],
+        ['same AH main', pct(c.sameAhRate)],
+        ['OU MAE @ market total', c.maeOu],
+        ['OU line MAE', c.maeOuLine],
+        ['same Total main', pct(c.sameTotRate)],
+        ['MAE_S_base', c.maeSBase],
+        ['MAE_S_dynamic', c.maeSDyn],
+        ['S improved share', pct(c.sImproveShare)],
+      ];
+      return rows;
+    }
+    function irBuildExcelSpreadsheetML(rows, cols, summary, meta){
+      const esc=(s)=>irXmlEscape(s);
+      const dataRows=(rows||[]).map(row=>{
+        const cells=(cols||[]).map(col=>irExcelCell(row[col], col)).join('');
+        return `<Row>${cells}</Row>`;
+      }).join('');
+      const metaRows=[
+        ['Лига', meta.league||''],
+        ['Сезон', meta.season||''],
+        ['Дата экспорта', meta.exportedAt||''],
+        ['Эталон', meta.etalon||''],
+        ['Строк', rows.length],
+      ].map(r=>`<Row><Cell><Data ss:Type="String">${esc(r[0])}</Data></Cell><Cell><Data ss:Type="String">${esc(r[1])}</Data></Cell></Row>`).join('');
+      const summaryBody=irExcelSummaryRows(summary).map((r,i)=>{
+        const t0=i===0?'String':'String';
+        const t1=(i>0 && r[1]!=null && r[1]!=='' && isFinite(Number(r[1])))?'Number':'String';
+        const v1=r[1]==null?'':String(r[1]);
+        const c1=t1==='Number'?`<Cell><Data ss:Type="Number">${Number(v1)}</Data></Cell>`:`<Cell><Data ss:Type="String">${esc(v1)}</Data></Cell>`;
+        return `<Row><Cell><Data ss:Type="${t0}">${esc(r[0])}</Data></Cell>${c1}</Row>`;
+      }).join('');
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="hdr"><Font ss:Bold="1"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/></Style>
+  </Styles>
+  <Worksheet ss:Name="Отчёт">
+    <Table>
+      ${metaRows}
+      <Row></Row>
+      <Row ss:StyleID="hdr">${(cols||[]).map(c=>`<Cell><Data ss:Type="String">${esc(c)}</Data></Cell>`).join('')}</Row>
+      ${dataRows}
+    </Table>
+  </Worksheet>
+  <Worksheet ss:Name="Сводка">
+    <Table>${summaryBody}</Table>
+  </Worksheet>
+</Workbook>`;
+    }
+    function irDownloadExcelReport(){
       if(!irReportRows.length){ alert('Нет данных для экспорта'); return; }
-      const cols=irActiveCols.length?irActiveCols:IR_SINGLE_COLS;
-      const sep=';';
-      const head=cols.join(sep);
-      const lines=irReportRows.map(row=>cols.map(col=>{
-        const raw=col==='Дата'?sbFmtDate(row[col]):row[col];
-        return irCsvEscape(irFmtCell(raw,col));
-      }).join(sep));
-      const blob=new Blob(['\uFEFF'+head+'\n'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+      const cols=irActiveCols.length?irActiveCols:IR_COMBINED_COLS;
+      const league=irSelectedLeagueLabel();
+      const season=irSelectedSeasonLabel() || irEnsureSeasonSelected();
+      const useMargin=irUseMarginOn();
+      const marginFrac=irParseMarginPct();
+      const meta={
+        league,
+        season,
+        exportedAt: new Date().toISOString().slice(0,19).replace('T',' '),
+        etalon: useMargin ? `raw БД, маржа ${(marginFrac*100).toFixed(1)}%` : 'fair (de-vig)',
+      };
+      const xml=irBuildExcelSpreadsheetML(irReportRows, cols, irReportSummary, meta);
+      const blob=new Blob([xml],{type:'application/vnd.ms-excel;charset=utf-8'});
       const a=document.createElement('a');
       a.href=URL.createObjectURL(blob);
-      a.download=`model_combined_${new Date().toISOString().slice(0,10)}.csv`;
-      a.click(); URL.revokeObjectURL(a.href);
+      a.download=`report_${irSlugFilenamePart(league)}_${irSlugFilenamePart(season)}_${new Date().toISOString().slice(0,10)}.xls`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+    async function irExportReportExcel(){
+      if(irExportBusy) return;
+      if(!irEnsureSeasonSelected()){
+        alert('Выберите сезон для экспорта.');
+        irSyncExportButtonState();
+        return;
+      }
+      irExportBusy=true;
+      irSyncExportButtonState();
+      try{
+        const key=irReportFilterKey();
+        if(!irReportRows.length || key!==irLastReportKey){
+          irSetReportStatus('Формирование отчёта для экспорта в Excel…');
+          await irRunReport();
+        }
+        if(!irReportRows.length){
+          alert('Нет данных для экспорта (проверьте фильтры лиги/сезона).');
+          return;
+        }
+        irDownloadExcelReport();
+        const league=irSelectedLeagueLabel();
+        const season=irSelectedSeasonLabel();
+        irSetReportStatus(`Excel сохранён: ${league}, сезон ${season}, ${irReportRows.length} строк.`);
+      }catch(e){
+        console.error('irExportReportExcel', e);
+        irSetReportStatus(e.message||String(e), true);
+      }finally{
+        irExportBusy=false;
+        irSyncExportButtonState();
+      }
     }
 
     function irNumOrNull(id){
@@ -11079,9 +11232,8 @@ bash scripts/update_and_serve.sh --start</div>
       const seasonFilter=irEnsureSeasonSelected();
       const useMargin=irUseMarginOn();
       const marginFrac=irParseMarginPct();
-      const exportBtn=document.getElementById('irExportCsv');
-      irReportRows=[]; irReportSummary=null;
-      if(exportBtn) exportBtn.disabled=true;
+      irReportRows=[]; irReportSummary=null; irLastReportKey='';
+      irSyncExportButtonState();
       irRenderSummary(null);
       const etalonTxt=useMargin?`эталон raw БД, маржа ${(marginFrac*100).toFixed(1)}%`:'эталон fair (de-vig), модель без маржи';
       const seasonOpt=document.getElementById('irSeasonFilter');
@@ -11237,7 +11389,8 @@ bash scripts/update_and_serve.sh --start</div>
         effectiveTrain:sumTrainW,
       };
       irRenderSummary(irReportSummary);
-      if(exportBtn) exportBtn.disabled=!irReportRows.length;
+      irLastReportKey=irReportFilterKey();
+      irSyncExportButtonState();
       const warn=skipped?`; ${skipped} лиг без обучения`:'';
       const motTxt=nNoMotivation?`; ${nNoMotivation} без мотивации (серые, вне MAE)`:'';
       const trainMot=nMotivationExcluded?`; −${nMotivationExcluded} train motivation=нет`:'';
@@ -11297,6 +11450,7 @@ bash scripts/update_and_serve.sh --start</div>
         irSyncModeCheckboxes();
         irPopulateLeagueFilter();
         irSyncDynPanelFromConfig();
+        irSyncExportButtonState();
         document.getElementById('irUseSEma')?.addEventListener('change', irToggleSEmaFields);
       }catch(e){
         console.error('irInitReportTab', e);
@@ -11307,9 +11461,10 @@ bash scripts/update_and_serve.sh --start</div>
     document.querySelectorAll('input[name="irReportMode"]').forEach(el=>{
       el.addEventListener('change', irSyncModeCheckboxes);
     });
-    document.getElementById('irLeagueFilter')?.addEventListener('change', irPopulateSeasonFilter);
+    document.getElementById('irLeagueFilter')?.addEventListener('change', ()=>{ irPopulateSeasonFilter(); irSyncExportButtonState(); });
+    document.getElementById('irSeasonFilter')?.addEventListener('change', irSyncExportButtonState);
     bindClick('irRunReport', ()=>{ irRunReport().catch(e=>{ console.error(e); irSetReportStatus(e.message||String(e), true); }); });
-    bindClick('irExportCsv', ()=>irExportReportCsv());
+    bindClick('irExportExcel', ()=>{ irExportReportExcel().catch(e=>{ console.error(e); irSetReportStatus(e.message||String(e), true); }); });
     // ========== END INACTIVE REPORT ==========
 
     bindClick('goalHistClear',()=>{
