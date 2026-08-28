@@ -1101,7 +1101,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <li><b>Вес матча</b> — общий множитель важности строки (по умолчанию 1).</li>
         </ul>
       </div>
-      <div class="small" style="margin-top:10px;font-weight:600;">Сохранённые сезоны</div>
+      <div class="small" style="margin-top:10px;font-weight:600;display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+        <span>Сохранённые сезоны</span>
+        <button type="button" id="histExportExcel" class="btn" title="Все матчи лиги выбранного сезона (все сезоны этой лиги)">Скачать Excel (вся лига)</button>
+      </div>
       <div class="table-wrap">
         <table id="clhTable">
           <thead><tr><th>Лига</th><th>Сезон</th><th class="right">Матчей</th><th>Импорт</th></tr></thead>
@@ -1251,7 +1254,6 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <input id="irMarginPct" type="text" value="3" />
             </div>
             <button type="button" id="irRunReport" class="btn primary">Сформировать</button>
-            <button type="button" id="irExportCsv" class="btn" disabled>Скачать CSV</button>
           </div>
 
           <!-- D-EMA/S-EMA lab panel hidden: Report uses model_config like Line (no UI overrides). -->
@@ -7031,6 +7033,138 @@ bash scripts/update_and_serve.sh --start</div>
       return window.__SB.matchesBySeason[key];
     }
 
+    async function sbLoadLeagueMatches(leagueId){
+      const q = `select=${SB_MATCH_VIEW_SELECT}&league_id=eq.${encodeURIComponent(leagueId)}&order=season_label.desc,match_date.asc,home_team.asc`;
+      const rows = await sbFetchAllRows(`/v_matches_full?${q}`);
+      const list = Array.isArray(rows) ? rows : [];
+      sbApplyRotationFromView(list);
+      return list;
+    }
+
+    const SB_HIST_EXPORT_COLS = [
+      { key: 'match_date', label: 'Дата', kind: 'date' },
+      { key: 'season_label', label: 'Сезон', kind: 'text' },
+      { key: 'home_team', label: 'Дома', kind: 'text' },
+      { key: 'away_team', label: 'Гости', kind: 'text' },
+      { key: 'closing_ah_home', label: 'AH', kind: 'num' },
+      { key: 'ah_home_odds', label: 'AH1', kind: 'num' },
+      { key: 'ah_away_odds', label: 'AH2', kind: 'num' },
+      { key: 'closing_total_line', label: 'Тот', kind: 'num' },
+      { key: 'over_odds', label: 'O', kind: 'num' },
+      { key: 'under_odds', label: 'U', kind: 'num' },
+      { key: 'home_odds', label: '1', kind: 'num' },
+      { key: 'draw_odds', label: 'X', kind: 'num' },
+      { key: 'away_odds', label: '2', kind: 'num' },
+      { key: 'home_rotation_code', label: 'Рот. хоз', kind: 'text' },
+      { key: 'away_rotation_code', label: 'Рот. гост', kind: 'text' },
+      { key: 'match_weight', label: 'Вес', kind: 'num' },
+      { key: 'derby_weight', label: 'Дерби', kind: 'num' },
+      { key: 'is_neutral', label: 'Нейтр.', kind: 'bool' },
+      { key: 'neutral_weight', label: 'Нейтр. вес', kind: 'num' },
+      { key: 'motivation', label: 'Мотивация', kind: 'motivation' },
+      { key: 'active', label: 'Активен', kind: 'bool' },
+      { key: 'note', label: 'Примечание', kind: 'text' },
+    ];
+
+    function sbExcelXmlEscape(v){
+      return String(v == null ? '' : v)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+    function sbSlugFilenamePart(s){
+      return String(s || '').trim().toLowerCase()
+        .replace(/[^\w\u0400-\u04FF]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'league';
+    }
+    function sbHistExportCellValue(m, col){
+      const v = m[col.key];
+      if (col.kind === 'date') return sbFmtDate(v);
+      if (col.kind === 'bool') return v == null ? '' : (v ? 'да' : 'нет');
+      if (col.kind === 'motivation') return sbMotivationDisplay(m);
+      if (col.kind === 'num'){
+        if (v == null || v === '') return '';
+        const n = Number(v);
+        return isFinite(n) ? n : '';
+      }
+      return v == null ? '' : String(v);
+    }
+    function sbHistBuildExcelXml(matches, leagueName){
+      const esc = sbExcelXmlEscape;
+      const cols = SB_HIST_EXPORT_COLS;
+      const header = `<Row ss:StyleID="hdr">${cols.map(c => `<Cell><Data ss:Type="String">${esc(c.label)}</Data></Cell>`).join('')}</Row>`;
+      const body = (matches || []).map(m => {
+        const cells = cols.map(col => {
+          const raw = sbHistExportCellValue(m, col);
+          if (raw === '') return '<Cell><Data ss:Type="String"></Data></Cell>';
+          if (col.kind === 'num' && isFinite(Number(raw))) return `<Cell><Data ss:Type="Number">${Number(raw)}</Data></Cell>`;
+          return `<Cell><Data ss:Type="String">${esc(raw)}</Data></Cell>`;
+        }).join('');
+        return `<Row>${cells}</Row>`;
+      }).join('');
+      const meta = [
+        ['Лига', leagueName || ''],
+        ['Дата экспорта', new Date().toISOString().slice(0, 19).replace('T', ' ')],
+        ['Матчей', (matches || []).length],
+      ].map(r => `<Row><Cell><Data ss:Type="String">${esc(r[0])}</Data></Cell><Cell><Data ss:Type="String">${esc(r[1])}</Data></Cell></Row>`).join('');
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="hdr"><Font ss:Bold="1"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/></Style>
+  </Styles>
+  <Worksheet ss:Name="История">
+    <Table>
+      ${meta}
+      <Row></Row>
+      ${header}
+      ${body}
+    </Table>
+  </Worksheet>
+</Workbook>`;
+    }
+    function sbHistDownloadExcel(matches, leagueName){
+      const xml = sbHistBuildExcelXml(matches, leagueName);
+      const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `history_${sbSlugFilenamePart(leagueName)}_${new Date().toISOString().slice(0, 10)}.xls`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+    async function sbHistExportLeagueExcel(){
+      const sel = window.__SB.histSelected;
+      if (!sel || !sel.selected_league_id){
+        alert('Выберите сезон в таблице «Сохранённые сезоны» — экспорт загрузит все матчи этой лиги.');
+        return;
+      }
+      const leagueId = sel.selected_league_id;
+      const leagueName = sel.selected_league_name || leagueId;
+      const btn = document.getElementById('histExportExcel');
+      const meta = document.getElementById('clhMeta');
+      if (btn) btn.disabled = true;
+      try {
+        await loadSupabaseConfig();
+        if (meta) meta.textContent = `Загрузка матчей лиги ${leagueName}…`;
+        const matches = await sbLoadLeagueMatches(leagueId);
+        if (!matches.length){
+          alert('Нет матчей для экспорта.');
+          return;
+        }
+        sbHistDownloadExcel(matches, leagueName);
+        if (meta) meta.textContent = `Excel: ${leagueName} — ${matches.length} матчей (все сезоны)`;
+      } catch (e){
+        console.error('sbHistExportLeagueExcel', e);
+        alert(sbHistErrorMessage(e, 'экспортировать матчи'));
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
     function sbMatchesToGoalCsv(matches, leagueName=''){
       const header = 'date,league,league_id,home_team_id,home_team,away_team_id,away_team,closing_ah_home,closing_total_line,ah_home_odds,ah_away_odds,over_odds,under_odds,home_odds,draw_odds,away_odds,neutral_flag,derby_flag,quality_flag,value,derby_weight,neutral_weight';
       const cell = v => (v == null ? '' : String(v));
@@ -8151,6 +8285,7 @@ bash scripts/update_and_serve.sh --start</div>
     });
     bindClick('histBulkApply', () => { sbHistBulkApply().catch(e => console.error(e)); });
     bindClick('histBulkWeightApply', () => { sbHistBulkWeightApply().catch(e => console.error(e)); });
+    bindClick('histExportExcel', () => { sbHistExportLeagueExcel().catch(e => console.error(e)); });
     document.getElementById('histBulkWeightSuggest')?.addEventListener('click', e => {
       const btn = e.target.closest('[data-hist-weight-fill]');
       if(!btn) return;
@@ -11008,26 +11143,6 @@ bash scripts/update_and_serve.sh --start</div>
       }).join('');
       wrap.style.display=rows.length?'block':'none';
     }
-    function irCsvEscape(v){
-      const s=v==null?'':String(v);
-      if(/[",;\n\r]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
-      return s;
-    }
-    function irExportReportCsv(){
-      if(!irReportRows.length){ alert('Нет данных для экспорта'); return; }
-      const cols=irActiveCols.length?irActiveCols:IR_SINGLE_COLS;
-      const sep=';';
-      const head=cols.join(sep);
-      const lines=irReportRows.map(row=>cols.map(col=>{
-        const raw=col==='Дата'?sbFmtDate(row[col]):row[col];
-        return irCsvEscape(irFmtCell(raw,col));
-      }).join(sep));
-      const blob=new Blob(['\uFEFF'+head+'\n'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(blob);
-      a.download=`model_combined_${new Date().toISOString().slice(0,10)}.csv`;
-      a.click(); URL.revokeObjectURL(a.href);
-    }
 
     function irNumOrNull(id){
       const el=document.getElementById(id);
@@ -11079,9 +11194,7 @@ bash scripts/update_and_serve.sh --start</div>
       const seasonFilter=irEnsureSeasonSelected();
       const useMargin=irUseMarginOn();
       const marginFrac=irParseMarginPct();
-      const exportBtn=document.getElementById('irExportCsv');
       irReportRows=[]; irReportSummary=null;
-      if(exportBtn) exportBtn.disabled=true;
       irRenderSummary(null);
       const etalonTxt=useMargin?`эталон raw БД, маржа ${(marginFrac*100).toFixed(1)}%`:'эталон fair (de-vig), модель без маржи';
       const seasonOpt=document.getElementById('irSeasonFilter');
@@ -11101,7 +11214,6 @@ bash scripts/update_and_serve.sh --start</div>
         irFetchInactiveMatches(leagueFilter||null),
         irFetchActiveNoMotivationMatches(leagueFilter||null),
       ]);
-      // Display: inactive ∪ motivation=нет. Dynamics/EMA walk-forward: true inactive only (Line parity).
       const inactiveForDyn=irFilterMatches(inactiveRawList||[]);
       let reportMatches=irMergeReportMatches(inactiveRawList, noMotActiveRaw);
       reportMatches=irFilterMatches(reportMatches);
@@ -11237,7 +11349,6 @@ bash scripts/update_and_serve.sh --start</div>
         effectiveTrain:sumTrainW,
       };
       irRenderSummary(irReportSummary);
-      if(exportBtn) exportBtn.disabled=!irReportRows.length;
       const warn=skipped?`; ${skipped} лиг без обучения`:'';
       const motTxt=nNoMotivation?`; ${nNoMotivation} без мотивации (серые, вне MAE)`:'';
       const trainMot=nMotivationExcluded?`; −${nMotivationExcluded} train motivation=нет`:'';
@@ -11309,7 +11420,6 @@ bash scripts/update_and_serve.sh --start</div>
     });
     document.getElementById('irLeagueFilter')?.addEventListener('change', irPopulateSeasonFilter);
     bindClick('irRunReport', ()=>{ irRunReport().catch(e=>{ console.error(e); irSetReportStatus(e.message||String(e), true); }); });
-    bindClick('irExportCsv', ()=>irExportReportCsv());
     // ========== END INACTIVE REPORT ==========
 
     bindClick('goalHistClear',()=>{
