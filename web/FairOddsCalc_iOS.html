@@ -1251,7 +1251,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <input id="irMarginPct" type="text" value="3" />
             </div>
             <button type="button" id="irRunReport" class="btn primary">Сформировать</button>
-            <button type="button" id="irExportExcel" class="btn">Экспорт в Excel</button>
+            <button type="button" id="irExportExcel" class="btn" title="Все матчи выбранной лиги и сезона">Экспорт в Excel</button>
+            <span class="small" style="align-self:flex-end;padding-bottom:4px;color:#64748b">Экспорт — все матчи сезона; «Сформировать» — только inactive и motivation=нет</span>
           </div>
 
           <!-- D-EMA/S-EMA lab panel hidden: Report uses model_config like Line (no UI overrides). -->
@@ -9682,6 +9683,7 @@ bash scripts/update_and_serve.sh --start</div>
     let irActiveCols = [];
     let irReportSummary = null;
     let irLastReportKey = '';
+    let irLastReportScope = 'diagnostic';
     let irExportBusy = false;
 
     const IR_COMBINED_COLS = [
@@ -10213,6 +10215,12 @@ bash scripts/update_and_serve.sh --start</div>
     /** Active matches explicitly flagged motivation=false — show on Report (gray), not used in train. */
     async function irFetchActiveNoMotivationMatches(leagueId){
       let q=`select=${SB_MATCH_VIEW_SELECT}&active=eq.true&motivation=eq.false&order=league_name.asc,match_date.asc,home_team.asc,away_team.asc`;
+      if(leagueId) q+=`&league_id=eq.${encodeURIComponent(leagueId)}`;
+      return irFetchPagedMatches(q);
+    }
+    /** All matches for league (season/date filters applied later via irFilterMatches). */
+    async function irFetchAllSeasonMatches(leagueId){
+      let q=`select=${SB_MATCH_VIEW_SELECT}&order=league_name.asc,match_date.asc,home_team.asc,away_team.asc`;
       if(leagueId) q+=`&league_id=eq.${encodeURIComponent(leagueId)}`;
       return irFetchPagedMatches(q);
     }
@@ -11160,10 +11168,10 @@ bash scripts/update_and_serve.sh --start</div>
       irExportBusy=true;
       irSyncExportButtonState();
       try{
-        const key=irReportFilterKey();
+        const key=irReportFilterKey()+'|full';
         if(!irReportRows.length || key!==irLastReportKey){
-          irSetReportStatus('Формирование отчёта для экспорта в Excel…');
-          await irRunReport();
+          irSetReportStatus('Формирование отчёта для экспорта в Excel (все матчи сезона)…');
+          await irRunReport({ scope: 'full' });
         }
         if(!irReportRows.length){
           alert('Нет данных для экспорта (проверьте фильтры лиги/сезона).');
@@ -11225,14 +11233,16 @@ bash scripts/update_and_serve.sh --start</div>
       window.__IR_S_EMA_OVERRIDE = null;
     }
 
-    async function irRunReport(){
+    async function irRunReport(opts){
+      opts = opts || {};
+      const scope = opts.scope === 'full' ? 'full' : 'diagnostic';
       await loadGoalMatrixConfig();
       irClearDynOverrides();
       const leagueFilter=(document.getElementById('irLeagueFilter')||{}).value||'';
       const seasonFilter=irEnsureSeasonSelected();
       const useMargin=irUseMarginOn();
       const marginFrac=irParseMarginPct();
-      irReportRows=[]; irReportSummary=null; irLastReportKey='';
+      irReportRows=[]; irReportSummary=null; irLastReportKey=''; irLastReportScope=scope;
       irSyncExportButtonState();
       irRenderSummary(null);
       const etalonTxt=useMargin?`эталон raw БД, маржа ${(marginFrac*100).toFixed(1)}%`:'эталон fair (de-vig), модель без маржи';
@@ -11244,21 +11254,34 @@ bash scripts/update_and_serve.sh --start</div>
         irSetReportStatus('Выберите сезон для обучения (по умолчанию 2025-26).', true);
         return;
       }
-      irSetReportStatus(`Загрузка матчей отчёта… (inactive + motivation=нет; сезон ${seasonLabel}; ${etalonTxt})`);
+      const scopeTxt = scope === 'full'
+        ? `все матчи сезона ${seasonLabel}`
+        : `inactive + motivation=нет; сезон ${seasonLabel}`;
+      irSetReportStatus(`Загрузка матчей отчёта… (${scopeTxt}; ${etalonTxt})`);
       irRenderReportTable([], IR_COMBINED_COLS);
       await loadSupabaseConfig();
       if(!window.__SB.leagues||!window.__SB.leagues.length) await sbFetchLeaguesList();
       if(!window.__SB.seasons||!window.__SB.seasons.length) await sbLoadSeasonSummary();
-      const [inactiveRawList, noMotActiveRaw]=await Promise.all([
-        irFetchInactiveMatches(leagueFilter||null),
-        irFetchActiveNoMotivationMatches(leagueFilter||null),
-      ]);
-      // Display: inactive ∪ motivation=нет. Dynamics/EMA walk-forward: true inactive only (Line parity).
-      const inactiveForDyn=irFilterMatches(inactiveRawList||[]);
-      let reportMatches=irMergeReportMatches(inactiveRawList, noMotActiveRaw);
-      reportMatches=irFilterMatches(reportMatches);
+      let inactiveRawList, noMotActiveRaw, inactiveForDyn, reportMatches;
+      if(scope === 'full'){
+        inactiveRawList = await irFetchAllSeasonMatches(leagueFilter||null);
+        noMotActiveRaw = [];
+        inactiveForDyn = irFilterMatches((inactiveRawList||[]).filter(m=>!sbIsMatchActive(m)));
+        reportMatches = irFilterMatches(inactiveRawList||[]);
+      } else {
+        [inactiveRawList, noMotActiveRaw] = await Promise.all([
+          irFetchInactiveMatches(leagueFilter||null),
+          irFetchActiveNoMotivationMatches(leagueFilter||null),
+        ]);
+        inactiveForDyn = irFilterMatches(inactiveRawList||[]);
+        reportMatches = irMergeReportMatches(inactiveRawList, noMotActiveRaw);
+        reportMatches = irFilterMatches(reportMatches);
+      }
       if(!reportMatches.length){
-        irSetReportStatus(`Матчей не найдено (active=false или motivation=нет + сезон ${seasonLabel} + фильтры).`, true);
+        const emptyMsg = scope === 'full'
+          ? `Матчей не найдено (сезон ${seasonLabel} + фильтры).`
+          : `Матчей не найдено (active=false или motivation=нет + сезон ${seasonLabel} + фильтры).`;
+        irSetReportStatus(emptyMsg, true);
         return;
       }
       const byLeague={};
@@ -11389,12 +11412,14 @@ bash scripts/update_and_serve.sh --start</div>
         effectiveTrain:sumTrainW,
       };
       irRenderSummary(irReportSummary);
-      irLastReportKey=irReportFilterKey();
+      irLastReportKey=irReportFilterKey()+'|'+scope;
+      irLastReportScope=scope;
       irSyncExportButtonState();
       const warn=skipped?`; ${skipped} лиг без обучения`:'';
       const motTxt=nNoMotivation?`; ${nNoMotivation} без мотивации (серые, вне MAE)`:'';
       const trainMot=nMotivationExcluded?`; −${nMotivationExcluded} train motivation=нет`:'';
-      irSetReportStatus(`Готово: ${irReportRows.length} в таблице / ${xs.length} в MAE / ${nActiveTrain} active train (сезон ${seasonLabel})${motTxt}${trainMot}; combined 1X2=Legacy AH/OU=Auto; ${etalonTxt}${warn}`);
+      const scopeDone = scope === 'full' ? 'все матчи сезона' : 'inactive + motivation=нет';
+      irSetReportStatus(`Готово (${scopeDone}): ${irReportRows.length} в таблице / ${xs.length} в MAE / ${nActiveTrain} active train (сезон ${seasonLabel})${motTxt}${trainMot}; combined 1X2=Legacy AH/OU=Auto; ${etalonTxt}${warn}`);
     }
     function irPopulateLeagueFilter(){
       const sel=document.getElementById('irLeagueFilter');
