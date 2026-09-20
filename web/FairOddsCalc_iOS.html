@@ -1010,7 +1010,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <tbody></tbody>
           </table>
         </div>
-        <button type="button" id="goalHistClear" class="btn" style="margin-top:8px">Очистить историю</button>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center">
+          <button type="button" id="goalHistExportCsv" class="btn">Скачать CSV</button>
+          <button type="button" id="goalHistExportExcel" class="btn">Скачать Excel</button>
+          <button type="button" id="goalHistClear" class="btn">Очистить историю</button>
+        </div>
       </div>
       </div>
     </section>
@@ -9536,6 +9540,72 @@ bash scripts/update_and_serve.sh --start</div>
       const rows=gmLoadPredHist(); rows.unshift(entry);
       gmSavePredHist(rows.slice(0,GOAL_PRED_HIST_MAX)); gmRenderPredHist();
     }
+    const GOAL_PRED_HIST_EXPORT_COLS = [
+      { key: 'at', label: 'Дата и время' },
+      { key: 'league', label: 'Лига' },
+      { key: 'match', label: 'Матч' },
+      { key: 'summary', label: 'Итог' },
+    ];
+    function gmPredHistCsvEscape(v){
+      const s = v == null ? '' : String(v);
+      if (/[",;\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    }
+    function gmExportPredHistCsv(){
+      const rows = gmLoadPredHist();
+      if (!rows.length){ alert('История расчётов пуста'); return; }
+      const cols = GOAL_PRED_HIST_EXPORT_COLS;
+      const sep = ';';
+      const head = cols.map(c => c.label).join(sep);
+      const lines = rows.map(r => cols.map(c => gmPredHistCsvEscape(r[c.key])).join(sep));
+      const blob = new Blob(['\uFEFF' + head + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `line_calc_history_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+    function gmExportPredHistExcel(){
+      const rows = gmLoadPredHist();
+      if (!rows.length){ alert('История расчётов пуста'); return; }
+      const cols = GOAL_PRED_HIST_EXPORT_COLS;
+      const esc = typeof sbExcelXmlEscape === 'function' ? sbExcelXmlEscape : (v => String(v == null ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
+      const meta = [
+        ['Форма', 'История расчётов (Линия)'],
+        ['Дата экспорта', new Date().toISOString().slice(0, 19).replace('T', ' ')],
+        ['Строк', rows.length],
+      ].map(r => `<Row><Cell><Data ss:Type="String">${esc(r[0])}</Data></Cell><Cell><Data ss:Type="String">${esc(r[1])}</Data></Cell></Row>`).join('');
+      const header = `<Row ss:StyleID="hdr">${cols.map(c => `<Cell><Data ss:Type="String">${esc(c.label)}</Data></Cell>`).join('')}</Row>`;
+      const body = rows.map(r => {
+        const cells = cols.map(c => `<Cell><Data ss:Type="String">${esc(r[c.key])}</Data></Cell>`).join('');
+        return `<Row>${cells}</Row>`;
+      }).join('');
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="hdr"><Font ss:Bold="1"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/></Style>
+  </Styles>
+  <Worksheet ss:Name="История расчётов">
+    <Table>
+      ${meta}
+      <Row></Row>
+      ${header}
+      ${body}
+    </Table>
+  </Worksheet>
+</Workbook>`;
+      const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `line_calc_history_${new Date().toISOString().slice(0, 10)}.xls`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
     function gmFormatDt(d=new Date()){
       const p=n=>String(n).padStart(2,'0');
       return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -11426,6 +11496,8 @@ bash scripts/update_and_serve.sh --start</div>
       if(!gmLoadPredHist().length) return;
       if(confirm('Очистить всю историю расчётов?')){ gmSavePredHist([]); gmRenderPredHist(); }
     });
+    bindClick('goalHistExportCsv', () => gmExportPredHistCsv());
+    bindClick('goalHistExportExcel', () => gmExportPredHistExcel());
     gmRenderPredHist();
 
     seedDefaultTeams(false);
