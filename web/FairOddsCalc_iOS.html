@@ -150,9 +150,13 @@
     .goal-src-action .btn{
       width:100%; box-sizing:border-box; padding:9px 16px; font-size:13px;
     }
+    @media (max-width:1100px){
+      .goal-train-results.has-model{ grid-template-columns:1fr 1fr; }
+    }
     @media (max-width:720px){
       .goal-train-layout{ grid-template-columns:1fr; }
-      .goal-train-results{ grid-template-columns:1fr; }
+      .goal-train-results,
+      .goal-train-results.has-model{ grid-template-columns:1fr; }
     }
     @media (max-width:480px){
       .goal-src-panel{ max-width:none; }
@@ -397,7 +401,10 @@
       animation: goal-spin 0.7s linear infinite; flex:0 0 auto;
     }
     @keyframes goal-spin{ to{ transform:rotate(360deg); } }
-    .goal-train-actions .btn[aria-busy="true"]{ opacity:0.75; cursor:wait; }
+    .goal-train-actions .btn[aria-busy="true"]{
+      opacity:0.75; cursor:wait;
+      display:inline-flex; align-items:center; gap:8px;
+    }
     .goal-train-loader{
       display:none; align-items:center; gap:8px; font-size:13px; color:#1e3a8a;
     }
@@ -445,10 +452,16 @@
     }
     .goal-train-actions--main .btn{ min-width:180px; padding:10px 20px; font-size:13px; }
     .goal-train-results{
-      display:grid; grid-template-columns:1fr 1fr; gap:16px;
+      display:grid; grid-template-columns:1fr; gap:16px;
       align-items:start; margin-top:10px;
     }
-    .goal-train-results .goal-train-card{ margin-top:0; }
+    .goal-train-results.has-model{
+      grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.1fr);
+    }
+    .goal-train-results .goal-train-card{
+      margin-top:0; height:100%;
+      max-height:min(70vh, 720px); overflow:auto;
+    }
     .goal-train-ratings-table th,
     .goal-train-ratings-table td{ padding-right:10px; }
     .goal-train-ratings-table td:first-child{ font-weight:500; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -930,10 +943,6 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
 
       <div id="goalTrainBanner" class="goal-train-banner idle">Загрузите матчи из БД и обучите модель.</div>
-      <div id="goalTrainDataCard" class="goal-train-card" style="display:none">
-        <h4><span aria-hidden="true">📊</span> Данные обучения</h4>
-        <div id="goalTrainDataBody"></div>
-      </div>
       <div class="goal-train-actions goal-train-actions--main">
         <button type="button" id="goalTrain" class="btn primary"><span aria-hidden="true">🎯</span> Обучить модель</button>
         <div id="goalTrainLoader" class="goal-train-loader" aria-live="polite" aria-hidden="true">
@@ -942,7 +951,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </div>
         <div id="goalTrainChips" class="goal-train-chips" aria-live="polite"></div>
       </div>
-      <div class="goal-train-results">
+      <div id="goalTrainResults" class="goal-train-results">
+        <div id="goalTrainDataCard" class="goal-train-card" style="display:none">
+          <h4><span aria-hidden="true">📊</span> Данные обучения</h4>
+          <div id="goalTrainDataBody"></div>
+        </div>
         <div id="goalTrainCoefCard" class="goal-train-card" style="display:none">
           <h4><span aria-hidden="true">⚙️</span> Коэффициенты модели</h4>
           <div id="goalTrainCoefBody"></div>
@@ -8627,10 +8640,12 @@ bash scripts/update_and_serve.sh --start</div>
     }
     function goalUpdateTrainUI(){
       const banner = document.getElementById('goalTrainBanner');
+      const results = document.getElementById('goalTrainResults');
       const hasData = !!(goalLoadedRaw && goalLoadedRaw.length);
       const hasModel = gmHasCombined() || !!gmModelLegacy || !!gmModelAuto || !!gmModel;
       const n = hasData ? goalLoadedRaw.length : 0;
       const qual = hasData ? goalTrainQuality(n) : null;
+      if (results) results.classList.toggle('has-model', !!hasModel);
       goalRenderTrainChips(n, hasData, hasModel, qual);
       if (banner){
         banner.classList.remove('ok', 'warn', 'idle');
