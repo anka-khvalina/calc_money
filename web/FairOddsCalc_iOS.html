@@ -84,6 +84,43 @@
       padding:8px 10px; font-weight:600; font-size:12px;
       background:#f1f5f9; border-bottom:1px solid var(--line);
     }
+    .hist-league-list{
+      display:flex; flex-direction:column; gap:8px; margin-top:8px;
+    }
+    .hist-league-item{
+      border:1px solid var(--line); border-radius:10px; background:#fff; overflow:hidden;
+    }
+    .hist-league-item.is-open{ border-color:#93c5fd; box-shadow:0 0 0 1px #dbeafe; }
+    .hist-league-item.is-active{ border-color:#255ad6; }
+    .hist-league-head{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      width:100%; padding:10px 12px; border:0; background:#f8fafc; cursor:pointer;
+      text-align:left; font:inherit; color:inherit;
+    }
+    .hist-league-item.is-open > .hist-league-head{ background:#eff6ff; }
+    .hist-league-item.is-active > .hist-league-head{ background:#eef2ff; }
+    .hist-league-head:hover{ background:#f1f5f9; }
+    .hist-league-name{ font-weight:600; font-size:14px; color:#10204a; }
+    .hist-league-meta{ font-size:12px; color:var(--muted); white-space:nowrap; }
+    .hist-league-chevron{
+      font-size:12px; color:var(--muted); transition:transform .15s ease; flex:0 0 auto;
+    }
+    .hist-league-item.is-open .hist-league-chevron{ transform:rotate(90deg); color:#255ad6; }
+    .hist-season-list{ display:none; padding:6px 8px 10px; background:#fff; }
+    .hist-league-item.is-open .hist-season-list{ display:block; }
+    .hist-season-btn{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      width:100%; margin:4px 0; padding:8px 10px; border:1px solid #e2e8f0;
+      border-radius:8px; background:#f8fafc; cursor:pointer; text-align:left;
+      font:inherit; color:inherit;
+    }
+    .hist-season-btn:hover{ background:#f1f5f9; border-color:#cbd5e1; }
+    .hist-season-btn.is-selected{
+      background:#eef2ff; border-color:#93c5fd; color:#1e3a8a; font-weight:600;
+    }
+    .hist-season-label{ font-size:13px; }
+    .hist-season-count{ font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+    .hist-season-btn.is-selected .hist-season-count{ color:#1d4ed8; }
     #clhViewTable{
       min-width:1180px; table-layout:auto;
     }
@@ -1138,18 +1175,14 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </ul>
       </div>
       <div class="small" style="margin-top:10px;font-weight:600;display:flex;flex-wrap:wrap;align-items:center;gap:10px">
-        <span>Сохранённые сезоны</span>
-        <button type="button" id="histExportExcel" class="btn" title="Все матчи лиги выбранного сезона (все сезоны этой лиги)">Скачать Excel (вся лига)</button>
+        <span>Сохранённые лиги</span>
+        <button type="button" id="histExportExcel" class="btn" title="Все матчи выбранной/открытой лиги (все сезоны)">Скачать Excel (вся лига)</button>
       </div>
-      <div class="table-wrap">
-        <table id="clhTable">
-          <thead><tr><th>Лига</th><th>Сезон</th><th class="right">Матчей</th><th>Импорт</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
+      <p class="small" style="margin:6px 0 0;color:var(--muted)">Нажмите лигу → выберите сезон. Матчи загружаются только после выбора сезона.</p>
+      <div id="histLeagueList" class="hist-league-list" role="list"></div>
       <div class="hist-bulk-active-panel help-card" style="margin-top:10px">
         <p class="small" style="margin:0 0 8px;font-weight:600">Массовое управление активностью матчей</p>
-        <p class="small" style="margin:0 0 8px;color:var(--muted)">Действие применяется к выбранному сезону в таблице выше. Меняется только поле <code>matches.active</code>.</p>
+        <p class="small" style="margin:0 0 8px;color:var(--muted)">Действие применяется к <b>выбранному сезону</b> (лига → сезон выше). Меняется только поле <code>matches.active</code>.</p>
         <div class="hist-fetch-panel">
           <div class="hist-weights-field">
             <label for="histBulkDateFrom">Дата от</label>
@@ -1173,7 +1206,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
       <div class="hist-bulk-active-panel hist-bulk-weight-panel help-card" style="margin-top:10px">
         <p class="small" style="margin:0 0 8px;font-weight:600">Массовое управление весом матчей</p>
-        <p class="small" style="margin:0 0 8px;color:var(--muted)">Применяется к выбранному сезону (лиге) в таблице выше за период дат. Меняется только поле <code>matches.match_weight</code> (по умолчанию 1).</p>
+        <p class="small" style="margin:0 0 8px;color:var(--muted)">Применяется к <b>выбранному сезону</b> за период дат. Меняется только поле <code>matches.match_weight</code> (по умолчанию 1).</p>
         <div class="hist-fetch-panel">
           <div class="hist-weights-field">
             <label for="histBulkWeightDateFrom">Дата от</label>
@@ -1218,7 +1251,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         </details>
       </div>
       <div class="table-wrap hist-matches-wrap">
-        <div class="hist-matches-caption small">Матчи выбранного сезона</div>
+        <div id="histMatchesCaption" class="hist-matches-caption small">Выберите лигу и сезон</div>
         <table id="clhViewTable">
           <thead><tr>
             <th>Дата</th><th class="hist-col-team">Дома</th><th class="hist-col-team">Гости</th>
@@ -6962,6 +6995,7 @@ bash scripts/update_and_serve.sh --start</div>
     window.__SB.matchesBySeason = window.__SB.matchesBySeason || {};
     window.__SB.histLoaded = window.__SB.histLoaded || false;
     window.__SB.histSelected = window.__SB.histSelected || null;
+    window.__SB.histExpandedLeagueId = window.__SB.histExpandedLeagueId || null;
 
     function sbFmtImportedAt(iso){
       return iso ? String(iso).replace('T', ' ').slice(0, 16) : '';
@@ -7174,12 +7208,17 @@ bash scripts/update_and_serve.sh --start</div>
     }
     async function sbHistExportLeagueExcel(){
       const sel = window.__SB.histSelected;
-      if (!sel || !sel.selected_league_id){
-        alert('Выберите сезон в таблице «Сохранённые сезоны» — экспорт загрузит все матчи этой лиги.');
+      const expandedId = window.__SB.histExpandedLeagueId;
+      let leagueId = sel && sel.selected_league_id ? sel.selected_league_id : expandedId;
+      let leagueName = sel && sel.selected_league_name ? sel.selected_league_name : '';
+      if (!leagueName && leagueId){
+        const row = (window.__SB.seasons || []).find(r => String(r.league_id) === String(leagueId));
+        leagueName = row ? row.league_name : leagueId;
+      }
+      if (!leagueId){
+        alert('Откройте лигу в списке (или выберите сезон) — экспорт загрузит все матчи этой лиги.');
         return;
       }
-      const leagueId = sel.selected_league_id;
-      const leagueName = sel.selected_league_name || leagueId;
       const btn = document.getElementById('histExportExcel');
       const meta = document.getElementById('clhMeta');
       if (btn) btn.disabled = true;
@@ -7224,25 +7263,105 @@ bash scripts/update_and_serve.sh --start</div>
       return lines.join('\n');
     }
 
-    function renderHistSeasonsTable(selectedKey=null){
-      const tb = document.querySelector('#clhTable tbody');
+    function sbGroupSeasonsByLeague(rows){
+      const map = new Map();
+      (rows || []).forEach(r => {
+        const lid = String(r.league_id || '');
+        if (!lid) return;
+        if (!map.has(lid)){
+          map.set(lid, {
+            league_id: r.league_id,
+            league_name: r.league_name || lid,
+            seasons: [],
+            matchTotal: 0,
+          });
+        }
+        const g = map.get(lid);
+        g.seasons.push(r);
+        g.matchTotal += Number(r.matches_count) || 0;
+      });
+      const groups = [...map.values()];
+      groups.forEach(g => {
+        g.seasons.sort((a, b) => String(b.season_label || '').localeCompare(String(a.season_label || '')));
+      });
+      groups.sort((a, b) => String(a.league_name || '').localeCompare(String(b.league_name || '')));
+      return groups;
+    }
+
+    function renderHistSeasonsTable(){
+      const list = document.getElementById('histLeagueList');
       const meta = document.getElementById('clhMeta');
-      if (!tb) return;
+      if (!list) return;
       const rows = window.__SB.seasons || [];
       if (!rows.length){
-        tb.innerHTML = '<tr><td colspan="4" class="hint">Пусто — в базе пока нет матчей.</td></tr>';
-        if (meta) meta.textContent = '';
+        list.innerHTML = '<div class="hint" style="padding:10px">Пусто — в базе пока нет матчей.</div>';
         return;
       }
-      tb.innerHTML = rows.map(r => {
-        const key = sbSeasonKey(r.league_id, r.season_id);
-        const active = key === selectedKey;
-        return `<tr data-lg="${escapeHtml(r.league_id)}" data-sid="${escapeHtml(String(r.season_id))}" data-key="${escapeHtml(key)}" style="cursor:pointer${active ? ';background:#eef2ff' : ''}">` +
-          `<td>${escapeHtml(r.league_name)}</td>` +
-          `<td>${escapeHtml(r.season_label)}</td>` +
-          `<td class="num">${escapeHtml(String(r.matches_count))}</td>` +
-          `<td>${escapeHtml(sbFmtImportedAt(r.imported_at))}</td></tr>`;
+      const groups = sbGroupSeasonsByLeague(rows);
+      const expandedId = window.__SB.histExpandedLeagueId != null
+        ? String(window.__SB.histExpandedLeagueId)
+        : '';
+      const sel = window.__SB.histSelected;
+      const selectedLeagueId = sel && sel.selected_league_id != null ? String(sel.selected_league_id) : '';
+      const selectedSeasonId = sel && sel.selected_season_id != null ? String(sel.selected_season_id) : '';
+
+      list.innerHTML = groups.map(g => {
+        const lid = String(g.league_id);
+        const isOpen = expandedId === lid;
+        const isActive = selectedLeagueId === lid && !!selectedSeasonId;
+        const seasonsHtml = g.seasons.map(s => {
+          const sid = String(s.season_id);
+          const selected = isActive && selectedSeasonId === sid;
+          return `<button type="button" class="hist-season-btn${selected ? ' is-selected' : ''}"` +
+            ` data-hist-season data-lg="${escapeHtml(lid)}" data-sid="${escapeHtml(sid)}"` +
+            ` data-league-name="${escapeHtml(g.league_name)}"` +
+            ` data-season-label="${escapeHtml(s.season_label || sid)}">` +
+            `<span class="hist-season-label">${escapeHtml(s.season_label || sid)}</span>` +
+            `<span class="hist-season-count">${escapeHtml(String(s.matches_count || 0))} матч.</span>` +
+            `</button>`;
+        }).join('');
+        return `<div class="hist-league-item${isOpen ? ' is-open' : ''}${isActive ? ' is-active' : ''}"` +
+          ` data-hist-league="${escapeHtml(lid)}" role="listitem">` +
+          `<button type="button" class="hist-league-head" data-hist-league-toggle="${escapeHtml(lid)}"` +
+          ` aria-expanded="${isOpen ? 'true' : 'false'}">` +
+          `<span class="hist-league-name">${escapeHtml(g.league_name)}</span>` +
+          `<span class="hist-league-meta">${g.seasons.length} сез. · ${g.matchTotal} матч.</span>` +
+          `<span class="hist-league-chevron" aria-hidden="true">▸</span>` +
+          `</button>` +
+          `<div class="hist-season-list">${seasonsHtml}</div>` +
+          `</div>`;
       }).join('');
+      if (meta && !selectedSeasonId && !(meta.textContent || '').trim()){
+        meta.textContent = 'Выберите лигу и сезон, чтобы загрузить матчи.';
+      }
+    }
+
+    function sbClearHistMatches(message){
+      renderHistMatchesTable([], message || 'Выберите сезон');
+      const cap = document.getElementById('histMatchesCaption');
+      if (cap) cap.textContent = message || 'Выберите лигу и сезон';
+    }
+
+    function sbToggleHistLeague(leagueId){
+      const lid = String(leagueId || '');
+      if (!lid) return;
+      const cur = window.__SB.histExpandedLeagueId != null
+        ? String(window.__SB.histExpandedLeagueId)
+        : '';
+      if (cur === lid){
+        window.__SB.histExpandedLeagueId = null;
+      } else {
+        window.__SB.histExpandedLeagueId = lid;
+        const sel = window.__SB.histSelected;
+        // Switching to another league clears season selection and matches (AC-08 / AC-05)
+        if (sel && String(sel.selected_league_id) !== lid){
+          window.__SB.histSelected = null;
+          sbClearHistMatches('Выберите сезон');
+        } else if (!sel || !sel.selected_season_id){
+          sbClearHistMatches('Выберите сезон');
+        }
+      }
+      renderHistSeasonsTable();
     }
 
     const SB_PATCH_WHITELIST = new Set([
@@ -7983,8 +8102,17 @@ bash scripts/update_and_serve.sh --start</div>
     function renderHistMatchesTable(matches, title=''){
       const tb = document.querySelector('#clhViewTable tbody');
       const meta = document.getElementById('clhMeta');
+      const cap = document.getElementById('histMatchesCaption');
       if (!tb) return;
       if (meta) meta.textContent = title;
+      if (cap){
+        const sel = window.__SB.histSelected;
+        if (sel && sel.selected_season_id){
+          cap.textContent = `Матчи: ${sel.selected_league_name || ''} / ${sel.selected_season_label || sel.selected_season_id}`;
+        } else {
+          cap.textContent = title || 'Выберите лигу и сезон';
+        }
+      }
       if (!matches || !matches.length){
         tb.innerHTML = '';
         window.__SB.matchRows = {};
@@ -8211,13 +8339,14 @@ bash scripts/update_and_serve.sh --start</div>
 
     async function sbSelectHistSeason(leagueId, seasonId, leagueName='', seasonLabel=''){
       const key = sbSeasonKey(leagueId, seasonId);
+      window.__SB.histExpandedLeagueId = leagueId;
       window.__SB.histSelected = {
         selected_league_id: leagueId,
         selected_league_name: leagueName,
         selected_season_id: seasonId,
         selected_season_label: seasonLabel,
       };
-      renderHistSeasonsTable(key);
+      renderHistSeasonsTable();
       renderHistMatchesTable([], `${leagueName || leagueId} / ${seasonLabel || seasonId} — загрузка матчей…`);
       try {
         await sbLoadRotationLevels();
@@ -8267,24 +8396,24 @@ bash scripts/update_and_serve.sh --start</div>
         await sbLoadRotationLevels();
         const firstLoad = !window.__SB.histLoaded;
         if (firstLoad){
-          if (meta) meta.textContent = 'Загрузка сезонов…';
+          if (meta) meta.textContent = 'Загрузка лиг…';
           await sbLoadSeasonSummary();
           window.__SB.histLoaded = true;
         }
         const rows = window.__SB.seasons || [];
         if (!rows.length){
+          window.__SB.histSelected = null;
+          window.__SB.histExpandedLeagueId = null;
           renderHistSeasonsTable();
-          renderHistMatchesTable([]);
+          sbClearHistMatches('Пусто — в базе пока нет матчей.');
           if (meta) meta.textContent = 'Пусто — в базе пока нет матчей.';
           return;
         }
         const sel = window.__SB.histSelected;
-        const selectedKey = sel ? sbSeasonKey(sel.selected_league_id, sel.selected_season_id) : null;
-        renderHistSeasonsTable(selectedKey);
-        if (firstLoad || !sel){
-          const first = rows[0];
-          await sbSelectHistSeason(first.league_id, first.season_id, first.league_name, first.season_label);
-        } else {
+        // AC-05: do not auto-select a season. Restore previous selection only if user already picked one.
+        if (sel && sel.selected_league_id && sel.selected_season_id){
+          window.__SB.histExpandedLeagueId = sel.selected_league_id;
+          renderHistSeasonsTable();
           const key = sbSeasonKey(sel.selected_league_id, sel.selected_season_id);
           const cached = window.__SB.matchesBySeason[key];
           if (cached && cached.length){
@@ -8292,6 +8421,12 @@ bash scripts/update_and_serve.sh --start</div>
           } else {
             await sbSelectHistSeason(sel.selected_league_id, sel.selected_season_id, sel.selected_league_name, sel.selected_season_label);
           }
+        } else {
+          window.__SB.histSelected = null;
+          if (firstLoad) window.__SB.histExpandedLeagueId = null;
+          renderHistSeasonsTable();
+          sbClearHistMatches('Выберите лигу и сезон');
+          if (meta) meta.textContent = 'Выберите лигу и сезон, чтобы загрузить матчи.';
         }
         sbCheckHistoryApi().then(st => {
           if (st.ok) return;
@@ -8303,7 +8438,7 @@ bash scripts/update_and_serve.sh --start</div>
         });
       } catch (e){
         console.error('sbInitHistTab failed', e);
-        const msg = sbHistErrorMessage(e, 'загрузить список сезонов');
+        const msg = sbHistErrorMessage(e, 'загрузить список лиг');
         alert(msg);
         renderHistSeasonsTable();
         if (meta) meta.textContent = msg;
@@ -8311,13 +8446,22 @@ bash scripts/update_and_serve.sh --start</div>
     }
     window.sbInitHistTab = sbInitHistTab;
 
-    document.getElementById('clhTable').addEventListener('click', e => {
-      const tr = e.target.closest('tr[data-lg]');
-      if (!tr) return;
-      const leagueId = tr.getAttribute('data-lg');
-      const seasonId = Number(tr.getAttribute('data-sid'));
-      const row = (window.__SB.seasons || []).find(r => r.league_id === leagueId && Number(r.season_id) === seasonId);
-      sbSelectHistSeason(leagueId, seasonId, row ? row.league_name : '', row ? row.season_label : String(seasonId));
+    document.getElementById('histLeagueList')?.addEventListener('click', e => {
+      const seasonBtn = e.target.closest('[data-hist-season]');
+      if (seasonBtn){
+        e.preventDefault();
+        const leagueId = seasonBtn.getAttribute('data-lg');
+        const seasonId = Number(seasonBtn.getAttribute('data-sid'));
+        const leagueName = seasonBtn.getAttribute('data-league-name') || '';
+        const seasonLabel = seasonBtn.getAttribute('data-season-label') || String(seasonId);
+        sbSelectHistSeason(leagueId, seasonId, leagueName, seasonLabel);
+        return;
+      }
+      const leagueBtn = e.target.closest('[data-hist-league-toggle]');
+      if (leagueBtn){
+        e.preventDefault();
+        sbToggleHistLeague(leagueBtn.getAttribute('data-hist-league-toggle'));
+      }
     });
     bindClick('histBulkApply', () => { sbHistBulkApply().catch(e => console.error(e)); });
     bindClick('histBulkWeightApply', () => { sbHistBulkWeightApply().catch(e => console.error(e)); });
