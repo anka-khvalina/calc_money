@@ -124,13 +124,51 @@
     .mlp-toolbar{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:10px 0; }
     .mlp-status{ margin:8px 0; padding:10px 12px; border-radius:8px; background:#f8fafc; border:1px solid var(--line); font-size:13px; }
     .mlp-status.err{ background:#fef2f2; border-color:#fecaca; color:#991b1b; }
-    .mlp-table-wrap{ overflow:auto; max-height:70vh; border:1px solid var(--line); border-radius:10px; }
-    .mlp-table{ width:max-content; min-width:100%; border-collapse:collapse; font-size:11px; }
-    .mlp-table th,.mlp-table td{ border:1px solid #e2e8f0; padding:4px 6px; white-space:nowrap; }
-    .mlp-table thead th{ position:sticky; top:0; background:#f1f5f9; z-index:1; font-weight:600; }
+    .mlp-hint{ margin:12px 0; padding:14px 16px; border:1px dashed #cbd5e1; border-radius:10px; color:var(--muted); font-size:13px; background:#f8fafc; }
+    .mlp-card{
+      margin-top:12px; border:1px solid var(--line); border-radius:12px; background:#fff;
+      padding:16px 16px 12px; box-shadow:0 1px 2px rgba(15,23,42,.04);
+    }
+    .mlp-card-head{ display:flex; flex-wrap:wrap; gap:10px 16px; align-items:flex-start; justify-content:space-between; margin-bottom:12px; }
+    .mlp-card-title{ margin:0; font-size:18px; color:#0f172a; letter-spacing:-0.02em; }
+    .mlp-card-sub{ margin:4px 0 0; font-size:13px; color:var(--muted); }
+    .mlp-chart-block{ margin:8px 0 16px; padding:12px; border:1px solid #e2e8f0; border-radius:10px; background:#f8fafc; }
+    .mlp-chart-title{ margin:0 0 8px; font-size:13px; font-weight:600; color:#334155; }
+    .mlp-chart-wrap{ position:relative; width:100%; max-width:720px; }
+    .mlp-chart-wrap canvas{ width:100%; height:220px; display:block; cursor:crosshair; background:#fff; border-radius:8px; border:1px solid #e2e8f0; }
+    .mlp-chart-tip{
+      display:none; position:absolute; z-index:3; pointer-events:none;
+      background:#0f172a; color:#f8fafc; font-size:11px; line-height:1.35;
+      padding:8px 10px; border-radius:8px; white-space:pre; max-width:220px;
+      box-shadow:0 8px 20px rgba(15,23,42,.25);
+    }
+    .mlp-chart-legend{ display:flex; flex-wrap:wrap; gap:10px 14px; margin-top:8px; font-size:11px; color:#475569; }
+    .mlp-chart-legend span{ display:inline-flex; align-items:center; gap:6px; }
+    .mlp-chart-swatch{ width:14px; height:3px; border-radius:2px; display:inline-block; }
+    .mlp-hist-title{ margin:0 0 8px; font-size:14px; font-weight:600; color:#1e293b; }
+    .mlp-attempt{
+      border:1px solid #e2e8f0; border-radius:10px; margin:0 0 8px; background:#fff; overflow:hidden;
+    }
+    .mlp-attempt > summary{
+      list-style:none; cursor:pointer; display:flex; flex-wrap:wrap; gap:8px 12px;
+      align-items:center; justify-content:space-between; padding:10px 12px; background:#f8fafc;
+      font-size:13px; font-weight:600; color:#0f172a; user-select:none;
+    }
+    .mlp-attempt > summary::-webkit-details-marker{ display:none; }
+    .mlp-attempt > summary::before{ content:'▶'; font-size:10px; color:#64748b; margin-right:2px; }
+    .mlp-attempt[open] > summary::before{ content:'▼'; }
+    .mlp-attempt-meta{ display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; flex:1; }
+    .mlp-attempt-body{ padding:10px 12px 12px; border-top:1px solid #e2e8f0; }
+    .mlp-attempt-actions{ display:flex; gap:8px; align-items:center; }
+    .mlp-mkt-wrap{ overflow:auto; }
+    .mlp-table{ width:100%; min-width:640px; border-collapse:collapse; font-size:12px; }
+    .mlp-table th,.mlp-table td{ border:1px solid #e2e8f0; padding:5px 8px; white-space:nowrap; }
+    .mlp-table thead th{ background:#f1f5f9; font-weight:600; text-align:left; }
     .mlp-table td.num{ text-align:right; font-variant-numeric:tabular-nums; }
     .mlp-table td.delta-pos{ color:#b45309; }
     .mlp-table td.delta-neg{ color:#166534; }
+    .mlp-hit-ok{ color:#166534; font-weight:700; }
+    .mlp-hit-miss{ color:#991b1b; font-weight:700; }
     .mlp-badge{
       display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600;
     }
@@ -1292,63 +1330,53 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div id="clhMeta" class="meta"></div>
     </section>
 
-    <!-- TAB PREDICTIONS: saved Line calcs vs closing -->
+    <!-- TAB PREDICTIONS: match card with attempt history -->
     <section id="tab-preds" class="panel">
       <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Прогнозы</h3>
       <p class="small" style="margin:0 0 10px">
-        История попыток «Рассчитать линию». Каждый клик — отдельная запись.
-        В момент расчёта фиксируются прогноз, ожидаемый диапазон дельты
-        (<code>predicted − closing</code>) и ожидаемый closing range.
-        Closing подтягивается из <code>v_matches_full</code> по лига + сезон + home + away;
-        после появления closing прогноз и диапазоны не пересчитываются — только проверка попадания.
+        Сначала выберите матч (лига → сезон → команда 1 → команда 2), затем смотрите историю расчётов.
+        Каждый клик «Рассчитать линию» — отдельная попытка. Closing из <code>v_matches_full</code>;
+        прогноз и диапазоны после сохранения не пересчитываются.
       </p>
       <div class="mlp-toolbar">
         <div class="field" style="min-width:160px">
           <label>Лига</label>
-          <select id="mlpLeagueFilter"><option value="">Все лиги</option></select>
+          <select id="mlpLeagueFilter"><option value="">Выберите лигу</option></select>
         </div>
         <div class="field" style="min-width:140px">
           <label>Сезон</label>
-          <select id="mlpSeasonFilter"><option value="">Все сезоны</option></select>
+          <select id="mlpSeasonFilter" disabled><option value="">Сначала лига</option></select>
         </div>
         <div class="field" style="min-width:160px">
-          <label>Статус</label>
-          <select id="mlpStatusFilter">
-            <option value="">Все</option>
-            <option value="wait">Ожидаем closing</option>
-            <option value="ready">Closing есть</option>
-          </select>
+          <label>Команда 1</label>
+          <select id="mlpTeam1Filter" disabled><option value="">Сначала сезон</option></select>
+        </div>
+        <div class="field" style="min-width:160px">
+          <label>Команда 2</label>
+          <select id="mlpTeam2Filter" disabled><option value="">Сначала команда 1</option></select>
         </div>
         <button type="button" id="mlpRefresh" class="btn primary">Обновить</button>
       </div>
       <div id="mlpStatus" class="mlp-status" style="display:none"></div>
-      <div class="mlp-table-wrap">
-        <table class="mlp-table" id="mlpTable">
-          <thead>
-            <tr>
-              <th>Расчёт</th>
-              <th>Лига</th>
-              <th>Сезон</th>
-              <th>Матч</th>
-              <th>Статус</th>
-              <th>1 / X / 2</th>
-              <th>Closing 1X2</th>
-              <th>Δ odds 1X2</th>
-              <th>Δ fair п.п. 1X2</th>
-              <th>AH</th>
-              <th>Closing AH</th>
-              <th>Δ AH</th>
-              <th>Total</th>
-              <th>Closing Tot</th>
-              <th>Δ Tot</th>
-              <th>Closing в диапазоне</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="mlpTableBody">
-            <tr><td colspan="17" class="hint">Нажмите «Обновить».</td></tr>
-          </tbody>
-        </table>
+      <div id="mlpEmptyHint" class="mlp-hint">Выберите лигу, сезон и обе команды — откроется карточка матча с динамикой 1/X/2 и историей расчётов.</div>
+      <div id="mlpMatchCard" class="mlp-card" style="display:none">
+        <div class="mlp-card-head">
+          <div>
+            <h4 class="mlp-card-title" id="mlpCardTitle">—</h4>
+            <p class="mlp-card-sub" id="mlpCardSub">—</p>
+          </div>
+          <div id="mlpCardStatus"></div>
+        </div>
+        <div class="mlp-chart-block">
+          <h5 class="mlp-chart-title">Динамика прогноза 1 / X / 2</h5>
+          <div class="mlp-chart-wrap">
+            <canvas id="mlpChart" width="720" height="220" aria-label="Динамика прогноза 1 X 2"></canvas>
+            <div id="mlpChartTip" class="mlp-chart-tip"></div>
+          </div>
+          <div class="mlp-chart-legend" id="mlpChartLegend"></div>
+        </div>
+        <h5 class="mlp-hist-title">История расчётов</h5>
+        <div id="mlpAttemptList"></div>
       </div>
     </section>
 
@@ -9929,6 +9957,9 @@ bash scripts/update_and_serve.sh --start</div>
     // ========== MATCH LINE PREDICTIONS (Прогнозы) ==========
     let mlpRowsCache = [];
     let mlpClosingByKey = {};
+    let mlpFilterState = { league: '', season: '', team1: '', team2: '' };
+    let mlpChartPoints = [];
+    let mlpExpandedAttemptId = null;
 
     function mlpNum(v){
       if (v == null || v === '') return null;
@@ -10258,79 +10289,526 @@ bash scripts/update_and_serve.sh --start</div>
       el.classList.toggle('err', !!isErr);
       el.textContent = msg || '';
     }
-    function mlpPopulateFilters(preds){
-      const leagueSel = document.getElementById('mlpLeagueFilter');
-      const seasonSel = document.getElementById('mlpSeasonFilter');
-      if (!leagueSel || !seasonSel) return;
-      const prevL = leagueSel.value;
-      const prevS = seasonSel.value;
-      const leagues = new Map();
-      const seasons = new Map();
-      (preds || []).forEach(p => {
-        leagues.set(String(p.league_id), sbLeagueName(p.league_id) || String(p.league_id));
-        const lab = p.season_label || String(p.season_id);
-        seasons.set(String(p.season_label || p.season_id), lab);
-      });
-      leagueSel.innerHTML = '<option value="">Все лиги</option>' +
-        [...leagues.entries()].sort((a,b)=>a[1].localeCompare(b[1]))
-          .map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('');
-      seasonSel.innerHTML = '<option value="">Все сезоны</option>' +
-        [...seasons.entries()].sort((a,b)=>String(b[1]).localeCompare(String(a[1])))
-          .map(([id, lab]) => `<option value="${escapeHtml(id)}">${escapeHtml(lab)}</option>`).join('');
-      if (prevL && [...leagues.keys()].includes(prevL)) leagueSel.value = prevL;
-      if (prevS && [...seasons.keys()].includes(prevS)) seasonSel.value = prevS;
-    }
-    function mlpFilteredRows(){
-      const league = (document.getElementById('mlpLeagueFilter') || {}).value || '';
-      const season = (document.getElementById('mlpSeasonFilter') || {}).value || '';
-      const status = (document.getElementById('mlpStatusFilter') || {}).value || '';
-      return (mlpRowsCache || []).filter(r => {
-        if (league && String(r.league_id) !== String(league)) return false;
-        if (season){
-          const key = String(r.season_label || r.season_id);
-          if (key !== String(season)) return false;
-        }
-        if (status && r._status !== status) return false;
-        return true;
-      });
-    }
-    function mlpRangeTitle(r){
-      const parts = [];
-      const add = (label, dMin, dMax, cMin, cMax, hit) => {
-        if (mlpNum(cMin) == null && mlpNum(cMax) == null && mlpNum(dMin) == null) return;
-        const dStr = (mlpNum(dMin) != null && mlpNum(dMax) != null)
-          ? `Δ ${mlpFmtDelta(dMin)}…${mlpFmtDelta(dMax)}`
-          : '';
-        const cStr = (mlpNum(cMin) != null && mlpNum(cMax) != null)
-          ? `ожид. closing ${mlpFmtOdds(cMin)}–${mlpFmtOdds(cMax)}`
-          : '';
-        const hStr = hit === true ? '✓' : (hit === false ? '✗' : '');
-        parts.push([label, dStr, cStr, hStr].filter(Boolean).join(' · '));
-      };
-      add('1', r.delta_home_min, r.delta_home_max, r.corr_home_odds_min, r.corr_home_odds_max, r.closing_in_range_home);
-      add('X', r.delta_draw_min, r.delta_draw_max, r.corr_draw_odds_min, r.corr_draw_odds_max, r.closing_in_range_draw);
-      add('2', r.delta_away_min, r.delta_away_max, r.corr_away_odds_min, r.corr_away_odds_max, r.closing_in_range_away);
-      add('AH1', r.delta_ah_home_min, r.delta_ah_home_max, r.corr_ah_home_min, r.corr_ah_home_max, r.closing_in_range_ah_home);
-      add('AH2', r.delta_ah_away_min, r.delta_ah_away_max, r.corr_ah_away_min, r.corr_ah_away_max, r.closing_in_range_ah_away);
-      add('Over', r.delta_over_min, r.delta_over_max, r.corr_over_min, r.corr_over_max, r.closing_in_range_over);
-      add('Under', r.delta_under_min, r.delta_under_max, r.corr_under_min, r.corr_under_max, r.closing_in_range_under);
-      return parts.join('\n');
-    }
-    function mlpRangeCell(r){
-      const title = mlpRangeTitle(r);
-      const tip = title ? ` title="${escapeHtml(title)}"` : '';
-      if (!r._rangeKnown) return `<span class="hint"${tip}>—</span>`;
-      if (r._rangeAllIn) return `<span class="mlp-badge ok"${tip}>closing в диапазоне</span>`;
-      if (r._rangeAnyMiss) return `<span class="mlp-badge miss"${tip}>мимо</span>`;
-      return `<span class="mlp-badge partial"${tip}>частично</span>`;
-    }
-    function mlpStatusBadge(r){
-      if (r._status === 'ready') return '<span class="mlp-badge ok">Closing есть</span>';
-      return '<span class="mlp-badge wait">Ожидаем closing</span>';
-    }
     function mlpIsProbeRow(p){
       const lab = String(p && p.season_label || '');
       return lab === '__probe__' || lab.startsWith('__probe');
+    }
+    function mlpFmtWhen(iso){
+      if (!iso) return '—';
+      const s = String(iso);
+      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+      if (m) return `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}`;
+      return sbFmtImportedAt(iso) || s.slice(0, 16);
+    }
+    function mlpSeasonKey(p){
+      return String(p.season_id);
+    }
+    function mlpSeasonLabel(p){
+      return p.season_label || String(p.season_id);
+    }
+    function mlpFillSelect(sel, placeholder, entries, selected, disabled){
+      if (!sel) return;
+      sel.disabled = !!disabled;
+      const opts = [`<option value="">${escapeHtml(placeholder)}</option>`];
+      (entries || []).forEach(([val, lab]) => {
+        opts.push(`<option value="${escapeHtml(String(val))}">${escapeHtml(String(lab))}</option>`);
+      });
+      sel.innerHTML = opts.join('');
+      if (selected && entries.some(([v]) => String(v) === String(selected))) sel.value = String(selected);
+      else sel.value = '';
+    }
+    function mlpRowsForFilters(partial){
+      const f = Object.assign({}, mlpFilterState, partial || {});
+      return (mlpRowsCache || []).filter(r => {
+        if (f.league && String(r.league_id) !== String(f.league)) return false;
+        if (f.season && mlpSeasonKey(r) !== String(f.season)) return false;
+        if (f.team1 && String(r.team1_id) !== String(f.team1)) return false;
+        if (f.team2 && String(r.team2_id) !== String(f.team2)) return false;
+        return true;
+      });
+    }
+    function mlpSyncFilters(){
+      const leagueSel = document.getElementById('mlpLeagueFilter');
+      const seasonSel = document.getElementById('mlpSeasonFilter');
+      const team1Sel = document.getElementById('mlpTeam1Filter');
+      const team2Sel = document.getElementById('mlpTeam2Filter');
+      const leagues = new Map();
+      (mlpRowsCache || []).forEach(p => {
+        leagues.set(String(p.league_id), p._leagueName || sbLeagueName(p.league_id) || String(p.league_id));
+      });
+      mlpFillSelect(
+        leagueSel,
+        'Выберите лигу',
+        [...leagues.entries()].sort((a,b)=>a[1].localeCompare(b[1], 'ru')),
+        mlpFilterState.league,
+        false
+      );
+
+      if (!mlpFilterState.league){
+        mlpFillSelect(seasonSel, 'Сначала лига', [], '', true);
+        mlpFillSelect(team1Sel, 'Сначала сезон', [], '', true);
+        mlpFillSelect(team2Sel, 'Сначала команда 1', [], '', true);
+        return;
+      }
+
+      const seasons = new Map();
+      mlpRowsForFilters({ season: '', team1: '', team2: '' }).forEach(p => {
+        seasons.set(mlpSeasonKey(p), mlpSeasonLabel(p));
+      });
+      mlpFillSelect(
+        seasonSel,
+        'Выберите сезон',
+        [...seasons.entries()].sort((a,b)=>String(b[1]).localeCompare(String(a[1]))),
+        mlpFilterState.season,
+        false
+      );
+
+      if (!mlpFilterState.season){
+        mlpFillSelect(team1Sel, 'Сначала сезон', [], '', true);
+        mlpFillSelect(team2Sel, 'Сначала команда 1', [], '', true);
+        return;
+      }
+
+      const team1s = new Map();
+      mlpRowsForFilters({ team1: '', team2: '' }).forEach(p => {
+        team1s.set(String(p.team1_id), p._team1Name || String(p.team1_id));
+      });
+      mlpFillSelect(
+        team1Sel,
+        'Выберите команду 1',
+        [...team1s.entries()].sort((a,b)=>a[1].localeCompare(b[1], 'ru')),
+        mlpFilterState.team1,
+        false
+      );
+
+      if (!mlpFilterState.team1){
+        mlpFillSelect(team2Sel, 'Сначала команда 1', [], '', true);
+        return;
+      }
+
+      const team2s = new Map();
+      mlpRowsForFilters({ team2: '' }).forEach(p => {
+        team2s.set(String(p.team2_id), p._team2Name || String(p.team2_id));
+      });
+      mlpFillSelect(
+        team2Sel,
+        'Выберите команду 2',
+        [...team2s.entries()].sort((a,b)=>a[1].localeCompare(b[1], 'ru')),
+        mlpFilterState.team2,
+        false
+      );
+    }
+    function mlpSelectedAttempts(){
+      const f = mlpFilterState;
+      if (!f.league || !f.season || !f.team1 || !f.team2) return [];
+      return mlpRowsForFilters({})
+        .slice()
+        .sort((a, b) => {
+          const ta = String(a.calculated_at || '');
+          const tb = String(b.calculated_at || '');
+          if (ta !== tb) return tb.localeCompare(ta); // newest first for list
+          return Number(b.id) - Number(a.id);
+        });
+    }
+    function mlpAttemptsChrono(rows){
+      return (rows || []).slice().sort((a, b) => {
+        const ta = String(a.calculated_at || '');
+        const tb = String(b.calculated_at || '');
+        if (ta !== tb) return ta.localeCompare(tb); // oldest first for chart
+        return Number(a.id) - Number(b.id);
+      });
+    }
+    function mlpHitCell(hit){
+      if (hit === true) return '<span class="mlp-hit-ok">✓</span>';
+      if (hit === false) return '<span class="mlp-hit-miss">✕</span>';
+      return '—';
+    }
+    function mlpRangeStr(lo, hi){
+      if (mlpNum(lo) == null || mlpNum(hi) == null) return '—';
+      return `${mlpFmtOdds(lo)}–${mlpFmtOdds(hi)}`;
+    }
+    function mlpMarketRows(r){
+      const c = r._closing;
+      const totLine = r.pred_total_line != null ? ` (${r.pred_total_line})` : '';
+      const ahLine = r.pred_ah_line != null
+        ? ` (${(Number(r.pred_ah_line) >= 0 ? '+' : '') + Number(r.pred_ah_line)})`
+        : '';
+      return [
+        {
+          label: 'П1',
+          pred: r.pred_home_odds,
+          range: mlpRangeStr(r.corr_home_odds_min, r.corr_home_odds_max),
+          closing: c && mlpNum(c.home_odds),
+          dOdds: r.d_home,
+          dFair: r.fp_d_home,
+          hit: r.closing_in_range_home,
+        },
+        {
+          label: 'X',
+          pred: r.pred_draw_odds,
+          range: mlpRangeStr(r.corr_draw_odds_min, r.corr_draw_odds_max),
+          closing: c && mlpNum(c.draw_odds),
+          dOdds: r.d_draw,
+          dFair: r.fp_d_draw,
+          hit: r.closing_in_range_draw,
+        },
+        {
+          label: 'П2',
+          pred: r.pred_away_odds,
+          range: mlpRangeStr(r.corr_away_odds_min, r.corr_away_odds_max),
+          closing: c && mlpNum(c.away_odds),
+          dOdds: r.d_away,
+          dFair: r.fp_d_away,
+          hit: r.closing_in_range_away,
+        },
+        {
+          label: `AH1${ahLine}`,
+          pred: r.pred_ah_home_odds,
+          range: mlpRangeStr(r.corr_ah_home_min, r.corr_ah_home_max),
+          closing: mlpHasClosingAh(c) ? mlpNum(c.ah_home_odds) : null,
+          dOdds: r.d_ah_home,
+          dFair: r.fp_d_ah_home,
+          hit: r.closing_in_range_ah_home,
+        },
+        {
+          label: `AH2${ahLine}`,
+          pred: r.pred_ah_away_odds,
+          range: mlpRangeStr(r.corr_ah_away_min, r.corr_ah_away_max),
+          closing: mlpHasClosingAh(c) ? mlpNum(c.ah_away_odds) : null,
+          dOdds: r.d_ah_away,
+          dFair: r.fp_d_ah_away,
+          hit: r.closing_in_range_ah_away,
+        },
+        {
+          label: `Total Over${totLine}`,
+          pred: r.pred_over_odds,
+          range: mlpRangeStr(r.corr_over_min, r.corr_over_max),
+          closing: mlpHasClosingOu(c) ? mlpNum(c.over_odds) : null,
+          dOdds: r.d_over,
+          dFair: r.fp_d_over,
+          hit: r.closing_in_range_over,
+        },
+        {
+          label: `Total Under${totLine}`,
+          pred: r.pred_under_odds,
+          range: mlpRangeStr(r.corr_under_min, r.corr_under_max),
+          closing: mlpHasClosingOu(c) ? mlpNum(c.under_odds) : null,
+          dOdds: r.d_under,
+          dFair: r.fp_d_under,
+          hit: r.closing_in_range_under,
+        },
+      ];
+    }
+    function mlpRenderAttempt(r){
+      const when = mlpFmtWhen(r.calculated_at);
+      const open = String(mlpExpandedAttemptId) === String(r.id) ? ' open' : '';
+      const rows = mlpMarketRows(r).map(m => {
+        const hasPred = mlpNum(m.pred) != null;
+        if (!hasPred && m.range === '—' && m.closing == null) return '';
+        return `<tr>
+          <td>${escapeHtml(m.label)}</td>
+          <td class="num">${mlpFmtOdds(m.pred)}</td>
+          <td class="num">${escapeHtml(m.range)}</td>
+          <td class="num">${mlpFmtOdds(m.closing)}</td>
+          <td class="${mlpDeltaClass(m.dOdds)}">${mlpFmtDelta(m.dOdds)}</td>
+          <td class="${mlpDeltaClass(m.dFair)}">${mlpFmtPp(m.dFair)}</td>
+          <td class="num">${mlpHitCell(m.hit)}</td>
+        </tr>`;
+      }).join('');
+      const matchLabel = `${r._team1Name} — ${r._team2Name}`;
+      return `<details class="mlp-attempt" data-attempt-id="${escapeHtml(String(r.id))}"${open}>
+        <summary>
+          <span class="mlp-attempt-meta">
+            <span>Расчёт #${escapeHtml(String(r.id))} · ${escapeHtml(when)}</span>
+            ${r.with_margin && mlpNum(r.margin_pct) != null ? `<span class="hint">маржа ${Number(r.margin_pct).toFixed(1)}%</span>` : ''}
+          </span>
+          <span class="mlp-attempt-actions">
+            <button type="button" class="mlp-del" data-id="${escapeHtml(String(r.id))}" data-match="${escapeHtml(matchLabel)}" data-when="${escapeHtml(when)}" title="Удалить прогноз">Удалить</button>
+          </span>
+        </summary>
+        <div class="mlp-attempt-body">
+          <div class="mlp-mkt-wrap">
+            <table class="mlp-table">
+              <thead>
+                <tr>
+                  <th>Рынок</th>
+                  <th>Прогноз</th>
+                  <th>Ожидаемый closing range</th>
+                  <th>Closing</th>
+                  <th>Odds Δ</th>
+                  <th>Fair Probability Δ</th>
+                  <th>Попадание</th>
+                </tr>
+              </thead>
+              <tbody>${rows || '<tr><td colspan="7" class="hint">Нет коэффициентов в этой попытке.</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
+      </details>`;
+    }
+    function mlpExpandAttempt(id){
+      mlpExpandedAttemptId = id;
+      const list = document.getElementById('mlpAttemptList');
+      if (!list) return;
+      list.querySelectorAll('details.mlp-attempt').forEach(el => {
+        const open = String(el.getAttribute('data-attempt-id')) === String(id);
+        el.open = open;
+        if (open){
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+    }
+    function mlpDrawChart(attemptsDesc, closing){
+      const canvas = document.getElementById('mlpChart');
+      const tip = document.getElementById('mlpChartTip');
+      const legend = document.getElementById('mlpChartLegend');
+      if (!canvas) return;
+      const chrono = mlpAttemptsChrono(attemptsDesc);
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = canvas.clientWidth || 720;
+      const cssH = 220;
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssW, cssH);
+
+      const pad = { l: 42, r: 14, t: 16, b: 28 };
+      const colors = { home: '#2563eb', draw: '#ca8a04', away: '#dc2626' };
+      const closeColors = { home: '#93c5fd', draw: '#fde68a', away: '#fca5a5' };
+
+      if (legend){
+        const bits = [
+          `<span><i class="mlp-chart-swatch" style="background:${colors.home}"></i>1</span>`,
+          `<span><i class="mlp-chart-swatch" style="background:${colors.draw}"></i>X</span>`,
+          `<span><i class="mlp-chart-swatch" style="background:${colors.away}"></i>2</span>`,
+        ];
+        if (mlpHasClosing1x2(closing)){
+          bits.push(`<span><i class="mlp-chart-swatch" style="background:${closeColors.home};border-top:1px dashed #2563eb;height:0;border-radius:0"></i>Closing 1</span>`);
+          bits.push(`<span><i class="mlp-chart-swatch" style="background:${closeColors.draw};border-top:1px dashed #ca8a04;height:0;border-radius:0"></i>Closing X</span>`);
+          bits.push(`<span><i class="mlp-chart-swatch" style="background:${closeColors.away};border-top:1px dashed #dc2626;height:0;border-radius:0"></i>Closing 2</span>`);
+        }
+        legend.innerHTML = bits.join('');
+      }
+
+      const series = chrono.map(r => ({
+        id: r.id,
+        when: mlpFmtWhen(r.calculated_at),
+        home: mlpNum(r.pred_home_odds),
+        draw: mlpNum(r.pred_draw_odds),
+        away: mlpNum(r.pred_away_odds),
+      }));
+      const vals = [];
+      series.forEach(s => { [s.home, s.draw, s.away].forEach(v => { if (v != null) vals.push(v); }); });
+      if (mlpHasClosing1x2(closing)){
+        [closing.home_odds, closing.draw_odds, closing.away_odds].forEach(v => {
+          const n = mlpNum(v); if (n != null) vals.push(n);
+        });
+      }
+      if (!vals.length){
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '12px sans-serif';
+        ctx.fillText('Нет коэффициентов 1/X/2 для графика', pad.l, cssH / 2);
+        mlpChartPoints = [];
+        if (tip) tip.style.display = 'none';
+        return;
+      }
+      let yMin = Math.min(...vals);
+      let yMax = Math.max(...vals);
+      if (yMax - yMin < 0.2){ yMin -= 0.15; yMax += 0.15; }
+      else { const padY = (yMax - yMin) * 0.12; yMin -= padY; yMax += padY; }
+
+      const plotW = cssW - pad.l - pad.r;
+      const plotH = cssH - pad.t - pad.b;
+      const xAt = (i) => {
+        if (series.length <= 1) return pad.l + plotW / 2;
+        return pad.l + (i / (series.length - 1)) * plotW;
+      };
+      const yAt = (v) => pad.t + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+
+      // grid
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 1;
+      for (let g = 0; g <= 4; g++){
+        const y = pad.t + (g / 4) * plotH;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + plotW, y); ctx.stroke();
+        const val = yMax - (g / 4) * (yMax - yMin);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(val.toFixed(2), pad.l - 6, y + 3);
+      }
+
+      // closing refs
+      if (mlpHasClosing1x2(closing)){
+        const refs = [
+          { v: mlpNum(closing.home_odds), c: colors.home },
+          { v: mlpNum(closing.draw_odds), c: colors.draw },
+          { v: mlpNum(closing.away_odds), c: colors.away },
+        ];
+        refs.forEach(ref => {
+          if (ref.v == null) return;
+          const y = yAt(ref.v);
+          ctx.strokeStyle = ref.c;
+          ctx.globalAlpha = 0.45;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + plotW, y); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+        });
+      }
+
+      const drawSeries = (key, color) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        let started = false;
+        series.forEach((s, i) => {
+          const v = s[key];
+          if (v == null){ started = false; return; }
+          const x = xAt(i), y = yAt(v);
+          if (!started){ ctx.moveTo(x, y); started = true; }
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        series.forEach((s, i) => {
+          const v = s[key];
+          if (v == null) return;
+          const x = xAt(i), y = yAt(v);
+          ctx.fillStyle = color;
+          ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.fill();
+        });
+      };
+      drawSeries('home', colors.home);
+      drawSeries('draw', colors.draw);
+      drawSeries('away', colors.away);
+
+      // x labels
+      ctx.fillStyle = '#64748b';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      series.forEach((s, i) => {
+        if (series.length > 8 && i !== 0 && i !== series.length - 1 && i % Math.ceil(series.length / 6) !== 0) return;
+        ctx.fillText(`#${s.id}`, xAt(i), cssH - 8);
+      });
+
+      mlpChartPoints = series.map((s, i) => ({
+        id: s.id,
+        x: xAt(i),
+        yHome: s.home != null ? yAt(s.home) : null,
+        yDraw: s.draw != null ? yAt(s.draw) : null,
+        yAway: s.away != null ? yAt(s.away) : null,
+        tip: [
+          `Расчёт #${s.id}`,
+          s.when,
+          '',
+          `1: ${mlpFmtOdds(s.home)}`,
+          `X: ${mlpFmtOdds(s.draw)}`,
+          `2: ${mlpFmtOdds(s.away)}`,
+          mlpHasClosing1x2(closing)
+            ? `\nClosing\n1: ${mlpFmtOdds(closing.home_odds)}\nX: ${mlpFmtOdds(closing.draw_odds)}\n2: ${mlpFmtOdds(closing.away_odds)}`
+            : '',
+        ].filter(Boolean).join('\n'),
+      }));
+      if (tip) tip.style.display = 'none';
+    }
+    function mlpChartHit(mx, my){
+      let best = null, bestD = 14;
+      (mlpChartPoints || []).forEach(p => {
+        const ys = [p.yHome, p.yDraw, p.yAway].filter(y => y != null);
+        ys.forEach(y => {
+          const d = Math.hypot(mx - p.x, my - y);
+          if (d < bestD){ bestD = d; best = p; }
+        });
+        // also allow clicking near the vertical of the attempt
+        const dX = Math.abs(mx - p.x);
+        if (dX < 10 && my >= 16 && my <= 192){
+          const d = dX + 4;
+          if (d < bestD){ bestD = d; best = p; }
+        }
+      });
+      return best;
+    }
+    function mlpShowChartTip(p, clientX, clientY){
+      const tip = document.getElementById('mlpChartTip');
+      const wrap = tip && tip.parentElement;
+      if (!tip || !wrap || !p){ if (tip) tip.style.display = 'none'; return; }
+      tip.textContent = p.tip;
+      tip.style.display = 'block';
+      const rect = wrap.getBoundingClientRect();
+      let left = clientX - rect.left + 12;
+      let top = clientY - rect.top + 12;
+      tip.style.left = `${left}px`;
+      tip.style.top = `${top}px`;
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      if (left + tw > rect.width - 4) tip.style.left = `${Math.max(4, rect.width - tw - 4)}px`;
+      if (top + th > rect.height - 4) tip.style.top = `${Math.max(4, clientY - rect.top - th - 8)}px`;
+    }
+    function mlpRenderMatchCard(){
+      const hint = document.getElementById('mlpEmptyHint');
+      const card = document.getElementById('mlpMatchCard');
+      const f = mlpFilterState;
+      const ready = !!(f.league && f.season && f.team1 && f.team2);
+      if (!ready){
+        if (hint){
+          hint.style.display = 'block';
+          hint.textContent = 'Выберите лигу, сезон и обе команды — откроется карточка матча с динамикой 1/X/2 и историей расчётов.';
+        }
+        if (card) card.style.display = 'none';
+        return;
+      }
+      const attempts = mlpSelectedAttempts();
+      if (!attempts.length){
+        if (hint){
+          hint.style.display = 'block';
+          hint.textContent = 'Для этой комбинации нет сохранённых расчётов.';
+        }
+        if (card) card.style.display = 'none';
+        return;
+      }
+      if (hint) hint.style.display = 'none';
+      if (card) card.style.display = 'block';
+
+      const sample = attempts[0];
+      const closing = sample._closing;
+      const title = document.getElementById('mlpCardTitle');
+      const sub = document.getElementById('mlpCardSub');
+      const status = document.getElementById('mlpCardStatus');
+      if (title) title.textContent = `${sample._team1Name} — ${sample._team2Name}`;
+      if (sub) sub.textContent = `${sample._leagueName} · ${mlpSeasonLabel(sample)}`;
+      if (status){
+        const hasClose = mlpHasClosing1x2(closing) || mlpHasClosingAh(closing) || mlpHasClosingOu(closing);
+        status.innerHTML = hasClose
+          ? '<span class="mlp-badge ok">Closing получен</span>'
+          : '<span class="mlp-badge wait">Ожидаем closing</span>';
+      }
+
+      const list = document.getElementById('mlpAttemptList');
+      if (list){
+        if (mlpExpandedAttemptId && !attempts.some(a => String(a.id) === String(mlpExpandedAttemptId))){
+          mlpExpandedAttemptId = attempts[0].id;
+        }
+        if (mlpExpandedAttemptId == null && attempts.length) mlpExpandedAttemptId = attempts[0].id;
+        list.innerHTML = attempts.map(mlpRenderAttempt).join('');
+      }
+      mlpDrawChart(attempts, closing);
+    }
+    function mlpOnFilterChange(level){
+      if (level === 'league'){
+        mlpFilterState.season = '';
+        mlpFilterState.team1 = '';
+        mlpFilterState.team2 = '';
+      } else if (level === 'season'){
+        mlpFilterState.team1 = '';
+        mlpFilterState.team2 = '';
+      } else if (level === 'team1'){
+        mlpFilterState.team2 = '';
+      }
+      mlpExpandedAttemptId = null;
+      mlpSyncFilters();
+      mlpRenderMatchCard();
     }
     async function mlpDeletePrediction(id){
       const rid = Number(id);
@@ -10350,73 +10828,26 @@ bash scripts/update_and_serve.sh --start</div>
       const match = btn.getAttribute('data-match') || '';
       const when = btn.getAttribute('data-when') || '';
       const ok = confirm(
-        `Удалить этот прогноз?\n\n${match}\n${when}\n\nЗапись из match_line_predictions будет удалена безвозвратно.`
+        `Удалить этот расчёт?\n\n${match}\nРасчёт #${id} · ${when}\n\nЗапись из match_line_predictions будет удалена безвозвратно.`
       );
       if (!ok) return;
       btn.disabled = true;
       try {
         await mlpDeletePrediction(id);
         mlpRowsCache = (mlpRowsCache || []).filter(r => String(r.id) !== String(id));
-        mlpPopulateFilters(mlpRowsCache);
-        mlpRenderTable();
-        const nWait = mlpRowsCache.filter(r => r._status === 'wait').length;
-        const nReady = mlpRowsCache.filter(r => r._status === 'ready').length;
-        mlpSetStatus(`Удалено · записей: ${mlpRowsCache.length} · closing: ${nReady} · ожидаем: ${nWait}`);
+        if (String(mlpExpandedAttemptId) === String(id)) mlpExpandedAttemptId = null;
+        // If no attempts left for current match, clear team2 so user re-picks
+        if (!mlpSelectedAttempts().length){
+          mlpFilterState.team2 = '';
+        }
+        mlpSyncFilters();
+        mlpRenderMatchCard();
+        mlpSetStatus(`Удалено · записей: ${mlpRowsCache.length}`);
       } catch (e){
         console.error('mlpDelete', e);
         mlpSetStatus(e.message || String(e), true);
         btn.disabled = false;
       }
-    }
-    function mlpRenderTable(){
-      const body = document.getElementById('mlpTableBody');
-      if (!body) return;
-      const rows = mlpFilteredRows();
-      if (!rows.length){
-        body.innerHTML = '<tr><td colspan="17" class="hint">Нет сохранённых прогнозов по фильтрам.</td></tr>';
-        return;
-      }
-      body.innerHTML = rows.map(r => {
-        const c = r._closing;
-        const pred1x2 = `${mlpFmtOdds(r.pred_home_odds)} / ${mlpFmtOdds(r.pred_draw_odds)} / ${mlpFmtOdds(r.pred_away_odds)}`;
-        const close1x2 = mlpHasClosing1x2(c)
-          ? `${mlpFmtOdds(c.home_odds)} / ${mlpFmtOdds(c.draw_odds)} / ${mlpFmtOdds(c.away_odds)}`
-          : '—';
-        const d1x2 = `${mlpFmtDelta(r.d_home)} / ${mlpFmtDelta(r.d_draw)} / ${mlpFmtDelta(r.d_away)}`;
-        const fp1x2 = `${mlpFmtPp(r.fp_d_home)} / ${mlpFmtPp(r.fp_d_draw)} / ${mlpFmtPp(r.fp_d_away)}`;
-        const ahLine = r.pred_ah_line != null ? ((Number(r.pred_ah_line) >= 0 ? '+' : '') + Number(r.pred_ah_line)) : '—';
-        const predAh = `${ahLine} · ${mlpFmtOdds(r.pred_ah_home_odds)} / ${mlpFmtOdds(r.pred_ah_away_odds)}`;
-        const closeAh = mlpHasClosingAh(c)
-          ? `${(Number(c.closing_ah_home) >= 0 ? '+' : '') + Number(c.closing_ah_home)} · ${mlpFmtOdds(c.ah_home_odds)} / ${mlpFmtOdds(c.ah_away_odds)}`
-          : '—';
-        const dAh = `${mlpFmtDelta(r.d_ah_home)} / ${mlpFmtDelta(r.d_ah_away)}`;
-        const predTot = `${r.pred_total_line != null ? r.pred_total_line : '—'} · ${mlpFmtOdds(r.pred_over_odds)} / ${mlpFmtOdds(r.pred_under_odds)}`;
-        const closeTot = mlpHasClosingOu(c)
-          ? `${c.closing_total_line} · ${mlpFmtOdds(c.over_odds)} / ${mlpFmtOdds(c.under_odds)}`
-          : '—';
-        const dTot = `${mlpFmtDelta(r.d_over)} / ${mlpFmtDelta(r.d_under)}`;
-        const when = sbFmtImportedAt(r.calculated_at) || String(r.calculated_at || '').replace('T', ' ').slice(0, 16);
-        const matchLabel = `${r._team1Name} — ${r._team2Name}`;
-        return `<tr data-pred-id="${escapeHtml(String(r.id))}">
-          <td>${escapeHtml(when)}</td>
-          <td>${escapeHtml(r._leagueName)}</td>
-          <td>${escapeHtml(r.season_label || String(r.season_id))}</td>
-          <td>${escapeHtml(matchLabel)}</td>
-          <td>${mlpStatusBadge(r)}</td>
-          <td class="num">${escapeHtml(pred1x2)}</td>
-          <td class="num">${escapeHtml(close1x2)}</td>
-          <td class="${mlpDeltaClass(r.d_home)}">${escapeHtml(d1x2)}</td>
-          <td class="${mlpDeltaClass(r.fp_d_home)}">${escapeHtml(fp1x2)}</td>
-          <td class="num">${escapeHtml(predAh)}</td>
-          <td class="num">${escapeHtml(closeAh)}</td>
-          <td class="${mlpDeltaClass(r.d_ah_home)}">${escapeHtml(dAh)}</td>
-          <td class="num">${escapeHtml(predTot)}</td>
-          <td class="num">${escapeHtml(closeTot)}</td>
-          <td class="${mlpDeltaClass(r.d_over)}">${escapeHtml(dTot)}</td>
-          <td>${mlpRangeCell(r)}</td>
-          <td><button type="button" class="mlp-del" data-id="${escapeHtml(String(r.id))}" data-match="${escapeHtml(matchLabel)}" data-when="${escapeHtml(when)}" title="Удалить прогноз">Удалить</button></td>
-        </tr>`;
-      }).join('');
     }
     async function mlpReload(){
       mlpSetStatus('Загрузка прогнозов…');
@@ -10432,11 +10863,23 @@ bash scripts/update_and_serve.sh --start</div>
           const key = mlpMatchKey(p.league_id, p.season_id, p.team1_id, p.team2_id);
           return mlpEnrichPrediction(p, mlpClosingByKey[key] || null);
         });
-        mlpPopulateFilters(mlpRowsCache);
-        mlpRenderTable();
-        const nWait = mlpRowsCache.filter(r => r._status === 'wait').length;
-        const nReady = mlpRowsCache.filter(r => r._status === 'ready').length;
-        mlpSetStatus(`Записей: ${mlpRowsCache.length} · closing: ${nReady} · ожидаем: ${nWait}`);
+        // Keep selection if still valid
+        const still = mlpSelectedAttempts();
+        if (!still.length){
+          // soft-validate cascade
+          if (mlpFilterState.league && !mlpRowsForFilters({ season:'', team1:'', team2:'' }).length){
+            mlpFilterState = { league:'', season:'', team1:'', team2:'' };
+          } else if (mlpFilterState.season && !mlpRowsForFilters({ team1:'', team2:'' }).length){
+            mlpFilterState.season = ''; mlpFilterState.team1 = ''; mlpFilterState.team2 = '';
+          } else if (mlpFilterState.team1 && !mlpRowsForFilters({ team2:'' }).length){
+            mlpFilterState.team1 = ''; mlpFilterState.team2 = '';
+          } else if (mlpFilterState.team2){
+            mlpFilterState.team2 = '';
+          }
+        }
+        mlpSyncFilters();
+        mlpRenderMatchCard();
+        mlpSetStatus(`Записей: ${mlpRowsCache.length}`);
       } catch (e){
         console.error('mlpReload', e);
         mlpSetStatus(e.message || String(e), true);
@@ -10447,14 +10890,82 @@ bash scripts/update_and_serve.sh --start</div>
     }
     window.mlpInitTab = mlpInitTab;
     bindClick('mlpRefresh', () => { mlpReload().catch(e => console.error(e)); });
-    document.getElementById('mlpLeagueFilter')?.addEventListener('change', mlpRenderTable);
-    document.getElementById('mlpSeasonFilter')?.addEventListener('change', mlpRenderTable);
-    document.getElementById('mlpStatusFilter')?.addEventListener('change', mlpRenderTable);
-    document.getElementById('mlpTableBody')?.addEventListener('click', (ev) => {
+    document.getElementById('mlpLeagueFilter')?.addEventListener('change', (e) => {
+      mlpFilterState.league = e.target.value || '';
+      mlpOnFilterChange('league');
+    });
+    document.getElementById('mlpSeasonFilter')?.addEventListener('change', (e) => {
+      mlpFilterState.season = e.target.value || '';
+      mlpOnFilterChange('season');
+    });
+    document.getElementById('mlpTeam1Filter')?.addEventListener('change', (e) => {
+      mlpFilterState.team1 = e.target.value || '';
+      mlpOnFilterChange('team1');
+    });
+    document.getElementById('mlpTeam2Filter')?.addEventListener('change', (e) => {
+      mlpFilterState.team2 = e.target.value || '';
+      mlpOnFilterChange('team2');
+    });
+    document.getElementById('mlpAttemptList')?.addEventListener('click', (ev) => {
       const btn = ev.target && ev.target.closest ? ev.target.closest('button.mlp-del') : null;
       if (!btn) return;
+      ev.preventDefault();
+      ev.stopPropagation();
       mlpOnDeleteClick(btn).catch(e => console.error(e));
     });
+    document.getElementById('mlpAttemptList')?.addEventListener('toggle', (ev) => {
+      const el = ev.target;
+      if (!el || !el.classList || !el.classList.contains('mlp-attempt')) return;
+      if (el.open){
+        mlpExpandedAttemptId = el.getAttribute('data-attempt-id');
+        // collapse siblings
+        document.querySelectorAll('#mlpAttemptList details.mlp-attempt').forEach(other => {
+          if (other !== el) other.open = false;
+        });
+      } else if (String(mlpExpandedAttemptId) === String(el.getAttribute('data-attempt-id'))){
+        mlpExpandedAttemptId = null;
+      }
+    });
+    (function mlpBindChart(){
+      const canvas = document.getElementById('mlpChart');
+      if (!canvas) return;
+      const mlpCanvasXY = (ev) => {
+        const rect = canvas.getBoundingClientRect();
+        const sx = (canvas.clientWidth || rect.width) / (rect.width || 1);
+        const sy = (canvas.clientHeight || rect.height) / (rect.height || 1);
+        return {
+          x: (ev.clientX - rect.left) * sx,
+          y: (ev.clientY - rect.top) * sy,
+        };
+      };
+      canvas.addEventListener('mousemove', (ev) => {
+        const { x: mx, y: my } = mlpCanvasXY(ev);
+        const hit = mlpChartHit(mx, my);
+        if (hit){
+          canvas.style.cursor = 'pointer';
+          mlpShowChartTip(hit, ev.clientX, ev.clientY);
+        } else {
+          canvas.style.cursor = 'crosshair';
+          const tip = document.getElementById('mlpChartTip');
+          if (tip) tip.style.display = 'none';
+        }
+      });
+      canvas.addEventListener('mouseleave', () => {
+        const tip = document.getElementById('mlpChartTip');
+        if (tip) tip.style.display = 'none';
+      });
+      canvas.addEventListener('click', (ev) => {
+        const { x: mx, y: my } = mlpCanvasXY(ev);
+        const hit = mlpChartHit(mx, my);
+        if (hit) mlpExpandAttempt(hit.id);
+      });
+      window.addEventListener('resize', () => {
+        if (document.getElementById('mlpMatchCard')?.style.display !== 'none'){
+          const attempts = mlpSelectedAttempts();
+          if (attempts.length) mlpDrawChart(attempts, attempts[0]._closing);
+        }
+      });
+    })();
     // ========== END MATCH LINE PREDICTIONS ==========
 
     function gmFormatDt(d=new Date()){
