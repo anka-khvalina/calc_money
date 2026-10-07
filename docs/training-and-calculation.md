@@ -461,6 +461,61 @@ combined = gmCombinePredictions(predL, predA)
 
 SFTC влияет на **тотал Auto** (и показывается в мета-блоке прогноза). SFA для подписи 1X2 берётся в первую очередь из Legacy.
 
+### Сохранение прогноза и корректирующий диапазон
+
+Каждый клик **«Рассчитать линию»** пишет новую строку в `match_line_predictions` (без перезаписи). Снимок неизменяем: после появления closing пересчитывается только факт попадания.
+
+Диапазон — это **ожидаемая дельта между прогнозом модели и будущим closing**, а не абстрактные «нижняя/верхняя границы алгоритма».
+
+```text
+delta = predicted_odds - closing_odds
+```
+
+Пример: прогноз `2.00`, closing `1.85` → `delta = +0.15` (closing ниже прогноза).
+
+#### 1. Диапазон дельты
+
+Алгоритм корректировки для новой игры возвращает `delta_min` / `delta_max` (по рынку). Если используются диапазоны обеих команд, итоговый диапазон — **взвешенное объединение**, не сумма:
+
+```text
+delta_min = w1 × team1_delta_min + w2 × team2_delta_min
+delta_max = w1 × team1_delta_max + w2 × team2_delta_max
+w1 + w2 = 1
+```
+
+#### 2. Перевод в ожидаемый closing range
+
+```text
+closing_odds = predicted_odds - delta
+expected_closing_min = predicted_odds - delta_max
+expected_closing_max = predicted_odds - delta_min
+```
+
+Границы меняются местами: чем больше положительная дельта, тем меньше closing.
+
+Пример: `predicted = 2.00`, `delta ∈ [+0.10 ; +0.20]` → ожидаемый closing `1.80–1.90`.
+
+В БД на момент расчёта:
+
+| Поле | Смысл |
+|------|--------|
+| `pred_*_odds` | прогноз модели |
+| `delta_*_min` / `delta_*_max` | ожидаемая дельта |
+| `corr_*_min` / `corr_*_max` | ожидаемый closing (`= expected_closing_*`) |
+
+SQL: [`docs/sql/alter_match_line_predictions_delta.sql`](sql/alter_match_line_predictions_delta.sql).
+
+#### 3. Проверка после closing
+
+Closing берётся из `v_matches_full` (лига + сезон + home + away). На вкладке **Прогнозы**:
+
+```text
+closing_in_range =
+  expected_closing_min ≤ actual_closing ≤ expected_closing_max
+```
+
+Пока алгоритм дельты не подключён, `delta_*` и `corr_*` остаются `NULL`, колонка «Closing в диапазоне» — «—».
+
 ---
 
 ## 6. Настройки вкладки «Линия» (web)

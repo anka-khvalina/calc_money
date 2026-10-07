@@ -54,10 +54,20 @@ neutral_mult = is_neutral ? neutral_weight : 1.0
 - **Тотал** — `closing_total_line`, Over/Under.
 - **ИТ** — индивидуальный тотал команды.
 
+## Прогноз vs closing (Прогнозы)
+
+- **`delta`** — `predicted_odds − closing_odds`. Положительная дельта: closing ниже прогноза модели.
+- **`delta_min` / `delta_max`** — ожидаемый диапазон этой дельты на момент «Рассчитать линию».
+- **`expected_closing` / `corr_*`** — ожидаемый closing range: `predicted − delta_max` … `predicted − delta_min` (границы меняются местами).
+- **`closing_in_range`** — факт: реальный closing из `v_matches_full` попал в сохранённый expected closing range.
+
+Подробнее: [training-and-calculation.md](training-and-calculation.md) §5.
+
 ## Supabase
 
 - **`v_matches_full`** — view: матч + названия команд и лиги.
 - **`v_season_summary`** — агрегат сезонов с `matches_count`.
 - **`matches`** — таблица для PATCH кэфов и весов.
+- **`match_line_predictions`** — снимки «Рассчитать линию» (прогноз + delta/expected closing).
 
 Подробнее: [reference.md](reference.md).

@@ -1291,8 +1291,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Прогнозы</h3>
       <p class="small" style="margin:0 0 10px">
         История попыток «Рассчитать линию». Каждый клик — отдельная запись.
-        Closing подтягивается из <code>v_matches_full</code> по лига + сезон + home + away.
-        Исходный прогноз не меняется.
+        В момент расчёта фиксируются прогноз, ожидаемый диапазон дельты
+        (<code>predicted − closing</code>) и ожидаемый closing range.
+        Closing подтягивается из <code>v_matches_full</code> по лига + сезон + home + away;
+        после появления closing прогноз и диапазоны не пересчитываются — только проверка попадания.
       </p>
       <div class="mlp-toolbar">
         <div class="field" style="min-width:160px">
@@ -1333,7 +1335,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <th>Total</th>
               <th>Closing Tot</th>
               <th>Δ Tot</th>
-              <th>Диапазон</th>
+              <th>Closing в диапазоне</th>
             </tr>
           </thead>
           <tbody id="mlpTableBody">
@@ -9945,6 +9947,68 @@ bash scripts/update_and_serve.sh --start</div>
       if (pa == null || pb == null) return [null, null];
       return [mlpOddsFromProb(pa, useM, mg), mlpOddsFromProb(pb, useM, mg)];
     }
+    /**
+     * Correction range model:
+     *   delta = predicted_odds - closing_odds
+     *   expected_closing_min = predicted - delta_max
+     *   expected_closing_max = predicted - delta_min
+     * Bounds swap because a larger positive delta means a lower closing.
+     */
+    function mlpExpectedClosingFromDelta(predicted, deltaMin, deltaMax){
+      const p = mlpNum(predicted), dLo = mlpNum(deltaMin), dHi = mlpNum(deltaMax);
+      if (p == null || dLo == null || dHi == null) return { min: null, max: null };
+      const dMin = Math.min(dLo, dHi), dMax = Math.max(dLo, dHi);
+      return {
+        min: mlpRound(p - dMax, 4),
+        max: mlpRound(p - dMin, 4),
+      };
+    }
+    /** Weighted blend of two teams' delta ranges (w1 + w2 = 1). */
+    function mlpBlendDeltaRange(team1, team2, w1, w2){
+      const a = team1 || {}, b = team2 || {};
+      const lo1 = mlpNum(a.min), hi1 = mlpNum(a.max);
+      const lo2 = mlpNum(b.min), hi2 = mlpNum(b.max);
+      if (lo1 == null || hi1 == null || lo2 == null || hi2 == null) return { min: null, max: null };
+      const ww1 = mlpNum(w1), ww2 = mlpNum(w2);
+      if (ww1 == null || ww2 == null) return { min: null, max: null };
+      return {
+        min: mlpRound(ww1 * lo1 + ww2 * lo2, 4),
+        max: mlpRound(ww1 * hi1 + ww2 * hi2, 4),
+      };
+    }
+    /**
+     * Placeholder for the team-history delta algorithm.
+     * Returns per-market { min, max } delta ranges, or nulls until the algorithm exists.
+     * Expected shape when wired:
+     *   { home, draw, away, ah_home, ah_away, over, under } each { min, max }
+     */
+    function mlpComputeCorrectionDeltas(_ctx){
+      return null;
+    }
+    function mlpApplyDeltaFields(payload, deltas){
+      if (!deltas) return payload;
+      const markets = [
+        ['home', 'pred_home_odds', 'delta_home_min', 'delta_home_max', 'corr_home_odds_min', 'corr_home_odds_max'],
+        ['draw', 'pred_draw_odds', 'delta_draw_min', 'delta_draw_max', 'corr_draw_odds_min', 'corr_draw_odds_max'],
+        ['away', 'pred_away_odds', 'delta_away_min', 'delta_away_max', 'corr_away_odds_min', 'corr_away_odds_max'],
+        ['ah_home', 'pred_ah_home_odds', 'delta_ah_home_min', 'delta_ah_home_max', 'corr_ah_home_min', 'corr_ah_home_max'],
+        ['ah_away', 'pred_ah_away_odds', 'delta_ah_away_min', 'delta_ah_away_max', 'corr_ah_away_min', 'corr_ah_away_max'],
+        ['over', 'pred_over_odds', 'delta_over_min', 'delta_over_max', 'corr_over_min', 'corr_over_max'],
+        ['under', 'pred_under_odds', 'delta_under_min', 'delta_under_max', 'corr_under_min', 'corr_under_max'],
+      ];
+      markets.forEach(([key, predKey, dMinKey, dMaxKey, cMinKey, cMaxKey]) => {
+        const d = deltas[key];
+        if (!d) return;
+        const dMin = mlpNum(d.min), dMax = mlpNum(d.max);
+        if (dMin == null || dMax == null) return;
+        payload[dMinKey] = mlpRound(Math.min(dMin, dMax), 4);
+        payload[dMaxKey] = mlpRound(Math.max(dMin, dMax), 4);
+        const exp = mlpExpectedClosingFromDelta(payload[predKey], payload[dMinKey], payload[dMaxKey]);
+        payload[cMinKey] = exp.min;
+        payload[cMaxKey] = exp.max;
+      });
+      return payload;
+    }
     function mlpBuildPredictionPayload(args){
       const {
         leagueId, seasonId, seasonLabel, homeId, awayId,
@@ -9961,7 +10025,7 @@ bash scripts/update_and_serve.sh --start</div>
       const [ahH, ahA] = a ? mlpPairOdds(a.home, a.away, useM, mg) : [null, null];
       const [ot, ut] = t ? mlpPairOdds(t.over, t.under, useM, mg) : [null, null];
       const src = predA || predL || {};
-      return {
+      const payload = {
         league_id: String(leagueId),
         season_id: Number(seasonId),
         season_label: seasonLabel != null ? String(seasonLabel) : null,
@@ -9991,6 +10055,11 @@ bash scripts/update_and_serve.sh --start</div>
         engine_1x2: predL ? 'legacy' : null,
         engine_ah_ou: predA ? 'auto' : null,
       };
+      // Snapshot expected delta + expected closing at calculate time (immutable later).
+      const deltas = mlpComputeCorrectionDeltas({
+        leagueId, seasonId, homeId, awayId, predL, predA, payload,
+      });
+      return mlpApplyDeltaFields(payload, deltas);
     }
     async function mlpSavePredictionAttempt(args){
       if (args.seasonId == null || args.seasonId === ''){
@@ -10110,7 +10179,8 @@ bash scripts/update_and_serve.sh --start</div>
       out.fp_d_over = (predOuFair && closeOuFair) ? (predOuFair.pa - closeOuFair.pa) * 100 : null;
       out.fp_d_under = (predOuFair && closeOuFair) ? (predOuFair.pb - closeOuFair.pb) * 100 : null;
 
-      // Correction ranges (nullable until algorithm exists)
+      // Expected closing range = predicted − delta (bounds swapped).
+      // corr_*_{min,max} store expected_closing_min/max fixed at calculate time.
       const rangeHits = [];
       const r1 = mlpInRange(closing && closing.home_odds, row.corr_home_odds_min, row.corr_home_odds_max);
       const rx = mlpInRange(closing && closing.draw_odds, row.corr_draw_odds_min, row.corr_draw_odds_max);
@@ -10119,10 +10189,18 @@ bash scripts/update_and_serve.sh --start</div>
       const rah2 = mlpInRange(closing && closing.ah_away_odds, row.corr_ah_away_min, row.corr_ah_away_max);
       const ro = mlpInRange(closing && closing.over_odds, row.corr_over_min, row.corr_over_max);
       const ru = mlpInRange(closing && closing.under_odds, row.corr_under_min, row.corr_under_max);
+      out.closing_in_range_home = r1;
+      out.closing_in_range_draw = rx;
+      out.closing_in_range_away = r2;
+      out.closing_in_range_ah_home = rah1;
+      out.closing_in_range_ah_away = rah2;
+      out.closing_in_range_over = ro;
+      out.closing_in_range_under = ru;
       [r1, rx, r2, rah1, rah2, ro, ru].forEach(v => { if (v != null) rangeHits.push(v); });
       out._rangeKnown = rangeHits.length > 0;
       out._rangeAllIn = rangeHits.length > 0 && rangeHits.every(Boolean);
       out._rangeAnyMiss = rangeHits.some(v => v === false);
+      out.closing_in_range = out._rangeKnown ? out._rangeAllIn : null;
       return out;
     }
     function mlpTeamName(leagueId, teamId){
@@ -10209,11 +10287,35 @@ bash scripts/update_and_serve.sh --start</div>
         return true;
       });
     }
+    function mlpRangeTitle(r){
+      const parts = [];
+      const add = (label, dMin, dMax, cMin, cMax, hit) => {
+        if (mlpNum(cMin) == null && mlpNum(cMax) == null && mlpNum(dMin) == null) return;
+        const dStr = (mlpNum(dMin) != null && mlpNum(dMax) != null)
+          ? `Δ ${mlpFmtDelta(dMin)}…${mlpFmtDelta(dMax)}`
+          : '';
+        const cStr = (mlpNum(cMin) != null && mlpNum(cMax) != null)
+          ? `ожид. closing ${mlpFmtOdds(cMin)}–${mlpFmtOdds(cMax)}`
+          : '';
+        const hStr = hit === true ? '✓' : (hit === false ? '✗' : '');
+        parts.push([label, dStr, cStr, hStr].filter(Boolean).join(' · '));
+      };
+      add('1', r.delta_home_min, r.delta_home_max, r.corr_home_odds_min, r.corr_home_odds_max, r.closing_in_range_home);
+      add('X', r.delta_draw_min, r.delta_draw_max, r.corr_draw_odds_min, r.corr_draw_odds_max, r.closing_in_range_draw);
+      add('2', r.delta_away_min, r.delta_away_max, r.corr_away_odds_min, r.corr_away_odds_max, r.closing_in_range_away);
+      add('AH1', r.delta_ah_home_min, r.delta_ah_home_max, r.corr_ah_home_min, r.corr_ah_home_max, r.closing_in_range_ah_home);
+      add('AH2', r.delta_ah_away_min, r.delta_ah_away_max, r.corr_ah_away_min, r.corr_ah_away_max, r.closing_in_range_ah_away);
+      add('Over', r.delta_over_min, r.delta_over_max, r.corr_over_min, r.corr_over_max, r.closing_in_range_over);
+      add('Under', r.delta_under_min, r.delta_under_max, r.corr_under_min, r.corr_under_max, r.closing_in_range_under);
+      return parts.join('\n');
+    }
     function mlpRangeCell(r){
-      if (!r._rangeKnown) return '<span class="hint">—</span>';
-      if (r._rangeAllIn) return '<span class="mlp-badge ok">в диапазоне</span>';
-      if (r._rangeAnyMiss) return '<span class="mlp-badge miss">мимо</span>';
-      return '<span class="mlp-badge partial">частично</span>';
+      const title = mlpRangeTitle(r);
+      const tip = title ? ` title="${escapeHtml(title)}"` : '';
+      if (!r._rangeKnown) return `<span class="hint"${tip}>—</span>`;
+      if (r._rangeAllIn) return `<span class="mlp-badge ok"${tip}>closing в диапазоне</span>`;
+      if (r._rangeAnyMiss) return `<span class="mlp-badge miss"${tip}>мимо</span>`;
+      return `<span class="mlp-badge partial"${tip}>частично</span>`;
     }
     function mlpStatusBadge(r){
       if (r._status === 'ready') return '<span class="mlp-badge ok">Closing есть</span>';
