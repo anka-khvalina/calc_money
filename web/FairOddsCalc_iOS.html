@@ -387,6 +387,21 @@
     .goal-train-banner.ok{ background:#f0fdf4; border-color:#86efac; color:#14532d; }
     .goal-train-banner.warn{ background:#fffbeb; border-color:#fcd34d; color:#92400e; }
     .goal-train-banner.idle{ background:#f8fafc; border-color:var(--line); color:var(--muted); }
+    .goal-train-banner.loading{
+      background:#eff6ff; border-color:#93c5fd; color:#1e3a8a;
+      display:flex; align-items:center; gap:10px;
+    }
+    .goal-train-spinner{
+      width:18px; height:18px; border-radius:50%;
+      border:2.5px solid #bfdbfe; border-top-color:#2563eb;
+      animation: goal-spin 0.7s linear infinite; flex:0 0 auto;
+    }
+    @keyframes goal-spin{ to{ transform:rotate(360deg); } }
+    .goal-train-actions .btn[aria-busy="true"]{ opacity:0.75; cursor:wait; }
+    .goal-train-loader{
+      display:none; align-items:center; gap:8px; font-size:13px; color:#1e3a8a;
+    }
+    .goal-train-loader.on{ display:inline-flex; }
     .goal-train-card{
       margin-top:10px; padding:10px 12px; border:1px solid #dbe3f7;
       border-radius:10px; background:#f7f9ff;
@@ -921,6 +936,10 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       </div>
       <div class="goal-train-actions goal-train-actions--main">
         <button type="button" id="goalTrain" class="btn primary"><span aria-hidden="true">🎯</span> Обучить модель</button>
+        <div id="goalTrainLoader" class="goal-train-loader" aria-live="polite" aria-hidden="true">
+          <span class="goal-train-spinner" aria-hidden="true"></span>
+          <span>Обучение…</span>
+        </div>
         <div id="goalTrainChips" class="goal-train-chips" aria-live="polite"></div>
       </div>
       <div class="goal-train-results">
@@ -9406,8 +9425,41 @@ bash scripts/update_and_serve.sh --start</div>
       }
     });
 
+    function goalSetTrainLoading(on, msg){
+      const btn = document.getElementById('goalTrain');
+      const loader = document.getElementById('goalTrainLoader');
+      const banner = document.getElementById('goalTrainBanner');
+      const busy = !!on;
+      if (btn){
+        btn.disabled = busy;
+        btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+        btn.innerHTML = busy
+          ? '<span class="goal-train-spinner" aria-hidden="true"></span> Обучение…'
+          : '<span aria-hidden="true">🎯</span> Обучить модель';
+      }
+      if (loader){
+        loader.classList.toggle('on', busy);
+        loader.setAttribute('aria-hidden', busy ? 'false' : 'true');
+      }
+      if (banner && busy){
+        banner.classList.remove('ok', 'warn', 'idle');
+        banner.classList.add('loading');
+        banner.innerHTML = `<span class="goal-train-spinner" aria-hidden="true"></span><span>${escapeHtml(msg || 'Идёт обучение модели…')}</span>`;
+      }
+    }
+
     bindClick('goalTrain', () => {
-      Promise.resolve(goalRunTrain()).catch(e => alert(e.message || e));
+      if (document.getElementById('goalTrain')?.getAttribute('aria-busy') === 'true') return;
+      goalSetTrainLoading(true, 'Идёт обучение модели (Legacy + Auto)…');
+      // Yield so the browser paints the loader before heavy sync work.
+      Promise.resolve()
+        .then(() => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0))))
+        .then(() => goalRunTrain())
+        .catch(e => alert(e.message || e))
+        .finally(() => {
+          goalSetTrainLoading(false);
+          try{ goalUpdateTrainUI(); }catch(_e){}
+        });
     });
 
     document.getElementById('goalSeasonWeightsTable')?.addEventListener('input', e => {
