@@ -138,6 +138,12 @@
     .mlp-badge.ok{ background:#dcfce7; color:#166534; }
     .mlp-badge.miss{ background:#fee2e2; color:#991b1b; }
     .mlp-badge.partial{ background:#e0e7ff; color:#3730a3; }
+    .mlp-del{
+      border:1px solid #fecaca; background:#fff; color:var(--danger);
+      border-radius:6px; padding:2px 8px; font-size:11px; cursor:pointer; line-height:1.4;
+    }
+    .mlp-del:hover{ background:#fef2f2; }
+    .mlp-del:disabled{ opacity:0.5; cursor:wait; }
     #clhViewTable{
       min-width:1180px; table-layout:auto;
     }
@@ -1336,10 +1342,11 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <th>Closing Tot</th>
               <th>Δ Tot</th>
               <th>Closing в диапазоне</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="mlpTableBody">
-            <tr><td colspan="16" class="hint">Нажмите «Обновить».</td></tr>
+            <tr><td colspan="17" class="hint">Нажмите «Обновить».</td></tr>
           </tbody>
         </table>
       </div>
@@ -10321,12 +10328,52 @@ bash scripts/update_and_serve.sh --start</div>
       if (r._status === 'ready') return '<span class="mlp-badge ok">Closing есть</span>';
       return '<span class="mlp-badge wait">Ожидаем closing</span>';
     }
+    function mlpIsProbeRow(p){
+      const lab = String(p && p.season_label || '');
+      return lab === '__probe__' || lab.startsWith('__probe');
+    }
+    async function mlpDeletePrediction(id){
+      const rid = Number(id);
+      if (!Number.isFinite(rid)) throw new Error('Нет id прогноза');
+      const rows = await sbFetch(`/match_line_predictions?id=eq.${rid}`, { method: 'DELETE' });
+      const deleted = Array.isArray(rows) ? rows.length : (rows ? 1 : 0);
+      if (!deleted){
+        throw new Error(
+          'Удаление не выполнено (0 строк). В Supabase нужна RLS-политика DELETE для anon на match_line_predictions — см. docs/sql/match_line_predictions_delete_policy.sql'
+        );
+      }
+      return true;
+    }
+    async function mlpOnDeleteClick(btn){
+      const id = btn && btn.getAttribute('data-id');
+      if (!id) return;
+      const match = btn.getAttribute('data-match') || '';
+      const when = btn.getAttribute('data-when') || '';
+      const ok = confirm(
+        `Удалить этот прогноз?\n\n${match}\n${when}\n\nЗапись из match_line_predictions будет удалена безвозвратно.`
+      );
+      if (!ok) return;
+      btn.disabled = true;
+      try {
+        await mlpDeletePrediction(id);
+        mlpRowsCache = (mlpRowsCache || []).filter(r => String(r.id) !== String(id));
+        mlpPopulateFilters(mlpRowsCache);
+        mlpRenderTable();
+        const nWait = mlpRowsCache.filter(r => r._status === 'wait').length;
+        const nReady = mlpRowsCache.filter(r => r._status === 'ready').length;
+        mlpSetStatus(`Удалено · записей: ${mlpRowsCache.length} · closing: ${nReady} · ожидаем: ${nWait}`);
+      } catch (e){
+        console.error('mlpDelete', e);
+        mlpSetStatus(e.message || String(e), true);
+        btn.disabled = false;
+      }
+    }
     function mlpRenderTable(){
       const body = document.getElementById('mlpTableBody');
       if (!body) return;
       const rows = mlpFilteredRows();
       if (!rows.length){
-        body.innerHTML = '<tr><td colspan="16" class="hint">Нет сохранённых прогнозов по фильтрам.</td></tr>';
+        body.innerHTML = '<tr><td colspan="17" class="hint">Нет сохранённых прогнозов по фильтрам.</td></tr>';
         return;
       }
       body.innerHTML = rows.map(r => {
@@ -10349,11 +10396,12 @@ bash scripts/update_and_serve.sh --start</div>
           : '—';
         const dTot = `${mlpFmtDelta(r.d_over)} / ${mlpFmtDelta(r.d_under)}`;
         const when = sbFmtImportedAt(r.calculated_at) || String(r.calculated_at || '').replace('T', ' ').slice(0, 16);
-        return `<tr>
+        const matchLabel = `${r._team1Name} — ${r._team2Name}`;
+        return `<tr data-pred-id="${escapeHtml(String(r.id))}">
           <td>${escapeHtml(when)}</td>
           <td>${escapeHtml(r._leagueName)}</td>
           <td>${escapeHtml(r.season_label || String(r.season_id))}</td>
-          <td>${escapeHtml(r._team1Name)} — ${escapeHtml(r._team2Name)}</td>
+          <td>${escapeHtml(matchLabel)}</td>
           <td>${mlpStatusBadge(r)}</td>
           <td class="num">${escapeHtml(pred1x2)}</td>
           <td class="num">${escapeHtml(close1x2)}</td>
@@ -10366,6 +10414,7 @@ bash scripts/update_and_serve.sh --start</div>
           <td class="num">${escapeHtml(closeTot)}</td>
           <td class="${mlpDeltaClass(r.d_over)}">${escapeHtml(dTot)}</td>
           <td>${mlpRangeCell(r)}</td>
+          <td><button type="button" class="mlp-del" data-id="${escapeHtml(String(r.id))}" data-match="${escapeHtml(matchLabel)}" data-when="${escapeHtml(when)}" title="Удалить прогноз">Удалить</button></td>
         </tr>`;
       }).join('');
     }
@@ -10375,7 +10424,7 @@ bash scripts/update_and_serve.sh --start</div>
         await loadSupabaseConfig();
         if (!window.__SB.leagues || !window.__SB.leagues.length) await sbFetchLeaguesList();
         const preds = await sbFetchAllRows('/match_line_predictions?select=*&order=calculated_at.desc');
-        const list = Array.isArray(preds) ? preds.filter(p => String(p.season_label || '') !== '__probe__') : [];
+        const list = Array.isArray(preds) ? preds.filter(p => !mlpIsProbeRow(p)) : [];
         const leagueIds = [...new Set(list.map(p => String(p.league_id)))];
         await mlpEnsureTeamsForLeagues(leagueIds);
         mlpClosingByKey = await mlpFetchClosingMap(list);
@@ -10401,6 +10450,11 @@ bash scripts/update_and_serve.sh --start</div>
     document.getElementById('mlpLeagueFilter')?.addEventListener('change', mlpRenderTable);
     document.getElementById('mlpSeasonFilter')?.addEventListener('change', mlpRenderTable);
     document.getElementById('mlpStatusFilter')?.addEventListener('change', mlpRenderTable);
+    document.getElementById('mlpTableBody')?.addEventListener('click', (ev) => {
+      const btn = ev.target && ev.target.closest ? ev.target.closest('button.mlp-del') : null;
+      if (!btn) return;
+      mlpOnDeleteClick(btn).catch(e => console.error(e));
+    });
     // ========== END MATCH LINE PREDICTIONS ==========
 
     function gmFormatDt(d=new Date()){
