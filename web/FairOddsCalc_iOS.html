@@ -182,6 +182,20 @@
     }
     .mlp-del:hover{ background:#fef2f2; }
     .mlp-del:disabled{ opacity:0.5; cursor:wait; }
+    .ra-settings{
+      margin:0 0 10px; padding:8px 12px; border:1px solid #e2e8f0; border-radius:10px; background:#f8fafc;
+    }
+    .ra-settings > summary{ cursor:pointer; font-size:13px; font-weight:600; color:#334155; }
+    .ra-season-checks label{ display:inline-flex; align-items:center; gap:4px; margin:2px 10px 2px 0; font-size:12px; }
+    .ra-block{
+      margin:10px 0; padding:10px 12px; border:1px solid #c7d2fe; border-radius:10px; background:#eef2ff;
+    }
+    .ra-block h5{ margin:0 0 8px; font-size:13px; color:#312e81; }
+    .ra-meta{ font-size:12px; color:#3730a3; line-height:1.45; margin:8px 0 0; }
+    .ra-note{
+      margin:8px 0; padding:8px 10px; border:1px solid #fde68a; background:#fffbeb; color:#92400e; border-radius:8px; font-size:12px;
+    }
+    .goal-predict-table--1x2 td.ra-adj{ font-weight:700; color:#1e3a8a; }
     #clhViewTable{
       min-width:1180px; table-layout:auto;
     }
@@ -1095,20 +1109,18 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <div class="field" style="min-width:150px">
           <label>Ротация хозяев</label>
           <select id="goalPredHomeRot">
-            <option value="none" selected>Нет</option>
-            <option value="middle">Умеренная</option>
-            <option value="high">Сильная</option>
+            <option value="none" selected>Нет ротации</option>
+            <option value="middle">Умеренная ротация</option>
+            <option value="high">Сильная ротация</option>
           </select>
-          <span class="hint" style="display:block">Для предупреждения; на кэфы не влияет.</span>
         </div>
         <div class="field" style="min-width:150px">
           <label>Ротация гостей</label>
           <select id="goalPredAwayRot">
-            <option value="none" selected>Нет</option>
-            <option value="middle">Умеренная</option>
-            <option value="high">Сильная</option>
+            <option value="none" selected>Нет ротации</option>
+            <option value="middle">Умеренная ротация</option>
+            <option value="high">Сильная ротация</option>
           </select>
-          <span class="hint" style="display:block">Для предупреждения; на кэфы не влияет.</span>
         </div>
         <label style="display:flex;align-items:flex-start;gap:6px;">
           <input id="goalMargin" type="checkbox" style="width:auto;margin-top:2px" />
@@ -1121,6 +1133,27 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
           <button type="button" id="goalMarginApplyLeague" class="btn" style="display:none;margin-top:4px;padding:4px 10px;font-size:12px">Подставить маржу лиги</button>
         </div>
       </div>
+      <p class="hint" style="margin:0 0 8px">Категория ротации — степень ожидаемого кадрового ослабления состава относительно оптимального. Учитывается в <b>дополнительном</b> расчёте и не изменяет базовый рейтинг команды.</p>
+      <details id="goalRotAdjSettings" class="ra-settings">
+        <summary>Настройки оценки ротации</summary>
+        <div class="row" style="margin-top:8px;gap:10px;align-items:flex-end">
+          <div class="field" style="min-width:220px">
+            <label>Исторический период</label>
+            <select id="goalRotHistPeriod">
+              <option value="auto" selected>Auto</option>
+              <option value="current">текущий сезон</option>
+              <option value="current_prev">текущий + предыдущий</option>
+              <option value="last3">последние 3 сезона</option>
+              <option value="custom">пользовательский выбор сезонов</option>
+            </select>
+          </div>
+          <div id="goalRotCustomSeasons" class="field" style="display:none;flex:1;min-width:200px">
+            <label>Сезоны</label>
+            <div id="goalRotCustomSeasonList" class="ra-season-checks hint">Загрузите сезоны на Линии</div>
+          </div>
+        </div>
+        <p class="hint" style="margin:6px 0 0">Период влияет только на ротационную поправку. Базовый расчёт линии от него не зависит.</p>
+      </details>
       <div class="row">
         <button type="button" id="goalPredict" class="btn primary"><span aria-hidden="true">📈</span> Рассчитать линию</button>
       </div>
@@ -9092,6 +9125,8 @@ bash scripts/update_and_serve.sh --start</div>
       goalTrainState.trainedAt = new Date().toISOString();
       goalTrainState.priorUsed = false;
       goalTrainState.lastSeasonWeights = Object.assign({}, weights);
+      raObsCache = { key: null, observations: [] };
+      try { raSyncCustomSeasonUi(); } catch (_e){}
       const marginSrc = gmModelAuto || gmModelLegacy;
       if (goalLoadedMeta && goalLoadedMeta.leagueId && marginSrc && marginSrc.trainMargin1x2 && marginSrc.trainMargin1x2.avgPct != null){
         goalSaveLeagueMargin(goalLoadedMeta.leagueId, marginSrc.trainMargin1x2);
@@ -9672,6 +9707,8 @@ bash scripts/update_and_serve.sh --start</div>
           inactiveTotal: inactiveParsed.total, inactiveValid: inactiveParsed.valid,
         };
         goalTrainState.loadedAt = new Date().toISOString();
+        raObsCache = { key: null, observations: [] };
+        try { raSyncCustomSeasonUi(); } catch (_e){}
         goalReadSeasonWeightsFromUI();
         goalApplyTrainableSeasonWeights(parsed.raw);
         goalRenderSeasonWeights();
@@ -9825,9 +9862,35 @@ bash scripts/update_and_serve.sh --start</div>
         const mg=(parseFloat((document.getElementById('goalMarginPct').value||'3').replace(',','.'))||0)/100;
         const homeRot = gmNormalizeRotCode((document.getElementById('goalPredHomeRot')||{}).value||'none');
         const awayRot = gmNormalizeRotCode((document.getElementById('goalPredAwayRot')||{}).value||'none');
+        // Base line is always computed first and never replaced by rotation layer.
         let rotationWarn = null;
-        if (homeRot === 'high' || awayRot === 'high'){
-          rotationWarn = 'У одной из команд указана сильная ротация. Модель не применяет отдельную поправку на текущий состав. Надежность расчета снижена.';
+        let rotationAdj = null;
+        if (homeRot !== 'none' || awayRot !== 'none'){
+          try {
+            if (predL && predL.markets){
+              rotationAdj = raAdjustLine(
+                predL.markets.p1, predL.markets.px, predL.markets.p2,
+                homeRot, awayRot, gmModelLegacy
+              );
+            } else {
+              rotationAdj = {
+                adjustment_available:false, skipped:false, reason:'no_1x2',
+                message:'Расчёт поправки на ротацию недоступен (нет 1X2 Legacy). Базовая линия рассчитана без изменений.',
+              };
+            }
+          } catch (raErr){
+            console.warn('rotation adjustment', raErr);
+            rotationAdj = {
+              adjustment_available:false, skipped:false, reason:'error',
+              message:'Расчёт поправки на ротацию недоступен. Базовая линия рассчитана без изменений.',
+            };
+          }
+          if (!rotationAdj || !rotationAdj.adjustment_available){
+            // Soft note only when high and adjustment missing (legacy UX).
+            if (homeRot === 'high' || awayRot === 'high'){
+              rotationWarn = null; // message comes from ra-note
+            }
+          }
         }
         let html, summary;
         if(predL && predA){
@@ -9835,6 +9898,40 @@ bash scripts/update_and_serve.sh --start</div>
           ({html,summary}=gmFormatPredict(pred,homeName,awayName,neutral,useM,mg,compareMatch,rotationWarn));
         } else {
           ({html,summary}=gmFormatPartialPredict(predL, predA, errL, errA, homeName, awayName, neutral, useM, mg, compareMatch, rotationWarn));
+        }
+        if (rotationAdj && (homeRot !== 'none' || awayRot !== 'none') && predL && predL.markets){
+          const raHtml = raFormatResultHtml(
+            rotationAdj, homeName, awayName,
+            predL.markets.p1, predL.markets.px, predL.markets.p2,
+            useM, mg
+          );
+          if (raHtml){
+            // Place after base 1X2 block so baseline stays visible first.
+            const marker = '<h5>1X2 — Legacy';
+            const idx = html.indexOf(marker);
+            if (idx >= 0){
+              const blockStart = html.lastIndexOf('<div class="goal-predict-block">', idx);
+              const afterOpen = html.indexOf('>', html.indexOf(marker)) + 1;
+              // find matching close of this block: next sibling start or end — use table end
+              const tableEnd = html.indexOf('</table>', idx);
+              const blockEnd = tableEnd >= 0 ? html.indexOf('</div>', tableEnd) + 6 : -1;
+              if (blockStart >= 0 && blockEnd > blockStart){
+                html = html.slice(0, blockEnd) + raHtml + html.slice(blockEnd);
+              } else {
+                html += raHtml;
+              }
+              void afterOpen;
+            } else {
+              html += raHtml;
+            }
+          }
+          if (rotationAdj.adjustment_available && rotationAdj.adjusted){
+            const a = rotationAdj.adjusted;
+            const k1 = raOddsWithMargin(a.p1, useM, mg);
+            const kx = raOddsWithMargin(a.px, useM, mg);
+            const k2 = raOddsWithMargin(a.p2, useM, mg);
+            summary = `${summary} · rot ${k1.toFixed(2)}/${kx.toFixed(2)}/${k2.toFixed(2)}`;
+          }
         }
         const outEl=document.getElementById('goalOut');
         outEl.classList.remove('goal-predict-out--empty');
@@ -9953,6 +10050,414 @@ bash scripts/update_and_serve.sh --start</div>
       a.click();
       URL.revokeObjectURL(a.href);
     }
+
+    // ========== ROTATION ADJUSTMENT (post-process on base 1X2) ==========
+    // Pure add-on: none/none → identical to pre-feature Line output.
+    let raObsCache = { key: null, observations: [] };
+
+    function raCfg(){
+      const raw = (GM_MODEL_CFG && GM_MODEL_CFG.rotationAdjustment) || {};
+      const rel = raw.reliability || {};
+      return {
+        enabled: raw.enabled !== false,
+        estimatorType: raw.estimatorType || 'bucket_v1',
+        probBuckets: Array.isArray(raw.probBuckets) ? raw.probBuckets.map(Number) : [0.20,0.30,0.40,0.50,0.60,0.70,0.80],
+        seasonWeightsAuto: Array.isArray(raw.seasonWeightsAuto) ? raw.seasonWeightsAuto.map(Number) : [1.0,0.6,0.3],
+        minN: raw.minN != null ? Number(raw.minN) : 20,
+        reliability: {
+          low_lt: rel.low_lt != null ? Number(rel.low_lt) : 20,
+          medium_lt: rel.medium_lt != null ? Number(rel.medium_lt) : 50,
+        },
+        preferOpponentNone: raw.preferOpponentNone !== false,
+        rejectPositiveCentral: raw.rejectPositiveCentral !== false,
+      };
+    }
+    function raLogit(p){
+      const x = Math.min(Math.max(Number(p), 1e-9), 1 - 1e-9);
+      return Math.log(x / (1 - x));
+    }
+    function raResidual(pClose, pModel){ return raLogit(pClose) - raLogit(pModel); }
+    function raProbBucket(p, edges){
+      const eds = edges || raCfg().probBuckets;
+      let prev = 0;
+      const x = Number(p);
+      for (let i = 0; i < eds.length; i++){
+        if (x < eds[i]) return `${Math.round(prev*100)}-${Math.round(eds[i]*100)}`;
+        prev = eds[i];
+      }
+      return `>=${Math.round(prev*100)}`;
+    }
+    function raReliability(n, cfg){
+      const c = cfg || raCfg();
+      if (n < c.reliability.low_lt) return 'low';
+      if (n < c.reliability.medium_lt) return 'medium';
+      return 'high';
+    }
+    function raReliabilityLabel(level){
+      if (level === 'high') return 'высокая';
+      if (level === 'medium') return 'средняя';
+      return 'низкая';
+    }
+    function raRotLabel(code){
+      const c = gmNormalizeRotCode(code);
+      if (c === 'high') return 'сильная ротация';
+      if (c === 'middle') return 'умеренная ротация';
+      return 'нет ротации';
+    }
+    function raApplyDeltas(p1, px, p2, dH, dA){
+      let ph = Number(p1), pd = Number(px), pa = Number(p2);
+      const s = ph + pd + pa;
+      if (!(s > 0) || !isFinite(s)) throw new Error('invalid base probabilities');
+      ph /= s; pd /= s; pa /= s;
+      const wh = ph * Math.exp(Number(dH) || 0);
+      const wd = pd;
+      const wa = pa * Math.exp(Number(dA) || 0);
+      const z = wh + wd + wa;
+      if (!(z > 0) || !isFinite(z)) throw new Error('invalid normalizer');
+      const p1a = wh / z, pxa = wd / z, p2a = wa / z;
+      return { p1: p1a, px: pxa, p2: p2a, k1: 1/p1a, kx: 1/pxa, k2: 1/p2a };
+    }
+    function raQuantile(sorted, q){
+      if (!sorted.length) return null;
+      if (sorted.length === 1) return sorted[0];
+      const pos = q * (sorted.length - 1);
+      const lo = Math.floor(pos), hi = Math.ceil(pos);
+      if (lo === hi) return sorted[lo];
+      const w = pos - lo;
+      return sorted[lo] * (1 - w) + sorted[hi] * w;
+    }
+    function raSeasonWeight(idx, weights){
+      const ws = weights || raCfg().seasonWeightsAuto;
+      if (idx < 0) return 0;
+      if (idx < ws.length) return ws[idx];
+      return ws[ws.length - 1] * Math.pow(0.5, idx - ws.length + 1);
+    }
+    function raDrawOddsFromRaw(r){
+      if (!r) return null;
+      if (r.ho != null && r.ao != null){
+        // draw key historically stored as Cyrillic 'о' in dо
+        const dox = r['d\u043e'] != null ? r['d\u043e'] : (r.do != null ? r.do : (r.dx != null ? r.dx : null));
+        if (dox != null) return { ho: Number(r.ho), dx: Number(dox), ao: Number(r.ao) };
+      }
+      return null;
+    }
+    function raSelectedSeasonIds(){
+      const mode = (document.getElementById('goalRotHistPeriod') || {}).value || 'auto';
+      const ids = (goalLoadedMeta && goalLoadedMeta.seasonIds) ? goalLoadedMeta.seasonIds.slice() : [];
+      const labels = (goalLoadedMeta && goalLoadedMeta.seasonLabels) ? goalLoadedMeta.seasonLabels.slice() : [];
+      if (!ids.length) return { mode, seasonIds: [], newestFirst: [] };
+      // Newest first by season label (e.g. 2026-27 > 2025-26), fallback to numeric id desc.
+      const newestFirst = ids.map((id, i) => ({ id, lab: String(labels[i] || id) }))
+        .sort((a, b) => b.lab.localeCompare(a.lab) || (Number(b.id) - Number(a.id)))
+        .map(x => x.id);
+      if (mode === 'current') return { mode, seasonIds: newestFirst.slice(0, 1), newestFirst };
+      if (mode === 'current_prev') return { mode, seasonIds: newestFirst.slice(0, 2), newestFirst };
+      if (mode === 'last3') return { mode, seasonIds: newestFirst.slice(0, 3), newestFirst };
+      if (mode === 'custom'){
+        const boxes = document.querySelectorAll('#goalRotCustomSeasonList input[type=checkbox]:checked');
+        const picked = [...boxes].map(b => b.value);
+        return { mode, seasonIds: newestFirst.filter(id => picked.includes(String(id))), newestFirst };
+      }
+      // auto: up to 3 newest with decaying weights
+      return { mode: 'auto', seasonIds: newestFirst.slice(0, 3), newestFirst };
+    }
+    function raSyncCustomSeasonUi(){
+      const mode = (document.getElementById('goalRotHistPeriod') || {}).value || 'auto';
+      const wrap = document.getElementById('goalRotCustomSeasons');
+      const list = document.getElementById('goalRotCustomSeasonList');
+      if (!wrap || !list) return;
+      wrap.style.display = mode === 'custom' ? 'block' : 'none';
+      const ids = (goalLoadedMeta && goalLoadedMeta.seasonIds) ? goalLoadedMeta.seasonIds : [];
+      const labels = (goalLoadedMeta && goalLoadedMeta.seasonLabels) ? goalLoadedMeta.seasonLabels : [];
+      if (!ids.length){
+        list.innerHTML = '<span class="hint">Загрузите сезоны на Линии</span>';
+        return;
+      }
+      list.innerHTML = ids.map((id, i) => {
+        const lab = labels[i] || id;
+        return `<label><input type="checkbox" value="${escapeHtml(String(id))}" checked> ${escapeHtml(String(lab))}</label>`;
+      }).join('');
+    }
+    function raBuildObservations(model){
+      const cfg = raCfg();
+      const sel = raSelectedSeasonIds();
+      const cacheKey = [
+        goalTrainState && goalTrainState.trainedAt,
+        sel.mode,
+        sel.seasonIds.join(','),
+        (goalLoadedRaw||[]).length,
+        (goalLoadedInactiveRaw||[]).length,
+      ].join('|');
+      if (raObsCache.key === cacheKey) return raObsCache.observations;
+
+      const seasonSet = new Set(sel.seasonIds.map(String));
+      const newestFirst = sel.newestFirst.map(String);
+      const rawAll = []
+        .concat(Array.isArray(goalLoadedRaw) ? goalLoadedRaw : [])
+        .concat(Array.isArray(goalLoadedInactiveRaw) ? goalLoadedInactiveRaw : []);
+      const obs = [];
+      const prevS = window.__IR_S_EMA_OVERRIDE;
+      const prevD = window.__IR_D_EMA_OVERRIDE;
+      window.__IR_S_EMA_OVERRIDE = null;
+      window.__IR_D_EMA_OVERRIDE = null;
+      try {
+        for (const r of rawAll){
+          if (!r || !r.homeId || !r.awayId) continue;
+          if (seasonSet.size && r.seasonId != null && !seasonSet.has(String(r.seasonId))) continue;
+          const odds = raDrawOddsFromRaw(r);
+          if (!odds || !(odds.ho > 1 && odds.dx > 1 && odds.ao > 1)) continue;
+          let fair;
+          try { fair = gmShinProbs([odds.ho, odds.dx, odds.ao]); }
+          catch (_e){ continue; }
+          let pred;
+          try {
+            pred = irPredictLegacy(model, r.homeId, r.awayId, {
+              neutral: !!r.neu,
+              derby: !!r.der,
+              matchDate: r.date || gmTodayIso(),
+              leagueId: r.leagueId || (goalLoadedMeta && goalLoadedMeta.leagueId),
+              leagueName: r.league || (goalLoadedMeta && goalLoadedMeta.leagueName),
+              seasonId: r.seasonId,
+              seasonLabel: r.seasonLabel,
+            });
+          } catch (_e){ continue; }
+          const mk = pred && pred.markets;
+          if (!mk || !(mk.p1 > 0) || !(mk.p2 > 0)) continue;
+          const sIdx = newestFirst.indexOf(String(r.seasonId));
+          const w = raSeasonWeight(sIdx < 0 ? 0 : sIdx, cfg.seasonWeightsAuto);
+          const homeRot = gmNormalizeRotCode(r.homeRot);
+          const awayRot = gmNormalizeRotCode(r.awayRot);
+          obs.push({
+            matchId: r.matchId, teamId: r.homeId, opponentId: r.awayId,
+            season: r.seasonId, seasonIndex: sIdx < 0 ? 0 : sIdx, homeFlag: true,
+            rotationCode: homeRot, opponentRotationCode: awayRot,
+            pModel: mk.p1, pClose: fair[0], weight: w,
+            residual: raResidual(fair[0], mk.p1),
+          });
+          obs.push({
+            matchId: r.matchId, teamId: r.awayId, opponentId: r.homeId,
+            season: r.seasonId, seasonIndex: sIdx < 0 ? 0 : sIdx, homeFlag: false,
+            rotationCode: awayRot, opponentRotationCode: homeRot,
+            pModel: mk.p2, pClose: fair[2], weight: w,
+            residual: raResidual(fair[2], mk.p2),
+          });
+        }
+      } finally {
+        window.__IR_S_EMA_OVERRIDE = prevS;
+        window.__IR_D_EMA_OVERRIDE = prevD;
+      }
+      raObsCache = { key: cacheKey, observations: obs };
+      return obs;
+    }
+    function raMeanResidual(list){
+      if (!list.length) return null;
+      let sw = 0, sx = 0;
+      list.forEach(o => { sw += o.weight; sx += o.residual * o.weight; });
+      return sw > 0 ? sx / sw : null;
+    }
+    function raEstimateDelta(observations, rotationCode, pModel){
+      const cfg = raCfg();
+      const rot = gmNormalizeRotCode(rotationCode);
+      const bucket = raProbBucket(pModel, cfg.probBuckets);
+      if (rot === 'none'){
+        return { adjustment_available:true, delta_logit:0, q25:0, q75:0, n:0, weighted_n:0,
+          reliability:'high', probability_bucket:bucket, fallback:null, reason:null };
+      }
+      const inBucket = (o) => raProbBucket(o.pModel, cfg.probBuckets) === bucket;
+      let notes = [];
+      let pool = observations.filter(o => inBucket(o) && (!cfg.preferOpponentNone || o.opponentRotationCode === 'none'));
+      let rotPool = pool.filter(o => o.rotationCode === rot);
+      let nonePool = pool.filter(o => o.rotationCode === 'none');
+      if (rotPool.length < cfg.minN || nonePool.length < cfg.minN){
+        const pool2 = observations.filter(o => inBucket(o));
+        const rp2 = pool2.filter(o => o.rotationCode === rot);
+        const np2 = pool2.filter(o => o.rotationCode === 'none');
+        if (rp2.length > rotPool.length || np2.length > nonePool.length){
+          notes.push('расширен фильтр соперника');
+          rotPool = rp2; nonePool = np2;
+        }
+      }
+      if (rotPool.length < cfg.minN){
+        let allRot = observations.filter(o => o.rotationCode === rot);
+        let allNone = observations.filter(o => o.rotationCode === 'none');
+        if (cfg.preferOpponentNone){
+          const fR = allRot.filter(o => o.opponentRotationCode === 'none');
+          const fN = allNone.filter(o => o.opponentRotationCode === 'none');
+          if (fR.length >= Math.floor(cfg.minN / 2)){ allRot = fR; allNone = fN; }
+        }
+        if (allRot.length > rotPool.length){
+          notes.push(`расширены probability buckets (было ${bucket})`);
+          rotPool = allRot; nonePool = allNone;
+        }
+      }
+      const rBase = raMeanResidual(nonePool);
+      const rRot = raMeanResidual(rotPool);
+      if (rBase == null || rRot == null || !rotPool.length){
+        return {
+          adjustment_available:false, delta_logit:null, q25:null, q75:null,
+          n: rotPool.length, weighted_n: rotPool.reduce((s,o)=>s+o.weight,0),
+          reliability: raReliability(rotPool.length, cfg), probability_bucket: bucket,
+          fallback: notes.length ? notes.join('; ') : null, reason: 'insufficient_sample',
+          r_baseline: rBase, r_rotation: rRot,
+        };
+      }
+      const effects = rotPool.map(o => o.residual - rBase);
+      const weights = rotPool.map(o => o.weight);
+      const wsum = weights.reduce((a,b)=>a+b,0);
+      const mean = wsum > 0 ? effects.reduce((s,e,i)=>s+e*weights[i],0)/wsum : null;
+      const ordered = effects.slice().sort((a,b)=>a-b);
+      const q25 = raQuantile(ordered, 0.25);
+      const q75 = raQuantile(ordered, 0.75);
+      if (cfg.rejectPositiveCentral && mean != null && mean > 0){
+        return {
+          adjustment_available:false, delta_logit:mean, q25, q75,
+          n: effects.length, weighted_n: wsum,
+          reliability: raReliability(effects.length, cfg), probability_bucket: bucket,
+          fallback: notes.length ? notes.join('; ') : null, reason: 'unstable_estimate',
+          r_baseline: rBase, r_rotation: rRot,
+        };
+      }
+      const seasons = [...new Set(rotPool.map(o => o.season))].filter(s => s != null);
+      return {
+        adjustment_available:true, delta_logit:mean, q25, q75, mean,
+        median: raQuantile(ordered, 0.5),
+        n: effects.length, weighted_n: wsum,
+        reliability: raReliability(effects.length, cfg), probability_bucket: bucket,
+        fallback: notes.length ? notes.join('; ') : null, reason: null,
+        r_baseline: rBase, r_rotation: rRot, seasons_used: seasons,
+      };
+    }
+    function raOddsWithMargin(p, useM, mg){
+      if (!(p > 0)) return null;
+      if (useM && mg > 0) return 1 / (p * (1 + mg));
+      return 1 / p;
+    }
+    function raAdjustLine(p1, px, p2, homeRot, awayRot, model){
+      const cfg = raCfg();
+      const h = gmNormalizeRotCode(homeRot);
+      const a = gmNormalizeRotCode(awayRot);
+      if (h === 'none' && a === 'none'){
+        return { adjustment_available:false, skipped:true, reason:'no_rotation' };
+      }
+      if (!cfg.enabled){
+        return { adjustment_available:false, skipped:true, reason:'disabled' };
+      }
+      if (!model){
+        return { adjustment_available:false, skipped:false, reason:'no_model',
+          message:'Расчёт поправки на ротацию недоступен (нет Legacy-модели). Базовая линия рассчитана без изменений.' };
+      }
+      let obs;
+      try { obs = raBuildObservations(model); }
+      catch (e){
+        return { adjustment_available:false, skipped:false, reason:'build_error',
+          message:'Расчёт поправки на ротацию недоступен. Базовая линия рассчитана без изменений.',
+          error: String(e && e.message || e) };
+      }
+      const estH = raEstimateDelta(obs, h, p1);
+      const estA = raEstimateDelta(obs, a, p2);
+      const dH = h === 'none' ? 0 : estH.delta_logit;
+      const dA = a === 'none' ? 0 : estA.delta_logit;
+      const homeOk = h === 'none' || estH.adjustment_available;
+      const awayOk = a === 'none' || estA.adjustment_available;
+      if (!homeOk || !awayOk || dH == null || dA == null){
+        const reason = (!homeOk && estH.reason) || (!awayOk && estA.reason) || 'insufficient_sample';
+        const nH = estH.n || 0, nA = estA.n || 0;
+        let msg = 'Расчёт поправки на ротацию недоступен. Базовая линия рассчитана без изменений.';
+        if (reason === 'unstable_estimate') msg = 'Оценка ротации нестабильна (знак Δlogit). Базовая линия без изменений.';
+        else if (reason === 'insufficient_sample') msg = `Недостаточно истории для ротации (N дом=${nH}, гост=${nA}). Базовая линия без изменений.`;
+        return {
+          adjustment_available:false, skipped:false, reason, message:msg,
+          home_estimate: estH, away_estimate: estA,
+          delta_logit_home: dH, delta_logit_away: dA,
+          home_rotation_code: h, away_rotation_code: a,
+        };
+      }
+      const central = raApplyDeltas(p1, px, p2, dH, dA);
+      const q25h = h === 'none' ? 0 : (estH.q25 != null ? estH.q25 : dH);
+      const q75h = h === 'none' ? 0 : (estH.q75 != null ? estH.q75 : dH);
+      const q25a = a === 'none' ? 0 : (estA.q25 != null ? estA.q25 : dA);
+      const q75a = a === 'none' ? 0 : (estA.q75 != null ? estA.q75 : dA);
+      const lo = raApplyDeltas(p1, px, p2, q25h, q25a);
+      const hi = raApplyDeltas(p1, px, p2, q75h, q75a);
+      const range = (ck, ak, bk) => [Math.min(ck, ak, bk), Math.max(ck, ak, bk)];
+      return {
+        adjustment_available:true, skipped:false, reason:null,
+        home_rotation_code: h, away_rotation_code: a,
+        delta_logit_home: dH, delta_logit_away: dA,
+        home_estimate: estH, away_estimate: estA,
+        adjusted: Object.assign({}, central, {
+          k1_range: range(central.k1, lo.k1, hi.k1),
+          kx_range: range(central.kx, lo.kx, hi.kx),
+          k2_range: range(central.k2, lo.k2, hi.k2),
+        }),
+        estimator_type: cfg.estimatorType,
+        n_observations: obs.length,
+      };
+    }
+    function raFormatSideMeta(sideLabel, code, est, delta){
+      if (gmNormalizeRotCode(code) === 'none'){
+        return `<div><b>${escapeHtml(sideLabel)}:</b> нет ротации · Δlogit: 0</div>`;
+      }
+      if (!est) return `<div><b>${escapeHtml(sideLabel)}:</b> ${escapeHtml(raRotLabel(code))}</div>`;
+      const d = delta != null ? Number(delta) : null;
+      const q25 = est.q25 != null ? Number(est.q25) : null;
+      const q75 = est.q75 != null ? Number(est.q75) : null;
+      const rng = (q25 != null && q75 != null)
+        ? `${Math.min(q25,q75).toFixed(2)}…${Math.max(q25,q75).toFixed(2)}`
+        : '—';
+      const seasons = (est.seasons_used && est.seasons_used.length)
+        ? est.seasons_used.map(String).join(', ')
+        : '—';
+      return `<div style="margin-bottom:6px">
+        <b>${escapeHtml(sideLabel)}:</b> ${escapeHtml(raRotLabel(code))}<br>
+        Δlogit: ${d != null ? d.toFixed(2) : '—'} · Исторический диапазон: ${escapeHtml(rng)}<br>
+        Выборка: N = ${est.n != null ? est.n : '—'}${est.weighted_n != null ? ` (взвеш. ${Number(est.weighted_n).toFixed(1)})` : ''}<br>
+        Bucket: ${escapeHtml(String(est.probability_bucket || '—'))} · Надёжность: ${escapeHtml(raReliabilityLabel(est.reliability))}<br>
+        Сезоны: ${escapeHtml(seasons)}
+        ${est.fallback ? `<br><span class="hint">Fallback: ${escapeHtml(est.fallback)}</span>` : ''}
+      </div>`;
+    }
+    function raFormatResultHtml(adj, homeName, awayName, baseP1, basePx, baseP2, useM, mg){
+      if (!adj) return '';
+      if (!adj.adjustment_available){
+        return `<div class="ra-note">${escapeHtml(adj.message || 'Расчёт поправки на ротацию недоступен. Базовая линия рассчитана без изменений.')}</div>`;
+      }
+      const a = adj.adjusted;
+      const bk1 = raOddsWithMargin(baseP1, useM, mg);
+      const bkx = raOddsWithMargin(basePx, useM, mg);
+      const bk2 = raOddsWithMargin(baseP2, useM, mg);
+      const ak1 = raOddsWithMargin(a.p1, useM, mg);
+      const akx = raOddsWithMargin(a.px, useM, mg);
+      const ak2 = raOddsWithMargin(a.p2, useM, mg);
+      const marginRange = (kRange) => {
+        if (!kRange) return '—';
+        if (!(useM && mg > 0)) return `${Math.min(kRange[0],kRange[1]).toFixed(2)}–${Math.max(kRange[0],kRange[1]).toFixed(2)}`;
+        const toDisp = (k) => 1 / ((1/k) * (1+mg));
+        const a0 = toDisp(kRange[0]), a1 = toDisp(kRange[1]);
+        return `${Math.min(a0,a1).toFixed(2)}–${Math.max(a0,a1).toFixed(2)}`;
+      };
+      return `<div class="ra-block">
+        <h5>Ротационная поправка (1X2)</h5>
+        <table class="goal-predict-table goal-predict-table--1x2">
+          <thead><tr><th class="lbl">Результат</th><th>П1 (${escapeHtml(homeName)})</th><th>X</th><th>П2 (${escapeHtml(awayName)})</th></tr></thead>
+          <tbody>
+            <tr><td class="lbl">Базовая линия</td><td class="odds">${bk1.toFixed(2)}</td><td class="odds">${bkx.toFixed(2)}</td><td class="odds">${bk2.toFixed(2)}</td></tr>
+            <tr><td class="lbl">С учётом ротации</td><td class="odds ra-adj">${ak1.toFixed(2)}</td><td class="odds ra-adj">${akx.toFixed(2)}</td><td class="odds ra-adj">${ak2.toFixed(2)}</td></tr>
+          </tbody>
+        </table>
+        <div class="ra-meta">
+          Центральная оценка П1: <b>${ak1.toFixed(2)}</b> · Исторический диапазон: <b>${marginRange(a.k1_range)}</b><br>
+          ${raFormatSideMeta('Хозяева', adj.home_rotation_code, adj.home_estimate, adj.delta_logit_home)}
+          ${raFormatSideMeta('Гости', adj.away_rotation_code, adj.away_estimate, adj.delta_logit_away)}
+          <span class="hint">estimator: ${escapeHtml(adj.estimator_type || 'bucket_v1')} · не меняет рейтинг / baseline следующего матча</span>
+        </div>
+      </div>`;
+    }
+    document.getElementById('goalRotHistPeriod')?.addEventListener('change', () => {
+      raObsCache = { key: null, observations: [] };
+      raSyncCustomSeasonUi();
+    });
+    // ========== END ROTATION ADJUSTMENT ==========
 
     // ========== MATCH LINE PREDICTIONS (Прогнозы) ==========
     let mlpRowsCache = [];
