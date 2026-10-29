@@ -193,6 +193,18 @@
     "middle": 0.7,
     "high": 0.0
   },
+  "rotationAdjustment": {
+    "enabled": true,
+    "estimatorType": "bucket_v1",
+    "probBuckets": [0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80],
+    "seasonWeightsAuto": [1.0, 0.6, 0.3],
+    "minN": 20,
+    "minTrainMatches": 40,
+    "requireOos": true,
+    "reliability": { "low_lt": 20, "medium_lt": 50 },
+    "preferOpponentNone": true,
+    "rejectPositiveCentral": true
+  },
   "compare": {
     "defaultMode": "compare",
     "defaultMarginPct": 3,
