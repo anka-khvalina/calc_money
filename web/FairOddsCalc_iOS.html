@@ -1152,7 +1152,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <div id="goalRotCustomSeasonList" class="ra-season-checks hint">Загрузите сезоны на Линии</div>
           </div>
         </div>
-        <p class="hint" style="margin:6px 0 0">Период влияет только на ротационную поправку. Базовый расчёт линии от него не зависит.</p>
+        <p class="hint" style="margin:6px 0 0">Период влияет только на ротационную поправку. Базовый расчёт линии от него не зависит. Исторический <code>P_model</code> считается walk-forward OOS (train строго до даты матча); closing матча в прогноз не подаётся.</p>
       </details>
       <div class="row">
         <button type="button" id="goalPredict" class="btn primary"><span aria-hidden="true">📈</span> Рассчитать линию</button>
@@ -9868,7 +9868,8 @@ bash scripts/update_and_serve.sh --start</div>
         if (homeRot !== 'none' || awayRot !== 'none'){
           try {
             if (predL && predL.markets){
-              rotationAdj = raAdjustLine(
+              raSetProgress('Ротация: walk-forward OOS по истории…');
+              rotationAdj = await raAdjustLine(
                 predL.markets.p1, predL.markets.px, predL.markets.p2,
                 homeRot, awayRot, gmModelLegacy
               );
@@ -9886,9 +9887,8 @@ bash scripts/update_and_serve.sh --start</div>
             };
           }
           if (!rotationAdj || !rotationAdj.adjustment_available){
-            // Soft note only when high and adjustment missing (legacy UX).
             if (homeRot === 'high' || awayRot === 'high'){
-              rotationWarn = null; // message comes from ra-note
+              rotationWarn = null;
             }
           }
         }
@@ -10064,6 +10064,8 @@ bash scripts/update_and_serve.sh --start</div>
         probBuckets: Array.isArray(raw.probBuckets) ? raw.probBuckets.map(Number) : [0.20,0.30,0.40,0.50,0.60,0.70,0.80],
         seasonWeightsAuto: Array.isArray(raw.seasonWeightsAuto) ? raw.seasonWeightsAuto.map(Number) : [1.0,0.6,0.3],
         minN: raw.minN != null ? Number(raw.minN) : 20,
+        minTrainMatches: raw.minTrainMatches != null ? Number(raw.minTrainMatches) : 40,
+        requireOos: raw.requireOos !== false,
         reliability: {
           low_lt: rel.low_lt != null ? Number(rel.low_lt) : 20,
           medium_lt: rel.medium_lt != null ? Number(rel.medium_lt) : 50,
@@ -10178,75 +10180,179 @@ bash scripts/update_and_serve.sh --start</div>
         return `<label><input type="checkbox" value="${escapeHtml(String(id))}" checked> ${escapeHtml(String(lab))}</label>`;
       }).join('');
     }
-    function raBuildObservations(model){
+    function raDateKey(r){
+      return String((r && r.date) || '').trim().slice(0, 10);
+    }
+    function raRawMatchKey(r){
+      return `${r.matchId != null ? r.matchId : ''}|${r.homeId}|${r.awayId}|${raDateKey(r)}`;
+    }
+    function raSetProgress(msg){
+      const st = document.getElementById('jsStatus') || document.getElementById('goalModelCalibStatus');
+      if (st) st.textContent = msg || '';
+    }
+    /**
+     * Walk-forward / expanding-window OOS predictions for Legacy 1X2.
+     * For each match-date D: train ONLY on matches with date < D (same Line math,
+     * including rotation training_weight), then predict all matches on D.
+     * Target match closing odds are NEVER passed into predict (no leakage into SFA/SFTC).
+     */
+    async function raWalkForwardOosPredictions(rawAll, onProgress){
       const cfg = raCfg();
-      const sel = raSelectedSeasonIds();
-      const cacheKey = [
-        goalTrainState && goalTrainState.trainedAt,
-        sel.mode,
-        sel.seasonIds.join(','),
-        (goalLoadedRaw||[]).length,
-        (goalLoadedInactiveRaw||[]).length,
-      ].join('|');
-      if (raObsCache.key === cacheKey) return raObsCache.observations;
+      const minTrain = cfg.minTrainMatches || 40;
+      const eligible = (rawAll || []).filter(r =>
+        r && r.homeId && r.awayId && raDateKey(r) && typeof goalRawHasFullLine === 'function' && goalRawHasFullLine(r)
+      );
+      const sorted = eligible.slice().sort((a, b) => {
+        const da = raDateKey(a), db = raDateKey(b);
+        if (da !== db) return da.localeCompare(db);
+        return String(a.matchId || '').localeCompare(String(b.matchId || ''))
+          || String(a.homeId).localeCompare(String(b.homeId));
+      });
+      const byDate = new Map();
+      sorted.forEach(r => {
+        const d = raDateKey(r);
+        if (!byDate.has(d)) byDate.set(d, []);
+        byDate.get(d).push(r);
+      });
+      const dates = [...byDate.keys()];
+      const out = new Map(); // matchKey -> {p1,px,p2,trainCutoff,trainN,oos:true}
+      const trainPool = [];
+      // Season weights: during historical replay keep default 1.0 so we don't bake today's UI weights into past.
+      const trainCfg = (typeof irBaselineCfg === 'function')
+        ? irBaselineCfg({}, 'legacy')
+        : Object.assign({}, gmCfg(), { seasonDefault: 1.0, seasonWeightsById: {} });
+      trainCfg.seasonDefault = 1.0;
+      trainCfg.seasonWeightsById = {};
 
-      const seasonSet = new Set(sel.seasonIds.map(String));
-      const newestFirst = sel.newestFirst.map(String);
-      const rawAll = []
-        .concat(Array.isArray(goalLoadedRaw) ? goalLoadedRaw : [])
-        .concat(Array.isArray(goalLoadedInactiveRaw) ? goalLoadedInactiveRaw : []);
-      const obs = [];
       const prevS = window.__IR_S_EMA_OVERRIDE;
       const prevD = window.__IR_D_EMA_OVERRIDE;
       window.__IR_S_EMA_OVERRIDE = null;
       window.__IR_D_EMA_OVERRIDE = null;
       try {
-        for (const r of rawAll){
-          if (!r || !r.homeId || !r.awayId) continue;
-          if (seasonSet.size && r.seasonId != null && !seasonSet.has(String(r.seasonId))) continue;
-          const odds = raDrawOddsFromRaw(r);
-          if (!odds || !(odds.ho > 1 && odds.dx > 1 && odds.ao > 1)) continue;
-          let fair;
-          try { fair = gmShinProbs([odds.ho, odds.dx, odds.ao]); }
-          catch (_e){ continue; }
-          let pred;
-          try {
-            pred = irPredictLegacy(model, r.homeId, r.awayId, {
-              neutral: !!r.neu,
-              derby: !!r.der,
-              matchDate: r.date || gmTodayIso(),
-              leagueId: r.leagueId || (goalLoadedMeta && goalLoadedMeta.leagueId),
-              leagueName: r.league || (goalLoadedMeta && goalLoadedMeta.leagueName),
-              seasonId: r.seasonId,
-              seasonLabel: r.seasonLabel,
-            });
-          } catch (_e){ continue; }
-          const mk = pred && pred.markets;
-          if (!mk || !(mk.p1 > 0) || !(mk.p2 > 0)) continue;
-          const sIdx = newestFirst.indexOf(String(r.seasonId));
-          const w = raSeasonWeight(sIdx < 0 ? 0 : sIdx, cfg.seasonWeightsAuto);
-          const homeRot = gmNormalizeRotCode(r.homeRot);
-          const awayRot = gmNormalizeRotCode(r.awayRot);
-          obs.push({
-            matchId: r.matchId, teamId: r.homeId, opponentId: r.awayId,
-            season: r.seasonId, seasonIndex: sIdx < 0 ? 0 : sIdx, homeFlag: true,
-            rotationCode: homeRot, opponentRotationCode: awayRot,
-            pModel: mk.p1, pClose: fair[0], weight: w,
-            residual: raResidual(fair[0], mk.p1),
-          });
-          obs.push({
-            matchId: r.matchId, teamId: r.awayId, opponentId: r.homeId,
-            season: r.seasonId, seasonIndex: sIdx < 0 ? 0 : sIdx, homeFlag: false,
-            rotationCode: awayRot, opponentRotationCode: homeRot,
-            pModel: mk.p2, pClose: fair[2], weight: w,
-            residual: raResidual(fair[2], mk.p2),
-          });
+        for (let i = 0; i < dates.length; i++){
+          const d = dates[i];
+          const batch = byDate.get(d) || [];
+          if (typeof onProgress === 'function'){
+            onProgress({ index: i + 1, total: dates.length, date: d, trainN: trainPool.length, predN: out.size });
+          }
+          if (trainPool.length >= minTrain){
+            let model = null;
+            try {
+              model = calculateLegacyModel(trainPool, trainCfg, []);
+            } catch (e){
+              console.warn('ra walk-forward train', d, e);
+              model = null;
+            }
+            if (model){
+              for (const r of batch){
+                const odds = raDrawOddsFromRaw(r);
+                // Need closing only as residual target later; skip predict if no 1X2 closing.
+                if (!odds || !(odds.ho > 1 && odds.dx > 1 && odds.ao > 1)) continue;
+                try {
+                  // Explicitly omit homeOdds/awayOdds/marketFavoriteOdds — closing is reference only.
+                  const pred = irPredictLegacy(model, r.homeId, r.awayId, {
+                    neutral: !!r.neu,
+                    derby: !!r.der,
+                    matchDate: r.date,
+                    leagueId: r.leagueId || (goalLoadedMeta && goalLoadedMeta.leagueId) || null,
+                    leagueName: r.league || (goalLoadedMeta && goalLoadedMeta.leagueName) || null,
+                    seasonId: r.seasonId,
+                    seasonLabel: r.seasonLabel,
+                  });
+                  const mk = pred && pred.markets;
+                  if (!mk || !(mk.p1 > 0) || !(mk.px > 0) || !(mk.p2 > 0)) continue;
+                  out.set(raRawMatchKey(r), {
+                    p1: mk.p1, px: mk.px, p2: mk.p2,
+                    k1: 1 / mk.p1, kx: 1 / mk.px, k2: 1 / mk.p2,
+                    trainCutoff: d,
+                    trainN: trainPool.length,
+                    predictionAsOf: d,
+                    oos: true,
+                    modelVersion: 'legacy_line_walkforward_v1',
+                  });
+                } catch (_e){ /* skip unpredictable */ }
+              }
+            }
+          }
+          // After predicting date D, append these matches to train pool (weights apply on next fit).
+          for (const r of batch) trainPool.push(r);
+          // Yield so UI can paint progress
+          await new Promise(res => setTimeout(res, 0));
         }
       } finally {
         window.__IR_S_EMA_OVERRIDE = prevS;
         window.__IR_D_EMA_OVERRIDE = prevD;
       }
-      raObsCache = { key: cacheKey, observations: obs };
+      return out;
+    }
+    async function raBuildObservations(_modelUnused, onProgress){
+      const cfg = raCfg();
+      const sel = raSelectedSeasonIds();
+      const rawAll = []
+        .concat(Array.isArray(goalLoadedRaw) ? goalLoadedRaw : [])
+        .concat(Array.isArray(goalLoadedInactiveRaw) ? goalLoadedInactiveRaw : []);
+      const cacheKey = [
+        'oos_v1',
+        sel.mode,
+        sel.seasonIds.join(','),
+        rawAll.length,
+        cfg.minTrainMatches,
+        cfg.requireOos ? 1 : 0,
+        // fingerprint dates+ids so reload invalidates
+        rawAll.map(r => raRawMatchKey(r)).slice(0, 20).join(';'),
+        rawAll.length ? raRawMatchKey(rawAll[rawAll.length - 1]) : '',
+      ].join('|');
+      if (raObsCache.key === cacheKey && Array.isArray(raObsCache.observations)){
+        return raObsCache.observations;
+      }
+
+      if (!cfg.requireOos){
+        throw new Error('In-sample historical P_model disabled (requireOos=true). Use walk-forward OOS.');
+      }
+
+      const oosMap = await raWalkForwardOosPredictions(rawAll, (p) => {
+        raSetProgress(`Walk-forward OOS: ${p.index}/${p.total} · ${p.date} · train=${p.trainN} · preds=${p.predN}`);
+        if (typeof onProgress === 'function') onProgress(p);
+      });
+
+      const seasonSet = new Set(sel.seasonIds.map(String));
+      const newestFirst = sel.newestFirst.map(String);
+      const obs = [];
+      for (const r of rawAll){
+        if (!r || !r.homeId || !r.awayId) continue;
+        if (seasonSet.size && r.seasonId != null && !seasonSet.has(String(r.seasonId))) continue;
+        const oos = oosMap.get(raRawMatchKey(r));
+        if (!oos || !oos.oos) continue; // no leakage fallback
+        const odds = raDrawOddsFromRaw(r);
+        if (!odds || !(odds.ho > 1 && odds.dx > 1 && odds.ao > 1)) continue;
+        let fair;
+        try { fair = gmShinProbs([odds.ho, odds.dx, odds.ao]); }
+        catch (_e){ continue; }
+        const sIdx = newestFirst.indexOf(String(r.seasonId));
+        const w = raSeasonWeight(sIdx < 0 ? 0 : sIdx, cfg.seasonWeightsAuto);
+        const homeRot = gmNormalizeRotCode(r.homeRot);
+        const awayRot = gmNormalizeRotCode(r.awayRot);
+        obs.push({
+          matchId: r.matchId, teamId: r.homeId, opponentId: r.awayId,
+          season: r.seasonId, seasonIndex: sIdx < 0 ? 0 : sIdx, homeFlag: true,
+          rotationCode: homeRot, opponentRotationCode: awayRot,
+          pModel: oos.p1, pClose: fair[0], weight: w,
+          residual: raResidual(fair[0], oos.p1),
+          trainCutoff: oos.trainCutoff,
+          oos: true,
+        });
+        obs.push({
+          matchId: r.matchId, teamId: r.awayId, opponentId: r.homeId,
+          season: r.seasonId, seasonIndex: sIdx < 0 ? 0 : sIdx, homeFlag: false,
+          rotationCode: awayRot, opponentRotationCode: homeRot,
+          pModel: oos.p2, pClose: fair[2], weight: w,
+          residual: raResidual(fair[2], oos.p2),
+          trainCutoff: oos.trainCutoff,
+          oos: true,
+        });
+      }
+      raObsCache = { key: cacheKey, observations: obs, oosMap };
+      raSetProgress(`Walk-forward OOS готов: ${oosMap.size} матчей · ${obs.length} team-obs`);
       return obs;
     }
     function raMeanResidual(list){
@@ -10332,7 +10438,7 @@ bash scripts/update_and_serve.sh --start</div>
       if (useM && mg > 0) return 1 / (p * (1 + mg));
       return 1 / p;
     }
-    function raAdjustLine(p1, px, p2, homeRot, awayRot, model){
+    async function raAdjustLine(p1, px, p2, homeRot, awayRot, model){
       const cfg = raCfg();
       const h = gmNormalizeRotCode(homeRot);
       const a = gmNormalizeRotCode(awayRot);
@@ -10342,12 +10448,10 @@ bash scripts/update_and_serve.sh --start</div>
       if (!cfg.enabled){
         return { adjustment_available:false, skipped:true, reason:'disabled' };
       }
-      if (!model){
-        return { adjustment_available:false, skipped:false, reason:'no_model',
-          message:'Расчёт поправки на ротацию недоступен (нет Legacy-модели). Базовая линия рассчитана без изменений.' };
-      }
+      // model arg kept for API compatibility; historical residuals use walk-forward OOS, not this model.
+      void model;
       let obs;
-      try { obs = raBuildObservations(model); }
+      try { obs = await raBuildObservations(null); }
       catch (e){
         return { adjustment_available:false, skipped:false, reason:'build_error',
           message:'Расчёт поправки на ротацию недоступен. Базовая линия рассчитана без изменений.',
@@ -10392,6 +10496,8 @@ bash scripts/update_and_serve.sh --start</div>
         }),
         estimator_type: cfg.estimatorType,
         n_observations: obs.length,
+        oos: true,
+        prediction_source: 'walkforward_oos',
       };
     }
     function raFormatSideMeta(sideLabel, code, est, delta){
@@ -10449,7 +10555,7 @@ bash scripts/update_and_serve.sh --start</div>
           Центральная оценка П1: <b>${ak1.toFixed(2)}</b> · Исторический диапазон: <b>${marginRange(a.k1_range)}</b><br>
           ${raFormatSideMeta('Хозяева', adj.home_rotation_code, adj.home_estimate, adj.delta_logit_home)}
           ${raFormatSideMeta('Гости', adj.away_rotation_code, adj.away_estimate, adj.delta_logit_away)}
-          <span class="hint">estimator: ${escapeHtml(adj.estimator_type || 'bucket_v1')} · не меняет рейтинг / baseline следующего матча</span>
+          <span class="hint">estimator: ${escapeHtml(adj.estimator_type || 'bucket_v1')} · P_model = walk-forward OOS (train date &lt; match) · closing только как reference · не меняет рейтинг</span>
         </div>
       </div>`;
     }

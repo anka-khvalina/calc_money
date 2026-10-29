@@ -486,3 +486,114 @@ def season_weight_auto(season_index: int, weights: Optional[Sequence[float]] = N
     if season_index < len(ws):
         return float(ws[season_index])
     return float(ws[-1]) * (0.5 ** (season_index - len(ws) + 1))
+
+
+# ----- Walk-forward / OOS protocol helpers -----
+
+def match_date_key(value: Any) -> str:
+    """Normalize to YYYY-MM-DD for chronological cutoffs."""
+    s = str(value or "").strip()
+    return s[:10] if s else ""
+
+
+def assert_strict_past_cutoff(train_dates: Sequence[Any], predict_date: Any) -> None:
+    """Raise if any train row is on/after the predict date (leakage)."""
+    cut = match_date_key(predict_date)
+    if not cut:
+        raise ValueError("predict_date required")
+    for d in train_dates:
+        dk = match_date_key(d)
+        if not dk:
+            raise ValueError("train row missing date")
+        if dk >= cut:
+            raise ValueError(f"leakage: train date {dk} >= predict cutoff {cut}")
+
+
+def group_matches_by_date(matches: Sequence[Mapping[str, Any]], *, date_key: str = "date") -> List[Tuple[str, List[Mapping[str, Any]]]]:
+    """Return sorted (date, batch) pairs for walk-forward batches."""
+    buckets: Dict[str, List[Mapping[str, Any]]] = {}
+    for m in matches:
+        d = match_date_key(m.get(date_key) or m.get("match_date"))
+        if not d:
+            continue
+        buckets.setdefault(d, []).append(m)
+    return [(d, buckets[d]) for d in sorted(buckets.keys())]
+
+
+def walk_forward_batches(
+    matches: Sequence[Mapping[str, Any]],
+    *,
+    date_key: str = "date",
+    min_train: int = 40,
+) -> List[Dict[str, Any]]:
+    """Describe walk-forward steps without fitting a model.
+
+    Each step: train_dates all strictly before predict_date; then those match
+    rows become eligible for the next train pool after prediction.
+    """
+    steps: List[Dict[str, Any]] = []
+    train_pool: List[Mapping[str, Any]] = []
+    for predict_date, batch in group_matches_by_date(matches, date_key=date_key):
+        train_dates = [match_date_key(m.get(date_key) or m.get("match_date")) for m in train_pool]
+        assert_strict_past_cutoff(train_dates, predict_date)
+        steps.append(
+            {
+                "predict_date": predict_date,
+                "train_cutoff": predict_date,  # exclusive
+                "train_n": len(train_pool),
+                "can_predict": len(train_pool) >= int(min_train),
+                "batch_n": len(batch),
+                "batch_match_ids": [m.get("match_id") or m.get("id") for m in batch],
+            }
+        )
+        train_pool.extend(batch)
+    return steps
+
+
+def oos_residual_from_probs(p_close: float, p_model_oos: float) -> float:
+    """R = logit(P_close) - logit(P_model^OOS). Closing is reference only."""
+    return residual(p_close, p_model_oos)
+
+
+def historical_oos_prediction_row(
+    *,
+    match_id: Any,
+    match_date: Any,
+    train_cutoff: Any,
+    p1: float,
+    px: float,
+    p2: float,
+    train_n: Optional[int] = None,
+    model_version: str = "legacy_line_walkforward_v1",
+    league_id: Any = None,
+    season_id: Any = None,
+    home_team_id: Any = None,
+    away_team_id: Any = None,
+) -> Dict[str, Any]:
+    """Payload shape for historical_oos_predictions storage."""
+    s = float(p1) + float(px) + float(p2)
+    if s <= 0:
+        raise ValueError("invalid probs")
+    p1n, pxn, p2n = float(p1) / s, float(px) / s, float(p2) / s
+    md = match_date_key(match_date)
+    # train_cutoff is exclusive: model trained on dates strictly before this label
+    cut = match_date_key(train_cutoff) or md
+    return {
+        "match_id": match_id,
+        "league_id": league_id,
+        "season_id": season_id,
+        "home_team_id": home_team_id,
+        "away_team_id": away_team_id,
+        "match_date": md,
+        "train_cutoff": cut,
+        "prediction_as_of": md,
+        "model_version": model_version,
+        "estimator_note": "walkforward_oos",
+        "p1": p1n,
+        "px": pxn,
+        "p2": p2n,
+        "k1": 1.0 / p1n,
+        "kx": 1.0 / pxn,
+        "k2": 1.0 / p2n,
+        "train_n": train_n,
+    }

@@ -233,3 +233,59 @@ def test_season_weight_auto():
     assert ra.season_weight_auto(0) == 1.0
     assert ra.season_weight_auto(1) == 0.6
     assert ra.season_weight_auto(2) == 0.3
+
+
+def test_walk_forward_cutoff_rejects_leakage():
+    ra.assert_strict_past_cutoff(["2025-09-01", "2025-09-10"], "2025-09-15")
+    try:
+        ra.assert_strict_past_cutoff(["2025-09-01", "2025-09-15"], "2025-09-15")
+        assert False, "expected leakage error"
+    except ValueError as e:
+        assert "leakage" in str(e)
+
+
+def test_walk_forward_batches_expanding_window():
+    matches = [
+        {"match_id": "A", "date": "2025-09-01"},
+        {"match_id": "B", "date": "2025-09-15"},
+        {"match_id": "C1", "date": "2025-10-01"},
+        {"match_id": "C2", "date": "2025-10-01"},
+    ]
+    steps = ra.walk_forward_batches(matches, min_train=1)
+    assert steps[0]["predict_date"] == "2025-09-01"
+    assert steps[0]["train_n"] == 0
+    assert steps[0]["can_predict"] is False
+    assert steps[1]["predict_date"] == "2025-09-15"
+    assert steps[1]["train_n"] == 1
+    assert steps[1]["can_predict"] is True
+    assert steps[2]["predict_date"] == "2025-10-01"
+    assert steps[2]["train_n"] == 2
+    assert steps[2]["batch_n"] == 2
+    # After each step, prior dates only — no same-day leakage into train of that step
+    for st in steps:
+        ra.assert_strict_past_cutoff(
+            [m["date"] for m in matches if m["date"] < st["predict_date"]],
+            st["predict_date"],
+        )
+
+
+def test_oos_residual_example_dortmund():
+    # Spec example: P_model OOS 52%, closing 48% → R ≈ -0.16
+    r = ra.oos_residual_from_probs(0.48, 0.52)
+    assert abs(r - (-0.160)) < 0.01
+
+
+def test_historical_oos_prediction_row_shape():
+    row = ra.historical_oos_prediction_row(
+        match_id="m1",
+        match_date="2025-11-08",
+        train_cutoff="2025-11-08",
+        p1=0.5,
+        px=0.25,
+        p2=0.25,
+        train_n=120,
+    )
+    assert row["estimator_note"] == "walkforward_oos"
+    assert abs(row["p1"] + row["px"] + row["p2"] - 1.0) < 1e-12
+    assert row["train_cutoff"] == "2025-11-08"
+    assert row["model_version"] == "legacy_line_walkforward_v1"
