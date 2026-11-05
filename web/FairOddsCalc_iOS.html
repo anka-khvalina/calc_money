@@ -11828,6 +11828,17 @@ bash scripts/update_and_serve.sh --start</div>
           });
         });
       } catch (e){
+        const raw = String(e.message || e || '');
+        // FastAPI default 404 body is {"detail":"Not Found"} when History API
+        // process is old / without /api/ideal-predictions routes.
+        if (e.status === 404 && (!e.code || e.code === 'MATCH_NOT_FOUND') && /not found/i.test(raw) && !/календар/i.test(raw)){
+          idealSetSavePanel(
+            'History API без маршрутов ideal-predictions. На Mac перезапустите: '
+            + 'FAIR_ODDS_BRANCH=cursor/ideal-predictions-17b5 bash scripts/update_and_serve.sh --start',
+            'err'
+          );
+          return;
+        }
         if (e.code === 'MATCH_NOT_FOUND' || e.status === 404){
           idealSetSavePanel(
             escapeHtml(e.message || 'Будущая встреча этих команд не найдена в календаре. Необходима ручная проверка раздела "История".'),
@@ -11839,7 +11850,7 @@ bash scripts/update_and_serve.sh --start</div>
           idealSetSavePanel(escapeHtml(e.message || 'Найдено несколько подходящих матчей.'), 'warn');
           return;
         }
-        idealSetSavePanel(escapeHtml(e.message || String(e)), 'err');
+        idealSetSavePanel(escapeHtml(raw || 'Ошибка сохранения'), 'err');
       }
     }
     async function idealConfirmSave(isUpdate){
