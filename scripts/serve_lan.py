@@ -100,11 +100,23 @@ class LanHandler(http.server.SimpleHTTPRequestHandler):
             return
         self.send_error(405, "Method Not Allowed")
 
+    def do_PUT(self) -> None:
+        if self.path.startswith("/api/"):
+            self._proxy_to_api()
+            return
+        self.send_error(405, "Method Not Allowed")
+
+    def do_PATCH(self) -> None:
+        if self.path.startswith("/api/"):
+            self._proxy_to_api()
+            return
+        self.send_error(405, "Method Not Allowed")
+
     def do_OPTIONS(self) -> None:
         if self.path == "/health" or self.path.startswith("/api/"):
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type, Accept")
             self.end_headers()
             return

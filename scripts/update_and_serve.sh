@@ -3,7 +3,7 @@
 #
 # Использование:
 #   bash scripts/update_and_serve.sh              # pull + api.config.json
-#   bash scripts/update_and_serve.sh --start      # + запуск API и веб-прокси
+#   bash scripts/update_and_serve.sh --start      # + перезапуск API и веб-прокси
 #   bash scripts/update_and_serve.sh --no-pull    # только конфиг
 #
 # Переменные:
@@ -79,56 +79,81 @@ tmux_cmd() {
   fi
 }
 
-start_tmux_session() {
+stop_tmux_session() {
   local name="$1"
-  local workdir="$2"
-  shift 2
   if tmux_cmd has-session -t "=$name" 2>/dev/null; then
-    echo "  tmux «${name}» уже запущена"
+    tmux_cmd kill-session -t "$name" 2>/dev/null || true
+    echo "  tmux «${name}» остановлена"
+  fi
+}
+
+stop_background() {
+  local name="$1"
+  local pidfile="$RUN_DIR/${name}.pid"
+  if [[ ! -f "$pidfile" ]]; then
     return 0
   fi
-  tmux_cmd new-session -d -s "$name" -c "$workdir" -- "${SHELL:-bash}" -lc "$*"
-  echo "  tmux «${name}» запущена"
-}
-
-start_background() {
-  local name="$1"
-  shift
-  local pidfile="$RUN_DIR/${name}.pid"
-  local logfile="$RUN_DIR/${name}.log"
-  mkdir -p "$RUN_DIR"
-  if [[ -f "$pidfile" ]]; then
-    local oldpid
-    oldpid="$(cat "$pidfile")"
-    if kill -0 "$oldpid" 2>/dev/null; then
-      echo "  ${name} уже работает (pid ${oldpid})"
-      return 0
-    fi
+  local oldpid
+  oldpid="$(cat "$pidfile" 2>/dev/null || true)"
+  if [[ -n "$oldpid" ]] && kill -0 "$oldpid" 2>/dev/null; then
+    kill "$oldpid" 2>/dev/null || true
+    sleep 1
+    kill -9 "$oldpid" 2>/dev/null || true
+    echo "  ${name} остановлен (pid ${oldpid})"
   fi
-  nohup "$@" >>"$logfile" 2>&1 &
-  echo $! >"$pidfile"
-  echo "  ${name} запущен (pid $(cat "$pidfile"), лог ${logfile})"
+  rm -f "$pidfile"
 }
 
-start_servers() {
+# --start always restarts so new routes (e.g. ideal-predictions) are loaded.
+restart_servers() {
+  echo ">> Перезапуск серверов (чтобы подтянуть код ветки)..."
+  if command -v tmux >/dev/null 2>&1; then
+    stop_tmux_session "fair-odds-api"
+    stop_tmux_session "fair-odds-web"
+  fi
+  stop_background "fair-odds-api"
+  stop_background "fair-odds-web"
+  # Also clear stale listeners on API/web ports if pidfiles were lost
+  if command -v lsof >/dev/null 2>&1; then
+    local p
+    for p in $(lsof -tiTCP:"${API_PORT}" -sTCP:LISTEN 2>/dev/null || true); do
+      kill "$p" 2>/dev/null || true
+      echo "  освобождён порт ${API_PORT} (pid ${p})"
+    done
+    for p in $(lsof -tiTCP:"${WEB_PORT}" -sTCP:LISTEN 2>/dev/null || true); do
+      kill "$p" 2>/dev/null || true
+      echo "  освобождён порт ${WEB_PORT} (pid ${p})"
+    done
+    sleep 1
+  fi
+
+  mkdir -p "$RUN_DIR"
   if command -v tmux >/dev/null 2>&1; then
     echo ">> Запуск через tmux..."
-    start_tmux_session "fair-odds-api" "$ROOT" \
+    tmux_cmd new-session -d -s "fair-odds-api" -c "$ROOT" -- "${SHELL:-bash}" -lc \
       "HISTORY_API_HOST=127.0.0.1 bash scripts/run_history_api.sh"
-    start_tmux_session "fair-odds-web" "$ROOT" \
+    echo "  tmux «fair-odds-api» запущена"
+    tmux_cmd new-session -d -s "fair-odds-web" -c "$ROOT" -- "${SHELL:-bash}" -lc \
       "python3 scripts/serve_lan.py --port ${WEB_PORT}"
+    echo "  tmux «fair-odds-web» запущена"
     echo "  Остановить: tmux kill-session -t fair-odds-api; tmux kill-session -t fair-odds-web"
     echo "  Логи tmux:  tmux attach -t fair-odds-api   |   bash scripts/logs.sh (файлы .run/)"
   else
     echo ">> tmux не найден — запуск в фоне (nohup, каталог .run/)..."
-    start_background "fair-odds-api" env HISTORY_API_HOST=127.0.0.1 bash scripts/run_history_api.sh
+    nohup env HISTORY_API_HOST=127.0.0.1 bash scripts/run_history_api.sh \
+      >>"$RUN_DIR/fair-odds-api.log" 2>&1 &
+    echo $! >"$RUN_DIR/fair-odds-api.pid"
+    echo "  fair-odds-api запущен (pid $(cat "$RUN_DIR/fair-odds-api.pid"))"
     echo "  ждём History API..."
     local i
     for i in 1 2 3 4 5 6 7 8 9 10; do
       check_health "http://127.0.0.1:${API_PORT}/health" && break
       sleep 1
     done
-    start_background "fair-odds-web" python3 scripts/serve_lan.py --port "${WEB_PORT}"
+    nohup python3 scripts/serve_lan.py --port "${WEB_PORT}" \
+      >>"$RUN_DIR/fair-odds-web.log" 2>&1 &
+    echo $! >"$RUN_DIR/fair-odds-web.pid"
+    echo "  fair-odds-web запущен (pid $(cat "$RUN_DIR/fair-odds-web.pid"))"
     echo "  Остановить: bash scripts/stop_servers.sh"
     echo "  Логи:       bash scripts/logs.sh -f"
   fi
@@ -146,6 +171,19 @@ verify_servers() {
     echo "  Прокси LAN (:${WEB_PORT}/health): OK"
   else
     echo "  Прокси LAN: FAIL — запущен ли serve_lan.py?" >&2
+  fi
+  # Confirm ideal-predictions routes are loaded (404 = stale uvicorn process)
+  local code
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+    -X POST "http://127.0.0.1:${API_PORT}/api/ideal-predictions/resolve-match" \
+    -H 'Content-Type: application/json' \
+    -d '{}' 2>/dev/null || echo 000)"
+  if [[ "$code" == "404" ]]; then
+    echo "  ideal-predictions: FAIL (HTTP 404) — API всё ещё со старым кодом" >&2
+  elif [[ "$code" == "000" ]]; then
+    echo "  ideal-predictions: FAIL (нет ответа)" >&2
+  else
+    echo "  ideal-predictions: OK (HTTP ${code}, маршрут есть)"
   fi
 }
 
@@ -182,7 +220,7 @@ echo "Проверка: curl http://${LAN_IP}:${WEB_PORT}/health"
 echo ""
 
 if [[ "$DO_START" -eq 1 ]]; then
-  start_servers
+  restart_servers
   verify_servers "$LAN_IP"
 else
   echo "=== Запуск вручную (два окна Terminal) ==="
