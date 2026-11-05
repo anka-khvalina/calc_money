@@ -13,7 +13,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -100,14 +100,16 @@ def _ideal_http(exc: ip.IdealPredictionError) -> HTTPException:
 
 
 @app.post("/api/ideal-predictions")
-async def ideal_predictions_create(body: IdealPredictionBody) -> dict:
+async def ideal_predictions_create(body: IdealPredictionBody, response: Response) -> dict:
     try:
-        return await asyncio.to_thread(
+        out = await asyncio.to_thread(
             ip.create_ideal,
             body.matchId,
             body.predictionData,
             body.calculationSettings,
         )
+        response.status_code = 201
+        return out
     except ip.IdealPredictionError as exc:
         raise _ideal_http(exc) from exc
     except Exception as exc:  # pragma: no cover
