@@ -353,8 +353,29 @@
       margin-top:12px; padding:12px 14px; background:#f8fafc;
       border:1px solid var(--line); border-radius:10px;
       font-size:13px; line-height:1.4; max-height:520px; overflow:auto; color:#1a1a1a;
+      position:relative;
     }
     .goal-predict-out--empty{ color:var(--muted); }
+    .ideal-save-panel{
+      margin:0 0 12px; padding:10px 12px; border:1px solid #bfdbfe; border-radius:10px;
+      background:#eff6ff; color:#1e3a5f; font-size:13px; line-height:1.45;
+    }
+    .ideal-save-panel--warn{ border-color:#fde68a; background:#fffbeb; color:#92400e; }
+    .ideal-save-panel--ok{ border-color:#bbf7d0; background:#f0fdf4; color:#166534; }
+    .ideal-save-panel--err{ border-color:#fecaca; background:#fef2f2; color:#991b1b; }
+    .ideal-save-panel .ideal-save-actions{ margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .ideal-toolbar{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:10px 0; }
+    .ideal-status{ margin:8px 0; padding:10px 12px; border-radius:8px; background:#f8fafc; border:1px solid var(--line); font-size:13px; }
+    .ideal-status.err{ border-color:#fecaca; background:#fef2f2; color:#991b1b; }
+    .ideal-detail{
+      margin-top:14px; padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:#fff;
+    }
+    .ideal-detail h4{ margin:0 0 6px; font-size:16px; color:#10204a; }
+    .ideal-detail h5{ margin:14px 0 8px; font-size:13px; color:#334155; }
+    .ideal-detail table{ width:100%; border-collapse:collapse; font-size:13px; }
+    .ideal-detail th, .ideal-detail td{ border-bottom:1px solid #e2e8f0; padding:6px 8px; text-align:left; }
+    .ideal-detail td.num, .ideal-detail th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+    .ideal-settings{ font-size:13px; color:#334155; line-height:1.55; margin:0; white-space:pre-wrap; }
     .goal-predict-placeholder{ margin:0; font-size:13px; }
     .goal-predict-header{
       margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--line);
@@ -722,7 +743,7 @@
             for (var j = 0; j < panels.length; j++) {
               panels[j].classList.toggle('active', panels[j].id === panelId);
             }
-            document.body.classList.toggle('tab-wide', id === 'goal' || id === 'hist' || id === 'teams' || id === 'help' || id === 'inactreport' || id === 'preds');
+            document.body.classList.toggle('tab-wide', id === 'goal' || id === 'hist' || id === 'teams' || id === 'help' || id === 'inactreport' || id === 'preds' || id === 'ideal');
             if (id === 'hist' && window.sbInitHistTab) window.sbInitHistTab();
             if (id === 'goal') {
               if (window.goalInitTab) window.goalInitTab();
@@ -731,6 +752,7 @@
               if (window.sbInitTeamsTab) window.sbInitTeamsTab();
             }
             if (id === 'preds' && window.mlpInitTab) window.mlpInitTab();
+            if (id === 'ideal' && window.idealInitTab) window.idealInitTab();
             if (id === 'inactreport' && window.irInitReportTab) window.irInitReportTab();
           }
           var tabsEl = document.querySelector('.tabs');
@@ -761,6 +783,7 @@
       <button type="button" class="tab-btn" data-tab="teams"><span class="tab-ico" aria-hidden="true">📋</span> Справочник</button>
       <button type="button" class="tab-btn" data-tab="hist"><span class="tab-ico" aria-hidden="true">🕓</span> История</button>
       <button type="button" class="tab-btn" data-tab="preds"><span class="tab-ico" aria-hidden="true">🎯</span> Прогнозы</button>
+      <button type="button" class="tab-btn" data-tab="ideal"><span class="tab-ico" aria-hidden="true">⭐</span> Идеальные прогнозы</button>
       <button type="button" class="tab-btn" data-tab="inactreport"><span class="tab-ico" aria-hidden="true">📊</span> Отчёты</button>
       <button type="button" class="tab-btn" data-tab="help"><span class="tab-ico" aria-hidden="true">❓</span> Справка</button>
     </div>
@@ -1157,6 +1180,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
       <div class="row">
         <button type="button" id="goalPredict" class="btn primary"><span aria-hidden="true">📈</span> Рассчитать линию</button>
       </div>
+      <div id="idealSavePanel" class="ideal-save-panel" style="display:none" aria-live="polite"></div>
       <div id="goalOut" class="goal-predict-out goal-predict-out--empty">
         <p class="goal-predict-placeholder">Нажмите «Рассчитать линию» — результат появится здесь.</p>
       </div>
@@ -1411,6 +1435,62 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <h5 class="mlp-hist-title">История расчётов</h5>
         <div id="mlpAttemptList"></div>
       </div>
+    </section>
+
+    <section id="tab-ideal" class="panel">
+      <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Идеальные прогнозы</h3>
+      <p class="small" style="margin:0 0 10px">
+        Сохранённые подтверждённые расчёты модели. После появления closing odds они показываются рядом с прогнозом (без изменения snapshot).
+      </p>
+      <div class="ideal-toolbar">
+        <div class="field" style="min-width:160px">
+          <label>Лига</label>
+          <select id="idealLeagueFilter"><option value="">Все лиги</option></select>
+        </div>
+        <div class="field" style="min-width:140px">
+          <label>Сезон</label>
+          <select id="idealSeasonFilter"><option value="">Все сезоны</option></select>
+        </div>
+        <div class="field" style="min-width:140px">
+          <label>Команда</label>
+          <input id="idealTeamFilter" type="text" placeholder="часть названия" />
+        </div>
+        <div class="field" style="min-width:120px">
+          <label>С даты</label>
+          <input id="idealDateFrom" type="date" />
+        </div>
+        <div class="field" style="min-width:120px">
+          <label>По дату</label>
+          <input id="idealDateTo" type="date" />
+        </div>
+        <div class="field" style="min-width:120px">
+          <label>Статус</label>
+          <select id="idealStatusFilter">
+            <option value="">Все</option>
+            <option value="UPCOMING">Будущие</option>
+            <option value="PLAYED">Сыгранные</option>
+          </select>
+        </div>
+        <button type="button" id="idealRefresh" class="btn primary">Обновить</button>
+      </div>
+      <div id="idealStatus" class="ideal-status" style="display:none"></div>
+      <div class="table-wrap">
+        <table id="idealListTable">
+          <thead>
+            <tr>
+              <th>Дата матча</th>
+              <th>Матч</th>
+              <th>Лига</th>
+              <th>Сезон</th>
+              <th>Дата сохранения</th>
+              <th>Статус</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="idealDetail" class="ideal-detail" style="display:none"></div>
     </section>
 
     <!-- TAB REPORT: combined Legacy 1X2 + Auto AH/OU vs market -->
@@ -9965,6 +10045,27 @@ bash scripts/update_and_serve.sh --start</div>
             st.classList.add('err');
           }
         });
+        // Ideal prediction: freeze lastSuccessfulCalculation snapshot (form edits after calc ignored)
+        if (typeof idealOnSuccessfulCalc === 'function'){
+          idealOnSuccessfulCalc({
+            leagueId,
+            seasonId: opt.seasonId,
+            seasonLabel: opt.seasonLabel,
+            homeId,
+            awayId,
+            homeName,
+            awayName,
+            predL,
+            predA,
+            useM,
+            mg,
+            neutral,
+            derby,
+            homeRot,
+            awayRot,
+            rotationAdj,
+          }).catch(e => console.warn('ideal save panel', e));
+        }
       }catch(e){ alert(e.message||e); }
     });
 
@@ -11516,6 +11617,469 @@ bash scripts/update_and_serve.sh --start</div>
     document.getElementById('mlpTeam2Filter')?.addEventListener('change', (e) => {
       mlpFilterState.team2 = e.target.value || '';
       mlpOnFilterChange('team2');
+    });
+
+    // ========== IDEAL PREDICTIONS ==========
+    let lastSuccessfulCalculation = null;
+    let idealResolvedMatch = null;
+    let idealListCache = [];
+    let idealLeagueOptions = [];
+
+    function idealFmtDate(v){
+      if (!v) return '—';
+      const s = String(v);
+      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+      try {
+        const d = new Date(s);
+        if (!isNaN(d.getTime())){
+          const dd = String(d.getDate()).padStart(2,'0');
+          const mm = String(d.getMonth()+1).padStart(2,'0');
+          const yyyy = d.getFullYear();
+          return `${dd}.${mm}.${yyyy}`;
+        }
+      } catch (_e){}
+      return s;
+    }
+    function idealFmtDateTime(v){
+      if (!v) return '—';
+      try {
+        const d = new Date(v);
+        if (isNaN(d.getTime())) return idealFmtDate(v);
+        const dd = String(d.getDate()).padStart(2,'0');
+        const mm = String(d.getMonth()+1).padStart(2,'0');
+        const yyyy = d.getFullYear();
+        const hh = String(d.getHours()).padStart(2,'0');
+        const mi = String(d.getMinutes()).padStart(2,'0');
+        return `${dd}.${mm}.${yyyy} ${hh}:${mi}`;
+      } catch (_e){ return String(v); }
+    }
+    function idealFmtOdds(v){
+      const n = Number(v);
+      return Number.isFinite(n) ? n.toFixed(2) : '—';
+    }
+    function idealFmtProb(v){
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '—';
+      return (n * 100).toFixed(2) + '%';
+    }
+    function idealFmtDelta(a, b){
+      const x = Number(a), y = Number(b);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return '—';
+      const d = x - y;
+      return (d > 0 ? '+' : '') + d.toFixed(2);
+    }
+    function idealOddsFromProb(p, useM, mg){
+      if (!(p > 0) || !isFinite(p)) return null;
+      if (useM && mg > 0) return 1 / (p * (1 + mg));
+      return 1 / p;
+    }
+    function idealPairOdds(fairA, fairB, useM, mg){
+      const pa = Number(fairA) > 1 ? 1 / Number(fairA) : null;
+      const pb = Number(fairB) > 1 ? 1 / Number(fairB) : null;
+      if (pa == null || pb == null) return [null, null];
+      return [idealOddsFromProb(pa, useM, mg), idealOddsFromProb(pb, useM, mg)];
+    }
+    function idealBuildPredictionData(predL, predA, useM, mg, rotationAdj){
+      const markets = [];
+      const mkL = (predL && predL.markets) || {};
+      // Prefer rotation-adjusted 1X2 when available (what user sees as adjusted layer);
+      // still always store the displayed primary 1X2 from Legacy baseline first.
+      let p1 = Number(mkL.p1), px = Number(mkL.px), p2 = Number(mkL.p2);
+      if (rotationAdj && rotationAdj.adjustment_available && rotationAdj.adjusted){
+        p1 = Number(rotationAdj.adjusted.p1);
+        px = Number(rotationAdj.adjusted.px);
+        p2 = Number(rotationAdj.adjusted.p2);
+      }
+      if (p1 > 0 && px > 0 && p2 > 0){
+        markets.push({
+          market: '1X2',
+          line: null,
+          outcomes: [
+            { outcome: 'HOME', odds: idealOddsFromProb(p1, useM, mg), probability: p1 },
+            { outcome: 'DRAW', odds: idealOddsFromProb(px, useM, mg), probability: px },
+            { outcome: 'AWAY', odds: idealOddsFromProb(p2, useM, mg), probability: p2 },
+          ],
+        });
+      }
+      const mkA = (predA && predA.markets) || {};
+      const a = mkA.mainAh || null;
+      const t = mkA.mainTotal || null;
+      if (a){
+        const [ahH, ahA] = idealPairOdds(a.home, a.away, useM, mg);
+        markets.push({
+          market: 'ASIAN_HANDICAP',
+          line: a.line != null ? Number(a.line) : null,
+          outcomes: [
+            { outcome: 'HOME', odds: ahH },
+            { outcome: 'AWAY', odds: ahA },
+          ],
+        });
+      }
+      if (t){
+        const [ot, ut] = idealPairOdds(t.over, t.under, useM, mg);
+        markets.push({
+          market: 'TOTAL',
+          line: t.line != null ? Number(t.line) : null,
+          outcomes: [
+            { outcome: 'OVER', odds: ot },
+            { outcome: 'UNDER', odds: ut },
+          ],
+        });
+      }
+      return { markets };
+    }
+    function idealBuildSettings(args){
+      return {
+        margin: args.useM ? Number(args.mg || 0) : 0,
+        withMargin: !!args.useM,
+        marginPct: args.useM ? Number(((args.mg || 0) * 100).toFixed(3)) : null,
+        derby: !!args.derby,
+        neutralField: !!args.neutral,
+        homeRotation: args.homeRot || 'none',
+        awayRotation: args.awayRot || 'none',
+        seasonId: args.seasonId != null ? Number(args.seasonId) : null,
+        seasonLabel: args.seasonLabel != null ? String(args.seasonLabel) : null,
+        rotationAdjusted: !!(args.rotationAdj && args.rotationAdj.adjustment_available),
+      };
+    }
+    function idealSetSavePanel(html, kind){
+      const el = document.getElementById('idealSavePanel');
+      if (!el) return;
+      if (!html){ el.style.display = 'none'; el.innerHTML = ''; return; }
+      el.style.display = '';
+      el.className = 'ideal-save-panel' + (kind ? ' ideal-save-panel--' + kind : '');
+      el.innerHTML = html;
+    }
+    async function idealApi(path, options){
+      await loadApiConfig();
+      if (!API_BASE) throw new Error('API не настроен');
+      const opts = options || {};
+      const res = await fetchWithTimeout(`${API_BASE}${path}`, {
+        method: opts.method || 'GET',
+        headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+        body: opts.body != null ? JSON.stringify(opts.body) : undefined,
+        cache: 'no-store',
+      }, SB_FETCH_TIMEOUT_MS);
+      let data = null;
+      try { data = await res.json(); } catch (_e){ data = null; }
+      if (!res.ok){
+        const detail = data && data.detail;
+        const msg = (detail && typeof detail === 'object' && detail.message)
+          ? detail.message
+          : (typeof detail === 'string' ? detail : (`HTTP ${res.status}`));
+        const err = new Error(msg);
+        err.status = res.status;
+        err.code = detail && detail.code;
+        err.detail = detail;
+        throw err;
+      }
+      return data;
+    }
+    async function idealOnSuccessfulCalc(args){
+      lastSuccessfulCalculation = {
+        at: new Date().toISOString(),
+        leagueId: args.leagueId,
+        seasonId: args.seasonId,
+        seasonLabel: args.seasonLabel,
+        homeId: args.homeId,
+        awayId: args.awayId,
+        homeName: args.homeName,
+        awayName: args.awayName,
+        predictionData: idealBuildPredictionData(args.predL, args.predA, args.useM, args.mg, args.rotationAdj),
+        calculationSettings: idealBuildSettings(args),
+      };
+      idealResolvedMatch = null;
+      idealSetSavePanel('Проверяем матч в календаре…');
+      try {
+        const resolved = await idealApi('/api/ideal-predictions/resolve-match', {
+          method: 'POST',
+          body: {
+            leagueId: String(args.leagueId),
+            homeTeamId: Number(args.homeId),
+            awayTeamId: Number(args.awayId),
+            seasonId: args.seasonId != null ? Number(args.seasonId) : null,
+          },
+        });
+        idealResolvedMatch = resolved;
+        if (!resolved.canSave){
+          idealSetSavePanel(escapeHtml(resolved.blockMessage || 'Сохранение недоступно.'), 'warn');
+          return;
+        }
+        const md = idealFmtDate(resolved.matchDate);
+        const title = `${escapeHtml(resolved.homeTeam || args.homeName)} — ${escapeHtml(resolved.awayTeam || args.awayName)}, ${escapeHtml(md)}`;
+        if (resolved.existingIdealId){
+          idealSetSavePanel(
+            `<div><b>Для матча ${title} уже сохранен идеальный прогноз.</b></div>` +
+            `<div style="margin-top:4px">Найден сохраненный ранее прогноз для этого матча. Обновить запись?</div>` +
+            `<div class="ideal-save-actions"><button type="button" class="btn primary" id="idealSaveBtn">Да</button></div>`,
+            'warn'
+          );
+        } else {
+          idealSetSavePanel(
+            `<div><b>Сохранить данный прогноз как идеальный для матча ${title}?</b></div>` +
+            `<div style="margin-top:4px">Сохраненных ранее прогнозов для этого матча не найдено.</div>` +
+            `<div class="ideal-save-actions"><button type="button" class="btn primary" id="idealSaveBtn">Да</button></div>`
+          );
+        }
+        document.getElementById('idealSaveBtn')?.addEventListener('click', () => {
+          idealConfirmSave(!!resolved.existingIdealId).catch(e => {
+            idealSetSavePanel(escapeHtml(e.message || String(e)), 'err');
+          });
+        });
+      } catch (e){
+        if (e.code === 'MATCH_NOT_FOUND' || e.status === 404){
+          idealSetSavePanel(
+            escapeHtml(e.message || 'Будущая встреча этих команд не найдена в календаре. Необходима ручная проверка раздела "История".'),
+            'warn'
+          );
+          return;
+        }
+        if (e.code === 'AMBIGUOUS_MATCH'){
+          idealSetSavePanel(escapeHtml(e.message || 'Найдено несколько подходящих матчей.'), 'warn');
+          return;
+        }
+        idealSetSavePanel(escapeHtml(e.message || String(e)), 'err');
+      }
+    }
+    async function idealConfirmSave(isUpdate){
+      if (!lastSuccessfulCalculation || !idealResolvedMatch || !idealResolvedMatch.matchId){
+        throw new Error('Нет snapshot расчёта для сохранения');
+      }
+      const snap = lastSuccessfulCalculation;
+      const matchId = Number(idealResolvedMatch.matchId);
+      idealSetSavePanel(isUpdate ? 'Обновление…' : 'Сохранение…');
+      const body = {
+        predictionData: snap.predictionData,
+        calculationSettings: snap.calculationSettings,
+      };
+      let res;
+      if (isUpdate){
+        res = await idealApi(`/api/ideal-predictions/${matchId}`, { method: 'PUT', body });
+        idealSetSavePanel('Прогноз успешно обновлен', 'ok');
+      } else {
+        res = await idealApi('/api/ideal-predictions', {
+          method: 'POST',
+          body: { matchId, ...body },
+        });
+        idealSetSavePanel('Прогноз успешно сохранен', 'ok');
+        if (idealResolvedMatch) idealResolvedMatch.existingIdealId = res && res.id;
+      }
+      return res;
+    }
+
+    function idealSetStatus(msg, isErr){
+      const el = document.getElementById('idealStatus');
+      if (!el) return;
+      if (!msg){ el.style.display = 'none'; el.textContent = ''; return; }
+      el.style.display = '';
+      el.className = 'ideal-status' + (isErr ? ' err' : '');
+      el.textContent = msg;
+    }
+    function idealStatusLabel(st){
+      return st === 'PLAYED' ? 'Сыгран' : 'Будущий';
+    }
+    function idealFindClosingOdds(closing, market, line, outcome){
+      if (!closing || !Array.isArray(closing.markets)) return null;
+      const m = closing.markets.find(x => {
+        if (!x || x.market !== market) return false;
+        if (line == null || line === '') return x.line == null;
+        const a = Number(x.line), b = Number(line);
+        return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 1e-9;
+      });
+      if (!m || !Array.isArray(m.outcomes)) return null;
+      const o = m.outcomes.find(x => x && String(x.outcome).toUpperCase() === String(outcome).toUpperCase());
+      return o && o.odds != null ? Number(o.odds) : null;
+    }
+    function idealOutcomeLabel(market, outcome){
+      const o = String(outcome || '').toUpperCase();
+      if (market === '1X2'){
+        if (o === 'HOME') return 'П1';
+        if (o === 'DRAW') return 'X';
+        if (o === 'AWAY') return 'П2';
+      }
+      if (market === 'TOTAL'){
+        if (o === 'OVER') return 'Over';
+        if (o === 'UNDER') return 'Under';
+      }
+      if (o === 'HOME') return 'Home';
+      if (o === 'AWAY') return 'Away';
+      return outcome || '—';
+    }
+    function idealRenderMarketTables(pred, closing, played){
+      const markets = (pred && pred.markets) || [];
+      if (!markets.length) return '<p class="hint">Нет сохранённых рынков.</p>';
+      return markets.map(m => {
+        const name = m.market === 'ASIAN_HANDICAP' ? 'Asian Handicap'
+          : (m.market === 'TOTAL' ? 'Total' : m.market);
+        const rows = (m.outcomes || []).map(o => {
+          const modelOdds = idealFmtOdds(o.odds);
+          const prob = o.probability != null ? idealFmtProb(o.probability) : null;
+          if (!played){
+            return `<tr>
+              ${m.line != null ? `<td>${escapeHtml(String(m.line))}</td>` : ''}
+              <td>${escapeHtml(idealOutcomeLabel(m.market, o.outcome))}</td>
+              <td class="num">${modelOdds}</td>
+              ${prob != null ? `<td class="num">${prob}</td>` : ''}
+            </tr>`;
+          }
+          const cOdds = idealFindClosingOdds(closing, m.market, m.line, o.outcome);
+          const cTxt = cOdds != null ? idealFmtOdds(cOdds) : '—';
+          const dTxt = cOdds != null ? idealFmtDelta(o.odds, cOdds) : '—';
+          return `<tr>
+            ${m.line != null ? `<td>${escapeHtml(String(m.line))}</td>` : ''}
+            <td>${escapeHtml(idealOutcomeLabel(m.market, o.outcome))}</td>
+            <td class="num">${modelOdds}</td>
+            <td class="num">${cTxt}</td>
+            <td class="num">${dTxt}</td>
+          </tr>`;
+        }).join('');
+        const head = !played
+          ? `<tr>${m.line != null ? '<th>Линия</th>' : ''}<th>Исход</th><th class="num">Модель</th>${m.market==='1X2'?'<th class="num">Вероятность</th>':''}</tr>`
+          : `<tr>${m.line != null ? '<th>Линия</th>' : ''}<th>Исход</th><th class="num">Идеальный прогноз</th><th class="num">Closing</th><th class="num">Δ</th></tr>`;
+        return `<h5>${escapeHtml(name)}</h5><table><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+      }).join('');
+    }
+    function idealRenderSettings(cs){
+      if (!cs || typeof cs !== 'object') return '—';
+      const lines = [];
+      if (cs.withMargin != null || cs.margin != null){
+        const pct = cs.marginPct != null ? cs.marginPct : (cs.margin != null ? (Number(cs.margin)*100) : null);
+        lines.push(`Margin: ${cs.withMargin ? ((pct != null ? Number(pct).toFixed(1) : '?') + '%') : 'off'}`);
+      }
+      if (cs.derby != null) lines.push(`Derby: ${cs.derby ? 'Yes' : 'No'}`);
+      if (cs.neutralField != null) lines.push(`Neutral field: ${cs.neutralField ? 'Yes' : 'No'}`);
+      if (cs.homeRotation) lines.push(`Home rotation: ${cs.homeRotation}`);
+      if (cs.awayRotation) lines.push(`Away rotation: ${cs.awayRotation}`);
+      if (cs.seasonLabel) lines.push(`Season: ${cs.seasonLabel}`);
+      if (cs.rotationAdjusted != null) lines.push(`Rotation adjusted 1X2: ${cs.rotationAdjusted ? 'Yes' : 'No'}`);
+      if (cs.matchWeight != null) lines.push(`Match Weight: ${Math.round(Number(cs.matchWeight)*100)}%`);
+      return lines.length ? lines.join('\n') : JSON.stringify(cs, null, 2);
+    }
+    async function idealOpenDetail(matchId){
+      const box = document.getElementById('idealDetail');
+      if (!box) return;
+      box.style.display = '';
+      box.innerHTML = '<p class="hint">Загрузка…</p>';
+      try {
+        const d = await idealApi(`/api/ideal-predictions/${matchId}`);
+        const played = d.status === 'PLAYED';
+        const m = d.match || {};
+        box.innerHTML =
+          `<h4>${escapeHtml(m.homeTeam || '')} — ${escapeHtml(m.awayTeam || '')}</h4>` +
+          `<div class="small">${escapeHtml(idealFmtDate(m.matchDate))} · ${escapeHtml(m.league || '')} · ${escapeHtml(m.season || '')}</div>` +
+          `<div class="small" style="margin-top:4px">Сохранено: ${escapeHtml(idealFmtDateTime(d.savedAt))} · ${escapeHtml(idealStatusLabel(d.status))}</div>` +
+          idealRenderMarketTables(d.predictionData, d.closingOdds, played) +
+          `<h5>Настройки расчета</h5><pre class="ideal-settings">${escapeHtml(idealRenderSettings(d.calculationSettings))}</pre>`;
+        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (e){
+        box.innerHTML = `<p class="hint" style="color:#991b1b">${escapeHtml(e.message || String(e))}</p>`;
+      }
+    }
+    function idealRenderList(items){
+      const tbody = document.querySelector('#idealListTable tbody');
+      if (!tbody) return;
+      if (!items || !items.length){
+        tbody.innerHTML = '<tr><td colspan="7" class="hint">Нет сохранённых прогнозов.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = items.map(it => {
+        const st = idealStatusLabel(it.status);
+        return `<tr>
+          <td>${escapeHtml(idealFmtDate(it.matchDate))}</td>
+          <td>${escapeHtml((it.homeTeam||'') + ' — ' + (it.awayTeam||''))}</td>
+          <td>${escapeHtml(it.league || '')}</td>
+          <td>${escapeHtml(it.season || '')}</td>
+          <td>${escapeHtml(idealFmtDate(it.savedAt))}</td>
+          <td>${escapeHtml(st)}</td>
+          <td><button type="button" class="btn" data-ideal-open="${it.matchId}">Открыть</button></td>
+        </tr>`;
+      }).join('');
+      tbody.querySelectorAll('[data-ideal-open]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          idealOpenDetail(Number(btn.getAttribute('data-ideal-open'))).catch(e => console.error(e));
+        });
+      });
+    }
+    async function idealFillLeagueFilter(){
+      const sel = document.getElementById('idealLeagueFilter');
+      if (!sel) return;
+      try {
+        await loadSupabaseConfig();
+        if (!window.__SB.leagues || !window.__SB.leagues.length) await sbFetchLeaguesList();
+      } catch (_e){}
+      const leagues = (window.__SB && window.__SB.leagues) || [];
+      idealLeagueOptions = leagues.map(l => ({ id: String(l.id), name: l.name || String(l.id) }));
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">Все лиги</option>' +
+        idealLeagueOptions
+          .slice()
+          .sort((a,b)=>a.name.localeCompare(b.name,'ru'))
+          .map(l => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`)
+          .join('');
+      if (cur) sel.value = cur;
+    }
+    async function idealReload(){
+      idealSetStatus('Загрузка…');
+      const detail = document.getElementById('idealDetail');
+      if (detail){ detail.style.display = 'none'; detail.innerHTML = ''; }
+      const qs = new URLSearchParams();
+      const league = (document.getElementById('idealLeagueFilter') || {}).value || '';
+      const season = (document.getElementById('idealSeasonFilter') || {}).value || '';
+      const team = (document.getElementById('idealTeamFilter') || {}).value || '';
+      const dateFrom = (document.getElementById('idealDateFrom') || {}).value || '';
+      const dateTo = (document.getElementById('idealDateTo') || {}).value || '';
+      const status = (document.getElementById('idealStatusFilter') || {}).value || '';
+      if (league) qs.set('league', league);
+      if (season) qs.set('season', season);
+      if (team) qs.set('team', team);
+      if (dateFrom) qs.set('dateFrom', dateFrom);
+      if (dateTo) qs.set('dateTo', dateTo);
+      if (status) qs.set('status', status);
+      qs.set('page', '1');
+      qs.set('pageSize', '100');
+      try {
+        const data = await idealApi('/api/ideal-predictions?' + qs.toString());
+        idealListCache = (data && data.items) || [];
+        // Populate seasons from loaded items
+        const seasonSel = document.getElementById('idealSeasonFilter');
+        if (seasonSel){
+          const cur = seasonSel.value;
+          const seasons = [...new Set(idealListCache.map(x => x.season).filter(Boolean))].sort().reverse();
+          // Keep "all" + unique; if filter emptied list, still keep current option
+          const opts = ['<option value="">Все сезоны</option>']
+            .concat(seasons.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`));
+          if (cur && !seasons.includes(cur)) opts.push(`<option value="${escapeHtml(cur)}">${escapeHtml(cur)}</option>`);
+          seasonSel.innerHTML = opts.join('');
+          seasonSel.value = cur || '';
+        }
+        idealRenderList(idealListCache);
+        idealSetStatus(`Найдено: ${idealListCache.length}`);
+      } catch (e){
+        idealListCache = [];
+        idealRenderList([]);
+        idealSetStatus(
+          (e.code === 'TABLE_MISSING')
+            ? (e.message || 'Таблица ideal_predictions ещё не создана.')
+            : ('Не удалось загрузить сохраненные прогнозы. ' + (e.message || '')),
+          true
+        );
+      }
+    }
+    async function idealInitTab(){
+      await idealFillLeagueFilter();
+      await idealReload();
+    }
+    window.idealInitTab = idealInitTab;
+    window.idealOnSuccessfulCalc = idealOnSuccessfulCalc;
+    bindClick('idealRefresh', () => { idealReload().catch(e => console.error(e)); });
+    ['idealLeagueFilter','idealSeasonFilter','idealStatusFilter'].forEach(id => {
+      document.getElementById(id)?.addEventListener('change', () => {
+        idealReload().catch(e => console.error(e));
+      });
+    });
+    document.getElementById('idealTeamFilter')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter'){ e.preventDefault(); idealReload().catch(err => console.error(err)); }
     });
     document.getElementById('mlpAttemptList')?.addEventListener('click', (ev) => {
       const btn = ev.target && ev.target.closest ? ev.target.closest('button.mlp-del') : null;
