@@ -401,7 +401,7 @@
       border:1px solid #bfdbfe; border-radius:10px; background:#f8fbff;
     }
     .h2h-block > summary{
-      list-style:none; cursor:pointer; padding:8px 12px; font-size:13px; font-weight:600;
+      list-style:none; cursor:pointer; padding:6px 10px; font-size:13px; font-weight:600;
       color:#1e3a5f; background:#eff6ff; border-bottom:1px solid #dbeafe;
       user-select:none;
     }
@@ -410,22 +410,24 @@
     .h2h-block:not([open]) > summary::before{ content:'▶'; }
     .h2h-block:not([open]) > summary{ border-bottom:none; }
     .h2h-body{
-      padding:8px 12px 10px; max-height:220px;
+      padding:6px 8px 8px; max-height:240px;
       overflow:auto; -webkit-overflow-scrolling:touch;
     }
-    .h2h-season{ margin:0 0 8px; min-width:max-content; }
+    .h2h-season{ margin:0 0 6px; }
     .h2h-season-title{
-      margin:0 0 4px; padding:3px 8px; font-size:12px; font-weight:600; color:#1e40af;
-      background:#dbeafe; border-radius:4px; width:fit-content; max-width:100%;
+      margin:0 0 3px; padding:2px 6px; font-size:11px; font-weight:600; color:#1e40af;
+      background:#dbeafe; border-radius:4px; display:inline-block;
     }
     .h2h-table{
-      width:max-content; min-width:100%; border-collapse:collapse;
+      width:auto; border-collapse:collapse;
       font-size:12px; font-variant-numeric:tabular-nums;
     }
-    .h2h-table td{ padding:3px 6px; white-space:nowrap; }
-    .h2h-table .h2h-odds{ text-align:right; font-weight:600; color:#0f172a; }
-    .h2h-table .h2h-x{ color:#64748b; text-align:center; padding:3px 4px; }
-    .h2h-warn{ margin:4px 0; font-size:12px; color:#b91c1c; line-height:1.4; }
+    .h2h-table td{ padding:2px 4px; white-space:nowrap; vertical-align:baseline; }
+    .h2h-table .h2h-odds{ text-align:right; font-weight:600; color:#0f172a; padding-left:2px; padding-right:2px; }
+    .h2h-table .h2h-x{ color:#64748b; text-align:center; padding:2px 3px; }
+    .h2h-table .h2h-sep{ color:#94a3b8; padding:2px 5px; }
+    .h2h-table .h2h-tot{ color:#475569; font-weight:600; }
+    .h2h-warn{ margin:3px 0; font-size:12px; color:#b91c1c; line-height:1.35; }
     .goal-predict-block h5{
       margin:0 0 8px; font-size:12px; font-weight:600; color:#334155;
       letter-spacing:.02em;
@@ -10013,7 +10015,7 @@ bash scripts/update_and_serve.sh --start</div>
           h2hHtml = h2hRenderBlock(h2hView);
         } catch (h2hErr){
           console.warn('h2h history', h2hErr);
-          h2hHtml = `<details class="h2h-block" open><summary>Очные встречи · closing 1X2</summary>`
+          h2hHtml = `<details class="h2h-block" open><summary>Очные встречи · closing 1X2 + Total</summary>`
             + `<div class="h2h-body"><div class="h2h-warn">${escapeHtml(h2hErr.message || String(h2hErr))}</div></div></details>`;
         }
         let html, summary;
@@ -12434,6 +12436,10 @@ bash scripts/update_and_serve.sh --start</div>
       return (rows || []).slice().sort((a, b) => String(a.match_date || '').localeCompare(String(b.match_date || '')));
     }
     function h2hRow(m){
+      const totLine = h2hNum(m.closing_total_line);
+      const over = h2hNum(m.over_odds);
+      const under = h2hNum(m.under_odds);
+      const hasTotal = totLine != null && over != null && under != null && over > 1 && under > 1;
       return {
         matchId: m.match_id,
         matchDate: String(m.match_date || '').slice(0, 10),
@@ -12442,7 +12448,19 @@ bash scripts/update_and_serve.sh --start</div>
         homeOdds: Number(m.home_odds),
         drawOdds: Number(m.draw_odds),
         awayOdds: Number(m.away_odds),
+        totalLine: hasTotal ? totLine : null,
+        overOdds: hasTotal ? over : null,
+        underOdds: hasTotal ? under : null,
       };
+    }
+    function h2hFmtOdds(v){
+      const n = h2hNum(v);
+      return n == null ? '—' : n.toFixed(2);
+    }
+    function h2hFmtTotLine(v){
+      const n = h2hNum(v);
+      if (n == null) return '—';
+      return Number.isInteger(n) ? String(n) : String(n);
     }
     /** Mirror of app/h2h_history.py::build_h2h_view */
     function h2hBuildView({ prevSeasonLabel, currSeasonLabel, prevMatches, currMatches }){
@@ -12491,11 +12509,16 @@ bash scripts/update_and_serve.sh --start</div>
           return `<tr>
             <td>${escapeHtml(h2hFmtDate(m.matchDate))}</td>
             <td>${escapeHtml(m.homeTeam)}</td>
-            <td class="h2h-odds">${Number(m.homeOdds).toFixed(2)}</td>
+            <td class="h2h-odds">${h2hFmtOdds(m.homeOdds)}</td>
             <td class="h2h-x">X</td>
-            <td class="h2h-odds">${Number(m.drawOdds).toFixed(2)}</td>
+            <td class="h2h-odds">${h2hFmtOdds(m.drawOdds)}</td>
             <td>${escapeHtml(m.awayTeam)}</td>
-            <td class="h2h-odds">${Number(m.awayOdds).toFixed(2)}</td>
+            <td class="h2h-odds">${h2hFmtOdds(m.awayOdds)}</td>
+            <td class="h2h-sep">·</td>
+            <td class="h2h-tot">Т${escapeHtml(h2hFmtTotLine(m.totalLine))}</td>
+            <td class="h2h-odds">${h2hFmtOdds(m.overOdds)}</td>
+            <td class="h2h-x">/</td>
+            <td class="h2h-odds">${h2hFmtOdds(m.underOdds)}</td>
           </tr>`;
         }).join('');
         return `<div class="h2h-season">
@@ -12506,7 +12529,7 @@ bash scripts/update_and_serve.sh --start</div>
       if (!warns && !seasonsHtml) return '';
       const openAttr = h2hIsOpenPreferred() ? ' open' : '';
       return `<details class="h2h-block"${openAttr}>
-        <summary>Очные встречи · closing 1X2</summary>
+        <summary>Очные встречи · closing 1X2 + Total</summary>
         <div class="h2h-body">${warns}${seasonsHtml}</div>
       </details>`;
     }
@@ -12535,7 +12558,7 @@ bash scripts/update_and_serve.sh --start</div>
       if (seasonId == null) return [];
       const a = encodeURIComponent(homeId);
       const b = encodeURIComponent(awayId);
-      const q = 'select=match_id,match_date,home_team,away_team,home_team_id,away_team_id,home_odds,draw_odds,away_odds,season_id,season_label'
+      const q = 'select=match_id,match_date,home_team,away_team,home_team_id,away_team_id,home_odds,draw_odds,away_odds,closing_total_line,over_odds,under_odds,season_id,season_label'
         + `&league_id=eq.${encodeURIComponent(leagueId)}`
         + `&season_id=eq.${encodeURIComponent(seasonId)}`
         + `&or=(and(home_team_id.eq.${a},away_team_id.eq.${b}),and(home_team_id.eq.${b},away_team_id.eq.${a}))`

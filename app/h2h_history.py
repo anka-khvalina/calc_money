@@ -63,8 +63,23 @@ def incomplete_warning(m: Mapping[str, Any]) -> str:
     )
 
 
+def _optional_float(v: Any) -> Optional[float]:
+    n = _num(v)
+    return n
+
+
 def _row(m: Mapping[str, Any]) -> Dict[str, Any]:
     date = str(m.get("match_date") or "")[:10]
+    tot_line = _optional_float(m.get("closing_total_line"))
+    over = _optional_float(m.get("over_odds"))
+    under = _optional_float(m.get("under_odds"))
+    has_total = (
+        tot_line is not None
+        and over is not None
+        and under is not None
+        and over > 1
+        and under > 1
+    )
     return {
         "matchId": m.get("match_id") or m.get("matchId"),
         "matchDate": date,
@@ -73,6 +88,9 @@ def _row(m: Mapping[str, Any]) -> Dict[str, Any]:
         "homeOdds": float(m["home_odds"]),
         "drawOdds": float(m["draw_odds"]),
         "awayOdds": float(m["away_odds"]),
+        "totalLine": tot_line if has_total else None,
+        "overOdds": over if has_total else None,
+        "underOdds": under if has_total else None,
     }
 
 

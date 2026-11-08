@@ -26,8 +26,10 @@ def _m(date, home, away, o1, ox, o2, **extra):
 
 def test_kp01_full_history():
     prev = [
-        _m("2025-10-19", "Levante", "Betis", 3.22, 3.18, 2.29),
-        _m("2026-03-07", "Betis", "Levante", 1.80, 3.62, 4.90),
+        _m("2025-10-19", "Levante", "Betis", 3.22, 3.18, 2.29,
+           closing_total_line=2.5, over_odds=1.88, under_odds=2.02),
+        _m("2026-03-07", "Betis", "Levante", 1.80, 3.62, 4.90,
+           closing_total_line=2.0, over_odds=1.90, under_odds=2.01),
     ]
     curr = [_m("2026-08-24", "Levante", "Betis", 2.88, 3.26, 2.51)]
     v = h2h.build_h2h_view(
@@ -41,7 +43,10 @@ def test_kp01_full_history():
     assert v["seasons"][0]["seasonLabel"] == "2025-26"
     assert len(v["seasons"][0]["matches"]) == 2
     assert v["seasons"][0]["matches"][0]["matchDate"] == "2025-10-19"
+    assert v["seasons"][0]["matches"][0]["totalLine"] == 2.5
+    assert v["seasons"][0]["matches"][0]["overOdds"] == 1.88
     assert v["seasons"][1]["matches"][0]["homeOdds"] == 2.88
+    assert v["seasons"][1]["matches"][0]["totalLine"] is None
 
 
 def test_kp02_home_away_roles_preserved():
@@ -198,4 +203,6 @@ def test_html_wiring_smoke():
     assert "h2hBuildView" in html
     assert "h2hRenderBlock" in html
     assert "Очные встречи" in html
+    assert "closing_total_line" in html
+    assert "Т${" in html or "h2h-tot" in html
     assert h2h.MSG_PREV_ONE in html or "только на 1 матч прошлого сезона" in html
