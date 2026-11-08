@@ -397,8 +397,8 @@
     }
     .goal-predict-block{ margin-top:14px; }
     .h2h-block{
-      margin:0 0 12px; max-width:420px; border:1px solid #bfdbfe; border-radius:10px;
-      background:#f8fbff; overflow:hidden;
+      margin:0 0 12px; width:100%; max-width:100%; box-sizing:border-box;
+      border:1px solid #bfdbfe; border-radius:10px; background:#f8fbff;
     }
     .h2h-block > summary{
       list-style:none; cursor:pointer; padding:8px 12px; font-size:13px; font-weight:600;
@@ -409,16 +409,22 @@
     .h2h-block > summary::before{ content:'▼'; font-size:10px; margin-right:6px; color:#64748b; }
     .h2h-block:not([open]) > summary::before{ content:'▶'; }
     .h2h-block:not([open]) > summary{ border-bottom:none; }
-    .h2h-body{ padding:8px 12px 10px; }
-    .h2h-season{ margin:0 0 8px; }
+    .h2h-body{
+      padding:8px 12px 10px; max-height:220px;
+      overflow:auto; -webkit-overflow-scrolling:touch;
+    }
+    .h2h-season{ margin:0 0 8px; min-width:max-content; }
     .h2h-season-title{
       margin:0 0 4px; padding:3px 8px; font-size:12px; font-weight:600; color:#1e40af;
-      background:#dbeafe; border-radius:4px;
+      background:#dbeafe; border-radius:4px; width:fit-content; max-width:100%;
     }
-    .h2h-table{ width:100%; border-collapse:collapse; font-size:12px; font-variant-numeric:tabular-nums; }
-    .h2h-table td{ padding:3px 4px; white-space:nowrap; }
+    .h2h-table{
+      width:max-content; min-width:100%; border-collapse:collapse;
+      font-size:12px; font-variant-numeric:tabular-nums;
+    }
+    .h2h-table td{ padding:3px 6px; white-space:nowrap; }
     .h2h-table .h2h-odds{ text-align:right; font-weight:600; color:#0f172a; }
-    .h2h-table .h2h-x{ color:#64748b; text-align:center; padding:3px 2px; }
+    .h2h-table .h2h-x{ color:#64748b; text-align:center; padding:3px 4px; }
     .h2h-warn{ margin:4px 0; font-size:12px; color:#b91c1c; line-height:1.4; }
     .goal-predict-block h5{
       margin:0 0 8px; font-size:12px; font-weight:600; color:#334155;
