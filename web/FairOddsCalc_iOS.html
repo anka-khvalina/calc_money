@@ -395,29 +395,69 @@
     .goal-predict-draw{
       margin-top:6px; font-size:12px; color:#475569;
     }
-    .goal-predict-block{ margin-top:14px; }
+    .goal-predict-block{ margin-top:12px; width:fit-content; max-width:100%; }
+    .h2h-block{
+      margin:0 0 12px; width:100%; max-width:100%; box-sizing:border-box;
+      border:1px solid #bfdbfe; border-radius:10px; background:#f8fbff;
+    }
+    .h2h-block > summary{
+      list-style:none; cursor:pointer; padding:6px 10px; font-size:13px; font-weight:600;
+      color:#1e3a5f; background:#eff6ff; border-bottom:1px solid #dbeafe;
+      user-select:none;
+    }
+    .h2h-block > summary::-webkit-details-marker{ display:none; }
+    .h2h-block > summary::before{ content:'▼'; font-size:10px; margin-right:6px; color:#64748b; }
+    .h2h-block:not([open]) > summary::before{ content:'▶'; }
+    .h2h-block:not([open]) > summary{ border-bottom:none; }
+    .h2h-body{
+      padding:6px 8px 8px; max-height:240px;
+      overflow:auto; -webkit-overflow-scrolling:touch;
+    }
+    .h2h-season{ margin:0 0 6px; }
+    .h2h-season-title{
+      margin:0 0 3px; padding:2px 6px; font-size:11px; font-weight:600; color:#1e40af;
+      background:#dbeafe; border-radius:4px; display:inline-block;
+    }
+    .h2h-table{
+      width:auto; border-collapse:collapse;
+      font-size:12px; font-variant-numeric:tabular-nums;
+    }
+    .h2h-table td{ padding:2px 4px; white-space:nowrap; vertical-align:baseline; }
+    .h2h-table .h2h-odds{ text-align:right; font-weight:600; color:#0f172a; padding-left:2px; padding-right:2px; }
+    .h2h-table .h2h-x{ color:#64748b; text-align:center; padding:2px 3px; }
+    .h2h-table .h2h-sep{ color:#94a3b8; padding:2px 5px; }
+    .h2h-table .h2h-tot{ color:#475569; font-weight:600; }
+    .h2h-warn{ margin:3px 0; font-size:12px; color:#b91c1c; line-height:1.35; }
     .goal-predict-block h5{
-      margin:0 0 8px; font-size:12px; font-weight:600; color:#334155;
+      margin:0 0 6px; font-size:12px; font-weight:600; color:#334155;
       letter-spacing:.02em;
     }
     .goal-predict-table{
-      width:100%; border-collapse:collapse; font-size:13px;
+      width:auto; max-width:100%; border-collapse:collapse; font-size:13px;
       font-variant-numeric:tabular-nums; background:#fff;
     }
     .goal-predict-table th,.goal-predict-table td{
-      border:1px solid #e2e8f0; padding:7px 10px; text-align:center;
+      border:1px solid #e2e8f0; padding:5px 8px; text-align:center;
+      white-space:nowrap;
     }
     .goal-predict-table th{
       background:#eef2ff; color:#1e3a5f; font-weight:600; font-size:12px;
     }
     .goal-predict-table td.lbl,.goal-predict-table th.lbl{
-      text-align:left; background:#f8fafc; color:#64748b; font-weight:500; width:28%;
+      text-align:left; background:#f8fafc; color:#64748b; font-weight:500;
+      width:auto; padding-right:10px;
     }
     .goal-predict-table--1x2 td.odds{
-      font-weight:700; font-size:16px; color:#0f172a;
+      font-weight:700; font-size:15px; color:#0f172a;
     }
     .goal-predict-table--1x2 td.prob{
       font-size:12px; color:#64748b;
+    }
+    .goal-predict-table--compare{
+      width:100%;
+    }
+    .goal-predict-block.goal-predict-compare{
+      width:100%; max-width:100%;
     }
     .goal-predict-scores{
       display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:8px;
@@ -9972,12 +10012,26 @@ bash scripts/update_and_serve.sh --start</div>
             }
           }
         }
+        // BT-01: historical H2H closing 1X2 (same league). Errors must not block main calc.
+        let h2hHtml = '';
+        try {
+          await loadSupabaseConfig();
+          const h2hPreferredSeason = (compareMatch && compareMatch.season_id != null)
+            ? compareMatch.season_id
+            : null; // newest season for upcoming Line calc
+          const h2hView = await h2hLoadView(leagueId, homeId, awayId, h2hPreferredSeason);
+          h2hHtml = h2hRenderBlock(h2hView);
+        } catch (h2hErr){
+          console.warn('h2h history', h2hErr);
+          h2hHtml = `<details class="h2h-block" open><summary>Очные встречи · closing 1X2 + Total</summary>`
+            + `<div class="h2h-body"><div class="h2h-warn">${escapeHtml(h2hErr.message || String(h2hErr))}</div></div></details>`;
+        }
         let html, summary;
         if(predL && predA){
           const pred=gmCombinePredictions(predL, predA);
-          ({html,summary}=gmFormatPredict(pred,homeName,awayName,neutral,useM,mg,compareMatch,rotationWarn));
+          ({html,summary}=gmFormatPredict(pred,homeName,awayName,neutral,useM,mg,compareMatch,rotationWarn,h2hHtml));
         } else {
-          ({html,summary}=gmFormatPartialPredict(predL, predA, errL, errA, homeName, awayName, neutral, useM, mg, compareMatch, rotationWarn));
+          ({html,summary}=gmFormatPartialPredict(predL, predA, errL, errA, homeName, awayName, neutral, useM, mg, compareMatch, rotationWarn, h2hHtml));
         }
         if (rotationAdj && (homeRot !== 'none' || awayRot !== 'none') && predL && predL.markets){
           const raHtml = raFormatResultHtml(
@@ -10016,6 +10070,7 @@ bash scripts/update_and_serve.sh --start</div>
         const outEl=document.getElementById('goalOut');
         outEl.classList.remove('goal-predict-out--empty');
         outEl.innerHTML=html;
+        h2hBindToggle(outEl);
         gmAddPredHist({
           at:gmFormatDt(),
           league:sbLeagueName(leagueId),
@@ -12346,7 +12401,209 @@ bash scripts/update_and_serve.sh --start</div>
         t, a, ot, ut, ah, aa, ahLine,
       };
     }
-    function gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch=null,rotationWarn=null){
+    // ========== H2H HISTORY 1X2 (BT-01) ==========
+    const H2H_MSG_PREV_ONE = 'Ошибка! Найдены коэффициенты только на 1 матч прошлого сезона. Необходима ручная проверка архива!';
+    const H2H_MSG_PREV_NONE = 'Соперники не встречались в прошлом сезоне или коэффициенты их матчей отсутствуют в истории';
+    const H2H_MSG_BOTH_NONE = 'Соперники не встречались в этом и прошлом сезонах или коэффициенты их матчей отсутствуют в истории';
+    const H2H_OPEN_KEY = 'FairOddsCalc_h2h_open_v1';
+
+    function h2hNum(v){
+      if (v == null || v === '') return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    function h2hClassify1x2(m){
+      const vals = [h2hNum(m.home_odds), h2hNum(m.draw_odds), h2hNum(m.away_odds)];
+      const present = vals.filter(v => v != null);
+      if (!present.length) return 'blank';
+      if (present.length === 3 && present.every(v => v > 1)) return 'complete';
+      return 'partial';
+    }
+    function h2hFmtDate(date){
+      const d = String(date || '').slice(0, 10);
+      if (d.length >= 10 && d[4] === '-' && d[7] === '-') return `${d.slice(8,10)}.${d.slice(5,7)}.${d.slice(0,4)}`;
+      return d || '?';
+    }
+    function h2hIncompleteWarn(m){
+      const home = m.home_team || '?';
+      const away = m.away_team || '?';
+      return `Отсутствует часть данных по матчу ${home} — ${away}, ${h2hFmtDate(m.match_date)}. Необходима ручная проверка архива`;
+    }
+    function h2hSplitSeasonRows(rows, skipBlank){
+      const archive = [], complete = [], incomplete = [];
+      (rows || []).forEach(m => {
+        const kind = h2hClassify1x2(m);
+        if (kind === 'blank' && skipBlank) return;
+        archive.push(m);
+        if (kind === 'complete') complete.push(m);
+        else incomplete.push(m);
+      });
+      return { archive, complete, incomplete };
+    }
+    function h2hSortChrono(rows){
+      return (rows || []).slice().sort((a, b) => String(a.match_date || '').localeCompare(String(b.match_date || '')));
+    }
+    function h2hRow(m){
+      const totLine = h2hNum(m.closing_total_line);
+      const over = h2hNum(m.over_odds);
+      const under = h2hNum(m.under_odds);
+      const hasTotal = totLine != null && over != null && under != null && over > 1 && under > 1;
+      return {
+        matchId: m.match_id,
+        matchDate: String(m.match_date || '').slice(0, 10),
+        homeTeam: String(m.home_team || ''),
+        awayTeam: String(m.away_team || ''),
+        homeOdds: Number(m.home_odds),
+        drawOdds: Number(m.draw_odds),
+        awayOdds: Number(m.away_odds),
+        totalLine: hasTotal ? totLine : null,
+        overOdds: hasTotal ? over : null,
+        underOdds: hasTotal ? under : null,
+      };
+    }
+    function h2hFmtOdds(v){
+      const n = h2hNum(v);
+      return n == null ? '—' : n.toFixed(2);
+    }
+    function h2hFmtTotLine(v){
+      const n = h2hNum(v);
+      if (n == null) return '—';
+      return Number.isInteger(n) ? String(n) : String(n);
+    }
+    /** Mirror of app/h2h_history.py::build_h2h_view */
+    function h2hBuildView({ prevSeasonLabel, currSeasonLabel, prevMatches, currMatches }){
+      const prev = h2hSplitSeasonRows(prevMatches, false);
+      const curr = h2hSplitSeasonRows(currMatches, true);
+      const warnings = [];
+      h2hSortChrono(prev.incomplete).concat(h2hSortChrono(curr.incomplete)).forEach(m => {
+        warnings.push(h2hIncompleteWarn(m));
+      });
+      if (!prev.archive.length && !curr.archive.length){
+        warnings.push(H2H_MSG_BOTH_NONE);
+        return { seasons: [], warnings, prevSeasonLabel, currSeasonLabel };
+      }
+      if (prev.archive.length === 1) warnings.push(H2H_MSG_PREV_ONE);
+      if (!prev.archive.length && curr.archive.length) warnings.push(H2H_MSG_PREV_NONE);
+      const seasons = [];
+      if (prev.complete.length){
+        seasons.push({
+          seasonLabel: prevSeasonLabel || '',
+          matches: h2hSortChrono(prev.complete).map(h2hRow),
+        });
+      }
+      if (curr.complete.length){
+        seasons.push({
+          seasonLabel: currSeasonLabel || '',
+          matches: h2hSortChrono(curr.complete).map(h2hRow),
+        });
+      }
+      return { seasons, warnings, prevSeasonLabel, currSeasonLabel };
+    }
+    function h2hIsOpenPreferred(){
+      try {
+        const v = localStorage.getItem(H2H_OPEN_KEY);
+        if (v === null) return true;
+        return v === '1';
+      } catch (_e){ return true; }
+    }
+    function h2hRememberOpen(open){
+      try { localStorage.setItem(H2H_OPEN_KEY, open ? '1' : '0'); } catch (_e){}
+    }
+    function h2hRenderBlock(view){
+      if (!view) return '';
+      const warns = (view.warnings || []).map(w => `<div class="h2h-warn">${escapeHtml(w)}</div>`).join('');
+      const seasonsHtml = (view.seasons || []).map(s => {
+        const rows = (s.matches || []).map(m => {
+          return `<tr>
+            <td>${escapeHtml(h2hFmtDate(m.matchDate))}</td>
+            <td>${escapeHtml(m.homeTeam)}</td>
+            <td class="h2h-odds">${h2hFmtOdds(m.homeOdds)}</td>
+            <td class="h2h-x">X</td>
+            <td class="h2h-odds">${h2hFmtOdds(m.drawOdds)}</td>
+            <td>${escapeHtml(m.awayTeam)}</td>
+            <td class="h2h-odds">${h2hFmtOdds(m.awayOdds)}</td>
+            <td class="h2h-sep">·</td>
+            <td class="h2h-tot">ТБ${escapeHtml(h2hFmtTotLine(m.totalLine))}</td>
+            <td class="h2h-odds">${h2hFmtOdds(m.overOdds)}</td>
+            <td class="h2h-tot">ТМ${escapeHtml(h2hFmtTotLine(m.totalLine))}</td>
+            <td class="h2h-odds">${h2hFmtOdds(m.underOdds)}</td>
+          </tr>`;
+        }).join('');
+        return `<div class="h2h-season">
+          <div class="h2h-season-title">${escapeHtml(s.seasonLabel)}</div>
+          <table class="h2h-table"><tbody>${rows}</tbody></table>
+        </div>`;
+      }).join('');
+      if (!warns && !seasonsHtml) return '';
+      const openAttr = h2hIsOpenPreferred() ? ' open' : '';
+      return `<details class="h2h-block"${openAttr}>
+        <summary>Очные встречи · closing 1X2 + Total</summary>
+        <div class="h2h-body">${warns}${seasonsHtml}</div>
+      </details>`;
+    }
+    async function h2hFetchSeasonPair(leagueId, preferredSeasonId){
+      const q = 'select=season_id,season_label,matches_count'
+        + `&league_id=eq.${encodeURIComponent(leagueId)}`
+        + '&matches_count=gt.0&order=season_label.desc';
+      const rows = await sbFetch(`/v_season_summary?${q}`);
+      const seasons = (Array.isArray(rows) ? rows : []).filter(s => {
+        const lab = String(s.season_label || '');
+        return !/TEST/i.test(lab);
+      });
+      if (!seasons.length) return null;
+      let idx = 0;
+      if (preferredSeasonId != null && preferredSeasonId !== ''){
+        const found = seasons.findIndex(s => String(s.season_id) === String(preferredSeasonId));
+        if (found >= 0) idx = found;
+      }
+      return {
+        curr: seasons[idx],
+        prev: seasons[idx + 1] || null,
+        seasons,
+      };
+    }
+    async function h2hFetchMatches(leagueId, seasonId, homeId, awayId){
+      if (seasonId == null) return [];
+      const a = encodeURIComponent(homeId);
+      const b = encodeURIComponent(awayId);
+      const q = 'select=match_id,match_date,home_team,away_team,home_team_id,away_team_id,home_odds,draw_odds,away_odds,closing_total_line,over_odds,under_odds,season_id,season_label'
+        + `&league_id=eq.${encodeURIComponent(leagueId)}`
+        + `&season_id=eq.${encodeURIComponent(seasonId)}`
+        + `&or=(and(home_team_id.eq.${a},away_team_id.eq.${b}),and(home_team_id.eq.${b},away_team_id.eq.${a}))`
+        + '&order=match_date.asc';
+      const rows = await sbFetchAllRows(`/v_matches_full?${q}`);
+      return Array.isArray(rows) ? rows : [];
+    }
+    async function h2hLoadView(leagueId, homeId, awayId, preferredSeasonId){
+      const pair = await h2hFetchSeasonPair(leagueId, preferredSeasonId);
+      if (!pair || !pair.curr){
+        return h2hBuildView({
+          prevSeasonLabel: null,
+          currSeasonLabel: null,
+          prevMatches: [],
+          currMatches: [],
+        });
+      }
+      const curr = pair.curr;
+      const prev = pair.prev;
+      const [prevMatches, currMatches] = await Promise.all([
+        prev ? h2hFetchMatches(leagueId, prev.season_id, homeId, awayId) : Promise.resolve([]),
+        h2hFetchMatches(leagueId, curr.season_id, homeId, awayId),
+      ]);
+      return h2hBuildView({
+        prevSeasonLabel: prev ? prev.season_label : null,
+        currSeasonLabel: curr.season_label,
+        prevMatches,
+        currMatches,
+      });
+    }
+    function h2hBindToggle(rootEl){
+      const det = rootEl && rootEl.querySelector && rootEl.querySelector('details.h2h-block');
+      if (!det) return;
+      det.addEventListener('toggle', () => h2hRememberOpen(det.open));
+    }
+
+    function gmFormatPredict(pred,home,away,neutral,useM,mg,compareMatch=null,rotationWarn=null,h2hHtml=''){
       const mk=pred.markets;
       const tag=useM&&mg>0?'с маржой':'честные';
       const x1x2=gmFormat1x2Block(mk, home, away, tag, useM, mg);
@@ -12388,11 +12645,11 @@ bash scripts/update_and_serve.sh --start</div>
       });
       const html=`
         <div class="goal-predict-header"><h4>${title}</h4></div>
-        ${srcBadge}${sfaNote}${sftcNote}${warnHtml}${compareBlock}${x1x2.html}${ahOu.html}`;
+        ${srcBadge}${sfaNote}${sftcNote}${warnHtml}${compareBlock}${h2hHtml||''}${x1x2.html}${ahOu.html}`;
       const summary=`1X2(L) ${x1x2.kk1.toFixed(2)}/${x1x2.kkx.toFixed(2)}/${x1x2.kk2.toFixed(2)} · AH(A) ${ahOu.ahLine} ${ahOu.ah.toFixed(2)}/${ahOu.aa.toFixed(2)} · Tot(A) ${ahOu.t.line} ${ahOu.ot.toFixed(2)}/${ahOu.ut.toFixed(2)}`;
       return {html, summary};
     }
-    function gmFormatPartialPredict(predL, predA, errL, errA, home, away, neutral, useM, mg, compareMatch, rotationWarn){
+    function gmFormatPartialPredict(predL, predA, errL, errA, home, away, neutral, useM, mg, compareMatch, rotationWarn, h2hHtml=''){
       const tag=useM&&mg>0?'с маржой':'честные';
       const title=`${escapeHtml(home)} — ${escapeHtml(away)}${neutral?' <span class="goal-predict-tag">нейтраль</span>':''}`;
       const warnHtml = rotationWarn
@@ -12425,7 +12682,7 @@ bash scripts/update_and_serve.sh --start</div>
       const compareBlock = cmpModel ? gmBuildInactiveCompareBlock(compareMatch, cmpModel) : '';
       const html=`<div class="goal-predict-header"><h4>${title}</h4></div>
         <div class="goal-predict-compare-note" style="margin:0 0 8px;color:#334155">Частичный результат (без fallback между моделями)</div>
-        ${warnHtml}${compareBlock}${parts.join('')}`;
+        ${warnHtml}${compareBlock}${h2hHtml||''}${parts.join('')}`;
       return { html, summary: sumParts.join(' · ') };
     }
 
