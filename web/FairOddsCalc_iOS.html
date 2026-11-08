@@ -12523,10 +12523,9 @@ bash scripts/update_and_serve.sh --start</div>
             <td>${escapeHtml(m.awayTeam)}</td>
             <td class="h2h-odds">${h2hFmtOdds(m.awayOdds)}</td>
             <td class="h2h-sep">·</td>
-            <td class="h2h-tot">Т${escapeHtml(h2hFmtTotLine(m.totalLine))}</td>
-            <td class="h2h-x">ТБ</td>
+            <td class="h2h-tot">ТБ${escapeHtml(h2hFmtTotLine(m.totalLine))}</td>
             <td class="h2h-odds">${h2hFmtOdds(m.overOdds)}</td>
-            <td class="h2h-x">ТМ</td>
+            <td class="h2h-tot">ТМ${escapeHtml(h2hFmtTotLine(m.totalLine))}</td>
             <td class="h2h-odds">${h2hFmtOdds(m.underOdds)}</td>
           </tr>`;
         }).join('');
