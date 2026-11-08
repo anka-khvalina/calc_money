@@ -395,7 +395,7 @@
     .goal-predict-draw{
       margin-top:6px; font-size:12px; color:#475569;
     }
-    .goal-predict-block{ margin-top:14px; }
+    .goal-predict-block{ margin-top:12px; width:fit-content; max-width:100%; }
     .h2h-block{
       margin:0 0 12px; width:100%; max-width:100%; box-sizing:border-box;
       border:1px solid #bfdbfe; border-radius:10px; background:#f8fbff;
@@ -429,27 +429,35 @@
     .h2h-table .h2h-tot{ color:#475569; font-weight:600; }
     .h2h-warn{ margin:3px 0; font-size:12px; color:#b91c1c; line-height:1.35; }
     .goal-predict-block h5{
-      margin:0 0 8px; font-size:12px; font-weight:600; color:#334155;
+      margin:0 0 6px; font-size:12px; font-weight:600; color:#334155;
       letter-spacing:.02em;
     }
     .goal-predict-table{
-      width:100%; border-collapse:collapse; font-size:13px;
+      width:auto; max-width:100%; border-collapse:collapse; font-size:13px;
       font-variant-numeric:tabular-nums; background:#fff;
     }
     .goal-predict-table th,.goal-predict-table td{
-      border:1px solid #e2e8f0; padding:7px 10px; text-align:center;
+      border:1px solid #e2e8f0; padding:5px 8px; text-align:center;
+      white-space:nowrap;
     }
     .goal-predict-table th{
       background:#eef2ff; color:#1e3a5f; font-weight:600; font-size:12px;
     }
     .goal-predict-table td.lbl,.goal-predict-table th.lbl{
-      text-align:left; background:#f8fafc; color:#64748b; font-weight:500; width:28%;
+      text-align:left; background:#f8fafc; color:#64748b; font-weight:500;
+      width:auto; padding-right:10px;
     }
     .goal-predict-table--1x2 td.odds{
-      font-weight:700; font-size:16px; color:#0f172a;
+      font-weight:700; font-size:15px; color:#0f172a;
     }
     .goal-predict-table--1x2 td.prob{
       font-size:12px; color:#64748b;
+    }
+    .goal-predict-table--compare{
+      width:100%;
+    }
+    .goal-predict-block.goal-predict-compare{
+      width:100%; max-width:100%;
     }
     .goal-predict-scores{
       display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:8px;
