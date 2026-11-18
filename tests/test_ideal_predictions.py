@@ -784,6 +784,9 @@ def test_html_has_ideal_tab_and_snapshot_hooks():
     assert "Сохраненный прогноз для этого матча не найден" in html
     assert "Матч уже сыгран" in html
     assert "idealOddsPairPill" in html and "idealOppositeAhLine" in html
+    assert "idealRenderLinedMarketShift" in html
+    assert "Линия изменилась:" in html
+    assert "сравниваются разные условия ставки" in html
     # Date first, state near end; bookmaker-like 1/X/2 + ФОРА 1/2 + ТБ/ТМ
     _ideal_th = html.split('id="idealListTable"', 1)[1].split("</thead>", 1)[0]
     assert _ideal_th.find(">Дата матча<") < _ideal_th.find(">Матч<")
