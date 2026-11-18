@@ -1534,9 +1534,6 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <tr>
               <th>Дата матча</th>
               <th>Матч</th>
-              <th>Лига</th>
-              <th>Сезон</th>
-              <th>Дата сохранения</th>
               <th>Состояние</th>
               <th>Коэффициенты</th>
               <th></th>
@@ -11969,7 +11966,7 @@ bash scripts/update_and_serve.sh --start</div>
     function idealShowEmptyHint(msg){
       const tbody = document.querySelector('#idealListTable tbody');
       if (!tbody) return;
-      tbody.innerHTML = `<tr><td colspan="8" class="hint">${escapeHtml(msg || 'Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы')}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="hint">${escapeHtml(msg || 'Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы')}</td></tr>`;
     }
     function idealFindClosingOdds(closing, market, line, outcome){
       if (!closing || !Array.isArray(closing.markets)) return null;
@@ -12100,9 +12097,6 @@ bash scripts/update_and_serve.sh --start</div>
         return `<tr class="${rowClass}">
           <td>${escapeHtml(idealFmtDate(it.matchDate))}</td>
           <td>${escapeHtml((it.homeTeam||'') + ' — ' + (it.awayTeam||''))}</td>
-          <td>${escapeHtml(it.league || '')}</td>
-          <td>${escapeHtml(it.season || '')}</td>
-          <td>${escapeHtml(it.savedAt ? idealFmtDate(it.savedAt) : '—')}</td>
           <td>${stateHtml}</td>
           <td>${oddsTxt}</td>
           <td>${openBtn}</td>
