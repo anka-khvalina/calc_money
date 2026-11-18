@@ -388,6 +388,10 @@
       font-size:12px; color:#1e293b; line-height:1.45; font-variant-numeric:tabular-nums;
       max-width:320px; white-space:normal;
     }
+    #idealListTable th.ideal-odds-col,
+    #idealListTable td.ideal-odds-col{
+      text-align:right; font-variant-numeric:tabular-nums; font-size:12px; white-space:nowrap;
+    }
     .tab-btn[data-tab="preds"]{ display:none !important; }
     .goal-predict-placeholder{ margin:0; font-size:13px; }
     .goal-predict-header{
@@ -1535,7 +1539,15 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <th>Матч</th>
               <th>Дата матча</th>
               <th>Состояние</th>
-              <th>Коэффициенты</th>
+              <th class="ideal-odds-col">1</th>
+              <th class="ideal-odds-col">X</th>
+              <th class="ideal-odds-col">2</th>
+              <th class="ideal-odds-col">Фора</th>
+              <th class="ideal-odds-col">1ф</th>
+              <th class="ideal-odds-col">2ф</th>
+              <th class="ideal-odds-col">Тотал</th>
+              <th class="ideal-odds-col">ТБ</th>
+              <th class="ideal-odds-col">ТМ</th>
               <th></th>
             </tr>
           </thead>
@@ -11966,7 +11978,7 @@ bash scripts/update_and_serve.sh --start</div>
     function idealShowEmptyHint(msg){
       const tbody = document.querySelector('#idealListTable tbody');
       if (!tbody) return;
-      tbody.innerHTML = `<tr><td colspan="5" class="hint">${escapeHtml(msg || 'Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы')}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" class="hint">${escapeHtml(msg || 'Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы')}</td></tr>`;
     }
     function idealFindClosingOdds(closing, market, line, outcome){
       if (!closing || !Array.isArray(closing.markets)) return null;
@@ -12088,17 +12100,25 @@ bash scripts/update_and_serve.sh --start</div>
           stateHtml = `<div class="ideal-pred-state">${escapeHtml(idealPredictionStateLabel(pred))}</div>`;
         }
         stateHtml += playedTag;
-        const oddsTxt = (pred === 'SAVED' && it.oddsSummary)
-          ? `<div class="ideal-odds-summary">${escapeHtml(it.oddsSummary)}</div>`
-          : '—';
+        const dash = '—';
+        const oddsCell = (v) => `<td class="ideal-odds-col">${escapeHtml(v != null && v !== '' ? String(v) : dash)}</td>`;
         const openBtn = (it.canOpen !== false && pred === 'SAVED')
           ? `<button type="button" class="btn" data-ideal-open="${it.matchId}">Открыть</button>`
           : '';
+        const hasOdds = pred === 'SAVED' && (it.odds1 || it.oddsX || it.odds2 || it.ahHome || it.oddsOver);
         return `<tr class="${rowClass}">
           <td>${escapeHtml((it.homeTeam||'') + ' — ' + (it.awayTeam||''))}</td>
           <td>${escapeHtml(idealFmtDate(it.matchDate))}</td>
           <td>${stateHtml}</td>
-          <td>${oddsTxt}</td>
+          ${hasOdds ? oddsCell(it.odds1) : oddsCell(null)}
+          ${hasOdds ? oddsCell(it.oddsX) : oddsCell(null)}
+          ${hasOdds ? oddsCell(it.odds2) : oddsCell(null)}
+          ${hasOdds ? oddsCell(it.ahLine) : oddsCell(null)}
+          ${hasOdds ? oddsCell(it.ahHome) : oddsCell(null)}
+          ${hasOdds ? oddsCell(it.ahAway) : oddsCell(null)}
+          ${hasOdds ? oddsCell(it.totalLine) : oddsCell(null)}
+          ${hasOdds ? oddsCell(it.oddsOver) : oddsCell(null)}
+          ${hasOdds ? oddsCell(it.oddsUnder) : oddsCell(null)}
           <td>${openBtn}</td>
         </tr>`;
       }).join('');

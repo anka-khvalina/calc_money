@@ -375,56 +375,84 @@ def _outcome_odds_map(market: Mapping[str, Any]) -> Dict[str, float]:
     return out
 
 
-def brief_odds_summary(prediction_data: Any) -> Optional[str]:
-    """Compact saved odds for list column, e.g. '1 2.05 · X 3.40 · 2 3.55 · AH-0.25 1.94/1.96 · Т2.5 1.88/2.02'."""
+def _fmt_signed_line(v: Any) -> Optional[str]:
+    ln = _num(v)
+    if ln is None:
+        return None
+    if abs(ln) < 1e-12:
+        return "0"
+    s = _fmt_brief_odds(ln)
+    if ln > 0 and not s.startswith("+"):
+        return f"+{s}"
+    return s
+
+
+def prediction_odds_columns(prediction_data: Any) -> Dict[str, Optional[str]]:
+    """Split saved odds into list columns: 1/X/2, AH line+sides, Total line+over/under."""
+    cols: Dict[str, Optional[str]] = {
+        "odds1": None,
+        "oddsX": None,
+        "odds2": None,
+        "ahLine": None,
+        "ahHome": None,
+        "ahAway": None,
+        "totalLine": None,
+        "oddsOver": None,
+        "oddsUnder": None,
+    }
     if not isinstance(prediction_data, Mapping):
-        return None
+        return cols
     markets = prediction_data.get("markets")
-    if not isinstance(markets, list) or not markets:
-        return None
-    parts: List[str] = []
+    if not isinstance(markets, list):
+        return cols
     for m in markets:
         if not isinstance(m, Mapping):
             continue
         name = str(m.get("market") or "").upper()
         odds = _outcome_odds_map(m)
         if name in ("1X2", "MATCH_ODDS", "MATCH"):
-            if not odds:
-                continue
-            bits = []
             if "HOME" in odds:
-                bits.append(f"1 {_fmt_brief_odds(odds['HOME'])}")
+                cols["odds1"] = _fmt_brief_odds(odds["HOME"])
             if "DRAW" in odds:
-                bits.append(f"X {_fmt_brief_odds(odds['DRAW'])}")
+                cols["oddsX"] = _fmt_brief_odds(odds["DRAW"])
             if "AWAY" in odds:
-                bits.append(f"2 {_fmt_brief_odds(odds['AWAY'])}")
-            if bits:
-                parts.append(" · ".join(bits))
+                cols["odds2"] = _fmt_brief_odds(odds["AWAY"])
         elif name in ("ASIAN_HANDICAP", "AH", "HANDICAP"):
-            if "HOME" not in odds or "AWAY" not in odds:
-                continue
-            line = m.get("line")
-            line_s = ""
-            ln = _num(line)
-            if ln is not None:
-                line_s = _fmt_brief_odds(ln) if ln != 0 else "0"
-                if ln > 0:
-                    line_s = f"+{line_s}"
-            parts.append(
-                f"AH{line_s} {_fmt_brief_odds(odds['HOME'])}/{_fmt_brief_odds(odds['AWAY'])}"
-            )
+            cols["ahLine"] = _fmt_signed_line(m.get("line"))
+            if "HOME" in odds:
+                cols["ahHome"] = _fmt_brief_odds(odds["HOME"])
+            if "AWAY" in odds:
+                cols["ahAway"] = _fmt_brief_odds(odds["AWAY"])
         elif name in ("TOTAL", "OU", "OVER_UNDER"):
-            if "OVER" not in odds or "UNDER" not in odds:
-                continue
-            line = m.get("line")
-            ln = _num(line)
-            line_s = _fmt_brief_odds(ln) if ln is not None else ""
-            parts.append(
-                f"Т{line_s} {_fmt_brief_odds(odds['OVER'])}/{_fmt_brief_odds(odds['UNDER'])}"
-            )
-    if not parts:
-        return None
-    return " · ".join(parts)
+            ln = _num(m.get("line"))
+            cols["totalLine"] = _fmt_brief_odds(ln) if ln is not None else None
+            if "OVER" in odds:
+                cols["oddsOver"] = _fmt_brief_odds(odds["OVER"])
+            if "UNDER" in odds:
+                cols["oddsUnder"] = _fmt_brief_odds(odds["UNDER"])
+    return cols
+
+
+def brief_odds_summary(prediction_data: Any) -> Optional[str]:
+    """Compact one-line summary (tests / optional); UI uses prediction_odds_columns."""
+    cols = prediction_odds_columns(prediction_data)
+    parts: List[str] = []
+    bits = []
+    if cols.get("odds1"):
+        bits.append(f"1 {cols['odds1']}")
+    if cols.get("oddsX"):
+        bits.append(f"X {cols['oddsX']}")
+    if cols.get("odds2"):
+        bits.append(f"2 {cols['odds2']}")
+    if bits:
+        parts.append(" · ".join(bits))
+    if cols.get("ahHome") and cols.get("ahAway"):
+        line_s = cols.get("ahLine") or ""
+        parts.append(f"AH{line_s} {cols['ahHome']}/{cols['ahAway']}")
+    if cols.get("oddsOver") and cols.get("oddsUnder"):
+        line_s = cols.get("totalLine") or ""
+        parts.append(f"Т{line_s} {cols['oddsOver']}/{cols['oddsUnder']}")
+    return " · ".join(parts) if parts else None
 
 
 def _fetch_calendar_matches(
@@ -606,7 +634,9 @@ def list_ideals(
             message = MSG_CORRUPT
 
         odds_summary = None
+        odds_cols = prediction_odds_columns(None)
         if pred_state == PRED_STATE_SAVED and ideal:
+            odds_cols = prediction_odds_columns(ideal.get("prediction_data"))
             odds_summary = brief_odds_summary(ideal.get("prediction_data"))
 
         items.append(
@@ -626,6 +656,15 @@ def list_ideals(
                 "predictionState": pred_state,
                 "message": message,
                 "oddsSummary": odds_summary,
+                "odds1": odds_cols.get("odds1"),
+                "oddsX": odds_cols.get("oddsX"),
+                "odds2": odds_cols.get("odds2"),
+                "ahLine": odds_cols.get("ahLine"),
+                "ahHome": odds_cols.get("ahHome"),
+                "ahAway": odds_cols.get("ahAway"),
+                "totalLine": odds_cols.get("totalLine"),
+                "oddsOver": odds_cols.get("oddsOver"),
+                "oddsUnder": odds_cols.get("oddsUnder"),
                 "canOpen": pred_state == PRED_STATE_SAVED,
             }
         )

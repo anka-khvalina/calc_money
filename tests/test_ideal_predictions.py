@@ -382,6 +382,22 @@ def test_brief_odds_summary():
     assert ip.brief_odds_summary({"markets": []}) is None
 
 
+def test_prediction_odds_columns():
+    cols = ip.prediction_odds_columns(PRED)
+    assert cols["odds1"] == "2.18"
+    assert cols["oddsX"] == "3.4"
+    assert cols["odds2"] == "3.55"
+    assert cols["ahLine"] == "-0.25"
+    assert cols["ahHome"] == "1.94"
+    assert cols["ahAway"] == "1.96"
+    assert cols["totalLine"] == "2.5"
+    assert cols["oddsOver"] == "1.88"
+    assert cols["oddsUnder"] == "2.02"
+    empty = ip.prediction_odds_columns(None)
+    assert empty["odds1"] is None
+    assert empty["ahLine"] is None
+
+
 def test_list_ideals_requires_mandatory_filters():
     with pytest.raises(ip.IdealPredictionError) as ei:
         ip.list_ideals(league="LaLiga", season="2026-27")
@@ -460,15 +476,25 @@ def test_list_ideals_calendar_left_join_groups_and_messages():
     assert saved["message"] is None
     assert saved["oddsSummary"] and "1 2.18" in saved["oddsSummary"]
     assert "Т2.5" in saved["oddsSummary"]
+    assert saved["odds1"] == "2.18"
+    assert saved["oddsX"] == "3.4"
+    assert saved["odds2"] == "3.55"
+    assert saved["ahLine"] == "-0.25"
+    assert saved["ahHome"] == "1.94"
+    assert saved["totalLine"] == "2.5"
+    assert saved["oddsOver"] == "1.88"
+    assert saved["oddsUnder"] == "2.02"
     assert corrupt["matchId"] == 102
     assert corrupt["message"] == ip.MSG_CORRUPT
     assert corrupt["canOpen"] is False
     assert corrupt["oddsSummary"] is None
+    assert corrupt["odds1"] is None
     assert missing["matchId"] == 101
     assert missing["matchPlayed"] is True
     assert missing["playedLabel"] == ip.MSG_PLAYED
     assert missing["message"] == ip.MSG_MISSING
     assert missing["oddsSummary"] is None
+    assert missing["odds1"] is None
     # closing odds must not be substituted into prediction fields
     assert "predictionData" not in missing
     assert "closingOdds" not in missing
@@ -757,11 +783,14 @@ def test_html_has_ideal_tab_and_snapshot_hooks():
     assert 'option value="CORRUPT"' in html
     assert "Сохраненный прогноз для этого матча не найден" in html
     assert "Матч уже сыгран" in html
-    assert ">Коэффициенты<" in html
-    assert "oddsSummary" in html
-    # Match column before date in Ideal list header; date stays DD.MM.YYYY
+    assert "odds1" in html and "oddsOver" in html
+    # Match column before date; odds split into 1/X/2/AH/Total columns
     _ideal_th = html.split('id="idealListTable"', 1)[1].split("</thead>", 1)[0]
     assert _ideal_th.find(">Матч<") < _ideal_th.find(">Дата матча<")
+    assert ">1<" in _ideal_th and ">X<" in _ideal_th and ">2<" in _ideal_th
+    assert ">Фора<" in _ideal_th and ">1ф<" in _ideal_th and ">2ф<" in _ideal_th
+    assert ">Тотал<" in _ideal_th and ">ТБ<" in _ideal_th and ">ТМ<" in _ideal_th
+    assert "Коэффициенты" not in _ideal_th
     assert "IDEAL_MONTHS_RU" not in html
     assert "id=\"tab-preds\"" in html or "id='tab-preds'" in html  # section kept, nav hidden
     sql = (ROOT / "docs" / "sql" / "ideal_predictions.sql").read_text(encoding="utf-8")
