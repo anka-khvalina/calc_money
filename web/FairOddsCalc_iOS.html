@@ -384,6 +384,10 @@
     .ideal-msg-corrupt{ color:#9f1239; font-weight:600; }
     .ideal-played-tag{ display:inline-block; margin-top:4px; padding:2px 6px; font-size:11px; color:#475569; background:#e2e8f0; border-radius:4px; }
     .ideal-pred-state{ font-size:12px; color:#334155; }
+    .ideal-odds-summary{
+      font-size:12px; color:#1e293b; line-height:1.45; font-variant-numeric:tabular-nums;
+      max-width:320px; white-space:normal;
+    }
     .tab-btn[data-tab="preds"]{ display:none !important; }
     .goal-predict-placeholder{ margin:0; font-size:13px; }
     .goal-predict-header{
@@ -1534,6 +1538,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <th>Сезон</th>
               <th>Дата сохранения</th>
               <th>Состояние</th>
+              <th>Коэффициенты</th>
               <th></th>
             </tr>
           </thead>
@@ -11964,7 +11969,7 @@ bash scripts/update_and_serve.sh --start</div>
     function idealShowEmptyHint(msg){
       const tbody = document.querySelector('#idealListTable tbody');
       if (!tbody) return;
-      tbody.innerHTML = `<tr><td colspan="7" class="hint">${escapeHtml(msg || 'Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы')}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="hint">${escapeHtml(msg || 'Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы')}</td></tr>`;
     }
     function idealFindClosingOdds(closing, market, line, outcome){
       if (!closing || !Array.isArray(closing.markets)) return null;
@@ -12086,6 +12091,9 @@ bash scripts/update_and_serve.sh --start</div>
           stateHtml = `<div class="ideal-pred-state">${escapeHtml(idealPredictionStateLabel(pred))}</div>`;
         }
         stateHtml += playedTag;
+        const oddsTxt = (pred === 'SAVED' && it.oddsSummary)
+          ? `<div class="ideal-odds-summary">${escapeHtml(it.oddsSummary)}</div>`
+          : '—';
         const openBtn = (it.canOpen !== false && pred === 'SAVED')
           ? `<button type="button" class="btn" data-ideal-open="${it.matchId}">Открыть</button>`
           : '';
@@ -12096,6 +12104,7 @@ bash scripts/update_and_serve.sh --start</div>
           <td>${escapeHtml(it.season || '')}</td>
           <td>${escapeHtml(it.savedAt ? idealFmtDate(it.savedAt) : '—')}</td>
           <td>${stateHtml}</td>
+          <td>${oddsTxt}</td>
           <td>${openBtn}</td>
         </tr>`;
       }).join('');

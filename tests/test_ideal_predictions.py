@@ -368,6 +368,20 @@ def test_classify_prediction_state():
     )
 
 
+def test_brief_odds_summary():
+    s = ip.brief_odds_summary(PRED)
+    assert s is not None
+    assert "1 2.18" in s
+    assert "X 3.4" in s
+    assert "2 3.55" in s
+    assert "AH-0.25" in s
+    assert "1.94/1.96" in s
+    assert "Т2.5" in s
+    assert "1.88/2.02" in s
+    assert ip.brief_odds_summary(None) is None
+    assert ip.brief_odds_summary({"markets": []}) is None
+
+
 def test_list_ideals_requires_mandatory_filters():
     with pytest.raises(ip.IdealPredictionError) as ei:
         ip.list_ideals(league="LaLiga", season="2026-27")
@@ -444,13 +458,17 @@ def test_list_ideals_calendar_left_join_groups_and_messages():
     assert saved["matchId"] == 100
     assert saved["canOpen"] is True
     assert saved["message"] is None
+    assert saved["oddsSummary"] and "1 2.18" in saved["oddsSummary"]
+    assert "Т2.5" in saved["oddsSummary"]
     assert corrupt["matchId"] == 102
     assert corrupt["message"] == ip.MSG_CORRUPT
     assert corrupt["canOpen"] is False
+    assert corrupt["oddsSummary"] is None
     assert missing["matchId"] == 101
     assert missing["matchPlayed"] is True
     assert missing["playedLabel"] == ip.MSG_PLAYED
     assert missing["message"] == ip.MSG_MISSING
+    assert missing["oddsSummary"] is None
     # closing odds must not be substituted into prediction fields
     assert "predictionData" not in missing
     assert "closingOdds" not in missing
@@ -739,6 +757,8 @@ def test_html_has_ideal_tab_and_snapshot_hooks():
     assert 'option value="CORRUPT"' in html
     assert "Сохраненный прогноз для этого матча не найден" in html
     assert "Матч уже сыгран" in html
+    assert ">Коэффициенты<" in html
+    assert "oddsSummary" in html
     assert "id=\"tab-preds\"" in html or "id='tab-preds'" in html  # section kept, nav hidden
     sql = (ROOT / "docs" / "sql" / "ideal_predictions.sql").read_text(encoding="utf-8")
     assert "UNIQUE (match_id)" in sql

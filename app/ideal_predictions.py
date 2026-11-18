@@ -349,6 +349,84 @@ def classify_prediction_state(ideal_row: Optional[Mapping[str, Any]]) -> str:
     return PRED_STATE_CORRUPT
 
 
+def _fmt_brief_odds(v: Any) -> str:
+    n = _num(v)
+    if n is None:
+        return "—"
+    # compact: 2.05 / 1.90 / 3.5
+    if abs(n - round(n)) < 1e-9:
+        return str(int(round(n)))
+    s = f"{n:.2f}".rstrip("0").rstrip(".")
+    return s or "—"
+
+
+def _outcome_odds_map(market: Mapping[str, Any]) -> Dict[str, float]:
+    out: Dict[str, float] = {}
+    outcomes = market.get("outcomes")
+    if not isinstance(outcomes, list):
+        return out
+    for o in outcomes:
+        if not isinstance(o, Mapping):
+            continue
+        key = str(o.get("outcome") or "").upper()
+        n = _num(o.get("odds"))
+        if key and n is not None and n > 1:
+            out[key] = n
+    return out
+
+
+def brief_odds_summary(prediction_data: Any) -> Optional[str]:
+    """Compact saved odds for list column, e.g. '1 2.05 · X 3.40 · 2 3.55 · AH-0.25 1.94/1.96 · Т2.5 1.88/2.02'."""
+    if not isinstance(prediction_data, Mapping):
+        return None
+    markets = prediction_data.get("markets")
+    if not isinstance(markets, list) or not markets:
+        return None
+    parts: List[str] = []
+    for m in markets:
+        if not isinstance(m, Mapping):
+            continue
+        name = str(m.get("market") or "").upper()
+        odds = _outcome_odds_map(m)
+        if name in ("1X2", "MATCH_ODDS", "MATCH"):
+            if not odds:
+                continue
+            bits = []
+            if "HOME" in odds:
+                bits.append(f"1 {_fmt_brief_odds(odds['HOME'])}")
+            if "DRAW" in odds:
+                bits.append(f"X {_fmt_brief_odds(odds['DRAW'])}")
+            if "AWAY" in odds:
+                bits.append(f"2 {_fmt_brief_odds(odds['AWAY'])}")
+            if bits:
+                parts.append(" · ".join(bits))
+        elif name in ("ASIAN_HANDICAP", "AH", "HANDICAP"):
+            if "HOME" not in odds or "AWAY" not in odds:
+                continue
+            line = m.get("line")
+            line_s = ""
+            ln = _num(line)
+            if ln is not None:
+                line_s = _fmt_brief_odds(ln) if ln != 0 else "0"
+                if ln > 0:
+                    line_s = f"+{line_s}"
+            parts.append(
+                f"AH{line_s} {_fmt_brief_odds(odds['HOME'])}/{_fmt_brief_odds(odds['AWAY'])}"
+            )
+        elif name in ("TOTAL", "OU", "OVER_UNDER"):
+            if "OVER" not in odds or "UNDER" not in odds:
+                continue
+            line = m.get("line")
+            ln = _num(line)
+            line_s = _fmt_brief_odds(ln) if ln is not None else ""
+            parts.append(
+                f"Т{line_s} {_fmt_brief_odds(odds['OVER'])}/{_fmt_brief_odds(odds['UNDER'])}"
+            )
+    if not parts:
+        return None
+    return " · ".join(parts)
+
+
 def _fetch_calendar_matches(
     *,
     league: str,
@@ -527,6 +605,10 @@ def list_ideals(
         elif pred_state == PRED_STATE_CORRUPT:
             message = MSG_CORRUPT
 
+        odds_summary = None
+        if pred_state == PRED_STATE_SAVED and ideal:
+            odds_summary = brief_odds_summary(ideal.get("prediction_data"))
+
         items.append(
             {
                 "id": ideal.get("id") if ideal else None,
@@ -543,6 +625,7 @@ def list_ideals(
                 "playedLabel": MSG_PLAYED if played else None,
                 "predictionState": pred_state,
                 "message": message,
+                "oddsSummary": odds_summary,
                 "canOpen": pred_state == PRED_STATE_SAVED,
             }
         )
