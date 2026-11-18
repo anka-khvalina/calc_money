@@ -388,10 +388,23 @@
       font-size:12px; color:#1e293b; line-height:1.45; font-variant-numeric:tabular-nums;
       max-width:320px; white-space:normal;
     }
-    #idealListTable th.ideal-odds-col,
-    #idealListTable td.ideal-odds-col{
-      text-align:right; font-variant-numeric:tabular-nums; font-size:12px; white-space:nowrap;
+    #idealListTable th.ideal-odds-col{
+      text-align:center; font-size:11px; font-weight:600; color:#64748b; letter-spacing:0.02em;
+      white-space:nowrap; padding:8px 6px;
     }
+    #idealListTable td.ideal-odds-col{
+      text-align:center; vertical-align:middle; padding:6px 4px; white-space:nowrap;
+    }
+    .ideal-odds-pill{
+      display:inline-flex; align-items:center; justify-content:center; gap:6px;
+      min-width:52px; padding:6px 10px; border-radius:8px;
+      background:#f1f5f9; color:#0f172a; font-size:13px; font-weight:600;
+      font-variant-numeric:tabular-nums; line-height:1.2;
+    }
+    .ideal-odds-pill--pair{ min-width:88px; padding:6px 8px; }
+    .ideal-odds-line{ color:#2563eb; font-weight:700; }
+    .ideal-odds-val{ color:#0f172a; font-weight:600; }
+    .ideal-odds-empty{ color:#94a3b8; font-size:13px; }
     .tab-btn[data-tab="preds"]{ display:none !important; }
     .goal-predict-placeholder{ margin:0; font-size:13px; }
     .goal-predict-header{
@@ -1542,10 +1555,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <th class="ideal-odds-col">1</th>
               <th class="ideal-odds-col">X</th>
               <th class="ideal-odds-col">2</th>
-              <th class="ideal-odds-col">Фора</th>
-              <th class="ideal-odds-col">1ф</th>
-              <th class="ideal-odds-col">2ф</th>
-              <th class="ideal-odds-col">Тотал</th>
+              <th class="ideal-odds-col">ФОРА 1</th>
+              <th class="ideal-odds-col">ФОРА 2</th>
               <th class="ideal-odds-col">ТБ</th>
               <th class="ideal-odds-col">ТМ</th>
               <th></th>
@@ -11978,7 +11989,39 @@ bash scripts/update_and_serve.sh --start</div>
     function idealShowEmptyHint(msg){
       const tbody = document.querySelector('#idealListTable tbody');
       if (!tbody) return;
-      tbody.innerHTML = `<tr><td colspan="13" class="hint">${escapeHtml(msg || 'Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы')}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="11" class="hint">${escapeHtml(msg || 'Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы')}</td></tr>`;
+    }
+    function idealOppositeAhLine(lineStr){
+      if (lineStr == null || lineStr === '') return null;
+      const n = Number(String(lineStr).replace(',', '.'));
+      if (!Number.isFinite(n)) return null;
+      if (Math.abs(n) < 1e-12) return '0';
+      const opp = -n;
+      const abs = Math.abs(opp);
+      let s = (Math.abs(abs - Math.round(abs)) < 1e-9)
+        ? String(Math.round(abs))
+        : String(abs).replace(/\.?0+$/, '');
+      // keep one decimal for .5 / .25 / .75 if needed
+      if (Math.abs(abs - Math.round(abs)) >= 1e-9){
+        s = (Math.round(abs * 100) / 100).toFixed(2).replace(/\.?0+$/, '');
+      }
+      return opp > 0 ? ('+' + s) : ('-' + s);
+    }
+    function idealOddsPill(val){
+      if (val == null || val === '') return '<span class="ideal-odds-empty">—</span>';
+      return `<span class="ideal-odds-pill"><span class="ideal-odds-val">${escapeHtml(String(val))}</span></span>`;
+    }
+    function idealOddsPairPill(line, odds){
+      if ((line == null || line === '') && (odds == null || odds === '')){
+        return '<span class="ideal-odds-empty">—</span>';
+      }
+      const lineHtml = (line != null && line !== '')
+        ? `<span class="ideal-odds-line">${escapeHtml(String(line))}</span>`
+        : '';
+      const oddsHtml = (odds != null && odds !== '')
+        ? `<span class="ideal-odds-val">${escapeHtml(String(odds))}</span>`
+        : '';
+      return `<span class="ideal-odds-pill ideal-odds-pill--pair">${lineHtml}${oddsHtml}</span>`;
     }
     function idealFindClosingOdds(closing, market, line, outcome){
       if (!closing || !Array.isArray(closing.markets)) return null;
@@ -12100,25 +12143,22 @@ bash scripts/update_and_serve.sh --start</div>
           stateHtml = `<div class="ideal-pred-state">${escapeHtml(idealPredictionStateLabel(pred))}</div>`;
         }
         stateHtml += playedTag;
-        const dash = '—';
-        const oddsCell = (v) => `<td class="ideal-odds-col">${escapeHtml(v != null && v !== '' ? String(v) : dash)}</td>`;
         const openBtn = (it.canOpen !== false && pred === 'SAVED')
           ? `<button type="button" class="btn" data-ideal-open="${it.matchId}">Открыть</button>`
           : '';
         const hasOdds = pred === 'SAVED' && (it.odds1 || it.oddsX || it.odds2 || it.ahHome || it.oddsOver);
+        const ah2Line = hasOdds ? idealOppositeAhLine(it.ahLine) : null;
         return `<tr class="${rowClass}">
           <td>${escapeHtml((it.homeTeam||'') + ' — ' + (it.awayTeam||''))}</td>
           <td>${escapeHtml(idealFmtDate(it.matchDate))}</td>
           <td>${stateHtml}</td>
-          ${hasOdds ? oddsCell(it.odds1) : oddsCell(null)}
-          ${hasOdds ? oddsCell(it.oddsX) : oddsCell(null)}
-          ${hasOdds ? oddsCell(it.odds2) : oddsCell(null)}
-          ${hasOdds ? oddsCell(it.ahLine) : oddsCell(null)}
-          ${hasOdds ? oddsCell(it.ahHome) : oddsCell(null)}
-          ${hasOdds ? oddsCell(it.ahAway) : oddsCell(null)}
-          ${hasOdds ? oddsCell(it.totalLine) : oddsCell(null)}
-          ${hasOdds ? oddsCell(it.oddsOver) : oddsCell(null)}
-          ${hasOdds ? oddsCell(it.oddsUnder) : oddsCell(null)}
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPill(it.odds1) : idealOddsPill(null)}</td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPill(it.oddsX) : idealOddsPill(null)}</td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPill(it.odds2) : idealOddsPill(null)}</td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPairPill(it.ahLine, it.ahHome) : idealOddsPairPill(null, null)}</td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPairPill(ah2Line, it.ahAway) : idealOddsPairPill(null, null)}</td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPairPill(it.totalLine, it.oddsOver) : idealOddsPairPill(null, null)}</td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPairPill(it.totalLine, it.oddsUnder) : idealOddsPairPill(null, null)}</td>
           <td>${openBtn}</td>
         </tr>`;
       }).join('');

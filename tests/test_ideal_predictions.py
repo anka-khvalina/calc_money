@@ -783,14 +783,14 @@ def test_html_has_ideal_tab_and_snapshot_hooks():
     assert 'option value="CORRUPT"' in html
     assert "Сохраненный прогноз для этого матча не найден" in html
     assert "Матч уже сыгран" in html
-    assert "odds1" in html and "oddsOver" in html
-    # Match column before date; odds split into 1/X/2/AH/Total columns
+    assert "idealOddsPairPill" in html and "idealOppositeAhLine" in html
+    # Match column before date; bookmaker-like 1/X/2 + ФОРА 1/2 + ТБ/ТМ
     _ideal_th = html.split('id="idealListTable"', 1)[1].split("</thead>", 1)[0]
     assert _ideal_th.find(">Матч<") < _ideal_th.find(">Дата матча<")
     assert ">1<" in _ideal_th and ">X<" in _ideal_th and ">2<" in _ideal_th
-    assert ">Фора<" in _ideal_th and ">1ф<" in _ideal_th and ">2ф<" in _ideal_th
-    assert ">Тотал<" in _ideal_th and ">ТБ<" in _ideal_th and ">ТМ<" in _ideal_th
-    assert "Коэффициенты" not in _ideal_th
+    assert "ФОРА 1" in _ideal_th and "ФОРА 2" in _ideal_th
+    assert ">ТБ<" in _ideal_th and ">ТМ<" in _ideal_th
+    assert "1ф" not in _ideal_th and "Коэффициенты" not in _ideal_th
     assert "IDEAL_MONTHS_RU" not in html
     assert "id=\"tab-preds\"" in html or "id='tab-preds'" in html  # section kept, nav hidden
     sql = (ROOT / "docs" / "sql" / "ideal_predictions.sql").read_text(encoding="utf-8")
