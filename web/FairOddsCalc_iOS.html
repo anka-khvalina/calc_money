@@ -376,6 +376,53 @@
     .ideal-detail th, .ideal-detail td{ border-bottom:1px solid #e2e8f0; padding:6px 8px; text-align:left; }
     .ideal-detail td.num, .ideal-detail th.num{ text-align:right; font-variant-numeric:tabular-nums; }
     .ideal-settings{ font-size:13px; color:#334155; line-height:1.55; margin:0; white-space:pre-wrap; }
+    .ideal-line-shift{
+      margin:6px 0 10px; padding:8px 10px; border:1px solid #fde68a; background:#fffbeb;
+      border-radius:8px; font-size:12.5px; color:#92400e; line-height:1.45;
+    }
+    .ideal-line-shift strong{ color:#78350f; font-weight:600; }
+    .ideal-line-shift .ideal-line-shift-note{ margin-top:4px; font-weight:600; }
+    #tab-ideal .table-wrap{ margin-top:6px; width:max-content; max-width:100%; }
+    #idealListTable{
+      width:max-content; min-width:0; table-layout:auto; font-size:12px;
+    }
+    #idealListTable th,
+    #idealListTable td{
+      padding:4px 6px; font-size:12px; vertical-align:middle; white-space:nowrap;
+    }
+    #idealListTable th{ background:#f8fafc; color:#475569; font-weight:600; }
+    #idealListTable tr.ideal-row--missing td,
+    #idealListTable tr.ideal-row--corrupt td{ background:#fef2f2; }
+    #idealListTable tr.ideal-row--missing,
+    #idealListTable tr.ideal-row--corrupt{ outline:1px solid #fecaca; outline-offset:-1px; }
+    .ideal-msg-missing{ color:#b91c1c; font-weight:600; font-size:11px; max-width:220px; white-space:normal; line-height:1.25; }
+    .ideal-msg-corrupt{ color:#9f1239; font-weight:600; font-size:11px; max-width:240px; white-space:normal; line-height:1.25; }
+    .ideal-played-tag{ display:inline-block; margin-top:2px; padding:1px 5px; font-size:10px; color:#475569; background:#e2e8f0; border-radius:3px; }
+    .ideal-pred-state{ font-size:11px; color:#334155; }
+    .ideal-odds-summary{
+      font-size:12px; color:#1e293b; line-height:1.45; font-variant-numeric:tabular-nums;
+      max-width:320px; white-space:normal;
+    }
+    #idealListTable th.ideal-odds-col{
+      text-align:center; font-size:10px; font-weight:600; color:#64748b;
+      white-space:nowrap; padding:4px 3px;
+    }
+    #idealListTable td.ideal-odds-col{
+      text-align:center; vertical-align:middle; padding:3px 2px; white-space:nowrap;
+    }
+    .ideal-odds-pill{
+      display:inline-flex; align-items:center; justify-content:center; gap:4px;
+      min-width:0; padding:3px 6px; border-radius:6px;
+      background:#f1f5f9; color:#0f172a; font-size:12px; font-weight:600;
+      font-variant-numeric:tabular-nums; line-height:1.15;
+    }
+    .ideal-odds-pill--pair{ padding:3px 5px; }
+    .ideal-odds-line{ color:#2563eb; font-weight:700; }
+    .ideal-odds-val{ color:#0f172a; font-weight:600; }
+    .ideal-odds-empty{ color:#94a3b8; font-size:12px; }
+    #idealListTable td:last-child{ padding-left:4px; padding-right:4px; }
+    #idealListTable .btn{ padding:3px 8px; font-size:11px; }
+    .tab-btn[data-tab="preds"]{ display:none !important; }
     .goal-predict-placeholder{ margin:0; font-size:13px; }
     .goal-predict-header{
       margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--line);
@@ -1480,35 +1527,36 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <section id="tab-ideal" class="panel">
       <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Идеальные прогнозы</h3>
       <p class="small" style="margin:0 0 10px">
-        Сохранённые подтверждённые расчёты модели. После появления closing odds они показываются рядом с прогнозом (без изменения snapshot).
+        Календарные матчи выбранной лиги/сезона/периода и сохранённые идеальные прогнозы в одной таблице (только просмотр, без пересчёта).
       </p>
       <div class="ideal-toolbar">
         <div class="field" style="min-width:160px">
-          <label>Лига</label>
-          <select id="idealLeagueFilter"><option value="">Все лиги</option></select>
+          <label>Лига *</label>
+          <select id="idealLeagueFilter"><option value="">Выберите лигу</option></select>
         </div>
         <div class="field" style="min-width:140px">
-          <label>Сезон</label>
-          <select id="idealSeasonFilter"><option value="">Все сезоны</option></select>
+          <label>Сезон *</label>
+          <select id="idealSeasonFilter"><option value="">Выберите сезон</option></select>
         </div>
         <div class="field" style="min-width:140px">
           <label>Команда</label>
           <input id="idealTeamFilter" type="text" placeholder="часть названия" />
         </div>
         <div class="field" style="min-width:120px">
-          <label>С даты</label>
+          <label>С даты *</label>
           <input id="idealDateFrom" type="date" />
         </div>
         <div class="field" style="min-width:120px">
-          <label>По дату</label>
+          <label>По дату *</label>
           <input id="idealDateTo" type="date" />
         </div>
-        <div class="field" style="min-width:120px">
-          <label>Статус</label>
+        <div class="field" style="min-width:160px">
+          <label>Статус прогноза</label>
           <select id="idealStatusFilter">
             <option value="">Все</option>
-            <option value="UPCOMING">Будущие</option>
-            <option value="PLAYED">Сыгранные</option>
+            <option value="SAVED">С сохранённым прогнозом</option>
+            <option value="MISSING">Без сохранённого прогноза</option>
+            <option value="CORRUPT">С повреждённым прогнозом</option>
           </select>
         </div>
         <button type="button" id="idealRefresh" class="btn primary">Обновить</button>
@@ -1520,10 +1568,14 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
             <tr>
               <th>Дата матча</th>
               <th>Матч</th>
-              <th>Лига</th>
-              <th>Сезон</th>
-              <th>Дата сохранения</th>
-              <th>Статус</th>
+              <th class="ideal-odds-col">1</th>
+              <th class="ideal-odds-col">X</th>
+              <th class="ideal-odds-col">2</th>
+              <th class="ideal-odds-col">ФОРА 1</th>
+              <th class="ideal-odds-col">ФОРА 2</th>
+              <th class="ideal-odds-col">ТБ</th>
+              <th class="ideal-odds-col">ТМ</th>
+              <th>Состояние</th>
               <th></th>
             </tr>
           </thead>
@@ -11945,17 +11997,91 @@ bash scripts/update_and_serve.sh --start</div>
     function idealStatusLabel(st){
       return st === 'PLAYED' ? 'Сыгран' : 'Будущий';
     }
-    function idealFindClosingOdds(closing, market, line, outcome){
+    function idealPredictionStateLabel(st){
+      if (st === 'SAVED') return 'Сохранён';
+      if (st === 'MISSING') return 'Нет прогноза';
+      if (st === 'CORRUPT') return 'Повреждён';
+      return st || '—';
+    }
+    function idealShowEmptyHint(msg){
+      const tbody = document.querySelector('#idealListTable tbody');
+      if (!tbody) return;
+      tbody.innerHTML = `<tr><td colspan="11" class="hint">${escapeHtml(msg || 'Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы')}</td></tr>`;
+    }
+    function idealOppositeAhLine(lineStr){
+      if (lineStr == null || lineStr === '') return null;
+      const n = Number(String(lineStr).replace(',', '.'));
+      if (!Number.isFinite(n)) return null;
+      if (Math.abs(n) < 1e-12) return '0';
+      const opp = -n;
+      const abs = Math.abs(opp);
+      let s = (Math.abs(abs - Math.round(abs)) < 1e-9)
+        ? String(Math.round(abs))
+        : String(abs).replace(/\.?0+$/, '');
+      // keep one decimal for .5 / .25 / .75 if needed
+      if (Math.abs(abs - Math.round(abs)) >= 1e-9){
+        s = (Math.round(abs * 100) / 100).toFixed(2).replace(/\.?0+$/, '');
+      }
+      return opp > 0 ? ('+' + s) : ('-' + s);
+    }
+    function idealOddsPill(val){
+      if (val == null || val === '') return '<span class="ideal-odds-empty">—</span>';
+      return `<span class="ideal-odds-pill"><span class="ideal-odds-val">${escapeHtml(String(val))}</span></span>`;
+    }
+    function idealOddsPairPill(line, odds){
+      if ((line == null || line === '') && (odds == null || odds === '')){
+        return '<span class="ideal-odds-empty">—</span>';
+      }
+      const lineHtml = (line != null && line !== '')
+        ? `<span class="ideal-odds-line">${escapeHtml(String(line))}</span>`
+        : '';
+      const oddsHtml = (odds != null && odds !== '')
+        ? `<span class="ideal-odds-val">${escapeHtml(String(odds))}</span>`
+        : '';
+      return `<span class="ideal-odds-pill ideal-odds-pill--pair">${lineHtml}${oddsHtml}</span>`;
+    }
+    function idealFindClosingMarket(closing, market){
       if (!closing || !Array.isArray(closing.markets)) return null;
-      const m = closing.markets.find(x => {
-        if (!x || x.market !== market) return false;
-        if (line == null || line === '') return x.line == null;
-        const a = Number(x.line), b = Number(line);
-        return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 1e-9;
-      });
+      return closing.markets.find(x => x && x.market === market) || null;
+    }
+    function idealFindClosingOdds(closing, market, line, outcome){
+      const m = idealFindClosingMarket(closing, market);
       if (!m || !Array.isArray(m.outcomes)) return null;
+      if (line == null || line === ''){
+        if (m.line != null && m.line !== '') return null;
+      } else {
+        const a = Number(m.line), b = Number(line);
+        if (!(Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 1e-9)) return null;
+      }
       const o = m.outcomes.find(x => x && String(x.outcome).toUpperCase() === String(outcome).toUpperCase());
       return o && o.odds != null ? Number(o.odds) : null;
+    }
+    function idealLinesEqual(a, b){
+      if (a == null || a === '' || b == null || b === '') return a == null || a === '' ? (b == null || b === '') : false;
+      const na = Number(a), nb = Number(b);
+      return Number.isFinite(na) && Number.isFinite(nb) && Math.abs(na - nb) < 1e-9;
+    }
+    function idealFmtLine(v){
+      if (v == null || v === '') return '—';
+      const n = Number(v);
+      if (!Number.isFinite(n)) return String(v);
+      if (Math.abs(n) < 1e-12) return '0';
+      if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+      return String(Math.round(n * 100) / 100).replace(/\.?0+$/, '');
+    }
+    function idealOutcomeOddsPair(outcomes, aKey, bKey){
+      const list = Array.isArray(outcomes) ? outcomes : [];
+      const a = list.find(x => x && String(x.outcome).toUpperCase() === aKey);
+      const b = list.find(x => x && String(x.outcome).toUpperCase() === bKey);
+      return [
+        a && a.odds != null ? idealFmtOdds(a.odds) : '—',
+        b && b.odds != null ? idealFmtOdds(b.odds) : '—',
+      ];
+    }
+    function idealMarketShortLabel(market){
+      if (market === 'ASIAN_HANDICAP') return 'AH';
+      if (market === 'TOTAL') return 'Т';
+      return market || '';
     }
     function idealOutcomeLabel(market, outcome){
       const o = String(outcome || '').toUpperCase();
@@ -11972,12 +12098,32 @@ bash scripts/update_and_serve.sh --start</div>
       if (o === 'AWAY') return 'Away';
       return outcome || '—';
     }
+    function idealRenderLinedMarketShift(predM, closeM){
+      const market = predM.market;
+      const short = idealMarketShortLabel(market);
+      const savedLine = idealFmtLine(predM.line);
+      const closeLine = idealFmtLine(closeM && closeM.line);
+      const pairKeys = market === 'TOTAL' ? ['OVER', 'UNDER'] : ['HOME', 'AWAY'];
+      const [sA, sB] = idealOutcomeOddsPair(predM.outcomes, pairKeys[0], pairKeys[1]);
+      const [cA, cB] = idealOutcomeOddsPair(closeM && closeM.outcomes, pairKeys[0], pairKeys[1]);
+      return `<div class="ideal-line-shift">` +
+        `<div><strong>Сохранённая линия:</strong> ${escapeHtml(short)} ${escapeHtml(savedLine)} — ${escapeHtml(sA)} / ${escapeHtml(sB)}</div>` +
+        `<div><strong>Закрытие рынка:</strong> ${escapeHtml(short)} ${escapeHtml(closeLine)} — ${escapeHtml(cA)} / ${escapeHtml(cB)}</div>` +
+        `<div class="ideal-line-shift-note">Линия изменилась: ${escapeHtml(savedLine)} → ${escapeHtml(closeLine)}</div>` +
+        `<div class="small" style="margin-top:4px;color:#a16207">Δ по коэффициентам не считается: сравниваются разные условия ставки.</div>` +
+      `</div>`;
+    }
     function idealRenderMarketTables(pred, closing, played){
       const markets = (pred && pred.markets) || [];
       if (!markets.length) return '<p class="hint">Нет сохранённых рынков.</p>';
       return markets.map(m => {
         const name = m.market === 'ASIAN_HANDICAP' ? 'Asian Handicap'
           : (m.market === 'TOTAL' ? 'Total' : m.market);
+        const closeM = played ? idealFindClosingMarket(closing, m.market) : null;
+        const lined = m.market === 'ASIAN_HANDICAP' || m.market === 'TOTAL';
+        if (played && lined && closeM && m.line != null && closeM.line != null && !idealLinesEqual(m.line, closeM.line)){
+          return `<h5>${escapeHtml(name)}</h5>` + idealRenderLinedMarketShift(m, closeM);
+        }
         const rows = (m.outcomes || []).map(o => {
           const modelOdds = idealFmtOdds(o.odds);
           const prob = o.probability != null ? idealFmtProb(o.probability) : null;
@@ -12046,19 +12192,42 @@ bash scripts/update_and_serve.sh --start</div>
       const tbody = document.querySelector('#idealListTable tbody');
       if (!tbody) return;
       if (!items || !items.length){
-        tbody.innerHTML = '<tr><td colspan="7" class="hint">Нет сохранённых прогнозов.</td></tr>';
+        idealShowEmptyHint('Для выбранной лиги, сезона и периода календарные матчи не найдены');
         return;
       }
       tbody.innerHTML = items.map(it => {
-        const st = idealStatusLabel(it.status);
-        return `<tr>
+        const pred = String(it.predictionState || '').toUpperCase();
+        const rowClass = pred === 'MISSING' ? 'ideal-row--missing'
+          : (pred === 'CORRUPT' ? 'ideal-row--corrupt' : '');
+        const playedTag = (it.matchPlayed || it.status === 'PLAYED' || it.playedLabel)
+          ? `<div class="ideal-played-tag">${escapeHtml(it.playedLabel || 'Матч уже сыгран')}</div>`
+          : '';
+        let stateHtml = '';
+        if (pred === 'MISSING'){
+          stateHtml = `<div class="ideal-msg-missing">${escapeHtml(it.message || 'Сохраненный прогноз для этого матча не найден')}</div>`;
+        } else if (pred === 'CORRUPT'){
+          stateHtml = `<div class="ideal-msg-corrupt">${escapeHtml(it.message || 'С сохраненным прогнозом для этого матча случилась какая-то беда. Необходима ручная проверка')}</div>`;
+        } else {
+          stateHtml = `<div class="ideal-pred-state">${escapeHtml(idealPredictionStateLabel(pred))}</div>`;
+        }
+        stateHtml += playedTag;
+        const openBtn = (it.canOpen !== false && pred === 'SAVED')
+          ? `<button type="button" class="btn" data-ideal-open="${it.matchId}">Открыть</button>`
+          : '';
+        const hasOdds = pred === 'SAVED' && (it.odds1 || it.oddsX || it.odds2 || it.ahHome || it.oddsOver);
+        const ah2Line = hasOdds ? idealOppositeAhLine(it.ahLine) : null;
+        return `<tr class="${rowClass}">
           <td>${escapeHtml(idealFmtDate(it.matchDate))}</td>
           <td>${escapeHtml((it.homeTeam||'') + ' — ' + (it.awayTeam||''))}</td>
-          <td>${escapeHtml(it.league || '')}</td>
-          <td>${escapeHtml(it.season || '')}</td>
-          <td>${escapeHtml(idealFmtDate(it.savedAt))}</td>
-          <td>${escapeHtml(st)}</td>
-          <td><button type="button" class="btn" data-ideal-open="${it.matchId}">Открыть</button></td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPill(it.odds1) : idealOddsPill(null)}</td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPill(it.oddsX) : idealOddsPill(null)}</td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPill(it.odds2) : idealOddsPill(null)}</td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPairPill(it.ahLine, it.ahHome) : idealOddsPairPill(null, null)}</td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPairPill(ah2Line, it.ahAway) : idealOddsPairPill(null, null)}</td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPairPill(it.totalLine, it.oddsOver) : idealOddsPairPill(null, null)}</td>
+          <td class="ideal-odds-col">${hasOdds ? idealOddsPairPill(it.totalLine, it.oddsUnder) : idealOddsPairPill(null, null)}</td>
+          <td>${stateHtml}</td>
+          <td>${openBtn}</td>
         </tr>`;
       }).join('');
       tbody.querySelectorAll('[data-ideal-open]').forEach(btn => {
@@ -12077,72 +12246,123 @@ bash scripts/update_and_serve.sh --start</div>
       const leagues = (window.__SB && window.__SB.leagues) || [];
       idealLeagueOptions = leagues.map(l => ({ id: String(l.id), name: l.name || String(l.id) }));
       const cur = sel.value;
-      sel.innerHTML = '<option value="">Все лиги</option>' +
+      sel.innerHTML = '<option value="">Выберите лигу</option>' +
         idealLeagueOptions
           .slice()
           .sort((a,b)=>a.name.localeCompare(b.name,'ru'))
-          .map(l => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`)
+          .map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.name)}</option>`)
           .join('');
       if (cur) sel.value = cur;
     }
+    async function idealFillSeasonFilter(){
+      const leagueSel = document.getElementById('idealLeagueFilter');
+      const seasonSel = document.getElementById('idealSeasonFilter');
+      if (!seasonSel) return;
+      const leagueId = (leagueSel && leagueSel.value) || '';
+      const cur = seasonSel.value;
+      if (!leagueId){
+        seasonSel.innerHTML = '<option value="">Выберите сезон</option>';
+        return;
+      }
+      try {
+        await loadSupabaseConfig();
+        const q = new URLSearchParams({
+          select: 'season_id,season_label,matches_count',
+          league_id: `eq.${leagueId}`,
+          order: 'season_label.desc',
+        });
+        const rows = await sbFetch(`/v_season_summary?${q}`);
+        const seasons = (rows || [])
+          .map(r => String(r.season_label || '').trim())
+          .filter(s => s && !/TEST/i.test(s));
+        const uniq = [...new Set(seasons)];
+        seasonSel.innerHTML = '<option value="">Выберите сезон</option>' +
+          uniq.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+        if (cur && uniq.includes(cur)) seasonSel.value = cur;
+      } catch (_e){
+        seasonSel.innerHTML = '<option value="">Выберите сезон</option>';
+        if (cur){
+          seasonSel.innerHTML += `<option value="${escapeHtml(cur)}">${escapeHtml(cur)}</option>`;
+          seasonSel.value = cur;
+        }
+      }
+    }
     async function idealReload(){
-      idealSetStatus('Загрузка…');
       const detail = document.getElementById('idealDetail');
       if (detail){ detail.style.display = 'none'; detail.innerHTML = ''; }
-      const qs = new URLSearchParams();
       const league = (document.getElementById('idealLeagueFilter') || {}).value || '';
       const season = (document.getElementById('idealSeasonFilter') || {}).value || '';
       const team = (document.getElementById('idealTeamFilter') || {}).value || '';
       const dateFrom = (document.getElementById('idealDateFrom') || {}).value || '';
       const dateTo = (document.getElementById('idealDateTo') || {}).value || '';
       const status = (document.getElementById('idealStatusFilter') || {}).value || '';
-      if (league) qs.set('league', league);
-      if (season) qs.set('season', season);
+      if (!league || !season || !dateFrom || !dateTo){
+        idealListCache = [];
+        idealShowEmptyHint('Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы');
+        idealSetStatus('Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы');
+        return;
+      }
+      if (dateTo < dateFrom){
+        idealListCache = [];
+        idealShowEmptyHint('Дата окончания периода не может быть раньше даты начала.');
+        idealSetStatus('Дата окончания периода не может быть раньше даты начала.', true);
+        return;
+      }
+      idealSetStatus('Загрузка…');
+      const qs = new URLSearchParams();
+      qs.set('league', league);
+      qs.set('season', season);
       if (team) qs.set('team', team);
-      if (dateFrom) qs.set('dateFrom', dateFrom);
-      if (dateTo) qs.set('dateTo', dateTo);
+      qs.set('dateFrom', dateFrom);
+      qs.set('dateTo', dateTo);
       if (status) qs.set('status', status);
       qs.set('page', '1');
-      qs.set('pageSize', '100');
+      qs.set('pageSize', '1000');
       try {
         const data = await idealApi('/api/ideal-predictions?' + qs.toString());
         idealListCache = (data && data.items) || [];
-        // Populate seasons from loaded items
-        const seasonSel = document.getElementById('idealSeasonFilter');
-        if (seasonSel){
-          const cur = seasonSel.value;
-          const seasons = [...new Set(idealListCache.map(x => x.season).filter(Boolean))].sort().reverse();
-          // Keep "all" + unique; if filter emptied list, still keep current option
-          const opts = ['<option value="">Все сезоны</option>']
-            .concat(seasons.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`));
-          if (cur && !seasons.includes(cur)) opts.push(`<option value="${escapeHtml(cur)}">${escapeHtml(cur)}</option>`);
-          seasonSel.innerHTML = opts.join('');
-          seasonSel.value = cur || '';
+        if (!idealListCache.length){
+          idealShowEmptyHint(data && data.message
+            ? data.message
+            : 'Для выбранной лиги, сезона и периода календарные матчи не найдены');
+          idealSetStatus(data && data.message
+            ? data.message
+            : 'Календарные матчи не найдены');
+          return;
         }
         idealRenderList(idealListCache);
-        idealSetStatus(`Найдено: ${idealListCache.length}`);
+        idealSetStatus(`Найдено матчей: ${data.total != null ? data.total : idealListCache.length}`);
       } catch (e){
         idealListCache = [];
-        idealRenderList([]);
-        idealSetStatus(
-          (e.code === 'TABLE_MISSING')
-            ? (e.message || 'Таблица ideal_predictions ещё не создана.')
-            : ('Не удалось загрузить сохраненные прогнозы. ' + (e.message || '')),
-          true
-        );
+        idealShowEmptyHint('');
+        const tbody = document.querySelector('#idealListTable tbody');
+        if (tbody) tbody.innerHTML = '';
+        if (e.code === 'FILTERS_REQUIRED' || e.code === 'DATE_RANGE_INVALID'){
+          idealShowEmptyHint(e.message || 'Заполните обязательные фильтры');
+          idealSetStatus(e.message || 'Заполните обязательные фильтры', true);
+        } else if (e.code === 'TABLE_MISSING'){
+          idealSetStatus(e.message || 'Таблица ideal_predictions ещё не создана.', true);
+        } else if (e.code === 'DATA_FETCH_ERROR'){
+          idealSetStatus(e.message || 'Техническая ошибка получения данных.', true);
+        } else {
+          idealSetStatus('Техническая ошибка получения данных. ' + (e.message || ''), true);
+        }
       }
     }
     async function idealInitTab(){
       await idealFillLeagueFilter();
-      await idealReload();
+      await idealFillSeasonFilter();
+      idealListCache = [];
+      idealShowEmptyHint('Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы');
+      idealSetStatus('Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы');
+      const detail = document.getElementById('idealDetail');
+      if (detail){ detail.style.display = 'none'; detail.innerHTML = ''; }
     }
     window.idealInitTab = idealInitTab;
     window.idealOnSuccessfulCalc = idealOnSuccessfulCalc;
     bindClick('idealRefresh', () => { idealReload().catch(e => console.error(e)); });
-    ['idealLeagueFilter','idealSeasonFilter','idealStatusFilter'].forEach(id => {
-      document.getElementById(id)?.addEventListener('change', () => {
-        idealReload().catch(e => console.error(e));
-      });
+    document.getElementById('idealLeagueFilter')?.addEventListener('change', () => {
+      idealFillSeasonFilter().catch(e => console.error(e));
     });
     document.getElementById('idealTeamFilter')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter'){ e.preventDefault(); idealReload().catch(err => console.error(err)); }

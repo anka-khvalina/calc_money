@@ -345,49 +345,200 @@ def test_get_ideal_detail_played_returns_closing_without_mutating_pred():
     assert markets["TOTAL"]["line"] == 2.5
 
 
-def test_list_ideals_status_filter():
-    calls = {"n": 0}
+def test_is_prediction_data_ok():
+    assert ip.is_prediction_data_ok(PRED) is True
+    assert ip.is_prediction_data_ok(None) is False
+    assert ip.is_prediction_data_ok({}) is False
+    assert ip.is_prediction_data_ok({"markets": []}) is False
+    assert ip.is_prediction_data_ok({"markets": [{"market": "1X2", "outcomes": []}]}) is False
+    assert (
+        ip.is_prediction_data_ok(
+            {"markets": [{"market": "1X2", "outcomes": [{"outcome": "HOME", "odds": 1.0}]}]}
+        )
+        is False
+    )
+
+
+def test_classify_prediction_state():
+    assert ip.classify_prediction_state(None) == ip.PRED_STATE_MISSING
+    assert ip.classify_prediction_state({"prediction_data": PRED}) == ip.PRED_STATE_SAVED
+    assert (
+        ip.classify_prediction_state({"prediction_data": {"markets": []}})
+        == ip.PRED_STATE_CORRUPT
+    )
+
+
+def test_brief_odds_summary():
+    s = ip.brief_odds_summary(PRED)
+    assert s is not None
+    assert "1 2.18" in s
+    assert "X 3.4" in s
+    assert "2 3.55" in s
+    assert "AH-0.25" in s
+    assert "1.94/1.96" in s
+    assert "Т2.5" in s
+    assert "1.88/2.02" in s
+    assert ip.brief_odds_summary(None) is None
+    assert ip.brief_odds_summary({"markets": []}) is None
+
+
+def test_prediction_odds_columns():
+    cols = ip.prediction_odds_columns(PRED)
+    assert cols["odds1"] == "2.18"
+    assert cols["oddsX"] == "3.4"
+    assert cols["odds2"] == "3.55"
+    assert cols["ahLine"] == "-0.25"
+    assert cols["ahHome"] == "1.94"
+    assert cols["ahAway"] == "1.96"
+    assert cols["totalLine"] == "2.5"
+    assert cols["oddsOver"] == "1.88"
+    assert cols["oddsUnder"] == "2.02"
+    empty = ip.prediction_odds_columns(None)
+    assert empty["odds1"] is None
+    assert empty["ahLine"] is None
+
+
+def test_list_ideals_requires_mandatory_filters():
+    with pytest.raises(ip.IdealPredictionError) as ei:
+        ip.list_ideals(league="LaLiga", season="2026-27")
+    assert ei.value.code == "FILTERS_REQUIRED"
+    with pytest.raises(ip.IdealPredictionError) as ei2:
+        ip.list_ideals(
+            league="LaLiga",
+            season="2026-27",
+            date_from="2026-12-20",
+            date_to="2026-12-01",
+        )
+    assert ei2.value.code == "DATE_RANGE_INVALID"
+
+
+def test_list_ideals_calendar_left_join_groups_and_messages():
+    """BT-03: calendar is the base; missing/corrupt/saved + played label."""
 
     def fake_request(method, path, body=None, **_kw):
+        if method == "GET" and path.startswith("/v_matches_full"):
+            return [
+                _upcoming_match(
+                    match_id=100,
+                    match_date="2026-12-03",
+                    home_team="A",
+                    away_team="B",
+                ),
+                _played_match(
+                    match_id=101,
+                    match_date="2026-12-01",
+                    home_team="C",
+                    away_team="D",
+                ),
+                _upcoming_match(
+                    match_id=102,
+                    match_date="2026-12-02",
+                    home_team="E",
+                    away_team="F",
+                ),
+            ]
         if method == "GET" and path.startswith("/ideal_predictions"):
             return [
                 {
                     "id": 1,
                     "match_id": 100,
-                    "league_name": "LaLiga",
-                    "season_label": "2026-27",
-                    "home_team": "A",
-                    "away_team": "B",
-                    "match_date": "2026-12-01",
+                    "prediction_data": PRED,
                     "saved_at": "2026-11-01T00:00:00Z",
                 },
                 {
                     "id": 2,
-                    "match_id": 101,
-                    "league_name": "LaLiga",
-                    "season_label": "2026-27",
-                    "home_team": "C",
-                    "away_team": "D",
-                    "match_date": "2026-12-02",
+                    "match_id": 102,
+                    "prediction_data": {"markets": []},
                     "saved_at": "2026-11-02T00:00:00Z",
                 },
             ]
-        if method == "GET" and path.startswith("/v_matches_full"):
-            calls["n"] += 1
-            if "eq.100" in path:
-                return [_upcoming_match(match_id=100)]
-            return [_played_match(match_id=101)]
         raise AssertionError(path)
 
     with patch.object(ip, "_request", side_effect=fake_request):
-        upcoming = ip.list_ideals(status="UPCOMING", page=1, page_size=50)
-        played = ip.list_ideals(status="PLAYED", page=1, page_size=50)
-    assert len(upcoming["items"]) == 1
-    assert upcoming["items"][0]["matchId"] == 100
-    assert upcoming["items"][0]["hasClosingOdds"] is False
-    assert len(played["items"]) == 1
-    assert played["items"][0]["matchId"] == 101
-    assert played["items"][0]["status"] == "PLAYED"
+        out = ip.list_ideals(
+            league=LEAGUE,
+            season="2026-27",
+            date_from="2026-12-01",
+            date_to="2026-12-31",
+            page_size=50,
+        )
+    assert out["total"] == 3
+    states = [x["predictionState"] for x in out["items"]]
+    # group order: SAVED, CORRUPT, MISSING
+    assert states == [
+        ip.PRED_STATE_SAVED,
+        ip.PRED_STATE_CORRUPT,
+        ip.PRED_STATE_MISSING,
+    ]
+    saved, corrupt, missing = out["items"]
+    assert saved["matchId"] == 100
+    assert saved["canOpen"] is True
+    assert saved["message"] is None
+    assert saved["oddsSummary"] and "1 2.18" in saved["oddsSummary"]
+    assert "Т2.5" in saved["oddsSummary"]
+    assert saved["odds1"] == "2.18"
+    assert saved["oddsX"] == "3.4"
+    assert saved["odds2"] == "3.55"
+    assert saved["ahLine"] == "-0.25"
+    assert saved["ahHome"] == "1.94"
+    assert saved["totalLine"] == "2.5"
+    assert saved["oddsOver"] == "1.88"
+    assert saved["oddsUnder"] == "2.02"
+    assert corrupt["matchId"] == 102
+    assert corrupt["message"] == ip.MSG_CORRUPT
+    assert corrupt["canOpen"] is False
+    assert corrupt["oddsSummary"] is None
+    assert corrupt["odds1"] is None
+    assert missing["matchId"] == 101
+    assert missing["matchPlayed"] is True
+    assert missing["playedLabel"] == ip.MSG_PLAYED
+    assert missing["message"] == ip.MSG_MISSING
+    assert missing["oddsSummary"] is None
+    assert missing["odds1"] is None
+    # closing odds must not be substituted into prediction fields
+    assert "predictionData" not in missing
+    assert "closingOdds" not in missing
+
+
+def test_list_ideals_prediction_status_filter_and_empty_calendar():
+    def fake_request(method, path, body=None, **_kw):
+        if method == "GET" and path.startswith("/v_matches_full"):
+            if "2026-01-01" in path:
+                return []
+            return [
+                _upcoming_match(match_id=100, match_date="2026-12-01"),
+                _upcoming_match(match_id=101, match_date="2026-12-02"),
+            ]
+        if method == "GET" and path.startswith("/ideal_predictions"):
+            return [
+                {
+                    "id": 1,
+                    "match_id": 100,
+                    "prediction_data": PRED,
+                    "saved_at": "2026-11-01T00:00:00Z",
+                }
+            ]
+        raise AssertionError(path)
+
+    with patch.object(ip, "_request", side_effect=fake_request):
+        missing = ip.list_ideals(
+            league="LaLiga",
+            season="2026-27",
+            date_from="2026-12-01",
+            date_to="2026-12-31",
+            status="MISSING",
+        )
+        empty = ip.list_ideals(
+            league="LaLiga",
+            season="2026-27",
+            date_from="2026-01-01",
+            date_to="2026-01-31",
+        )
+    assert len(missing["items"]) == 1
+    assert missing["items"][0]["matchId"] == 101
+    assert empty["total"] == 0
+    assert empty["emptyReason"] == "NO_CALENDAR_MATCHES"
+    assert empty["message"] == ip.MSG_NO_MATCHES
 
 
 def test_find_upcoming_match_unique():
@@ -511,11 +662,37 @@ def test_api_get_list_and_detail():
     with patch.object(
         ip,
         "list_ideals",
-        return_value={"items": [{"matchId": 18542, "status": "UPCOMING"}], "page": 1, "pageSize": 50, "total": 1},
+        return_value={
+            "items": [
+                {
+                    "matchId": 18542,
+                    "status": "UPCOMING",
+                    "predictionState": "SAVED",
+                    "canOpen": True,
+                }
+            ],
+            "page": 1,
+            "pageSize": 500,
+            "total": 1,
+            "emptyReason": None,
+            "message": None,
+        },
     ):
-        r = client.get("/api/ideal-predictions?league=LaLiga&status=UPCOMING")
+        r = client.get(
+            "/api/ideal-predictions"
+            "?league=LaLiga&season=2026-27&dateFrom=2026-12-01&dateTo=2026-12-31&status=SAVED"
+        )
     assert r.status_code == 200
     assert r.json()["items"][0]["matchId"] == 18542
+
+    with patch.object(
+        ip,
+        "list_ideals",
+        side_effect=ip.IdealPredictionError("FILTERS_REQUIRED", ip.MSG_FILTERS, 400),
+    ):
+        r_bad = client.get("/api/ideal-predictions")
+    assert r_bad.status_code == 400
+    assert r_bad.json()["detail"]["code"] == "FILTERS_REQUIRED"
 
     with patch.object(
         ip,
@@ -598,6 +775,28 @@ def test_html_has_ideal_tab_and_snapshot_hooks():
     assert "id=\"idealSavePanel\"" in html or "id='idealSavePanel'" in html
     assert "id=\"tab-ideal\"" in html or "id='tab-ideal'" in html
     assert "UNIQUE" not in html  # DB concern stays in SQL
+    # BT-03 UI: preds hidden, mandatory filters empty-state, prediction status values
+    assert '.tab-btn[data-tab="preds"]{ display:none !important; }' in html
+    assert "Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы" in html
+    assert 'option value="SAVED"' in html
+    assert 'option value="MISSING"' in html
+    assert 'option value="CORRUPT"' in html
+    assert "Сохраненный прогноз для этого матча не найден" in html
+    assert "Матч уже сыгран" in html
+    assert "idealOddsPairPill" in html and "idealOppositeAhLine" in html
+    assert "idealRenderLinedMarketShift" in html
+    assert "Линия изменилась:" in html
+    assert "сравниваются разные условия ставки" in html
+    # Date first, state near end; bookmaker-like 1/X/2 + ФОРА 1/2 + ТБ/ТМ
+    _ideal_th = html.split('id="idealListTable"', 1)[1].split("</thead>", 1)[0]
+    assert _ideal_th.find(">Дата матча<") < _ideal_th.find(">Матч<")
+    assert _ideal_th.find(">ТМ<") < _ideal_th.find(">Состояние<")
+    assert ">1<" in _ideal_th and ">X<" in _ideal_th and ">2<" in _ideal_th
+    assert "ФОРА 1" in _ideal_th and "ФОРА 2" in _ideal_th
+    assert ">ТБ<" in _ideal_th and ">ТМ<" in _ideal_th
+    assert "1ф" not in _ideal_th and "Коэффициенты" not in _ideal_th
+    assert "IDEAL_MONTHS_RU" not in html
+    assert "id=\"tab-preds\"" in html or "id='tab-preds'" in html  # section kept, nav hidden
     sql = (ROOT / "docs" / "sql" / "ideal_predictions.sql").read_text(encoding="utf-8")
     assert "UNIQUE (match_id)" in sql
     assert "match_id               bigint" in sql
