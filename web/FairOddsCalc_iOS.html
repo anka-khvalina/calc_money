@@ -1532,8 +1532,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <table id="idealListTable">
           <thead>
             <tr>
-              <th>Дата матча</th>
               <th>Матч</th>
+              <th>Дата матча</th>
               <th>Состояние</th>
               <th>Коэффициенты</th>
               <th></th>
@@ -11692,18 +11692,25 @@ bash scripts/update_and_serve.sh --start</div>
     let idealListCache = [];
     let idealLeagueOptions = [];
 
+    const IDEAL_MONTHS_RU = [
+      'января','февраля','марта','апреля','мая','июня',
+      'июля','августа','сентября','октября','ноября','декабря'
+    ];
     function idealFmtDate(v){
       if (!v) return '—';
       const s = String(v);
       const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+      if (m){
+        const day = String(Number(m[3]));
+        const month = IDEAL_MONTHS_RU[Number(m[2]) - 1] || m[2];
+        return `${day} ${month} ${m[1]}`;
+      }
       try {
         const d = new Date(s);
         if (!isNaN(d.getTime())){
-          const dd = String(d.getDate()).padStart(2,'0');
-          const mm = String(d.getMonth()+1).padStart(2,'0');
-          const yyyy = d.getFullYear();
-          return `${dd}.${mm}.${yyyy}`;
+          const day = String(d.getDate());
+          const month = IDEAL_MONTHS_RU[d.getMonth()] || String(d.getMonth() + 1);
+          return `${day} ${month} ${d.getFullYear()}`;
         }
       } catch (_e){}
       return s;
@@ -12095,8 +12102,8 @@ bash scripts/update_and_serve.sh --start</div>
           ? `<button type="button" class="btn" data-ideal-open="${it.matchId}">Открыть</button>`
           : '';
         return `<tr class="${rowClass}">
-          <td>${escapeHtml(idealFmtDate(it.matchDate))}</td>
           <td>${escapeHtml((it.homeTeam||'') + ' — ' + (it.awayTeam||''))}</td>
+          <td>${escapeHtml(idealFmtDate(it.matchDate))}</td>
           <td>${stateHtml}</td>
           <td>${oddsTxt}</td>
           <td>${openBtn}</td>

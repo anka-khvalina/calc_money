@@ -759,6 +759,10 @@ def test_html_has_ideal_tab_and_snapshot_hooks():
     assert "Матч уже сыгран" in html
     assert ">Коэффициенты<" in html
     assert "oddsSummary" in html
+    assert "IDEAL_MONTHS_RU" in html
+    # Match column before date in Ideal list header
+    _ideal_th = html.split('id="idealListTable"', 1)[1].split("</thead>", 1)[0]
+    assert _ideal_th.find(">Матч<") < _ideal_th.find(">Дата матча<")
     assert "id=\"tab-preds\"" in html or "id='tab-preds'" in html  # section kept, nav hidden
     sql = (ROOT / "docs" / "sql" / "ideal_predictions.sql").read_text(encoding="utf-8")
     assert "UNIQUE (match_id)" in sql
