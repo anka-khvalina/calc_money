@@ -296,6 +296,137 @@ def closing_markets_from_match(m: Mapping[str, Any]) -> Optional[Dict[str, Any]]
     return {"markets": markets} if markets else None
 
 
+MSG_MISSING = "Сохраненный прогноз для этого матча не найден"
+MSG_CORRUPT = (
+    "С сохраненным прогнозом для этого матча случилась какая-то беда. "
+    "Необходима ручная проверка"
+)
+MSG_PLAYED = "Матч уже сыгран"
+MSG_FILTERS = "Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы"
+MSG_NO_MATCHES = "Для выбранной лиги, сезона и периода календарные матчи не найдены"
+
+PRED_STATE_SAVED = "SAVED"
+PRED_STATE_MISSING = "MISSING"
+PRED_STATE_CORRUPT = "CORRUPT"
+PRED_STATE_ORDER = (PRED_STATE_SAVED, PRED_STATE_CORRUPT, PRED_STATE_MISSING)
+
+
+def _date10(v: Optional[str]) -> str:
+    return str(v or "").strip()[:10]
+
+
+def is_prediction_data_ok(prediction_data: Any) -> bool:
+    """True when saved snapshot has usable market odds (FT-14 inverse)."""
+    if not isinstance(prediction_data, Mapping):
+        return False
+    markets = prediction_data.get("markets")
+    if not isinstance(markets, list) or not markets:
+        return False
+    ok_markets = 0
+    for m in markets:
+        if not isinstance(m, Mapping):
+            continue
+        outcomes = m.get("outcomes")
+        if not isinstance(outcomes, list) or not outcomes:
+            continue
+        odds_ok = 0
+        for o in outcomes:
+            if not isinstance(o, Mapping):
+                continue
+            n = _num(o.get("odds"))
+            if n is not None and n > 1:
+                odds_ok += 1
+        if odds_ok >= 1:
+            ok_markets += 1
+    return ok_markets >= 1
+
+
+def classify_prediction_state(ideal_row: Optional[Mapping[str, Any]]) -> str:
+    if not ideal_row:
+        return PRED_STATE_MISSING
+    if is_prediction_data_ok(ideal_row.get("prediction_data")):
+        return PRED_STATE_SAVED
+    return PRED_STATE_CORRUPT
+
+
+def _fetch_calendar_matches(
+    *,
+    league: str,
+    season: str,
+    date_from: str,
+    date_to: str,
+    team: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """All v_matches_full rows for league+season+inclusive date range (paginated)."""
+    select = (
+        "match_id,league_id,league_name,season_id,season_label,"
+        "home_team_id,away_team_id,home_team,away_team,match_date,"
+        "home_odds,draw_odds,away_odds,closing_ah_home,ah_home_odds,ah_away_odds,"
+        "closing_total_line,over_odds,under_odds"
+    )
+    base: List[str] = [
+        f"select={select}",
+        "order=match_date.asc,match_id.asc",
+        f"season_label=eq.{urllib.parse.quote(season)}",
+        f"match_date=gte.{urllib.parse.quote(date_from)}",
+        f"match_date=lte.{urllib.parse.quote(date_to)}",
+    ]
+    if len(str(league)) == 36 and "-" in str(league):
+        base.append(f"league_id=eq.{urllib.parse.quote(str(league))}")
+    else:
+        base.append(f"league_name=eq.{urllib.parse.quote(str(league))}")
+    if team:
+        t = urllib.parse.quote(f"%{team}%")
+        base.append(f"or=(home_team.ilike.{t},away_team.ilike.{t})")
+
+    page_limit = 500
+    offset = 0
+    out: List[Dict[str, Any]] = []
+    while True:
+        path = "/v_matches_full?" + "&".join(
+            base + [f"limit={page_limit}", f"offset={offset}"]
+        )
+        rows = _request("GET", path)
+        if not isinstance(rows, list) or not rows:
+            break
+        for row in rows:
+            if isinstance(row, dict) and row.get("match_id") is not None:
+                out.append(dict(row))
+        if len(rows) < page_limit:
+            break
+        offset += page_limit
+        if offset > 20000:  # safety
+            break
+    return out
+
+
+def _fetch_ideals_by_match_ids(match_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """Map match_id -> ideal_predictions row. Chunks PostgREST in.(...) queries."""
+    by_id: Dict[int, Dict[str, Any]] = {}
+    uniq = sorted({int(x) for x in match_ids if x is not None})
+    chunk = 80
+    for i in range(0, len(uniq), chunk):
+        part = uniq[i : i + chunk]
+        if not part:
+            continue
+        ids = ",".join(str(x) for x in part)
+        q = urllib.parse.urlencode({"select": "*", "match_id": f"in.({ids})"})
+        # urlencode quotes parentheses; PostgREST wants literal in.(...)
+        path = f"/ideal_predictions?select=*&match_id=in.({ids})"
+        try:
+            rows = _request("GET", path)
+        except SupabaseError:
+            # fallback encoded form
+            rows = _request("GET", f"/ideal_predictions?{q}")
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict) or row.get("match_id") is None:
+                continue
+            by_id[int(row["match_id"])] = dict(row)
+    return by_id
+
+
 def list_ideals(
     *,
     league: Optional[str] = None,
@@ -305,68 +436,137 @@ def list_ideals(
     date_to: Optional[str] = None,
     status: Optional[str] = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = 500,
 ) -> Dict[str, Any]:
+    """
+    BT-03: calendar-first list = v_matches_full LEFT JOIN ideal_predictions.
+
+    Mandatory: concrete league, season, date_from, date_to.
+    status filter (optional): SAVED | MISSING | CORRUPT | ALL (also legacy UPCOMING/PLAYED).
+    """
     page = max(1, int(page or 1))
-    page_size = min(200, max(1, int(page_size or 50)))
-    filters: List[str] = ["select=*", "order=match_date.desc"]
-    if league:
-        # accept league name or uuid
-        if len(str(league)) == 36 and "-" in str(league):
-            filters.append(f"league_id=eq.{urllib.parse.quote(str(league))}")
-        else:
-            filters.append(f"league_name=eq.{urllib.parse.quote(str(league))}")
-    if season:
-        filters.append(f"season_label=eq.{urllib.parse.quote(str(season))}")
-    if date_from:
-        filters.append(f"match_date=gte.{urllib.parse.quote(str(date_from)[:10])}")
-    if date_to:
-        filters.append(f"match_date=lte.{urllib.parse.quote(str(date_to)[:10])}")
-    if team:
-        t = urllib.parse.quote(f"%{team}%")
-        filters.append(f"or=(home_team.ilike.{t},away_team.ilike.{t})")
-    # fetch a bit more then filter status client-side (status from match closing)
-    filters.append(f"limit={page_size * 3}")
-    filters.append(f"offset={(page - 1) * page_size}")
-    path = "/ideal_predictions?" + "&".join(filters)
-    rows = _request("GET", path)
-    if not isinstance(rows, list):
-        rows = []
+    page_size = min(1000, max(1, int(page_size or 500)))
+
+    league_s = str(league or "").strip()
+    season_s = str(season or "").strip()
+    df = _date10(date_from)
+    dt = _date10(date_to)
+    if not league_s or not season_s or not df or not dt:
+        raise IdealPredictionError("FILTERS_REQUIRED", MSG_FILTERS, 400)
+    if league_s.lower() in ("all", "все", "все лиги") or season_s.lower() in (
+        "all",
+        "все",
+        "все сезоны",
+    ):
+        raise IdealPredictionError("FILTERS_REQUIRED", MSG_FILTERS, 400)
+    if dt < df:
+        raise IdealPredictionError(
+            "DATE_RANGE_INVALID",
+            "Дата окончания периода не может быть раньше даты начала.",
+            400,
+        )
+
+    try:
+        matches = _fetch_calendar_matches(
+            league=league_s,
+            season=season_s,
+            date_from=df,
+            date_to=dt,
+            team=(str(team).strip() if team else None) or None,
+        )
+    except SupabaseError as e:
+        raise IdealPredictionError(
+            "DATA_FETCH_ERROR",
+            "Не удалось получить календарные матчи. Повторите позже.",
+            502,
+        ) from e
+
+    if not matches:
+        return {
+            "items": [],
+            "page": page,
+            "pageSize": page_size,
+            "total": 0,
+            "emptyReason": "NO_CALENDAR_MATCHES",
+            "message": MSG_NO_MATCHES,
+        }
+
+    try:
+        ideals = _fetch_ideals_by_match_ids([int(m["match_id"]) for m in matches])
+    except SupabaseError as e:
+        raise IdealPredictionError(
+            "DATA_FETCH_ERROR",
+            "Не удалось получить сохранённые идеальные прогнозы. Повторите позже.",
+            502,
+        ) from e
+
+    status_u = (str(status or "").strip().upper() or "ALL")
     items: List[Dict[str, Any]] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        mid = int(row["match_id"])
-        try:
-            match = fetch_match(mid)
-            played = has_closing_odds(match)
-        except IdealPredictionError:
-            played = False
-            match = {}
-        st = "PLAYED" if played else "UPCOMING"
-        if status and status.upper() not in ("", "ALL") and st != status.upper():
-            continue
+    for m in matches:
+        mid = int(m["match_id"])
+        ideal = ideals.get(mid)
+        pred_state = classify_prediction_state(ideal)
+        played = has_closing_odds(m)
+        match_status = "PLAYED" if played else "UPCOMING"
+
+        # Optional filters
+        if status_u not in ("", "ALL"):
+            if status_u in (PRED_STATE_SAVED, PRED_STATE_MISSING, PRED_STATE_CORRUPT):
+                if pred_state != status_u:
+                    continue
+            elif status_u in ("UPCOMING", "PLAYED"):
+                # legacy match-played filter still accepted
+                if match_status != status_u:
+                    continue
+            else:
+                continue
+
+        message = None
+        if pred_state == PRED_STATE_MISSING:
+            message = MSG_MISSING
+        elif pred_state == PRED_STATE_CORRUPT:
+            message = MSG_CORRUPT
+
         items.append(
             {
-                "id": row.get("id"),
+                "id": ideal.get("id") if ideal else None,
                 "matchId": mid,
-                "league": row.get("league_name"),
-                "season": row.get("season_label"),
-                "homeTeam": row.get("home_team"),
-                "awayTeam": row.get("away_team"),
-                "matchDate": row.get("match_date"),
-                "savedAt": row.get("saved_at"),
-                "status": st,
+                "league": m.get("league_name") or (ideal or {}).get("league_name"),
+                "season": m.get("season_label") or (ideal or {}).get("season_label"),
+                "homeTeam": m.get("home_team") or (ideal or {}).get("home_team"),
+                "awayTeam": m.get("away_team") or (ideal or {}).get("away_team"),
+                "matchDate": str(m.get("match_date") or "")[:10],
+                "savedAt": (ideal or {}).get("saved_at"),
+                "status": match_status,
                 "hasClosingOdds": played,
+                "matchPlayed": played,
+                "playedLabel": MSG_PLAYED if played else None,
+                "predictionState": pred_state,
+                "message": message,
+                "canOpen": pred_state == PRED_STATE_SAVED,
             }
         )
-        if len(items) >= page_size:
-            break
+
+    # FT-16: group by prediction state, then chronological by match date
+    rank = {s: i for i, s in enumerate(PRED_STATE_ORDER)}
+    items.sort(
+        key=lambda it: (
+            rank.get(str(it.get("predictionState")), 99),
+            str(it.get("matchDate") or ""),
+            int(it.get("matchId") or 0),
+        )
+    )
+
+    total = len(items)
+    start = (page - 1) * page_size
+    page_items = items[start : start + page_size]
     return {
-        "items": items,
+        "items": page_items,
         "page": page,
         "pageSize": page_size,
-        "total": len(items),
+        "total": total,
+        "emptyReason": None,
+        "message": None,
     }
 
 

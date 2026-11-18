@@ -142,8 +142,9 @@ async def ideal_predictions_list(
     dateTo: Optional[str] = None,
     status: Optional[str] = None,
     page: int = Query(1, ge=1),
-    pageSize: int = Query(50, ge=1, le=200),
+    pageSize: int = Query(500, ge=1, le=1000),
 ) -> dict:
+    """BT-03: calendar LEFT JOIN ideal_predictions. Read-only; no model/calc side effects."""
     try:
         return await asyncio.to_thread(
             ip.list_ideals,
@@ -156,6 +157,8 @@ async def ideal_predictions_list(
             page=page,
             page_size=pageSize,
         )
+    except ip.IdealPredictionError as exc:
+        raise _ideal_http(exc) from exc
     except Exception as e:
         # Table may not exist yet
         detail = str(e)

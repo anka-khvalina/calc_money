@@ -376,6 +376,15 @@
     .ideal-detail th, .ideal-detail td{ border-bottom:1px solid #e2e8f0; padding:6px 8px; text-align:left; }
     .ideal-detail td.num, .ideal-detail th.num{ text-align:right; font-variant-numeric:tabular-nums; }
     .ideal-settings{ font-size:13px; color:#334155; line-height:1.55; margin:0; white-space:pre-wrap; }
+    #idealListTable tr.ideal-row--missing td,
+    #idealListTable tr.ideal-row--corrupt td{ background:#fef2f2; }
+    #idealListTable tr.ideal-row--missing,
+    #idealListTable tr.ideal-row--corrupt{ outline:1px solid #fecaca; outline-offset:-1px; }
+    .ideal-msg-missing{ color:#b91c1c; font-weight:600; }
+    .ideal-msg-corrupt{ color:#9f1239; font-weight:600; }
+    .ideal-played-tag{ display:inline-block; margin-top:4px; padding:2px 6px; font-size:11px; color:#475569; background:#e2e8f0; border-radius:4px; }
+    .ideal-pred-state{ font-size:12px; color:#334155; }
+    .tab-btn[data-tab="preds"]{ display:none !important; }
     .goal-predict-placeholder{ margin:0; font-size:13px; }
     .goal-predict-header{
       margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--line);
@@ -1480,35 +1489,36 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
     <section id="tab-ideal" class="panel">
       <h3 style="margin:0 0 8px;font-size:16px;color:#10204a">Идеальные прогнозы</h3>
       <p class="small" style="margin:0 0 10px">
-        Сохранённые подтверждённые расчёты модели. После появления closing odds они показываются рядом с прогнозом (без изменения snapshot).
+        Календарные матчи выбранной лиги/сезона/периода и сохранённые идеальные прогнозы в одной таблице (только просмотр, без пересчёта).
       </p>
       <div class="ideal-toolbar">
         <div class="field" style="min-width:160px">
-          <label>Лига</label>
-          <select id="idealLeagueFilter"><option value="">Все лиги</option></select>
+          <label>Лига *</label>
+          <select id="idealLeagueFilter"><option value="">Выберите лигу</option></select>
         </div>
         <div class="field" style="min-width:140px">
-          <label>Сезон</label>
-          <select id="idealSeasonFilter"><option value="">Все сезоны</option></select>
+          <label>Сезон *</label>
+          <select id="idealSeasonFilter"><option value="">Выберите сезон</option></select>
         </div>
         <div class="field" style="min-width:140px">
           <label>Команда</label>
           <input id="idealTeamFilter" type="text" placeholder="часть названия" />
         </div>
         <div class="field" style="min-width:120px">
-          <label>С даты</label>
+          <label>С даты *</label>
           <input id="idealDateFrom" type="date" />
         </div>
         <div class="field" style="min-width:120px">
-          <label>По дату</label>
+          <label>По дату *</label>
           <input id="idealDateTo" type="date" />
         </div>
-        <div class="field" style="min-width:120px">
-          <label>Статус</label>
+        <div class="field" style="min-width:160px">
+          <label>Статус прогноза</label>
           <select id="idealStatusFilter">
             <option value="">Все</option>
-            <option value="UPCOMING">Будущие</option>
-            <option value="PLAYED">Сыгранные</option>
+            <option value="SAVED">С сохранённым прогнозом</option>
+            <option value="MISSING">Без сохранённого прогноза</option>
+            <option value="CORRUPT">С повреждённым прогнозом</option>
           </select>
         </div>
         <button type="button" id="idealRefresh" class="btn primary">Обновить</button>
@@ -1523,7 +1533,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <th>Лига</th>
               <th>Сезон</th>
               <th>Дата сохранения</th>
-              <th>Статус</th>
+              <th>Состояние</th>
               <th></th>
             </tr>
           </thead>
@@ -11945,6 +11955,17 @@ bash scripts/update_and_serve.sh --start</div>
     function idealStatusLabel(st){
       return st === 'PLAYED' ? 'Сыгран' : 'Будущий';
     }
+    function idealPredictionStateLabel(st){
+      if (st === 'SAVED') return 'Сохранён';
+      if (st === 'MISSING') return 'Нет прогноза';
+      if (st === 'CORRUPT') return 'Повреждён';
+      return st || '—';
+    }
+    function idealShowEmptyHint(msg){
+      const tbody = document.querySelector('#idealListTable tbody');
+      if (!tbody) return;
+      tbody.innerHTML = `<tr><td colspan="7" class="hint">${escapeHtml(msg || 'Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы')}</td></tr>`;
+    }
     function idealFindClosingOdds(closing, market, line, outcome){
       if (!closing || !Array.isArray(closing.markets)) return null;
       const m = closing.markets.find(x => {
@@ -12046,19 +12067,36 @@ bash scripts/update_and_serve.sh --start</div>
       const tbody = document.querySelector('#idealListTable tbody');
       if (!tbody) return;
       if (!items || !items.length){
-        tbody.innerHTML = '<tr><td colspan="7" class="hint">Нет сохранённых прогнозов.</td></tr>';
+        idealShowEmptyHint('Для выбранной лиги, сезона и периода календарные матчи не найдены');
         return;
       }
       tbody.innerHTML = items.map(it => {
-        const st = idealStatusLabel(it.status);
-        return `<tr>
+        const pred = String(it.predictionState || '').toUpperCase();
+        const rowClass = pred === 'MISSING' ? 'ideal-row--missing'
+          : (pred === 'CORRUPT' ? 'ideal-row--corrupt' : '');
+        const playedTag = (it.matchPlayed || it.status === 'PLAYED' || it.playedLabel)
+          ? `<div class="ideal-played-tag">${escapeHtml(it.playedLabel || 'Матч уже сыгран')}</div>`
+          : '';
+        let stateHtml = '';
+        if (pred === 'MISSING'){
+          stateHtml = `<div class="ideal-msg-missing">${escapeHtml(it.message || 'Сохраненный прогноз для этого матча не найден')}</div>`;
+        } else if (pred === 'CORRUPT'){
+          stateHtml = `<div class="ideal-msg-corrupt">${escapeHtml(it.message || 'С сохраненным прогнозом для этого матча случилась какая-то беда. Необходима ручная проверка')}</div>`;
+        } else {
+          stateHtml = `<div class="ideal-pred-state">${escapeHtml(idealPredictionStateLabel(pred))}</div>`;
+        }
+        stateHtml += playedTag;
+        const openBtn = (it.canOpen !== false && pred === 'SAVED')
+          ? `<button type="button" class="btn" data-ideal-open="${it.matchId}">Открыть</button>`
+          : '';
+        return `<tr class="${rowClass}">
           <td>${escapeHtml(idealFmtDate(it.matchDate))}</td>
           <td>${escapeHtml((it.homeTeam||'') + ' — ' + (it.awayTeam||''))}</td>
           <td>${escapeHtml(it.league || '')}</td>
           <td>${escapeHtml(it.season || '')}</td>
-          <td>${escapeHtml(idealFmtDate(it.savedAt))}</td>
-          <td>${escapeHtml(st)}</td>
-          <td><button type="button" class="btn" data-ideal-open="${it.matchId}">Открыть</button></td>
+          <td>${escapeHtml(it.savedAt ? idealFmtDate(it.savedAt) : '—')}</td>
+          <td>${stateHtml}</td>
+          <td>${openBtn}</td>
         </tr>`;
       }).join('');
       tbody.querySelectorAll('[data-ideal-open]').forEach(btn => {
@@ -12077,72 +12115,123 @@ bash scripts/update_and_serve.sh --start</div>
       const leagues = (window.__SB && window.__SB.leagues) || [];
       idealLeagueOptions = leagues.map(l => ({ id: String(l.id), name: l.name || String(l.id) }));
       const cur = sel.value;
-      sel.innerHTML = '<option value="">Все лиги</option>' +
+      sel.innerHTML = '<option value="">Выберите лигу</option>' +
         idealLeagueOptions
           .slice()
           .sort((a,b)=>a.name.localeCompare(b.name,'ru'))
-          .map(l => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`)
+          .map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.name)}</option>`)
           .join('');
       if (cur) sel.value = cur;
     }
+    async function idealFillSeasonFilter(){
+      const leagueSel = document.getElementById('idealLeagueFilter');
+      const seasonSel = document.getElementById('idealSeasonFilter');
+      if (!seasonSel) return;
+      const leagueId = (leagueSel && leagueSel.value) || '';
+      const cur = seasonSel.value;
+      if (!leagueId){
+        seasonSel.innerHTML = '<option value="">Выберите сезон</option>';
+        return;
+      }
+      try {
+        await loadSupabaseConfig();
+        const q = new URLSearchParams({
+          select: 'season_id,season_label,matches_count',
+          league_id: `eq.${leagueId}`,
+          order: 'season_label.desc',
+        });
+        const rows = await sbFetch(`/v_season_summary?${q}`);
+        const seasons = (rows || [])
+          .map(r => String(r.season_label || '').trim())
+          .filter(s => s && !/TEST/i.test(s));
+        const uniq = [...new Set(seasons)];
+        seasonSel.innerHTML = '<option value="">Выберите сезон</option>' +
+          uniq.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+        if (cur && uniq.includes(cur)) seasonSel.value = cur;
+      } catch (_e){
+        seasonSel.innerHTML = '<option value="">Выберите сезон</option>';
+        if (cur){
+          seasonSel.innerHTML += `<option value="${escapeHtml(cur)}">${escapeHtml(cur)}</option>`;
+          seasonSel.value = cur;
+        }
+      }
+    }
     async function idealReload(){
-      idealSetStatus('Загрузка…');
       const detail = document.getElementById('idealDetail');
       if (detail){ detail.style.display = 'none'; detail.innerHTML = ''; }
-      const qs = new URLSearchParams();
       const league = (document.getElementById('idealLeagueFilter') || {}).value || '';
       const season = (document.getElementById('idealSeasonFilter') || {}).value || '';
       const team = (document.getElementById('idealTeamFilter') || {}).value || '';
       const dateFrom = (document.getElementById('idealDateFrom') || {}).value || '';
       const dateTo = (document.getElementById('idealDateTo') || {}).value || '';
       const status = (document.getElementById('idealStatusFilter') || {}).value || '';
-      if (league) qs.set('league', league);
-      if (season) qs.set('season', season);
+      if (!league || !season || !dateFrom || !dateTo){
+        idealListCache = [];
+        idealShowEmptyHint('Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы');
+        idealSetStatus('Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы');
+        return;
+      }
+      if (dateTo < dateFrom){
+        idealListCache = [];
+        idealShowEmptyHint('Дата окончания периода не может быть раньше даты начала.');
+        idealSetStatus('Дата окончания периода не может быть раньше даты начала.', true);
+        return;
+      }
+      idealSetStatus('Загрузка…');
+      const qs = new URLSearchParams();
+      qs.set('league', league);
+      qs.set('season', season);
       if (team) qs.set('team', team);
-      if (dateFrom) qs.set('dateFrom', dateFrom);
-      if (dateTo) qs.set('dateTo', dateTo);
+      qs.set('dateFrom', dateFrom);
+      qs.set('dateTo', dateTo);
       if (status) qs.set('status', status);
       qs.set('page', '1');
-      qs.set('pageSize', '100');
+      qs.set('pageSize', '1000');
       try {
         const data = await idealApi('/api/ideal-predictions?' + qs.toString());
         idealListCache = (data && data.items) || [];
-        // Populate seasons from loaded items
-        const seasonSel = document.getElementById('idealSeasonFilter');
-        if (seasonSel){
-          const cur = seasonSel.value;
-          const seasons = [...new Set(idealListCache.map(x => x.season).filter(Boolean))].sort().reverse();
-          // Keep "all" + unique; if filter emptied list, still keep current option
-          const opts = ['<option value="">Все сезоны</option>']
-            .concat(seasons.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`));
-          if (cur && !seasons.includes(cur)) opts.push(`<option value="${escapeHtml(cur)}">${escapeHtml(cur)}</option>`);
-          seasonSel.innerHTML = opts.join('');
-          seasonSel.value = cur || '';
+        if (!idealListCache.length){
+          idealShowEmptyHint(data && data.message
+            ? data.message
+            : 'Для выбранной лиги, сезона и периода календарные матчи не найдены');
+          idealSetStatus(data && data.message
+            ? data.message
+            : 'Календарные матчи не найдены');
+          return;
         }
         idealRenderList(idealListCache);
-        idealSetStatus(`Найдено: ${idealListCache.length}`);
+        idealSetStatus(`Найдено матчей: ${data.total != null ? data.total : idealListCache.length}`);
       } catch (e){
         idealListCache = [];
-        idealRenderList([]);
-        idealSetStatus(
-          (e.code === 'TABLE_MISSING')
-            ? (e.message || 'Таблица ideal_predictions ещё не создана.')
-            : ('Не удалось загрузить сохраненные прогнозы. ' + (e.message || '')),
-          true
-        );
+        idealShowEmptyHint('');
+        const tbody = document.querySelector('#idealListTable tbody');
+        if (tbody) tbody.innerHTML = '';
+        if (e.code === 'FILTERS_REQUIRED' || e.code === 'DATE_RANGE_INVALID'){
+          idealShowEmptyHint(e.message || 'Заполните обязательные фильтры');
+          idealSetStatus(e.message || 'Заполните обязательные фильтры', true);
+        } else if (e.code === 'TABLE_MISSING'){
+          idealSetStatus(e.message || 'Таблица ideal_predictions ещё не создана.', true);
+        } else if (e.code === 'DATA_FETCH_ERROR'){
+          idealSetStatus(e.message || 'Техническая ошибка получения данных.', true);
+        } else {
+          idealSetStatus('Техническая ошибка получения данных. ' + (e.message || ''), true);
+        }
       }
     }
     async function idealInitTab(){
       await idealFillLeagueFilter();
-      await idealReload();
+      await idealFillSeasonFilter();
+      idealListCache = [];
+      idealShowEmptyHint('Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы');
+      idealSetStatus('Выберите лигу, сезон и период, чтобы показать матчи и идеальные прогнозы');
+      const detail = document.getElementById('idealDetail');
+      if (detail){ detail.style.display = 'none'; detail.innerHTML = ''; }
     }
     window.idealInitTab = idealInitTab;
     window.idealOnSuccessfulCalc = idealOnSuccessfulCalc;
     bindClick('idealRefresh', () => { idealReload().catch(e => console.error(e)); });
-    ['idealLeagueFilter','idealSeasonFilter','idealStatusFilter'].forEach(id => {
-      document.getElementById(id)?.addEventListener('change', () => {
-        idealReload().catch(e => console.error(e));
-      });
+    document.getElementById('idealLeagueFilter')?.addEventListener('change', () => {
+      idealFillSeasonFilter().catch(e => console.error(e));
     });
     document.getElementById('idealTeamFilter')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter'){ e.preventDefault(); idealReload().catch(err => console.error(err)); }
