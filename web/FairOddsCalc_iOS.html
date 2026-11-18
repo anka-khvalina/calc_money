@@ -376,35 +376,46 @@
     .ideal-detail th, .ideal-detail td{ border-bottom:1px solid #e2e8f0; padding:6px 8px; text-align:left; }
     .ideal-detail td.num, .ideal-detail th.num{ text-align:right; font-variant-numeric:tabular-nums; }
     .ideal-settings{ font-size:13px; color:#334155; line-height:1.55; margin:0; white-space:pre-wrap; }
+    #tab-ideal .table-wrap{ margin-top:6px; width:max-content; max-width:100%; }
+    #idealListTable{
+      width:max-content; min-width:0; table-layout:auto; font-size:12px;
+    }
+    #idealListTable th,
+    #idealListTable td{
+      padding:4px 6px; font-size:12px; vertical-align:middle; white-space:nowrap;
+    }
+    #idealListTable th{ background:#f8fafc; color:#475569; font-weight:600; }
     #idealListTable tr.ideal-row--missing td,
     #idealListTable tr.ideal-row--corrupt td{ background:#fef2f2; }
     #idealListTable tr.ideal-row--missing,
     #idealListTable tr.ideal-row--corrupt{ outline:1px solid #fecaca; outline-offset:-1px; }
-    .ideal-msg-missing{ color:#b91c1c; font-weight:600; }
-    .ideal-msg-corrupt{ color:#9f1239; font-weight:600; }
-    .ideal-played-tag{ display:inline-block; margin-top:4px; padding:2px 6px; font-size:11px; color:#475569; background:#e2e8f0; border-radius:4px; }
-    .ideal-pred-state{ font-size:12px; color:#334155; }
+    .ideal-msg-missing{ color:#b91c1c; font-weight:600; font-size:11px; max-width:220px; white-space:normal; line-height:1.25; }
+    .ideal-msg-corrupt{ color:#9f1239; font-weight:600; font-size:11px; max-width:240px; white-space:normal; line-height:1.25; }
+    .ideal-played-tag{ display:inline-block; margin-top:2px; padding:1px 5px; font-size:10px; color:#475569; background:#e2e8f0; border-radius:3px; }
+    .ideal-pred-state{ font-size:11px; color:#334155; }
     .ideal-odds-summary{
       font-size:12px; color:#1e293b; line-height:1.45; font-variant-numeric:tabular-nums;
       max-width:320px; white-space:normal;
     }
     #idealListTable th.ideal-odds-col{
-      text-align:center; font-size:11px; font-weight:600; color:#64748b; letter-spacing:0.02em;
-      white-space:nowrap; padding:8px 6px;
+      text-align:center; font-size:10px; font-weight:600; color:#64748b;
+      white-space:nowrap; padding:4px 3px;
     }
     #idealListTable td.ideal-odds-col{
-      text-align:center; vertical-align:middle; padding:6px 4px; white-space:nowrap;
+      text-align:center; vertical-align:middle; padding:3px 2px; white-space:nowrap;
     }
     .ideal-odds-pill{
-      display:inline-flex; align-items:center; justify-content:center; gap:6px;
-      min-width:52px; padding:6px 10px; border-radius:8px;
-      background:#f1f5f9; color:#0f172a; font-size:13px; font-weight:600;
-      font-variant-numeric:tabular-nums; line-height:1.2;
+      display:inline-flex; align-items:center; justify-content:center; gap:4px;
+      min-width:0; padding:3px 6px; border-radius:6px;
+      background:#f1f5f9; color:#0f172a; font-size:12px; font-weight:600;
+      font-variant-numeric:tabular-nums; line-height:1.15;
     }
-    .ideal-odds-pill--pair{ min-width:88px; padding:6px 8px; }
+    .ideal-odds-pill--pair{ padding:3px 5px; }
     .ideal-odds-line{ color:#2563eb; font-weight:700; }
     .ideal-odds-val{ color:#0f172a; font-weight:600; }
-    .ideal-odds-empty{ color:#94a3b8; font-size:13px; }
+    .ideal-odds-empty{ color:#94a3b8; font-size:12px; }
+    #idealListTable td:last-child{ padding-left:4px; padding-right:4px; }
+    #idealListTable .btn{ padding:3px 8px; font-size:11px; }
     .tab-btn[data-tab="preds"]{ display:none !important; }
     .goal-predict-placeholder{ margin:0; font-size:13px; }
     .goal-predict-header{
