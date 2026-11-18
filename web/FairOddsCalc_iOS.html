@@ -1560,9 +1560,8 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
         <table id="idealListTable">
           <thead>
             <tr>
-              <th>Матч</th>
               <th>Дата матча</th>
-              <th>Состояние</th>
+              <th>Матч</th>
               <th class="ideal-odds-col">1</th>
               <th class="ideal-odds-col">X</th>
               <th class="ideal-odds-col">2</th>
@@ -1570,6 +1569,7 @@ Osasuna,Leganes,2.40,3.25,3.10</textarea>
               <th class="ideal-odds-col">ФОРА 2</th>
               <th class="ideal-odds-col">ТБ</th>
               <th class="ideal-odds-col">ТМ</th>
+              <th>Состояние</th>
               <th></th>
             </tr>
           </thead>
@@ -12160,9 +12160,8 @@ bash scripts/update_and_serve.sh --start</div>
         const hasOdds = pred === 'SAVED' && (it.odds1 || it.oddsX || it.odds2 || it.ahHome || it.oddsOver);
         const ah2Line = hasOdds ? idealOppositeAhLine(it.ahLine) : null;
         return `<tr class="${rowClass}">
-          <td>${escapeHtml((it.homeTeam||'') + ' — ' + (it.awayTeam||''))}</td>
           <td>${escapeHtml(idealFmtDate(it.matchDate))}</td>
-          <td>${stateHtml}</td>
+          <td>${escapeHtml((it.homeTeam||'') + ' — ' + (it.awayTeam||''))}</td>
           <td class="ideal-odds-col">${hasOdds ? idealOddsPill(it.odds1) : idealOddsPill(null)}</td>
           <td class="ideal-odds-col">${hasOdds ? idealOddsPill(it.oddsX) : idealOddsPill(null)}</td>
           <td class="ideal-odds-col">${hasOdds ? idealOddsPill(it.odds2) : idealOddsPill(null)}</td>
@@ -12170,6 +12169,7 @@ bash scripts/update_and_serve.sh --start</div>
           <td class="ideal-odds-col">${hasOdds ? idealOddsPairPill(ah2Line, it.ahAway) : idealOddsPairPill(null, null)}</td>
           <td class="ideal-odds-col">${hasOdds ? idealOddsPairPill(it.totalLine, it.oddsOver) : idealOddsPairPill(null, null)}</td>
           <td class="ideal-odds-col">${hasOdds ? idealOddsPairPill(it.totalLine, it.oddsUnder) : idealOddsPairPill(null, null)}</td>
+          <td>${stateHtml}</td>
           <td>${openBtn}</td>
         </tr>`;
       }).join('');

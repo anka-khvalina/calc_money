@@ -784,9 +784,10 @@ def test_html_has_ideal_tab_and_snapshot_hooks():
     assert "Сохраненный прогноз для этого матча не найден" in html
     assert "Матч уже сыгран" in html
     assert "idealOddsPairPill" in html and "idealOppositeAhLine" in html
-    # Match column before date; bookmaker-like 1/X/2 + ФОРА 1/2 + ТБ/ТМ
+    # Date first, state near end; bookmaker-like 1/X/2 + ФОРА 1/2 + ТБ/ТМ
     _ideal_th = html.split('id="idealListTable"', 1)[1].split("</thead>", 1)[0]
-    assert _ideal_th.find(">Матч<") < _ideal_th.find(">Дата матча<")
+    assert _ideal_th.find(">Дата матча<") < _ideal_th.find(">Матч<")
+    assert _ideal_th.find(">ТМ<") < _ideal_th.find(">Состояние<")
     assert ">1<" in _ideal_th and ">X<" in _ideal_th and ">2<" in _ideal_th
     assert "ФОРА 1" in _ideal_th and "ФОРА 2" in _ideal_th
     assert ">ТБ<" in _ideal_th and ">ТМ<" in _ideal_th
