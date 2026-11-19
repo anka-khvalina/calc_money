@@ -8468,6 +8468,16 @@ bash scripts/update_and_serve.sh --start</div>
         });
         const rows = await sbFetch(`/match_odds_charts?${q}`);
         const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+        // If specific series missing, probe whether anon can see any rows for this match (RLS).
+        let anyForMatch = null;
+        if (!row){
+          const qAny = new URLSearchParams({
+            select: 'id,market,label',
+            match_id: `eq.${Number(mid)}`,
+            limit: '5',
+          });
+          anyForMatch = await sbFetch(`/match_odds_charts?${qAny}`);
+        }
         const fixture = `${escapeHtml(sbFmtDate(m.match_date))} : ${escapeHtml(m.home_team || '')} — ${escapeHtml(m.away_team || '')}`;
         const type = sbHistChartTypeLabel(market);
         const labelOpts = (market === '1X2' ? ['1', 'x', '2'] : (market === 'AH' ? ['1', '2'] : ['o', 'u']))
@@ -8480,8 +8490,13 @@ bash scripts/update_and_serve.sh --start</div>
           ? (m.closing_total_line != null ? String(m.closing_total_line).replace('.', ',') : '')
           : '';
         let chartHtml;
-        if (!row || !Array.isArray(row.points) || !row.points.length){
-          chartHtml = `<p class="hist-chart-empty">Сохранённый график для этого коэффициента не найден в match_odds_charts.</p>`;
+        if (!row){
+          const anonSeesNone = !Array.isArray(anyForMatch) || anyForMatch.length === 0;
+          chartHtml = anonSeesNone
+            ? `<p class="hist-chart-empty">Данные в Table Editor есть, но API (anon) их не видит — скорее всего RLS. Выполни в Supabase: <code>docs/sql/match_odds_charts_grants.sql</code>.</p>`
+            : `<p class="hist-chart-empty">Для ${escapeHtml(market)} / ${escapeHtml(label)} ряд не найден (хотя другие серии матча доступны).</p>`;
+        } else if (!Array.isArray(row.points) || !row.points.length){
+          chartHtml = `<p class="hist-chart-empty">Ряд найден, но points пустой.</p>`;
         } else {
           chartHtml = sbHistChartBuildSvg(row.points);
         }
