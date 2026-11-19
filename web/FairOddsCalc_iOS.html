@@ -74,6 +74,50 @@
       width:100%; min-width:54px; max-width:none;
       font-size:13px; padding:5px 7px; box-sizing:border-box;
     }
+    .hist-odds-cell{
+      display:inline-flex; align-items:center; gap:4px; width:100%;
+    }
+    .hist-odds-cell .hist-cell-input{ flex:1 1 auto; min-width:48px; }
+    .hist-chart-btn{
+      flex:0 0 auto; width:22px; height:22px; padding:0; margin:0;
+      border:1px solid #cbd5e1; border-radius:5px; background:#f8fafc;
+      color:#64748b; cursor:pointer; display:inline-flex; align-items:center; justify-content:center;
+      line-height:0;
+    }
+    .hist-chart-btn:hover{ background:#e2e8f0; color:#0f172a; border-color:#94a3b8; }
+    .hist-chart-btn svg{ width:14px; height:14px; display:block; }
+    .hist-chart-modal{
+      position:fixed; inset:0; z-index:1200; display:none;
+      align-items:center; justify-content:center;
+      background:rgba(15,23,42,.45); padding:16px;
+    }
+    .hist-chart-modal.is-open{ display:flex; }
+    .hist-chart-dialog{
+      width:min(920px, 96vw); max-height:92vh; overflow:auto;
+      background:#fff; border-radius:12px; border:1px solid #cbd5e1;
+      box-shadow:0 18px 50px rgba(15,23,42,.28); padding:14px 16px 16px;
+    }
+    .hist-chart-head{
+      display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px;
+    }
+    .hist-chart-head h4{ margin:0; font-size:16px; color:#10204a; }
+    .hist-chart-close{
+      border:0; background:transparent; font-size:22px; line-height:1; cursor:pointer; color:#64748b;
+    }
+    .hist-chart-meta{
+      width:100%; border-collapse:collapse; font-size:13px; margin:0 0 12px;
+    }
+    .hist-chart-meta td{ padding:4px 8px; vertical-align:middle; }
+    .hist-chart-meta td:first-child{ font-weight:700; color:#334155; white-space:nowrap; width:1%; }
+    .hist-chart-meta select{
+      min-width:64px; padding:3px 6px; font-size:13px;
+    }
+    .hist-chart-canvas-wrap{
+      overflow:auto; border:1px solid #e2e8f0; border-radius:8px; background:#fff; padding:8px;
+    }
+    .hist-chart-svg{ display:block; max-width:none; }
+    .hist-chart-empty{ margin:18px 8px; color:#991b1b; font-size:13px; }
+    .hist-chart-status{ margin:6px 0 0; font-size:12px; color:#64748b; }
     #tab-hist .hist-matches-wrap{
       overflow:auto; -webkit-overflow-scrolling:touch;
       overflow-anchor:none;
@@ -8289,6 +8333,192 @@ bash scripts/update_and_serve.sh --start</div>
       }
       return `<input class="hist-cell-input" data-hist-col="${col}" data-hist-mid="${m.match_id}" value="${escapeHtml(val)}" />`;
     }
+    const HIST_CHART_COLS = {
+      ah1: { market: 'AH', label: '1', type: 'Asian Handicap', labels: ['1', '2'] },
+      ah2: { market: 'AH', label: '2', type: 'Asian Handicap', labels: ['1', '2'] },
+      over: { market: 'OU', label: 'o', type: 'Total', labels: ['o', 'u'] },
+      under: { market: 'OU', label: 'u', type: 'Total', labels: ['o', 'u'] },
+      o1: { market: '1X2', label: '1', type: '1X2 Odds', labels: ['1', 'x', '2'] },
+      ox: { market: '1X2', label: 'x', type: '1X2 Odds', labels: ['1', 'x', '2'] },
+      o2: { market: '1X2', label: '2', type: '1X2 Odds', labels: ['1', 'x', '2'] },
+    };
+    function sbHistChartIconSvg(){
+      return '<svg viewBox="0 0 16 16" aria-hidden="true">'
+        + '<path d="M2 13.5V3.5M2 13.5H14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>'
+        + '<path d="M3.5 11 L6 7.5 L8.2 9.2 L11.5 4.5 L13.5 6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>'
+        + '<circle cx="3.5" cy="11" r="1" fill="currentColor"/>'
+        + '<circle cx="6" cy="7.5" r="1" fill="currentColor"/>'
+        + '<circle cx="8.2" cy="9.2" r="1" fill="currentColor"/>'
+        + '<circle cx="11.5" cy="4.5" r="1" fill="currentColor"/>'
+        + '</svg>';
+    }
+    function sbHistOddsCell(col, m, st){
+      const input = sbHistInput(col, m, st);
+      const spec = HIST_CHART_COLS[col];
+      if (!spec) return input;
+      return `<span class="hist-odds-cell">${input}`
+        + `<button type="button" class="hist-chart-btn" title="График коэффициента"`
+        + ` data-hist-chart-mid="${m.match_id}" data-hist-chart-market="${escapeHtml(spec.market)}" data-hist-chart-label="${escapeHtml(spec.label)}"`
+        + ` aria-label="Открыть график">${sbHistChartIconSvg()}</button></span>`;
+    }
+    function sbHistEnsureChartModal(){
+      let el = document.getElementById('histChartModal');
+      if (el) return el;
+      el = document.createElement('div');
+      el.id = 'histChartModal';
+      el.className = 'hist-chart-modal';
+      el.innerHTML = `
+        <div class="hist-chart-dialog" role="dialog" aria-modal="true" aria-labelledby="histChartTitle">
+          <div class="hist-chart-head">
+            <h4 id="histChartTitle">График коэффициента</h4>
+            <button type="button" class="hist-chart-close" data-hist-chart-close aria-label="Закрыть">×</button>
+          </div>
+          <div id="histChartBody"></div>
+          <div id="histChartStatus" class="hist-chart-status"></div>
+        </div>`;
+      document.body.appendChild(el);
+      el.addEventListener('click', (ev) => {
+        if (ev.target === el || ev.target.closest('[data-hist-chart-close]')) sbHistCloseChartModal();
+      });
+      document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape' && el.classList.contains('is-open')) sbHistCloseChartModal();
+      });
+      return el;
+    }
+    function sbHistCloseChartModal(){
+      const el = document.getElementById('histChartModal');
+      if (!el) return;
+      el.classList.remove('is-open');
+      const body = document.getElementById('histChartBody');
+      if (body) body.innerHTML = '';
+    }
+    function sbHistChartTypeLabel(market){
+      if (market === '1X2') return '1X2 Odds';
+      if (market === 'AH') return 'Asian Handicap';
+      if (market === 'OU') return 'Total';
+      return market || '';
+    }
+    function sbHistChartBuildSvg(points){
+      const pts = (points || [])
+        .map(p => ({
+          kf: Number(p.kf),
+          oddtime: Number(p.oddtime),
+          dt: p.dt || '',
+          bet: p.bet,
+        }))
+        .filter(p => Number.isFinite(p.kf) && Number.isFinite(p.oddtime))
+        .sort((a, b) => a.oddtime - b.oddtime);
+      if (!pts.length) return '<p class="hist-chart-empty">Нет точек для графика.</p>';
+      const W = 783, H = 360, padL = 52, padR = 16, padT = 16, padB = 36;
+      const plotW = W - padL - padR, plotH = H - padT - padB;
+      let ymin = Math.min(...pts.map(p => p.kf));
+      let ymax = Math.max(...pts.map(p => p.kf));
+      if (Math.abs(ymax - ymin) < 1e-9){ ymin -= 0.05; ymax += 0.05; }
+      const yPad = (ymax - ymin) * 0.08;
+      ymin -= yPad; ymax += yPad;
+      const t0 = pts[0].oddtime, t1 = pts[pts.length - 1].oddtime || (t0 + 1);
+      const tx = (t) => padL + ((t - t0) / Math.max(t1 - t0, 1)) * plotW;
+      const ty = (v) => padT + (1 - ((v - ymin) / (ymax - ymin))) * plotH;
+      const gridN = 8;
+      let grid = '';
+      for (let i = 0; i <= gridN; i++){
+        const y = padT + (plotH * i) / gridN;
+        const val = ymax - ((ymax - ymin) * i) / gridN;
+        grid += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#eee" stroke-width="1"/>`;
+        grid += `<text x="${padL - 6}" y="${y + 3}" text-anchor="end" font-size="11" fill="#64748b">${val.toFixed(2)}</text>`;
+      }
+      for (let i = 0; i <= 6; i++){
+        const x = padL + (plotW * i) / 6;
+        grid += `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + plotH}" stroke="#f1f5f9" stroke-width="1"/>`;
+      }
+      const d = pts.map((p, i) => `${i ? 'L' : 'M'}${tx(p.oddtime).toFixed(1)},${ty(p.kf).toFixed(1)}`).join(' ');
+      const circles = pts.map((p, i) =>
+        `<circle cx="${tx(p.oddtime).toFixed(1)}" cy="${ty(p.kf).toFixed(1)}" r="3.5" fill="#fff" stroke="#06439d" stroke-width="1.6">`
+        + `<title>${escapeHtml(String(p.dt || ''))}: ${p.kf.toFixed(2)}</title></circle>`
+      ).join('');
+      const xLab = `<text x="${padL}" y="${H - 10}" font-size="11" fill="#64748b">${escapeHtml(pts[0].dt || '')}</text>`
+        + `<text x="${W - padR}" y="${H - 10}" text-anchor="end" font-size="11" fill="#64748b">${escapeHtml(pts[pts.length - 1].dt || '')}</text>`;
+      return `<div class="hist-chart-canvas-wrap"><svg class="hist-chart-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`
+        + `<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>`
+        + grid
+        + `<path d="${d}" fill="none" stroke="#ff0000" stroke-width="1.5"/>`
+        + circles
+        + xLab
+        + `</svg></div>`
+        + `<div class="hist-chart-status">Точек: ${pts.length} · ${escapeHtml(pts[0].dt || '')} → ${escapeHtml(pts[pts.length - 1].dt || '')}</div>`;
+    }
+    async function sbHistOpenOddsChart(mid, market, label){
+      const modal = sbHistEnsureChartModal();
+      const body = document.getElementById('histChartBody');
+      const status = document.getElementById('histChartStatus');
+      const st = window.__SB.matchRows[mid];
+      const m = (st && st.original) || {};
+      body.innerHTML = '<p class="hint">Загрузка графика…</p>';
+      if (status) status.textContent = '';
+      modal.classList.add('is-open');
+      try {
+        await loadSupabaseConfig();
+        const q = new URLSearchParams({
+          select: 'id,match_id,market,label,points,fetched_at',
+          match_id: `eq.${Number(mid)}`,
+          market: `eq.${market}`,
+          label: `eq.${label}`,
+          order: 'fetched_at.desc',
+          limit: '1',
+        });
+        const rows = await sbFetch(`/match_odds_charts?${q}`);
+        const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+        // If specific series missing, probe whether anon can see any rows for this match (RLS).
+        let anyForMatch = null;
+        if (!row){
+          const qAny = new URLSearchParams({
+            select: 'id,market,label',
+            match_id: `eq.${Number(mid)}`,
+            limit: '5',
+          });
+          anyForMatch = await sbFetch(`/match_odds_charts?${qAny}`);
+        }
+        const fixture = `${escapeHtml(sbFmtDate(m.match_date))} : ${escapeHtml(m.home_team || '')} — ${escapeHtml(m.away_team || '')}`;
+        const type = sbHistChartTypeLabel(market);
+        const labelOpts = (market === '1X2' ? ['1', 'x', '2'] : (market === 'AH' ? ['1', '2'] : ['o', 'u']))
+          .map(l => `<option value="${escapeHtml(l)}"${l === label ? ' selected' : ''}>${escapeHtml(l)}</option>`)
+          .join('');
+        const handicap = market === 'AH'
+          ? (m.closing_ah_home != null ? String(m.closing_ah_home).replace('.', ',') : '')
+          : '';
+        const total = market === 'OU'
+          ? (m.closing_total_line != null ? String(m.closing_total_line).replace('.', ',') : '')
+          : '';
+        let chartHtml;
+        if (!row){
+          const anonSeesNone = !Array.isArray(anyForMatch) || anyForMatch.length === 0;
+          chartHtml = anonSeesNone
+            ? `<p class="hist-chart-empty">Данные в Table Editor есть, но API (anon) их не видит — скорее всего RLS. Выполни в Supabase: <code>docs/sql/match_odds_charts_grants.sql</code>.</p>`
+            : `<p class="hist-chart-empty">Для ${escapeHtml(market)} / ${escapeHtml(label)} ряд не найден (хотя другие серии матча доступны).</p>`;
+        } else if (!Array.isArray(row.points) || !row.points.length){
+          chartHtml = `<p class="hist-chart-empty">Ряд найден, но points пустой.</p>`;
+        } else {
+          chartHtml = sbHistChartBuildSvg(row.points);
+        }
+        body.innerHTML =
+          `<table class="hist-chart-meta">`
+          + `<tr><td>Fixture</td><td>${fixture}</td></tr>`
+          + `<tr><td>Type</td><td>${escapeHtml(type)}</td></tr>`
+          + `<tr><td>Label</td><td><select id="histChartLabelSel" data-hist-chart-mid="${mid}" data-hist-chart-market="${escapeHtml(market)}">${labelOpts}</select></td></tr>`
+          + `<tr><td>Total</td><td>${escapeHtml(total)}</td></tr>`
+          + `<tr><td>Handicap</td><td>${escapeHtml(handicap)}</td></tr>`
+          + `</table>`
+          + chartHtml;
+        const sel = document.getElementById('histChartLabelSel');
+        if (sel){
+          sel.addEventListener('change', () => {
+            sbHistOpenOddsChart(mid, market, sel.value).catch(err => console.error(err));
+          });
+        }
+      } catch (e){
+        body.innerHTML = `<p class="hist-chart-empty">${escapeHtml(e.message || String(e))}</p>`;
+      }
+    }
     function sbHistCellDisplay(st, col){
       return st.edited[col] != null ? st.edited[col] : sbEditDisplay(st.original, col);
     }
@@ -8456,15 +8686,15 @@ bash scripts/update_and_serve.sh --start</div>
           `<td class="hist-col-date">${escapeHtml(sbFmtDate(m.match_date))}${inactive ? '<span class="hist-inactive-badge">неакт.</span>' : ''}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.home_team || '')}</td>` +
           `<td class="hist-col-team">${escapeHtml(m.away_team || '')}</td>` +
-          `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah1', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-ah">${sbHistOddsCell('ah1', m, st)}</td>` +
           `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah', m, st)}</td>` +
-          `<td class="num hist-col-num hist-col-ah">${sbHistInput('ah2', m, st)}</td>` +
-          `<td class="num hist-col-num hist-col-tot">${sbHistInput('over', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-ah">${sbHistOddsCell('ah2', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-tot">${sbHistOddsCell('over', m, st)}</td>` +
           `<td class="num hist-col-num hist-col-tot">${sbHistInput('tot', m, st)}</td>` +
-          `<td class="num hist-col-num hist-col-tot">${sbHistInput('under', m, st)}</td>` +
-          `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o1', m, st)}</td>` +
-          `<td class="num hist-col-num hist-col-1x2">${sbHistInput('ox', m, st)}</td>` +
-          `<td class="num hist-col-num hist-col-1x2">${sbHistInput('o2', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-tot">${sbHistOddsCell('under', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-1x2">${sbHistOddsCell('o1', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-1x2">${sbHistOddsCell('ox', m, st)}</td>` +
+          `<td class="num hist-col-num hist-col-1x2">${sbHistOddsCell('o2', m, st)}</td>` +
           `<td class="hist-col-rotation">${escapeHtml(sbRotationDisplayHome(m))}</td>` +
           `<td class="hist-col-rotation">${escapeHtml(sbRotationDisplayAway(m))}</td>` +
           `<td class="hist-col-action"><span class="hist-action-bar">` +
@@ -8623,6 +8853,16 @@ bash scripts/update_and_serve.sh --start</div>
       sbHistUpdateRowUI(mid);
     });
     document.getElementById('clhViewTable').addEventListener('click', e => {
+      const chartBtn = e.target.closest('[data-hist-chart-mid]');
+      if (chartBtn){
+        e.preventDefault();
+        e.stopPropagation();
+        const mid = Number(chartBtn.getAttribute('data-hist-chart-mid'));
+        const market = chartBtn.getAttribute('data-hist-chart-market') || '';
+        const label = chartBtn.getAttribute('data-hist-chart-label') || '';
+        sbHistOpenOddsChart(mid, market, label).catch(err => console.error(err));
+        return;
+      }
       const fetchRun = e.target.closest('[data-hist-fetch-run]');
       if (fetchRun){
         e.preventDefault();
